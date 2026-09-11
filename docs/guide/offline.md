@@ -1,0 +1,74 @@
+# Offline and optimistic updates
+
+A screen should not wait for the server to show what the user just did, and an app that loses its connection should
+not lose what the user did meanwhile. The Rayfold clients do both (sub-profile `sync`, [spec 08 §5](../../spec/08-live-and-sync.md)):
+
+- **Optimistic commands.** A command can carry the change it is expected to make. The client shows it in the cache at
+  once, so every watch and live query on those entities updates immediately. When the server answers, its own patch
+  replaces the prediction; when the command fails, the prediction is rolled back.
+- **The offline queue.** A command made while the server cannot be reached waits, with its prediction still shown,
+  and goes out when the connection is back: in the order the commands were made, each with its idempotency key. The
+  key is what makes the resend safe. If the server ran the command before its answer was lost, the retry gets the
+  recorded answer; the command does not run twice.
+
+## TypeScript and React
+
+```ts
+import { RayfoldClient, createFetchTransport, localStorageQueue } from "@rayfold/client";
+
+const client = new RayfoldClient({
+  transport: createFetchTransport({ url: "/rayfold" }),
+  offline: { storage: localStorageQueue("orders") }, // survives a reload; memoryQueue() is the default
+});
+
+await client.command("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] } }, {
+  shape: "{ id status }",
+  // what the order will do to the stock, shown at once
+  optimistic: (cache) => [{ set: "Book:b1", value: { stock: (cache.get("Book:b1")?.stock as number) - 1 } }],
+});
+```
+
+- The browser's `online` event drains the queue; call `client.drain()` yourself after your own reconnect logic. It
+  resolves to how many commands still wait.
+- `client.queued` lists the waiting commands; `client.onQueue(fn)` reports each one queued, sent, or refused
+  (`failed`, with the server's error), which is what a "3 changes waiting" banner needs.
+- A queued command's promise settles when it finally goes out. After a reload the caller is gone, so follow
+  `onQueue` for those.
+- In React, `useCommand` takes the same `optimistic` option:
+  `const [buy] = useCommand("placeOrder", { optimistic: (cache) => [...] })`.
+
+## Kotlin and Android
+
+```kotlin
+val client = RayfoldClient(
+    OkHttpWebSocketTransport("wss://api.example/rayfold/ws"),
+    ClientOptions(offline = OfflineOptions(FileQueueStorage(File(context.filesDir, "rayfold-queue.json")))),
+)
+
+client.command(
+    "placeOrder",
+    args("input" to mapOf("lines" to listOf(mapOf("bookId" to "b1", "qty" to 1)))),
+    shape = "{ id status }",
+    optimistic = listOf(OptimisticOp("Book:b1", buildJsonObject { put("stock", stock - 1) })),
+)
+```
+
+Call `client.drain()` when the device is back online, for example from a `ConnectivityManager.NetworkCallback`, and
+follow `client.onQueue { }` for the banner. `FileQueueStorage` replaces its file atomically, so a queue survives the
+app being killed. `command` suspends until a queued command has gone out, so launch it in a scope that outlives the
+screen when the user may leave it.
+
+## What counts as unreachable
+
+A transport failure (fetch's `TypeError`, an `IOException` on the JVM) or an `unavailable` error from the server. Any
+other error, such as a permission denial or a domain error like `OutOfStock`, is the server's answer: the command
+leaves the queue, its prediction is rolled back, and the error reaches the caller.
+
+## Limits
+
+- A prediction sets fields of entities; it does not add an entity to a list or remove one.
+- Commands are ordered by when they were made. A command made while an earlier one is still on its way is not held
+  back for it: when the network drops, both queue in order, but a command that reaches the server may overtake one that
+  did not.
+- Sync sessions (resuming a set of live queries from a server cursor) and per-field merge policies are still drafts in
+  spec 08 and not implemented.

@@ -1,0 +1,1435 @@
+{
+  "generatedAt": "2026-09-11T10:06:27.621Z",
+  "rows": [],
+  "methods": [
+    {
+      "method": "GET",
+      "title": "Read",
+      "operation": "Load a product header: title, price and the author's name. Then load it again through a cache.",
+      "exchanges": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"448f56b82184d34f\""
+              },
+              "body": "{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"28bbc6e5edb7fc7e\""
+              },
+              "body": "{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\",\"bio\":\"American author of speculative fiction.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {
+                "if-none-match": "\"448f56b82184d34f\""
+              }
+            },
+            "response": {
+              "status": 304,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "etag": "\"448f56b82184d34f\""
+              },
+              "body": ""
+            },
+            "label": "repeat view: revalidation"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/graphql?query=%7B%20book(id%3A%20%22b1%22)%20%7B%20id%20title%20price%20author%20%7B%20name%20%7D%20%7D%20%7D",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/graphql-response+json",
+                "etag": "\"487279bf024c934f\""
+              },
+              "body": "{\"data\":{\"book\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"author\":{\"name\":\"Ursula K. Le Guin\"}}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/graphql?query=%7B%20book(id%3A%20%22b1%22)%20%7B%20id%20title%20price%20author%20%7B%20name%20%7D%20%7D%20%7D",
+              "headers": {
+                "if-none-match": "\"487279bf024c934f\""
+              }
+            },
+            "response": {
+              "status": 304,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "etag": "\"487279bf024c934f\""
+              },
+              "body": ""
+            },
+            "label": "repeat view: revalidation"
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json; charset=utf-8",
+                "etag": "\"sha256-8f8d16a82a909aced7784fcf9f28fd6f87acca800bfff137d2bc976e738835aa\""
+              },
+              "body": "{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {
+                "if-none-match": "\"sha256-8f8d16a82a909aced7784fcf9f28fd6f87acca800bfff137d2bc976e738835aa\""
+              }
+            },
+            "response": {
+              "status": 304,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "etag": "\"sha256-8f8d16a82a909aced7784fcf9f28fd6f87acca800bfff137d2bc976e738835aa\""
+              },
+              "body": ""
+            },
+            "label": "repeat view: revalidation"
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/rayfold/book?a=eyJpZCI6ImIxIn0&s=sha256:153ce81c09d8ea1c30ef6351510fcdd16f739b7e7107b27fd3b2f6a5cd8fb9e9",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/rayfold-frames+json",
+                "etag": "\"sha256-a2119eb103ea5c9da2ab7728b2b09cf3cbf0c5158e0174d18b2cfb9d586993c5\""
+              },
+              "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"author\":{\"$type\":\"Author\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}\n"
+            },
+            "label": "custom shape by canonical id (same URL for either field order)"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "metric": "HTTP requests for the view",
+          "better": "lower",
+          "values": {
+            "REST": 2,
+            "GraphQL": 1,
+            "Rayfold": 1
+          },
+          "REST": "2: the book, then its author",
+          "GraphQL": "1",
+          "Rayfold": "1: the default view embeds the author's name",
+          "verdict": "tie"
+        },
+        {
+          "metric": "request size (URL)",
+          "unit": "bytes",
+          "better": "lower",
+          "values": {
+            "REST": 20,
+            "GraphQL": 110,
+            "Rayfold": 9
+          },
+          "REST": "20 B across 2 URLs",
+          "GraphQL": "110 B: the whole query rides in the URL",
+          "Rayfold": "9 B",
+          "verdict": "lead"
+        },
+        {
+          "metric": "repeat view revalidates with 304",
+          "better": "higher",
+          "values": {
+            "REST": 1,
+            "GraphQL": 1,
+            "Rayfold": 1
+          },
+          "REST": "yes (ETag)",
+          "GraphQL": "yes (GET with ETag, as configured here)",
+          "Rayfold": "yes (ETag; Cache-Control derived from @cache)",
+          "verdict": "tie"
+        },
+        {
+          "metric": "cache entries when two clients list the fields in a different order",
+          "better": "lower",
+          "values": {
+            "REST": 2,
+            "GraphQL": 2,
+            "Rayfold": 1
+          },
+          "REST": "2: book and author are separate resources",
+          "GraphQL": "2: each query text is its own URL",
+          "Rayfold": "1: shapes are canonicalized to one sha256 id",
+          "verdict": "lead"
+        }
+      ],
+      "note": "GraphQL over HTTP allows GET for queries only; mutations must use POST.",
+      "verdict": "lead"
+    },
+    {
+      "method": "POST",
+      "title": "Create",
+      "operation": "Check out: place an order, then pay for it. Then send both steps again, as a client does when a response is lost.",
+      "exchanges": {
+        "REST": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "idempotency-key": "k-post-rest-00001"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o1"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders/o1/pay",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PAID\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders/o1/pay",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 409,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"error\":\"not_payable\",\"status\":\"PAID\"}"
+            },
+            "label": "retry of the payment"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation($lines: [OrderLine!]!) { placeOrder(lines: $lines) { id status } }\",\"variables\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"placeOrder\":{\"id\":\"o1\",\"status\":\"PLACED\"}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation($id: ID!) { payOrder(id: $id) { id status } }\",\"variables\":{\"id\":\"o1\"}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"payOrder\":{\"id\":\"o1\",\"status\":\"PAID\"}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation($lines: [OrderLine!]!) { placeOrder(lines: $lines) { id status } }\",\"variables\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"placeOrder\":{\"id\":\"o2\",\"status\":\"PLACED\"}}}"
+            },
+            "label": "retry of the order: a second order"
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation($id: ID!) { payOrder(id: $id) { id status } }\",\"variables\":{\"id\":\"o2\"}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"payOrder\":{\"id\":\"o2\",\"status\":\"PAID\"}}}"
+            },
+            "label": "retry of the payment: a second charge"
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}},\"key\":\"k-post-rayfold-000001\",\"shape\":\"{ id status }\"},{\"id\":2,\"op\":\"payOrder\",\"args\":{\"id\":{\"$ref\":\"1.id\"}},\"key\":\"k-post-rayfold-000002\",\"shape\":\"{ id status }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\"}},{\"set\":\"Book:b3\",\"value\":{\"stock\":99}}],\"meta\":{\"cost\":1},\"fin\":true}\n{\"id\":2,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PAID\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PAID\"}}],\"meta\":{\"cost\":1},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}},\"key\":\"k-post-rayfold-000001\",\"shape\":\"{ id status }\"},{\"id\":2,\"op\":\"payOrder\",\"args\":{\"id\":{\"$ref\":\"1.id\"}},\"key\":\"k-post-rayfold-000002\",\"shape\":\"{ id status }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\"}},{\"set\":\"Book:b3\",\"value\":{\"stock\":99}}],\"meta\":{\"cost\":1,\"replay\":true},\"fin\":true}\n{\"id\":2,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PAID\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PAID\"}}],\"meta\":{\"cost\":1,\"replay\":true},\"fin\":true}\n"
+            },
+            "label": "retry after a lost response: both ops replay"
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "idempotency-key": "k-post-bind-00001"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/json; charset=utf-8",
+                "location": "/orders/o2"
+              },
+              "body": "{\"$type\":\"Order\",\"id\":\"o2\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}}]}"
+            },
+            "label": "the same command through its HTTP binding"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "metric": "round trips for place + pay",
+          "better": "lower",
+          "values": {
+            "REST": 2,
+            "GraphQL": 2,
+            "Rayfold": 1
+          },
+          "REST": "2",
+          "GraphQL": "2: a mutation's result cannot feed the next mutation",
+          "Rayfold": "1: payOrder takes { \"$ref\": \"1.id\" }",
+          "verdict": "lead"
+        },
+        {
+          "metric": "retrying the whole checkout is safe",
+          "better": "higher",
+          "values": {
+            "REST": 0,
+            "GraphQL": 0,
+            "Rayfold": 1
+          },
+          "REST": "no: the order replays, but the payment retry answers 409 although it succeeded",
+          "GraphQL": "no: the retry places and pays a second order",
+          "Rayfold": "yes: both commands replay their original results",
+          "verdict": "lead"
+        }
+      ],
+      "verdict": "lead"
+    },
+    {
+      "method": "PUT",
+      "title": "Replace",
+      "operation": "Editor A replaces review r2. Editor B, still holding the previous version, replaces it too.",
+      "exchanges": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/reviews/r2",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"9d3822e4de6c7c18\""
+              },
+              "body": "{\"id\":\"r2\",\"rating\":4,\"body\":\"Dreamlike.\",\"bookId\":\"b2\",\"reviewerId\":\"u1\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "PUT",
+              "target": "/reviews/r2",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "if-match": "\"9d3822e4de6c7c18\""
+              },
+              "body": "{\"rating\":5,\"body\":\"Reread it: better than I remembered.\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json",
+                "etag": "\"3e9263871a71359e\""
+              },
+              "body": "{\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\",\"bookId\":\"b2\",\"reviewerId\":\"u1\"}"
+            },
+            "label": "editor A"
+          },
+          {
+            "request": {
+              "method": "PUT",
+              "target": "/reviews/r2",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "if-match": "\"9d3822e4de6c7c18\""
+              },
+              "body": "{\"rating\":2,\"body\":\"Too slow for me.\"}"
+            },
+            "response": {
+              "status": 412,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"error\":\"precondition_failed\"}"
+            },
+            "label": "editor B, stale"
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/reviews/r2",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"3e9263871a71359e\""
+              },
+              "body": "{\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\",\"bookId\":\"b2\",\"reviewerId\":\"u1\"}"
+            },
+            "label": "editor B refetches"
+          },
+          {
+            "request": {
+              "method": "PUT",
+              "target": "/reviews/r2",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "if-match": "\"3e9263871a71359e\""
+              },
+              "body": "{\"rating\":2,\"body\":\"Too slow for me.\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json",
+                "etag": "\"3ed41806a81b686c\""
+              },
+              "body": "{\"id\":\"r2\",\"rating\":2,\"body\":\"Too slow for me.\",\"bookId\":\"b2\",\"reviewerId\":\"u1\"}"
+            },
+            "label": "editor B retries"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation($id: ID!, $rating: Int!, $body: String!) { editReview(id: $id, rating: $rating, body: $body) { id rating body } }\",\"variables\":{\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\"}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"editReview\":{\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\"}}}"
+            },
+            "label": "editor A"
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation($id: ID!, $rating: Int!, $body: String!) { editReview(id: $id, rating: $rating, body: $body) { id rating body } }\",\"variables\":{\"id\":\"r2\",\"rating\":2,\"body\":\"Too slow for me.\"}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"editReview\":{\"id\":\"r2\",\"rating\":2,\"body\":\"Too slow for me.\"}}}"
+            },
+            "label": "editor B, stale: accepted, A's edit is gone"
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/reviews/r2",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=0, no-cache",
+                "content-type": "application/json; charset=utf-8",
+                "etag": "\"sha256-be66b7fbdd1294fe60808971e00c6c65a41ea66423431a9e9797d06bed75ea76\""
+              },
+              "body": "{\"$type\":\"Review\",\"id\":\"r2\",\"rating\":4,\"body\":\"Dreamlike.\",\"reviewerId\":\"u1\",\"version\":1}"
+            }
+          },
+          {
+            "request": {
+              "method": "PUT",
+              "target": "/reviews/r2",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "if-match": "\"1\""
+              },
+              "body": "{\"rating\":5,\"body\":\"Reread it: better than I remembered.\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/json; charset=utf-8",
+                "etag": "\"2\""
+              },
+              "body": "{\"$type\":\"Review\",\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\",\"reviewerId\":\"u1\",\"version\":2}"
+            },
+            "label": "editor A"
+          },
+          {
+            "request": {
+              "method": "PUT",
+              "target": "/reviews/r2",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "if-match": "\"1\""
+              },
+              "body": "{\"rating\":2,\"body\":\"Too slow for me.\"}"
+            },
+            "response": {
+              "status": 412,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/problem+json"
+              },
+              "body": "{\"type\":\"https://rayfold.dev/errors/VersionConflict\",\"title\":\"VersionConflict\",\"status\":412,\"detail\":\"Review:r2 is at version 2, not 1\",\"code\":\"failed_precondition\",\"data\":{\"key\":\"Review:r2\",\"expected\":1,\"actual\":2,\"current\":{\"$type\":\"Review\",\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\",\"reviewerId\":\"u1\",\"version\":2}}}"
+            },
+            "label": "editor B, stale: 412 carries the current review"
+          },
+          {
+            "request": {
+              "method": "PUT",
+              "target": "/reviews/r2",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1",
+                "if-match": "\"2\""
+              },
+              "body": "{\"rating\":2,\"body\":\"Too slow for me.\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/json; charset=utf-8",
+                "etag": "\"3\""
+              },
+              "body": "{\"$type\":\"Review\",\"id\":\"r2\",\"rating\":2,\"body\":\"Too slow for me.\",\"reviewerId\":\"u1\",\"version\":3}"
+            },
+            "label": "editor B retries"
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"editReview\",\"args\":{\"id\":\"r2\",\"input\":{\"rating\":5,\"body\":\"Reread it: better than I remembered.\"}},\"key\":\"k-put-native-0001\",\"ifVersion\":1}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"failed_precondition\",\"message\":\"Review:r2 is at version 3, not 1\",\"type\":\"VersionConflict\",\"data\":{\"key\":\"Review:r2\",\"expected\":1,\"actual\":3,\"current\":{\"$type\":\"Review\",\"id\":\"r2\",\"rating\":2,\"body\":\"Too slow for me.\",\"reviewerId\":\"u1\",\"version\":3}}},\"fin\":true}\n"
+            },
+            "label": "the same stale edit as a native batch op"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "metric": "lost updates when two editors race",
+          "better": "lower",
+          "values": {
+            "REST": 0,
+            "GraphQL": 1,
+            "Rayfold": 0
+          },
+          "REST": "0 (If-Match, 412)",
+          "GraphQL": "1: no conditional write; B silently overwrote A",
+          "Rayfold": "0 (If-Match or ifVersion, VersionConflict)",
+          "verdict": "tie"
+        },
+        {
+          "metric": "requests for the stale editor to see the current version and retry",
+          "better": "lower",
+          "values": {
+            "REST": 3,
+            "GraphQL": null,
+            "Rayfold": 2
+          },
+          "REST": "3: 412, GET, PUT",
+          "GraphQL": "never told",
+          "Rayfold": "2: the 412 already carries the current review",
+          "verdict": "lead"
+        }
+      ],
+      "verdict": "lead"
+    },
+    {
+      "method": "PATCH",
+      "title": "Partial update",
+      "operation": "An admin changes the price of Beloved (b5). The admin's client already shows the catalogue and the product page; another user has the product page open.",
+      "exchanges": {
+        "REST": [
+          {
+            "request": {
+              "method": "PATCH",
+              "target": "/books/b5",
+              "headers": {
+                "content-type": "application/merge-patch+json",
+                "authorization": "Bearer admin"
+              },
+              "body": "{\"price\":\"10.75\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"id\":\"b5\",\"title\":\"Beloved\",\"format\":\"PAPERBACK\",\"price\":\"10.75\",\"stock\":14,\"authorId\":\"a4\",\"ownerId\":\"u1\",\"costPrice\":\"4.28\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "PATCH",
+              "target": "/books/b5",
+              "headers": {
+                "content-type": "application/merge-patch+json",
+                "authorization": "Bearer admin"
+              },
+              "body": "{\"price\":\"-1.00\"}"
+            },
+            "response": {
+              "status": 400,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"error\":\"invalid\",\"field\":\"price\"}"
+            },
+            "label": "negative price: rejected by a hand-written check"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer admin"
+              },
+              "body": "{\"query\":\"mutation { updateBook(id: \\\"b5\\\", patch: { price: \\\"10.75\\\" }) { __typename id price } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"updateBook\":{\"__typename\":\"Book\",\"id\":\"b5\",\"price\":\"10.75\"}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer admin"
+              },
+              "body": "{\"query\":\"mutation { updateBook(id: \\\"b5\\\", patch: { price: \\\"-1.00\\\" }) { id } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"errors\":[{\"message\":\"price must be >= 0\",\"locations\":[{\"line\":1,\"column\":12}],\"path\":[\"updateBook\"],\"extensions\":{\"code\":\"BAD_USER_INPUT\"}}],\"data\":null}"
+            },
+            "label": "negative price: rejected by a hand-written check"
+          }
+        ],
+        "Rayfold": [
+          {
+            "label": "Rayfold client: the command (native batch)",
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "authorization": "Bearer admin"
+              },
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"updateBook\",\"args\":{\"id\":\"b5\",\"patch\":{\"price\":\"10.75\"}},\"shape\":\"{ id price }\",\"key\":\"dc39b040ac5246f68f4d8ba3c3c9f354\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Book\",\"id\":\"b5\",\"price\":\"10.75\"},\"patch\":[{\"set\":\"Book:b5\",\"value\":{\"$type\":\"Book\",\"id\":\"b5\",\"price\":\"10.75\"}}],\"meta\":{\"cost\":1},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "PATCH",
+              "target": "/books/b5",
+              "headers": {
+                "content-type": "application/merge-patch+json",
+                "authorization": "Bearer admin"
+              },
+              "body": "{\"stock\":12}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/json; charset=utf-8"
+              },
+              "body": "{\"$type\":\"Book\",\"id\":\"b5\",\"title\":\"Beloved\",\"format\":\"PAPERBACK\",\"price\":\"10.75\",\"stock\":12,\"author\":{\"$type\":\"Author\",\"id\":\"a4\",\"name\":\"Toni Morrison\"}}"
+            },
+            "label": "HTTP binding: only stock is sent"
+          },
+          {
+            "request": {
+              "method": "PATCH",
+              "target": "/books/b5",
+              "headers": {
+                "content-type": "application/merge-patch+json",
+                "authorization": "Bearer admin"
+              },
+              "body": "{\"price\":\"-1.00\"}"
+            },
+            "response": {
+              "status": 400,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/problem+json"
+              },
+              "body": "{\"type\":\"https://rayfold.dev/errors/invalid_argument\",\"title\":\"invalid argument\",\"status\":400,\"detail\":\"updateBook().patch.price: must be >= 0\",\"code\":\"invalid_argument\"}"
+            },
+            "label": "negative price: rejected by @range(min: 0) from the schema"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "metric": "fields not sent are left untouched",
+          "better": "higher",
+          "values": {
+            "REST": 1,
+            "GraphQL": 1,
+            "Rayfold": 1
+          },
+          "REST": "yes (merge patch)",
+          "GraphQL": "yes (absent input fields)",
+          "Rayfold": "yes (absent stays absent; explicit null clears)",
+          "verdict": "tie"
+        },
+        {
+          "metric": "open views correct without a refetch (catalogue + product page)",
+          "better": "higher",
+          "values": {
+            "REST": 1,
+            "GraphQL": 2,
+            "Rayfold": 2
+          },
+          "REST": "1 of 2: the PATCH response replaces the page; the list is stale",
+          "GraphQL": "2 of 2: the normalized cache merges the returned book",
+          "Rayfold": "2 of 2: the patch updates every cached view",
+          "verdict": "tie"
+        },
+        {
+          "metric": "another user's open view updates by itself",
+          "better": "higher",
+          "values": {
+            "REST": 0,
+            "GraphQL": 0,
+            "Rayfold": 1
+          },
+          "REST": "no: no event exists for price (the stream carries stock only)",
+          "GraphQL": "no: no subscription covers price",
+          "Rayfold": "yes: a live query needs no event code",
+          "verdict": "lead"
+        },
+        {
+          "metric": "validation rule and published contract come from one source",
+          "better": "higher",
+          "values": {
+            "REST": 0,
+            "GraphQL": 0,
+            "Rayfold": 1
+          },
+          "REST": "no: hand-written check; OpenAPI maintained separately",
+          "GraphQL": "no: SDL has no constraint syntax; the check lives in the resolver",
+          "Rayfold": "yes: @range(min: 0) is enforced and appears in the generated OpenAPI",
+          "verdict": "lead"
+        }
+      ],
+      "verdict": "lead"
+    },
+    {
+      "method": "DELETE",
+      "title": "Delete",
+      "operation": "The author deletes review r2 while the book page (which lists it) is cached. Then the client retries, as it does when a response is lost.",
+      "exchanges": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/reviews?bookId=b2",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"c77ecf24379cb1ca\""
+              },
+              "body": "{\"items\":[{\"id\":\"r2\",\"rating\":4,\"body\":\"Dreamlike.\",\"bookId\":\"b2\",\"reviewerId\":\"u1\",\"version\":1}]}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "target": "/reviews/r2",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 204,
+              "headers": {},
+              "body": ""
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "target": "/reviews/r2",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 404,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"error\":\"not_found\"}"
+            },
+            "label": "retry after a lost response"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation { deleteReview(id: \\\"r2\\\") }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"deleteReview\":\"r2\"}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"query\":\"mutation { deleteReview(id: \\\"r2\\\") }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"errors\":[{\"message\":\"Review not found\",\"locations\":[{\"line\":1,\"column\":12}],\"path\":[\"deleteReview\"],\"extensions\":{\"code\":\"NOT_FOUND\"}}],\"data\":null}"
+            },
+            "label": "retry after a lost response"
+          }
+        ],
+        "Rayfold": [
+          {
+            "label": "Rayfold client (native batch)",
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"deleteReview\",\"args\":{\"id\":\"r2\"},\"shape\":\"{ id }\",\"key\":\"k-del-rayfold-0000001\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Review\",\"id\":\"r2\"},\"patch\":[{\"set\":\"Review:r2\",\"value\":{\"$type\":\"Review\",\"id\":\"r2\"}},{\"del\":\"Review:r2\"}],\"meta\":{\"cost\":1},\"fin\":true}\n"
+            }
+          },
+          {
+            "label": "retry after a lost response: replayed",
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "authorization": "Bearer u1"
+              },
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"deleteReview\",\"args\":{\"id\":\"r2\"},\"shape\":\"{ id }\",\"key\":\"k-del-rayfold-0000001\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Review\",\"id\":\"r2\"},\"patch\":[{\"set\":\"Review:r2\",\"value\":{\"$type\":\"Review\",\"id\":\"r2\"}},{\"del\":\"Review:r2\"}],\"meta\":{\"cost\":1,\"replay\":true},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "target": "/reviews/r1",
+              "headers": {
+                "authorization": "Bearer admin",
+                "idempotency-key": "k-del-bind-000001"
+              }
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/json; charset=utf-8",
+                "etag": "\"1\""
+              },
+              "body": "{\"$type\":\"Review\",\"id\":\"r1\",\"rating\":5,\"body\":\"Ambiguous utopia, unambiguous masterpiece.\",\"reviewerId\":\"u2\",\"version\":1}"
+            },
+            "label": "HTTP binding"
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "target": "/reviews/r1",
+              "headers": {
+                "authorization": "Bearer admin",
+                "idempotency-key": "k-del-bind-000001"
+              }
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/json; charset=utf-8",
+                "etag": "\"1\"",
+                "idempotent-replayed": "true"
+              },
+              "body": "{\"$type\":\"Review\",\"id\":\"r1\",\"rating\":5,\"body\":\"Ambiguous utopia, unambiguous masterpiece.\",\"reviewerId\":\"u2\",\"version\":1}"
+            },
+            "label": "HTTP binding: the retry replays"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "metric": "cached views still showing the deleted review",
+          "better": "lower",
+          "values": {
+            "REST": 1,
+            "GraphQL": 1,
+            "Rayfold": 0
+          },
+          "REST": "1: the cached list keeps it until a refetch",
+          "GraphQL": "1: a normalized cache does not remove deleted entities from lists by itself",
+          "Rayfold": "0: the command's { \"del\": \"Review:r2\" } patch removes it everywhere",
+          "verdict": "lead"
+        },
+        {
+          "metric": "a retry after a lost response reports the original success",
+          "better": "higher",
+          "values": {
+            "REST": 0,
+            "GraphQL": 0,
+            "Rayfold": 1
+          },
+          "REST": "no: 404, indistinguishable from a wrong id",
+          "GraphQL": "no: NOT_FOUND error",
+          "Rayfold": "yes: the idempotency key replays the first result",
+          "verdict": "lead"
+        }
+      ],
+      "verdict": "lead"
+    },
+    {
+      "method": "QUERY",
+      "title": "Safe query with a body",
+      "operation": "Search paperbacks up to $10 and show each author's name, then run the same search again through a shared cache (RFC 10008).",
+      "exchanges": {
+        "REST": [
+          {
+            "request": {
+              "method": "QUERY",
+              "target": "/books",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"filter\":{\"format\":\"PAPERBACK\",\"maxPrice\":\"10.00\"},\"limit\":20}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"44470c982c079b30\""
+              },
+              "body": "{\"items\":[{\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"format\":\"PAPERBACK\",\"price\":\"8.99\",\"stock\":12,\"authorId\":\"a7\",\"ownerId\":\"u1\"},{\"id\":\"b14\",\"title\":\"Ficciones\",\"format\":\"PAPERBACK\",\"price\":\"9.00\",\"stock\":5,\"authorId\":\"a8\",\"ownerId\":\"u1\"},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"format\":\"PAPERBACK\",\"price\":\"7.50\",\"stock\":18,\"authorId\":\"a9\",\"ownerId\":\"u1\"},{\"id\":\"b21\",\"title\":\"The Fifth Season\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":16,\"authorId\":\"a11\",\"ownerId\":\"u1\"},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":10,\"authorId\":\"a11\",\"ownerId\":\"u2\"},{\"id\":\"b30\",\"title\":\"Parable of the Sower\",\"format\":\"PAPERBACK\",\"price\":\"9.25\",\"stock\":15,\"authorId\":\"a3\",\"ownerId\":\"u2\"},{\"id\":\"b31\",\"title\":\"Dawn\",\"format\":\"PAPERBACK\",\"price\":\"8.50\",\"stock\":7,\"authorId\":\"a3\",\"ownerId\":\"u1\"},{\"id\":\"b33\",\"title\":\"Chronicle of a Death Foretold\",\"format\":\"PAPERBACK\",\"price\":\"8.00\",\"stock\":6,\"authorId\":\"a5\",\"ownerId\":\"u1\"},{\"id\":\"b4\",\"title\":\"A Wizard of Earthsea\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":0,\"authorId\":\"a1\",\"ownerId\":\"u1\"},{\"id\":\"b5\",\"title\":\"Beloved\",\"format\":\"PAPERBACK\",\"price\":\"9.50\",\"stock\":14,\"authorId\":\"a4\",\"ownerId\":\"u1\"},{\"id\":\"b9\",\"title\":\"Half of a Yellow Sun\",\"format\":\"PAPERBACK\",\"price\":\"10.00\",\"stock\":9,\"authorId\":\"a6\",\"ownerId\":\"u1\"}],\"total\":11}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a7",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"dca8d7b031d9dd19\""
+              },
+              "body": "{\"id\":\"a7\",\"name\":\"Kazuo Ishiguro\",\"bio\":\"Nobel laureate in Literature, 2017.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a8",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"74f6e8c2a1886d1b\""
+              },
+              "body": "{\"id\":\"a8\",\"name\":\"Jorge Luis Borges\",\"bio\":\"Argentine writer of short stories, essays and poems.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a9",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"b4e4cfde092a1b5e\""
+              },
+              "body": "{\"id\":\"a9\",\"name\":\"Virginia Woolf\",\"bio\":\"English modernist novelist and essayist.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a11",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"6684c9a6cb4f0824\""
+              },
+              "body": "{\"id\":\"a11\",\"name\":\"N. K. Jemisin\",\"bio\":\"Won the Hugo Award for Best Novel three years running for the Broken Earth trilogy.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a3",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"c7167b1ef1cce231\""
+              },
+              "body": "{\"id\":\"a3\",\"name\":\"Octavia E. Butler\",\"bio\":\"Science fiction author from Pasadena.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a5",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"ca0a151f549166c1\""
+              },
+              "body": "{\"id\":\"a5\",\"name\":\"Gabriel García Márquez\",\"bio\":\"Nobel laureate in Literature, 1982.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"28bbc6e5edb7fc7e\""
+              },
+              "body": "{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\",\"bio\":\"American author of speculative fiction.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a4",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"bb4fa4da37e09e5c\""
+              },
+              "body": "{\"id\":\"a4\",\"name\":\"Toni Morrison\",\"bio\":\"Nobel laureate in Literature, 1993.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a6",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"de6a871eb8730c2d\""
+              },
+              "body": "{\"id\":\"a6\",\"name\":\"Chimamanda Ngozi Adichie\",\"bio\":\"Nigerian novelist and essayist.\"}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "QUERY",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ books(first: 20, format: \\\"PAPERBACK\\\", maxPrice: \\\"10.00\\\") { items { id title price author { name } } total } }\"}"
+            },
+            "response": {
+              "status": 405,
+              "headers": {
+                "allow": "GET, POST",
+                "content-type": "application/json"
+              },
+              "body": "{\"errors\":[{\"message\":\"QUERY is not part of GraphQL over HTTP; use GET or POST\"}]}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ books(first: 20, format: \\\"PAPERBACK\\\", maxPrice: \\\"10.00\\\") { items { id title price author { name } } total } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"books\":{\"items\":[{\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"price\":\"8.99\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b14\",\"title\":\"Ficciones\",\"price\":\"9.00\",\"author\":{\"name\":\"Jorge Luis Borges\"}},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"price\":\"7.50\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b21\",\"title\":\"The Fifth Season\",\"price\":\"9.99\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"price\":\"9.99\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b30\",\"title\":\"Parable of the Sower\",\"price\":\"9.25\",\"author\":{\"name\":\"Octavia E. Butler\"}},{\"id\":\"b31\",\"title\":\"Dawn\",\"price\":\"8.50\",\"author\":{\"name\":\"Octavia E. Butler\"}},{\"id\":\"b33\",\"title\":\"Chronicle of a Death Foretold\",\"price\":\"8.00\",\"author\":{\"name\":\"Gabriel García Márquez\"}},{\"id\":\"b4\",\"title\":\"A Wizard of Earthsea\",\"price\":\"9.99\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b5\",\"title\":\"Beloved\",\"price\":\"9.50\",\"author\":{\"name\":\"Toni Morrison\"}},{\"id\":\"b9\",\"title\":\"Half of a Yellow Sun\",\"price\":\"10.00\",\"author\":{\"name\":\"Chimamanda Ngozi Adichie\"}}],\"total\":11}}}"
+            },
+            "label": "fallback: POST, which shared caches cannot store"
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "QUERY",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"format\":\"PAPERBACK\",\"maxPrice\":\"10.00\"},\"page\":{\"first\":20}},\"shape\":\"{ items { id title price author { name } } total }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/rayfold-frames+json",
+                "etag": "\"sha256-333c30cf42c67f6f663e6e885312103612b5d53bd4a2a835861a6725e2112fb1\""
+              },
+              "body": "{\"id\":1,\"data\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"price\":\"8.99\",\"author\":{\"$type\":\"Author\",\"name\":\"Kazuo Ishiguro\"}},{\"$type\":\"Book\",\"id\":\"b14\",\"title\":\"Ficciones\",\"price\":\"9.00\",\"author\":{\"$type\":\"Author\",\"name\":\"Jorge Luis Borges\"}},{\"$type\":\"Book\",\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"price\":\"7.50\",\"author\":{\"$type\":\"Author\",\"name\":\"Virginia Woolf\"}},{\"$type\":\"Book\",\"id\":\"b21\",\"title\":\"The Fifth Season\",\"price\":\"9.99\",\"author\":{\"$type\":\"Author\",\"name\":\"N. K. Jemisin\"}},{\"$type\":\"Book\",\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"price\":\"9.99\",\"author\":{\"$type\":\"Author\",\"name\":\"N. K. Jemisin\"}},{\"$type\":\"Book\",\"id\":\"b30\",\"title\":\"Parable of the Sower\",\"price\":\"9.25\",\"author\":{\"$type\":\"Author\",\"name\":\"Octavia E. Butler\"}},{\"$type\":\"Book\",\"id\":\"b31\",\"title\":\"Dawn\",\"price\":\"8.50\",\"author\":{\"$type\":\"Author\",\"name\":\"Octavia E. Butler\"}},{\"$type\":\"Book\",\"id\":\"b33\",\"title\":\"Chronicle of a Death Foretold\",\"price\":\"8.00\",\"author\":{\"$type\":\"Author\",\"name\":\"Gabriel García Márquez\"}},{\"$type\":\"Book\",\"id\":\"b4\",\"title\":\"A Wizard of Earthsea\",\"price\":\"9.99\",\"author\":{\"$type\":\"Author\",\"name\":\"Ursula K. Le Guin\"}},{\"$type\":\"Book\",\"id\":\"b5\",\"title\":\"Beloved\",\"price\":\"9.50\",\"author\":{\"$type\":\"Author\",\"name\":\"Toni Morrison\"}},{\"$type\":\"Book\",\"id\":\"b9\",\"title\":\"Half of a Yellow Sun\",\"price\":\"10.00\",\"author\":{\"$type\":\"Author\",\"name\":\"Chimamanda Ngozi Adichie\"}}],\"total\":11},\"meta\":{\"cost\":46},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "QUERY",
+              "target": "/books",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"filter\":{\"format\":\"PAPERBACK\",\"maxPrice\":\"10.00\"}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json; charset=utf-8",
+                "etag": "\"sha256-8365e34a1fdb6fcf9b06b67e800a8dfa3de7a7066974a18b39141a5329cb80cc\""
+              },
+              "body": "{\"items\":[{\"$type\":\"Book\",\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"format\":\"PAPERBACK\",\"price\":\"8.99\",\"stock\":12,\"author\":{\"$type\":\"Author\",\"id\":\"a7\",\"name\":\"Kazuo Ishiguro\"}},{\"$type\":\"Book\",\"id\":\"b14\",\"title\":\"Ficciones\",\"format\":\"PAPERBACK\",\"price\":\"9.00\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a8\",\"name\":\"Jorge Luis Borges\"}},{\"$type\":\"Book\",\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"format\":\"PAPERBACK\",\"price\":\"7.50\",\"stock\":18,\"author\":{\"$type\":\"Author\",\"id\":\"a9\",\"name\":\"Virginia Woolf\"}},{\"$type\":\"Book\",\"id\":\"b21\",\"title\":\"The Fifth Season\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":16,\"author\":{\"$type\":\"Author\",\"id\":\"a11\",\"name\":\"N. K. Jemisin\"}},{\"$type\":\"Book\",\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":10,\"author\":{\"$type\":\"Author\",\"id\":\"a11\",\"name\":\"N. K. Jemisin\"}},{\"$type\":\"Book\",\"id\":\"b30\",\"title\":\"Parable of the Sower\",\"format\":\"PAPERBACK\",\"price\":\"9.25\",\"stock\":15,\"author\":{\"$type\":\"Author\",\"id\":\"a3\",\"name\":\"Octavia E. Butler\"}},{\"$type\":\"Book\",\"id\":\"b31\",\"title\":\"Dawn\",\"format\":\"PAPERBACK\",\"price\":\"8.50\",\"stock\":7,\"author\":{\"$type\":\"Author\",\"id\":\"a3\",\"name\":\"Octavia E. Butler\"}},{\"$type\":\"Book\",\"id\":\"b33\",\"title\":\"Chronicle of a Death Foretold\",\"format\":\"PAPERBACK\",\"price\":\"8.00\",\"stock\":6,\"author\":{\"$type\":\"Author\",\"id\":\"a5\",\"name\":\"Gabriel García Márquez\"}},{\"$type\":\"Book\",\"id\":\"b4\",\"title\":\"A Wizard of Earthsea\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":0,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},{\"$type\":\"Book\",\"id\":\"b5\",\"title\":\"Beloved\",\"format\":\"PAPERBACK\",\"price\":\"9.50\",\"stock\":14,\"author\":{\"$type\":\"Author\",\"id\":\"a4\",\"name\":\"Toni Morrison\"}},{\"$type\":\"Book\",\"id\":\"b9\",\"title\":\"Half of a Yellow Sun\",\"format\":\"PAPERBACK\",\"price\":\"10.00\",\"stock\":9,\"author\":{\"$type\":\"Author\",\"id\":\"a6\",\"name\":\"Chimamanda Ngozi Adichie\"}}],\"cursor\":\"b9\",\"hasMore\":false,\"total\":11}"
+            },
+            "label": "the same query through its HTTP binding"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "metric": "QUERY method supported",
+          "better": "higher",
+          "values": {
+            "REST": 1,
+            "GraphQL": 0,
+            "Rayfold": 1
+          },
+          "REST": "yes (RFC 10008, implemented here)",
+          "GraphQL": "no: 405; fall back to POST or a long GET",
+          "Rayfold": "yes: any read-only batch, and query bindings",
+          "verdict": "tie"
+        },
+        {
+          "metric": "requests for results with author names",
+          "better": "lower",
+          "values": {
+            "REST": 10,
+            "GraphQL": 1,
+            "Rayfold": 1
+          },
+          "REST": "10: results, then one per author",
+          "GraphQL": "1 (POST)",
+          "Rayfold": "1",
+          "verdict": "tie"
+        },
+        {
+          "metric": "bytes on the repeat search through a shared cache",
+          "unit": "bytes, headers + body",
+          "better": "lower",
+          "values": {
+            "REST": 1620,
+            "GraphQL": 1260,
+            "Rayfold": 344
+          },
+          "REST": "10 revalidations (304), 1620 B",
+          "GraphQL": "the full response again (POST), 1260 B",
+          "Rayfold": "1 revalidation (304), 344 B",
+          "verdict": "lead"
+        }
+      ],
+      "verdict": "lead"
+    }
+  ]
+}

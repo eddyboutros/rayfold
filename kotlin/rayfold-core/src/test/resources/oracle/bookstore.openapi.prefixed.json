@@ -1,0 +1,1329 @@
+{
+ "openapi": "3.2.0",
+ "info": {
+  "title": "Bookstore",
+  "version": "2.1"
+ },
+ "paths": {
+  "/api/books": {
+   "query": {
+    "operationId": "books",
+    "parameters": [],
+    "summary": "List books, newest first.",
+    "requestBody": {
+     "required": false,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "filter": {
+          "anyOf": [
+           {
+            "$ref": "#/components/schemas/BookFilter"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         },
+         "page": {
+          "$ref": "#/components/schemas/PageArgs"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_Book"
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/books/{id}": {
+   "get": {
+    "operationId": "book",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Book"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "operationId": "updateBook",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "summary": "Change some fields of a book; fields not sent are left as they are.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/merge-patch+json": {
+       "schema": {
+        "$ref": "#/components/schemas/BookPatch"
+       }
+      },
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BookPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Book"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reviews/{id}": {
+   "get": {
+    "operationId": "review",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Review"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "operationId": "editReview",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "If-Match",
+      "in": "header",
+      "required": false,
+      "description": "Entity version from a previous response; 412 with the current entity when stale",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "summary": "Replace a review's rating and text. Only its author (or an admin) may edit it.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReviewEdit"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Review"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "412": {
+      "description": "VersionConflict: data.current carries the entity as stored",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "operationId": "deleteReview",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "If-Match",
+      "in": "header",
+      "required": false,
+      "description": "Entity version from a previous response; 412 with the current entity when stale",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "summary": "Delete a review. Only its author (or an admin) may delete it.",
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Review"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "412": {
+      "description": "VersionConflict: data.current carries the entity as stored",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orders/{id}": {
+   "get": {
+    "operationId": "order",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Order"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orders": {
+   "post": {
+    "operationId": "placeOrder",
+    "parameters": [
+     {
+      "name": "Idempotency-Key",
+      "in": "header",
+      "required": true,
+      "description": "Replays the original response on retry",
+      "schema": {
+       "type": "string",
+       "minLength": 16,
+       "maxLength": 128
+      }
+     }
+    ],
+    "summary": "Place an order. Fails atomically if any line is out of stock.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OrderInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Order"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Declared domain errors: OutOfStock, PaymentDeclined",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "oneOf": [
+          {
+           "allOf": [
+            {
+             "$ref": "#/components/schemas/Problem"
+            },
+            {
+             "properties": {
+              "title": {
+               "const": "OutOfStock"
+              },
+              "data": {
+               "$ref": "#/components/schemas/OutOfStock"
+              }
+             }
+            }
+           ]
+          },
+          {
+           "allOf": [
+            {
+             "$ref": "#/components/schemas/Problem"
+            },
+            {
+             "properties": {
+              "title": {
+               "const": "PaymentDeclined"
+              },
+              "data": {
+               "$ref": "#/components/schemas/PaymentDeclined"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orders/{id}/pay": {
+   "post": {
+    "operationId": "payOrder",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "Idempotency-Key",
+      "in": "header",
+      "required": true,
+      "description": "Replays the original response on retry",
+      "schema": {
+       "type": "string",
+       "minLength": 16,
+       "maxLength": 128
+      }
+     }
+    ],
+    "summary": "Pay for a placed order.",
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Order"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Declared domain errors: PaymentDeclined, NotPayable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "oneOf": [
+          {
+           "allOf": [
+            {
+             "$ref": "#/components/schemas/Problem"
+            },
+            {
+             "properties": {
+              "title": {
+               "const": "PaymentDeclined"
+              },
+              "data": {
+               "$ref": "#/components/schemas/PaymentDeclined"
+              }
+             }
+            }
+           ]
+          },
+          {
+           "allOf": [
+            {
+             "$ref": "#/components/schemas/Problem"
+            },
+            {
+             "properties": {
+              "title": {
+               "const": "NotPayable"
+              },
+              "data": {
+               "$ref": "#/components/schemas/NotPayable"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "BookFilter": {
+    "type": "object",
+    "properties": {
+     "titleContains": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "format": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "HARDCOVER",
+         "PAPERBACK",
+         "EBOOK"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "authorId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "maxPrice": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^-?\\d+(\\.\\d+)?$"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false
+   },
+   "PageArgs": {
+    "type": "object",
+    "properties": {
+     "first": {
+      "type": "integer"
+     },
+     "after": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "offset": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false
+   },
+   "Page_Book": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Book"
+      }
+     },
+     "cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "hasMore": {
+      "type": "boolean"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items",
+     "hasMore"
+    ]
+   },
+   "Book": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Book"
+     },
+     "id": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "format": {
+      "type": "string",
+      "enum": [
+       "HARDCOVER",
+       "PAPERBACK",
+       "EBOOK"
+      ]
+     },
+     "price": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$",
+      "description": "Unit price in the store currency."
+     },
+     "stock": {
+      "type": "integer"
+     },
+     "author": {
+      "$ref": "#/components/schemas/Author"
+     },
+     "reviews": {
+      "$ref": "#/components/schemas/Page_Review"
+     },
+     "costPrice": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^-?\\d+(\\.\\d+)?$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Only the owner (or an admin) can see the cost price."
+     },
+     "ownerId": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "title",
+     "format",
+     "price",
+     "stock",
+     "author",
+     "reviews",
+     "ownerId"
+    ]
+   },
+   "Author": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Author"
+     },
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "bio": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "books": {
+      "$ref": "#/components/schemas/Page_Book"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "name",
+     "books"
+    ]
+   },
+   "Page_Review": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Review"
+      }
+     },
+     "cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "hasMore": {
+      "type": "boolean"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items",
+     "hasMore"
+    ]
+   },
+   "Review": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Review"
+     },
+     "id": {
+      "type": "string"
+     },
+     "rating": {
+      "type": "integer",
+      "x-rayfold-range": {
+       "min": 1,
+       "max": 5
+      },
+      "minimum": 1,
+      "maximum": 5
+     },
+     "body": {
+      "type": "string"
+     },
+     "book": {
+      "$ref": "#/components/schemas/Book"
+     },
+     "reviewerId": {
+      "type": "string"
+     },
+     "version": {
+      "type": "integer",
+      "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "rating",
+     "body",
+     "book",
+     "reviewerId",
+     "version"
+    ]
+   },
+   "Order": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Order"
+     },
+     "id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "PLACED",
+       "PAID",
+       "SHIPPED",
+       "CANCELLED"
+      ]
+     },
+     "customerId": {
+      "type": "string"
+     },
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/OrderItem"
+      }
+     },
+     "total": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "status",
+     "customerId",
+     "items",
+     "total"
+    ]
+   },
+   "OrderItem": {
+    "type": "object",
+    "properties": {
+     "book": {
+      "$ref": "#/components/schemas/Book"
+     },
+     "qty": {
+      "type": "integer"
+     },
+     "unitPrice": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "book",
+     "qty",
+     "unitPrice"
+    ]
+   },
+   "OrderInput": {
+    "type": "object",
+    "properties": {
+     "lines": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/OrderLine"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "lines"
+    ]
+   },
+   "OrderLine": {
+    "type": "object",
+    "properties": {
+     "bookId": {
+      "type": "string"
+     },
+     "qty": {
+      "type": "integer",
+      "x-rayfold-range": {
+       "min": 1,
+       "max": 100
+      },
+      "minimum": 1,
+      "maximum": 100
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "bookId"
+    ]
+   },
+   "OutOfStock": {
+    "type": "object",
+    "properties": {
+     "bookId": {
+      "type": "string"
+     },
+     "available": {
+      "type": "integer"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "bookId",
+     "available"
+    ]
+   },
+   "PaymentDeclined": {
+    "type": "object",
+    "properties": {
+     "reason": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "reason"
+    ]
+   },
+   "NotPayable": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "PLACED",
+       "PAID",
+       "SHIPPED",
+       "CANCELLED"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "status"
+    ]
+   },
+   "ReviewEdit": {
+    "type": "object",
+    "properties": {
+     "rating": {
+      "type": "integer",
+      "x-rayfold-range": {
+       "min": 1,
+       "max": 5
+      },
+      "minimum": 1,
+      "maximum": 5
+     },
+     "body": {
+      "type": "string",
+      "x-rayfold-range": {
+       "min": 1,
+       "max": 2000
+      },
+      "minLength": 1,
+      "maxLength": 2000
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "rating",
+     "body"
+    ]
+   },
+   "BookPatch": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "x-rayfold-range": {
+       "min": 1,
+       "max": 200
+      },
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "price": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^-?\\d+(\\.\\d+)?$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "x-rayfold-range": {
+       "min": 0
+      }
+     },
+     "stock": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "x-rayfold-range": {
+       "min": 0
+      },
+      "minimum": 0
+     }
+    },
+    "additionalProperties": false,
+    "description": "Partial update: absent fields are left unchanged."
+   },
+   "Problem": {
+    "type": "object",
+    "description": "RFC 9457 problem details; Rayfold errors keep code, type and data",
+    "properties": {
+     "type": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "status": {
+      "type": "integer"
+     },
+     "detail": {
+      "type": "string"
+     },
+     "code": {
+      "type": "string"
+     },
+     "path": {
+      "type": "string"
+     },
+     "data": {}
+    },
+    "required": [
+     "type",
+     "title",
+     "status",
+     "code"
+    ]
+   }
+  }
+ }
+}

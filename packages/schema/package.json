@@ -1,0 +1,26 @@
+{
+  "name": "@rayfold/schema",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rayfold schema language: parser, validator, canonical IR, shapes, policy expressions and code generators.",
+  "keywords": [
+    "rayfold",
+    "api",
+    "protocol",
+    "schema",
+    "idl",
+    "codegen"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {}
+}

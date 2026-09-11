@@ -1,0 +1,25 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+kotlin/build/
+kotlin/.gradle/
+bench/results/*.tmp
+
+# every Gradle module build directory, not only the top one
+kotlin/**/build/
+.kotlin/
+
+# raw downloads: rebuild data/gutenberg.json.gz with `npm run import:gutenberg` (see data/README.md)
+data/raw/
+
+# the documentation site: node scripts/build-site.mjs
+site/
+
+# editor settings
+.idea/
+*.iml
+
+# Playwright and the proxy check
+test-results/
+e2e/proxy/cache/

@@ -1,0 +1,10 @@
+Rayfold
+Copyright 2026 The Rayfold Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The data in data/gutenberg.json.gz is derived from the Project Gutenberg catalogue
+(https://www.gutenberg.org/ebooks/offline_catalogs.html) and is not covered by this
+project's copyright. See data/README.md for its source. Project Gutenberg is a
+registered trademark of the Project Gutenberg Literary Archive Foundation; Rayfold is
+not affiliated with or endorsed by Project Gutenberg.

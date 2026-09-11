@@ -1,0 +1,760 @@
+{
+ "rayfold": "0.1",
+ "types": {
+  "ID": {
+   "kind": "scalar",
+   "name": "ID",
+   "annotations": [],
+   "builtin": true
+  },
+  "String": {
+   "kind": "scalar",
+   "name": "String",
+   "annotations": [],
+   "builtin": true
+  },
+  "Int": {
+   "kind": "scalar",
+   "name": "Int",
+   "annotations": [],
+   "builtin": true
+  },
+  "Long": {
+   "kind": "scalar",
+   "name": "Long",
+   "annotations": [],
+   "builtin": true
+  },
+  "Float": {
+   "kind": "scalar",
+   "name": "Float",
+   "annotations": [],
+   "builtin": true
+  },
+  "Boolean": {
+   "kind": "scalar",
+   "name": "Boolean",
+   "annotations": [],
+   "builtin": true
+  },
+  "Decimal": {
+   "kind": "scalar",
+   "name": "Decimal",
+   "annotations": [],
+   "builtin": true
+  },
+  "Instant": {
+   "kind": "scalar",
+   "name": "Instant",
+   "annotations": [],
+   "builtin": true
+  },
+  "Date": {
+   "kind": "scalar",
+   "name": "Date",
+   "annotations": [],
+   "builtin": true
+  },
+  "Duration": {
+   "kind": "scalar",
+   "name": "Duration",
+   "annotations": [],
+   "builtin": true
+  },
+  "Bytes": {
+   "kind": "scalar",
+   "name": "Bytes",
+   "annotations": [],
+   "builtin": true
+  },
+  "JSON": {
+   "kind": "scalar",
+   "name": "JSON",
+   "annotations": [],
+   "builtin": true
+  },
+  "Page": {
+   "kind": "object",
+   "name": "Page",
+   "builtin": true,
+   "typeParams": [
+    "T"
+   ],
+   "annotations": [],
+   "fields": [
+    {
+     "name": "items",
+     "type": {
+      "kind": "list",
+      "of": {
+       "kind": "named",
+       "name": "T",
+       "nullable": false
+      },
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 1
+    },
+    {
+     "name": "cursor",
+     "type": {
+      "kind": "named",
+      "name": "String",
+      "nullable": true
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 2
+    },
+    {
+     "name": "hasMore",
+     "type": {
+      "kind": "named",
+      "name": "Boolean",
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 3
+    },
+    {
+     "name": "total",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": true
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 4
+    }
+   ]
+  },
+  "PageArgs": {
+   "kind": "input",
+   "name": "PageArgs",
+   "builtin": true,
+   "annotations": [],
+   "fields": [
+    {
+     "name": "first",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "args": [],
+     "default": 20,
+     "annotations": [],
+     "ordinal": 1
+    },
+    {
+     "name": "after",
+     "type": {
+      "kind": "named",
+      "name": "String",
+      "nullable": true
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 2
+    },
+    {
+     "name": "offset",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": true
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 3
+    }
+   ]
+  },
+  "Item": {
+   "kind": "entity",
+   "name": "Item",
+   "annotations": [],
+   "fields": [
+    {
+     "name": "id",
+     "type": {
+      "kind": "named",
+      "name": "ID",
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 1
+    },
+    {
+     "name": "n",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 2
+    }
+   ],
+   "implements": []
+  },
+  "Secret": {
+   "kind": "entity",
+   "name": "Secret",
+   "annotations": [
+    {
+     "name": "allow",
+     "args": {
+      "read": {
+       "$expr": {
+        "k": "bin",
+        "op": "!=",
+        "l": {
+         "k": "path",
+         "root": "viewer",
+         "path": []
+        },
+        "r": {
+         "k": "lit",
+         "v": null
+        }
+       }
+      }
+     }
+    }
+   ],
+   "fields": [
+    {
+     "name": "id",
+     "type": {
+      "kind": "named",
+      "name": "ID",
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 1
+    }
+   ],
+   "implements": []
+  },
+  "Format": {
+   "kind": "enum",
+   "name": "Format",
+   "annotations": [],
+   "values": [
+    {
+     "name": "A",
+     "annotations": [],
+     "ordinal": 1
+    },
+    {
+     "name": "B",
+     "annotations": [],
+     "ordinal": 2
+    }
+   ]
+  },
+  "Note": {
+   "kind": "entity",
+   "name": "Note",
+   "annotations": [],
+   "fields": [
+    {
+     "name": "id",
+     "type": {
+      "kind": "named",
+      "name": "ID",
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 1
+    },
+    {
+     "name": "v",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [
+      {
+       "name": "version",
+       "args": {}
+      }
+     ],
+     "ordinal": 2
+    }
+   ],
+   "implements": []
+  },
+  "Priced": {
+   "kind": "entity",
+   "name": "Priced",
+   "annotations": [],
+   "fields": [
+    {
+     "name": "id",
+     "type": {
+      "kind": "named",
+      "name": "ID",
+      "nullable": false
+     },
+     "args": [],
+     "annotations": [],
+     "ordinal": 1
+    },
+    {
+     "name": "cost",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": true
+     },
+     "args": [],
+     "annotations": [
+      {
+       "name": "allow",
+       "args": {
+        "read": {
+         "$expr": {
+          "k": "bin",
+          "op": "!=",
+          "l": {
+           "k": "path",
+           "root": "viewer",
+           "path": []
+          },
+          "r": {
+           "k": "lit",
+           "v": null
+          }
+         }
+        }
+       }
+      }
+     ],
+     "ordinal": 2
+    }
+   ],
+   "implements": []
+  }
+ },
+ "ops": {
+  "items": {
+   "kind": "query",
+   "name": "items",
+   "args": [
+    {
+     "name": "limit",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "annotations": []
+    },
+    {
+     "name": "flag",
+     "type": {
+      "kind": "named",
+      "name": "Boolean",
+      "nullable": false
+     },
+     "annotations": [],
+     "default": false
+    },
+    {
+     "name": "format",
+     "type": {
+      "kind": "named",
+      "name": "Format",
+      "nullable": true
+     },
+     "annotations": []
+    },
+    {
+     "name": "q",
+     "type": {
+      "kind": "named",
+      "name": "String",
+      "nullable": false
+     },
+     "annotations": [
+      {
+       "name": "range",
+       "args": {
+        "min": 2,
+        "max": 8
+       }
+      }
+     ]
+    },
+    {
+     "name": "top",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "annotations": [
+      {
+       "name": "range",
+       "args": {
+        "min": 1,
+        "max": 50
+       }
+      }
+     ]
+    }
+   ],
+   "returns": {
+    "kind": "list",
+    "of": {
+     "kind": "named",
+     "name": "Item",
+     "nullable": false
+    },
+    "nullable": false
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "GET"
+      },
+      "path": "/items"
+     }
+    }
+   ]
+  },
+  "item": {
+   "kind": "query",
+   "name": "item",
+   "args": [
+    {
+     "name": "n",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "annotations": []
+    },
+    {
+     "name": "id",
+     "type": {
+      "kind": "named",
+      "name": "ID",
+      "nullable": true
+     },
+     "annotations": []
+    }
+   ],
+   "returns": {
+    "kind": "named",
+    "name": "Item",
+    "nullable": true
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "GET"
+      },
+      "path": "/items/{n}/{id}"
+     }
+    }
+   ]
+  },
+  "secret": {
+   "kind": "query",
+   "name": "secret",
+   "args": [
+    {
+     "name": "id",
+     "type": {
+      "kind": "named",
+      "name": "ID",
+      "nullable": false
+     },
+     "annotations": []
+    }
+   ],
+   "returns": {
+    "kind": "named",
+    "name": "Secret",
+    "nullable": true
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "GET"
+      },
+      "path": "/secrets/{id}"
+     }
+    }
+   ]
+  },
+  "free": {
+   "kind": "command",
+   "name": "free",
+   "args": [
+    {
+     "name": "n",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "annotations": []
+    }
+   ],
+   "returns": {
+    "kind": "named",
+    "name": "Item",
+    "nullable": false
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "idempotent",
+     "args": {
+      "value": false
+     }
+    },
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "POST"
+      },
+      "path": "/free",
+      "body": "*"
+     }
+    }
+   ]
+  },
+  "keyed": {
+   "kind": "command",
+   "name": "keyed",
+   "args": [
+    {
+     "name": "n",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "annotations": []
+    }
+   ],
+   "returns": {
+    "kind": "named",
+    "name": "Item",
+    "nullable": false
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "POST"
+      },
+      "path": "/keyed",
+      "body": "*"
+     }
+    }
+   ]
+  },
+  "makeNote": {
+   "kind": "command",
+   "name": "makeNote",
+   "args": [
+    {
+     "name": "n",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "annotations": []
+    }
+   ],
+   "returns": {
+    "kind": "named",
+    "name": "Note",
+    "nullable": false
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "POST"
+      },
+      "path": "/notes",
+      "body": "*"
+     }
+    }
+   ]
+  },
+  "secrets": {
+   "kind": "query",
+   "name": "secrets",
+   "args": [
+    {
+     "name": "page",
+     "type": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "annotations": [],
+     "default": 1
+    }
+   ],
+   "returns": {
+    "kind": "list",
+    "of": {
+     "kind": "named",
+     "name": "Secret",
+     "nullable": false
+    },
+    "nullable": false
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "GET"
+      },
+      "path": "/secrets"
+     }
+    }
+   ]
+  },
+  "priced": {
+   "kind": "query",
+   "name": "priced",
+   "args": [
+    {
+     "name": "id",
+     "type": {
+      "kind": "named",
+      "name": "ID",
+      "nullable": false
+     },
+     "annotations": []
+    }
+   ],
+   "returns": {
+    "kind": "named",
+    "name": "Priced",
+    "nullable": true
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "GET"
+      },
+      "path": "/priced/{id}"
+     }
+    }
+   ]
+  },
+  "prices": {
+   "kind": "query",
+   "name": "prices",
+   "args": [
+    {
+     "name": "cap",
+     "type": {
+      "kind": "named",
+      "name": "Decimal",
+      "nullable": true
+     },
+     "annotations": [
+      {
+       "name": "range",
+       "args": {
+        "min": 0,
+        "max": 100
+       }
+      }
+     ]
+    },
+    {
+     "name": "qn",
+     "type": {
+      "kind": "named",
+      "name": "String",
+      "nullable": true
+     },
+     "annotations": [
+      {
+       "name": "range",
+       "args": {
+        "min": 1,
+        "max": 10
+       }
+      }
+     ]
+    }
+   ],
+   "returns": {
+    "kind": "list",
+    "of": {
+     "kind": "named",
+     "name": "Item",
+     "nullable": false
+    },
+    "nullable": false
+   },
+   "throws": [],
+   "emits": [],
+   "annotations": [
+    {
+     "name": "http",
+     "args": {
+      "method": {
+       "$ident": "GET"
+      },
+      "path": "/prices"
+     }
+    }
+   ]
+  }
+ },
+ "views": {}
+}

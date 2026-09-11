@@ -1,0 +1,1252 @@
+{
+  "name": "Compact frames (spec 03 compact)",
+  "schema": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Author": {
+        "kind": "entity",
+        "name": "Author",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "bio",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "lazy",
+                "args": {}
+              }
+            ],
+            "ordinal": 3
+          }
+        ],
+        "implements": []
+      },
+      "Book": {
+        "kind": "entity",
+        "name": "Book",
+        "annotations": [
+          {
+            "name": "cache",
+            "args": {
+              "maxAge": {
+                "$duration": 60000
+              },
+              "scope": {
+                "$ident": "public"
+              }
+            }
+          }
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "title",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "stock",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "author",
+            "type": {
+              "kind": "named",
+              "name": "Author",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          },
+          {
+            "name": "secret",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "allow",
+                "args": {
+                  "read": {
+                    "$expr": {
+                      "k": "bin",
+                      "op": "==",
+                      "l": {
+                        "k": "path",
+                        "root": "viewer",
+                        "path": [
+                          "role"
+                        ]
+                      },
+                      "r": {
+                        "k": "lit",
+                        "v": "admin"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "ordinal": 5
+          },
+          {
+            "name": "reviews",
+            "type": {
+              "kind": "named",
+              "name": "Page",
+              "nullable": false,
+              "args": [
+                {
+                  "kind": "named",
+                  "name": "Review",
+                  "nullable": false
+                }
+              ]
+            },
+            "args": [
+              {
+                "name": "page",
+                "type": {
+                  "kind": "named",
+                  "name": "PageArgs",
+                  "nullable": false
+                },
+                "annotations": [],
+                "default": {
+                  "first": 10
+                }
+              }
+            ],
+            "annotations": [],
+            "ordinal": 6
+          },
+          {
+            "name": "version",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "version",
+                "args": {}
+              }
+            ],
+            "ordinal": 7
+          }
+        ],
+        "implements": []
+      },
+      "BookPatch": {
+        "kind": "input",
+        "name": "BookPatch",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "title",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "stock",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 0
+                }
+              }
+            ],
+            "ordinal": 2
+          },
+          {
+            "name": "secret",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Review": {
+        "kind": "entity",
+        "name": "Review",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "rating",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ],
+        "implements": []
+      },
+      "Order": {
+        "kind": "entity",
+        "name": "Order",
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "read": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "==",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": [
+                      "id"
+                    ]
+                  },
+                  "r": {
+                    "k": "path",
+                    "root": "this",
+                    "path": [
+                      "customerId"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "customerId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "qty",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ],
+        "implements": []
+      },
+      "Tick": {
+        "kind": "object",
+        "name": "Tick",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "n",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ]
+      },
+      "OutOfStock": {
+        "kind": "error",
+        "name": "OutOfStock",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "available",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ]
+      },
+      "Bought": {
+        "kind": "event",
+        "name": "Bought",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "orderId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ]
+      }
+    },
+    "ops": {
+      "book": {
+        "kind": "query",
+        "name": "book",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "books": {
+        "kind": "query",
+        "name": "books",
+        "args": [
+          {
+            "name": "page",
+            "type": {
+              "kind": "named",
+              "name": "PageArgs",
+              "nullable": false
+            },
+            "annotations": [],
+            "default": {
+              "first": 20
+            }
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Page",
+          "nullable": false,
+          "args": [
+            {
+              "kind": "named",
+              "name": "Book",
+              "nullable": false
+            }
+          ]
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "cost",
+            "args": {
+              "base": 5,
+              "perItem": 1
+            }
+          }
+        ]
+      },
+      "author": {
+        "kind": "query",
+        "name": "author",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Author",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "order": {
+        "kind": "query",
+        "name": "order",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Order",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "read": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "buy": {
+        "kind": "command",
+        "name": "buy",
+        "args": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          },
+          {
+            "name": "qty",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 10
+                }
+              }
+            ],
+            "default": 1
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Order",
+          "nullable": false
+        },
+        "throws": [
+          "OutOfStock"
+        ],
+        "emits": [
+          "Bought"
+        ],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "simulate",
+            "args": {}
+          }
+        ]
+      },
+      "restock": {
+        "kind": "command",
+        "name": "restock",
+        "args": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          },
+          {
+            "name": "qty",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "patchBook": {
+        "kind": "command",
+        "name": "patchBook",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          },
+          {
+            "name": "patch",
+            "type": {
+              "kind": "named",
+              "name": "BookPatch",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "ticks": {
+        "kind": "stream",
+        "name": "ticks",
+        "args": [
+          {
+            "name": "n",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Tick",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {
+      "Book.default": {
+        "type": "Book",
+        "name": "default",
+        "shape": {
+          "items": [
+            {
+              "kind": "field",
+              "name": "id"
+            },
+            {
+              "kind": "field",
+              "name": "title"
+            },
+            {
+              "kind": "field",
+              "name": "stock"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "data": {
+    "Author": [
+      {
+        "id": "a1",
+        "name": "Ann",
+        "bio": "Writes."
+      },
+      {
+        "id": "a2",
+        "name": "Bob",
+        "bio": null
+      }
+    ],
+    "Book": [
+      {
+        "id": "b1",
+        "title": "T1",
+        "stock": 2,
+        "authorId": "a1",
+        "secret": "s1",
+        "version": 1
+      },
+      {
+        "id": "b2",
+        "title": "T2",
+        "stock": 0,
+        "authorId": "a2",
+        "secret": "s2",
+        "version": 1
+      }
+    ],
+    "Review": [
+      {
+        "id": "r1",
+        "rating": 5,
+        "bookId": "b1"
+      },
+      {
+        "id": "r2",
+        "rating": 3,
+        "bookId": "b1"
+      },
+      {
+        "id": "r3",
+        "rating": 4,
+        "bookId": "b2"
+      }
+    ],
+    "Order": [
+      {
+        "id": "o0",
+        "customerId": "u1",
+        "bookId": "b1",
+        "qty": 1
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "book": {
+        "from": "Book",
+        "where": {
+          "id": "$args.id"
+        },
+        "mode": "one"
+      },
+      "books": {
+        "from": "Book",
+        "mode": "page"
+      },
+      "author": {
+        "from": "Author",
+        "where": {
+          "id": "$args.id"
+        },
+        "mode": "one"
+      },
+      "order": {
+        "from": "Order",
+        "where": {
+          "id": "$args.id"
+        },
+        "mode": "one"
+      }
+    },
+    "fields": {
+      "Book": {
+        "author": {
+          "from": "Author",
+          "key": "authorId",
+          "match": "id",
+          "mode": "one"
+        },
+        "reviews": {
+          "from": "Review",
+          "key": "id",
+          "match": "bookId",
+          "mode": "page"
+        }
+      }
+    },
+    "Command": {
+      "buy": {
+        "fail": [
+          {
+            "when": {
+              "from": "Book",
+              "where": {
+                "id": "$args.bookId"
+              },
+              "field": "stock",
+              "op": "lt",
+              "value": "$args.qty"
+            },
+            "type": "OutOfStock",
+            "data": {
+              "bookId": "$args.bookId",
+              "available": "$row.stock"
+            },
+            "message": "Out of stock"
+          }
+        ],
+        "update": {
+          "table": "Book",
+          "where": {
+            "id": "$args.bookId"
+          },
+          "set": {
+            "stock": {
+              "$sub": "$args.qty"
+            }
+          }
+        },
+        "insert": {
+          "into": "Order",
+          "row": {
+            "customerId": "$viewer.id",
+            "bookId": "$args.bookId",
+            "qty": "$args.qty"
+          },
+          "idPrefix": "o"
+        },
+        "returns": "inserted",
+        "patch": [
+          {
+            "invOp": [
+              "books"
+            ]
+          }
+        ],
+        "emit": [
+          {
+            "event": "Bought",
+            "payload": {
+              "orderId": "$row.id"
+            }
+          }
+        ]
+      },
+      "restock": {
+        "update": {
+          "table": "Book",
+          "where": {
+            "id": "$args.bookId"
+          },
+          "set": {
+            "stock": {
+              "$add": "$args.qty"
+            }
+          }
+        },
+        "returns": "updated"
+      },
+      "patchBook": {
+        "update": {
+          "table": "Book",
+          "where": {
+            "id": "$args.id"
+          },
+          "merge": "$args.patch",
+          "version": "version"
+        },
+        "returns": "updated"
+      }
+    },
+    "Stream": {
+      "ticks": {
+        "items": [
+          {
+            "n": 1
+          },
+          {
+            "n": 2
+          }
+        ]
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "compact query drops $type where the schema fixes it and drops meta",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "book",
+            "args": {
+              "id": "b1"
+            },
+            "shape": "{ id title author { id name } }",
+            "compact": true
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "id": "b1",
+            "title": "T1",
+            "author": {
+              "id": "a1",
+              "name": "Ann"
+            }
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "compact command omits patches that only restate the result",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "restock",
+            "args": {
+              "bookId": "b1",
+              "qty": 1
+            },
+            "key": "kkkkkkkkkkkkkkkk",
+            "compact": true
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "ok": {
+            "id": "b1",
+            "title": "T1",
+            "stock": 3
+          },
+          "patch": [],
+          "fin": true
+        }
+      ],
+      "viewer": {
+        "id": "u1",
+        "role": "customer"
+      }
+    },
+    {
+      "name": "compact command keeps side-effect patches",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "buy",
+            "args": {
+              "bookId": "b1"
+            },
+            "key": "kkkkkkkkkkkkkkkk",
+            "compact": true,
+            "shape": "{ id }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "ok": {
+            "id": "o1"
+          },
+          "patch": [
+            {
+              "invOp": [
+                "books"
+              ]
+            }
+          ],
+          "fin": true
+        }
+      ],
+      "viewer": {
+        "id": "u1",
+        "role": "customer"
+      }
+    },
+    {
+      "name": "compact deferred frames",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "author",
+            "args": {
+              "id": "a1"
+            },
+            "shape": "{ id name bio }",
+            "compact": true
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "id": "a1",
+            "name": "Ann"
+          }
+        },
+        {
+          "id": 1,
+          "at": "",
+          "data": {
+            "bio": "Writes."
+          }
+        },
+        {
+          "id": 1,
+          "fin": true
+        }
+      ]
+    }
+  ]
+}

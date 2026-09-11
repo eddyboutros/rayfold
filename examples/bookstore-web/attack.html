@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Another Website</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; max-width: 1000px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border-bottom: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+  iframe { display: none; }
+</style>
+</head>
+<body>
+<h1>Another website</h1>
+<p>This page lives on a different origin from the Rayfold demo. It tries to act on the demo with the visitor's session
+cookie, the way a malicious site would. The browser still sends the cookie, because both sites share the host
+"localhost". Every attempt below must fail to change anything.</p>
+<button id="run">Run all attempts</button>
+<table><thead><tr><th>Attempt</th><th>What this page could observe</th></tr></thead><tbody id="rows"></tbody></table>
+<iframe name="sink" title="form target"></iframe>
+<script>
+const DEMO = "{{DEMO}}";
+// the visitor's unpaid order to try to pay, e.g. attack page URL ?order=o2 (default o1)
+const ORDER = (new URLSearchParams(location.search).get("order") || "o1").replace(/[^a-z0-9]/gi, "");
+const results = [];
+const order = () => ({ ops: [{ id: 1, op: "placeOrder", args: { input: { lines: [{ bookId: "g84", qty: 1 }] } }, key: "attack-" + Math.random().toString(36).slice(2) + "-0000000000" }] });
+function render() {
+  const rows = document.getElementById("rows");
+  rows.replaceChildren(...results.map((r) => { const tr = document.createElement("tr"); for (const t of [r.attempt, r.observed]) { const td = document.createElement("td"); td.textContent = t; tr.append(td); } return tr; }));
+}
+async function attempt(name, fn) {
+  let observed;
+  try { observed = await fn(); } catch (e) { observed = "the browser blocked it: " + e.message; }
+  results.push({ attempt: name, observed });
+  render();
+}
+const withTimeout = (p, ms, label) => Promise.race([p, new Promise((r) => setTimeout(() => r(label), ms))]);
+async function run() {
+  results.length = 0;
+  await attempt("POST a placeOrder batch to /rayfold as text/plain, with the cookie (a request browsers send without asking)", async () => {
+    const r = await fetch(DEMO + "/rayfold", { method: "POST", mode: "no-cors", credentials: "include", headers: { "content-type": "text/plain" }, body: JSON.stringify(order()) });
+    return "sent; the response is opaque to this page (" + r.type + ")";
+  });
+  await attempt("POST the same batch as application/rayfold+json, with the cookie (needs a CORS preflight)", async () => {
+    const r = await fetch(DEMO + "/rayfold", { method: "POST", credentials: "include", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify(order()) });
+    return "response readable, status " + r.status;
+  });
+  await attempt("Submit an HTML form to POST /orders/" + ORDER + "/pay (pays the visitor's unpaid order)", () =>
+    withTimeout(new Promise((resolve) => {
+      const f = document.createElement("form");
+      f.method = "POST"; f.action = DEMO + "/orders/" + ORDER + "/pay"; f.target = "sink"; f.enctype = "application/x-www-form-urlencoded";
+      const i = document.createElement("input"); i.name = "x"; i.value = "1"; f.append(i);
+      document.querySelector("iframe").onload = () => resolve("form submitted; the result page is cross-origin and unreadable");
+      document.body.append(f); f.submit();
+    }), 4000, "form submitted; no load event within 4 s"));
+  await attempt("Open a WebSocket to /rayfold/ws (the browser attaches the cookie) and send placeOrder", () =>
+    withTimeout(new Promise((resolve) => {
+      const ws = new WebSocket(DEMO.replace("http", "ws") + "/rayfold/ws");
+      ws.onopen = () => { ws.send(JSON.stringify(order())); resolve("socket OPENED and the order was sent"); };
+      ws.onerror = () => resolve("the handshake was refused (no socket)");
+    }), 4000, "no answer within 4 s"));
+  await attempt("POST MCP tools/call placeOrder to /mcp as text/plain, with the cookie", async () => {
+    const r = await fetch(DEMO + "/mcp", { method: "POST", mode: "no-cors", credentials: "include", headers: { "content-type": "text/plain" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "placeOrder", arguments: { input: { lines: [{ bookId: "g84", qty: 1 }] } } } }) });
+    return "sent; the response is opaque to this page (" + r.type + ")";
+  });
+  await attempt("Read the visitor's orders from /rayfold (a safe read, with the cookie)", async () => {
+    const r = await fetch(DEMO + "/rayfold/myOrders", { credentials: "include" });
+    return "response readable, status " + r.status + ": " + (await r.text()).slice(0, 80);
+  });
+  await fetch("/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(results) });
+  document.getElementById("run").textContent = "Done (results saved)";
+}
+document.getElementById("run").addEventListener("click", () => { run(); });
+</script>
+</body>
+</html>

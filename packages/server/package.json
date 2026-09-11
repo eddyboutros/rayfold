@@ -1,0 +1,32 @@
+{
+  "name": "@rayfold/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rayfold server for Node.js: batches with pipelining, schema policies, HTTP caching, live queries, WebSocket, MCP and REST bindings.",
+  "keywords": [
+    "rayfold",
+    "api",
+    "protocol",
+    "server",
+    "http",
+    "rest",
+    "mcp",
+    "live-queries",
+    "graphql-alternative"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol.ts"
+  },
+  "dependencies": {
+    "@rayfold/schema": "*",
+    "@rayfold/rb": "*"
+  }
+}

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rayfold Bookstore Demo</title>
+<style>
+  :root { --ground: #f4f6f8; --surface: #fff; --ink: #141a21; --muted: #5c6875; --rule: #d7dee6; --rayfold: #2a78d6; }
+  @media (prefers-color-scheme: dark) { :root { --ground: #14181d; --surface: #1b2027; --ink: #eef2f6; --muted: #a4afbb; --rule: #2c343d; --rayfold: #5b9ce8; } }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; } /* section { display: grid } would otherwise override the attribute */
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 system-ui, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 14px 24px; border-bottom: 1px solid var(--rule); background: var(--surface); }
+  header h1 { font-size: 18px; margin: 0; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+  section { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: grid; gap: 10px; align-content: start; }
+  h2 { font-size: 16px; margin: 0; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 6px; background: var(--ground); color: var(--ink); font: inherit; }
+  button { padding: 7px 12px; border: 1px solid var(--rayfold); border-radius: 6px; background: var(--rayfold); color: #fff; font: inherit; cursor: pointer; }
+  button.link { background: none; border: 0; padding: 0; color: var(--rayfold); text-align: left; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--rayfold); outline-offset: 2px; }
+  ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+  .muted, #stats, #count, #others-count { color: var(--muted); font-size: 13px; }
+  #error { color: #c0392b; min-height: 1em; }
+  #log { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); max-height: 220px; overflow: auto; list-style: none; padding: 0; }
+  #stock { font-weight: 600; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body data-signed-in="no">
+<header>
+  <h1>Rayfold Bookstore</h1>
+  <span id="who">Not signed in</span>
+  <form id="login"><input id="name" placeholder="Your name (try alice)" aria-label="Your name" autocomplete="off"><button type="submit">Sign in</button></form>
+  <span id="stats">0 HTTP requests</span>
+</header>
+<main>
+  <section aria-labelledby="h-search">
+    <h2 id="h-search">Search the Project Gutenberg catalogue</h2>
+    <form id="search"><input id="q" placeholder="Title contains, e.g. frankenstein" aria-label="Title contains"><button type="submit">Search</button></form>
+    <span id="count"></span>
+    <ul id="results"></ul>
+    <button id="more" hidden>More results</button>
+  </section>
+  <section id="book" hidden aria-labelledby="title">
+    <h2 id="title"></h2>
+    <div>by <strong id="author"></strong> <span id="bio" class="muted"></span></div>
+    <div class="muted" id="meta"></div>
+    <div>In stock: <span id="stock"></span> <span class="muted">(updates live over WebSocket)</span></div>
+    <div style="display:flex; gap:8px"><button id="buy">Buy one copy</button><button id="pay">Pay for last order</button></div>
+    <span id="others-count"></span>
+    <ul id="others"></ul>
+  </section>
+  <section aria-labelledby="h-orders">
+    <h2 id="h-orders">My orders</h2>
+    <ul id="orders"></ul>
+    <div id="error" role="alert"></div>
+  </section>
+  <section aria-labelledby="h-log">
+    <h2 id="h-log">What the client did</h2>
+    <ul id="log"></ul>
+  </section>
+</main>
+<p class="muted" style="padding: 0 24px 24px">Catalogue data from Project Gutenberg (gutenberg.org). Prices, stock and orders are this demo's own.</p>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

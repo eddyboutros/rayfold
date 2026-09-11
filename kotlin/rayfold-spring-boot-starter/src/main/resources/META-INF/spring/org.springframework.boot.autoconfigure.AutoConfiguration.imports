@@ -1,0 +1,2 @@
+dev.rayfold.spring.RayfoldAutoConfiguration
+dev.rayfold.spring.RayfoldWebSocketAutoConfiguration

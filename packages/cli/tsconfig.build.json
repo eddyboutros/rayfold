@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": false,
+    "sourceMap": true,
+    "inlineSources": true,
+    "types": ["node"],
+    "paths": {
+      "@rayfold/schema": ["../schema/dist/index.d.ts"],
+      "@rayfold/rb": ["../rb/dist/index.d.ts"],
+      "@rayfold/server": ["../server/dist/index.d.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

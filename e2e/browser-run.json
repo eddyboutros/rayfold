@@ -1,0 +1,75 @@
+{
+  "at": "2026-09-10T15:33:03.558Z",
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+  "how": "A real Chrome window driven step by step: the app's own bundled @rayfold/client talking to a running Rayfold server. Sign-in, search, opening a book, buying and paying were done with real clicks and typing; later runs repeated the same steps through the page's own forms and buttons.",
+  "dataset": "The full Project Gutenberg catalogue: 78,086 real books by 26,263 authors, plus the demo's 4 seed books.",
+  "flows": [
+    {
+      "step": "Sign in with a session cookie",
+      "result": "Signed in as alice (customer)."
+    },
+    {
+      "step": "Search titles for \"frankenstein\" across 78,090 books",
+      "result": "6 matches in 53 ms, including the French translation in three volumes."
+    },
+    {
+      "step": "Open Frankenstein (Project Gutenberg ebook 84)",
+      "result": "Title, author with life dates 1797-1851, 25 books by the author, live stock 1,000,000, all in one request."
+    },
+    {
+      "step": "Buy one copy",
+      "result": "Order o1 PLACED. A second tab showing the same book received stock 999,999 over WebSocket without any HTTP request."
+    },
+    {
+      "step": "Pay for the order",
+      "result": "o1 PAID. The whole session so far used 8 HTTP requests and received 20,904 bytes."
+    }
+  ],
+  "crossSite": {
+    "from": "http://localhost:4611, a page on another origin. It shares the host with the demo, so the browser sends the SameSite=Lax session cookie with every attempt.",
+    "attempts": [
+      {
+        "attempt": "POST a placeOrder batch to /rayfold as text/plain, with the cookie (a request browsers send without asking)",
+        "observed": "sent; the response is opaque to this page (opaque)"
+      },
+      {
+        "attempt": "POST the same batch as application/rayfold+json, with the cookie (needs a CORS preflight)",
+        "observed": "the browser blocked it: Failed to fetch"
+      },
+      {
+        "attempt": "Submit an HTML form to POST /orders/o2/pay (pays the visitor's unpaid order)",
+        "observed": "form submitted; the result page is cross-origin and unreadable"
+      },
+      {
+        "attempt": "Open a WebSocket to /rayfold/ws (the browser attaches the cookie) and send placeOrder",
+        "observed": "the handshake was refused (no socket)"
+      },
+      {
+        "attempt": "POST MCP tools/call placeOrder to /mcp as text/plain, with the cookie",
+        "observed": "sent; the response is opaque to this page (opaque)"
+      },
+      {
+        "attempt": "Read the visitor's orders from /rayfold (a safe read, with the cookie)",
+        "observed": "the browser blocked it: Failed to fetch"
+      }
+    ],
+    "outcome": [
+      "Run 1: before the attempts alice had one unpaid order, o1. After them the store still held exactly o1, still PLACED, and the stock was unchanged: no attempt placed or paid anything.",
+      "Run 2 (with the proxy origin allowed): the target was alice's unpaid order o2. Afterwards o2 was still PLACED and no new order existed: allowing one origin did not open the demo to others."
+    ]
+  },
+  "proxy": [
+    {
+      "setup": "Behind a proxy that rewrites Host (as nginx proxy_pass does), with no allowed origins",
+      "result": "Search and the book page work (safe reads). Buying is refused with 403 \"Origin http://localhost:4612 is not allowed\", the WebSocket is refused, and no order is created."
+    },
+    {
+      "setup": "The same proxy with RAYFOLD_ALLOWED_ORIGINS=http://localhost:4612",
+      "result": "Buy, pay and a second buy work through the proxy, the WebSocket opens through it, and a tab on the direct origin received both stock changes live."
+    }
+  ],
+  "foundAndFixed": [
+    "Safe reads through a Host-rewriting proxy were refused together with writes. Safe requests (QUERY, or POST with Rayfold-Safe) are now exempt from the Origin check in both runtimes, since they cannot change data; writes still need the origin to be allowed.",
+    "The demo page's book panel ignored the hidden attribute (a CSS rule overrode it)."
+  ]
+}

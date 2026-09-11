@@ -1,0 +1,2090 @@
+{
+  "rayfold": "0.1",
+  "hash": "562663dc75cb3dc1cc5ab90de180f9eeabc44a9ee312846e78e6a6b444ac004b",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Author": {
+        "kind": "entity",
+        "name": "Author",
+        "annotations": [
+          {
+            "name": "cache",
+            "args": {
+              "maxAge": {
+                "$duration": 300000
+              },
+              "scope": {
+                "$ident": "public"
+              }
+            }
+          }
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "bio",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "lazy",
+                "args": {}
+              }
+            ],
+            "ordinal": 3
+          },
+          {
+            "name": "books",
+            "type": {
+              "kind": "named",
+              "name": "Page",
+              "nullable": false,
+              "args": [
+                {
+                  "kind": "named",
+                  "name": "Book",
+                  "nullable": false
+                }
+              ]
+            },
+            "args": [
+              {
+                "name": "page",
+                "type": {
+                  "kind": "named",
+                  "name": "PageArgs",
+                  "nullable": false
+                },
+                "annotations": [],
+                "default": {
+                  "first": 10
+                }
+              }
+            ],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ],
+        "implements": []
+      },
+      "Book": {
+        "kind": "entity",
+        "name": "Book",
+        "annotations": [
+          {
+            "name": "cache",
+            "args": {
+              "maxAge": {
+                "$duration": 60000
+              },
+              "scope": {
+                "$ident": "public"
+              }
+            }
+          }
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "title",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "format",
+            "type": {
+              "kind": "named",
+              "name": "Format",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "price",
+            "type": {
+              "kind": "named",
+              "name": "Decimal",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "unit",
+                "args": {
+                  "value": "USD"
+                }
+              }
+            ],
+            "ordinal": 4,
+            "description": "Unit price in the store currency."
+          },
+          {
+            "name": "stock",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 5
+          },
+          {
+            "name": "author",
+            "type": {
+              "kind": "named",
+              "name": "Author",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 6
+          },
+          {
+            "name": "reviews",
+            "type": {
+              "kind": "named",
+              "name": "Page",
+              "nullable": false,
+              "args": [
+                {
+                  "kind": "named",
+                  "name": "Review",
+                  "nullable": false
+                }
+              ]
+            },
+            "args": [
+              {
+                "name": "page",
+                "type": {
+                  "kind": "named",
+                  "name": "PageArgs",
+                  "nullable": false
+                },
+                "annotations": [],
+                "default": {
+                  "first": 10
+                }
+              }
+            ],
+            "annotations": [],
+            "ordinal": 7
+          },
+          {
+            "name": "costPrice",
+            "type": {
+              "kind": "named",
+              "name": "Decimal",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "allow",
+                "args": {
+                  "read": {
+                    "$expr": {
+                      "k": "bin",
+                      "op": "||",
+                      "l": {
+                        "k": "bin",
+                        "op": "==",
+                        "l": {
+                          "k": "path",
+                          "root": "viewer",
+                          "path": [
+                            "role"
+                          ]
+                        },
+                        "r": {
+                          "k": "lit",
+                          "v": "admin"
+                        }
+                      },
+                      "r": {
+                        "k": "bin",
+                        "op": "==",
+                        "l": {
+                          "k": "path",
+                          "root": "viewer",
+                          "path": [
+                            "id"
+                          ]
+                        },
+                        "r": {
+                          "k": "path",
+                          "root": "this",
+                          "path": [
+                            "ownerId"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "ordinal": 8,
+            "description": "Only the owner (or an admin) can see the cost price."
+          },
+          {
+            "name": "ownerId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 9
+          }
+        ],
+        "implements": []
+      },
+      "Review": {
+        "kind": "entity",
+        "name": "Review",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "rating",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 5
+                }
+              }
+            ],
+            "ordinal": 2
+          },
+          {
+            "name": "body",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "book",
+            "type": {
+              "kind": "named",
+              "name": "Book",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          },
+          {
+            "name": "reviewerId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 5
+          },
+          {
+            "name": "version",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "version",
+                "args": {}
+              }
+            ],
+            "ordinal": 6,
+            "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
+          }
+        ],
+        "implements": []
+      },
+      "Order": {
+        "kind": "entity",
+        "name": "Order",
+        "annotations": [
+          {
+            "name": "cache",
+            "args": {
+              "maxAge": {
+                "$duration": 0
+              },
+              "scope": {
+                "$ident": "private"
+              }
+            }
+          },
+          {
+            "name": "allow",
+            "args": {
+              "read": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "||",
+                  "l": {
+                    "k": "bin",
+                    "op": "==",
+                    "l": {
+                      "k": "path",
+                      "root": "viewer",
+                      "path": [
+                        "id"
+                      ]
+                    },
+                    "r": {
+                      "k": "path",
+                      "root": "this",
+                      "path": [
+                        "customerId"
+                      ]
+                    }
+                  },
+                  "r": {
+                    "k": "bin",
+                    "op": "==",
+                    "l": {
+                      "k": "path",
+                      "root": "viewer",
+                      "path": [
+                        "role"
+                      ]
+                    },
+                    "r": {
+                      "k": "lit",
+                      "v": "admin"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "status",
+            "type": {
+              "kind": "named",
+              "name": "OrderStatus",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "customerId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "OrderItem",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Decimal",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 5
+          }
+        ],
+        "implements": []
+      },
+      "OrderItem": {
+        "kind": "object",
+        "name": "OrderItem",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "book",
+            "type": {
+              "kind": "named",
+              "name": "Book",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "qty",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "unitPrice",
+            "type": {
+              "kind": "named",
+              "name": "Decimal",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Format": {
+        "kind": "enum",
+        "name": "Format",
+        "annotations": [],
+        "values": [
+          {
+            "name": "HARDCOVER",
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "PAPERBACK",
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "EBOOK",
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "OrderStatus": {
+        "kind": "enum",
+        "name": "OrderStatus",
+        "annotations": [],
+        "values": [
+          {
+            "name": "PLACED",
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "PAID",
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "SHIPPED",
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "CANCELLED",
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "BookFilter": {
+        "kind": "input",
+        "name": "BookFilter",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "titleContains",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "format",
+            "type": {
+              "kind": "named",
+              "name": "Format",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "authorId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "maxPrice",
+            "type": {
+              "kind": "named",
+              "name": "Decimal",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "OrderLine": {
+        "kind": "input",
+        "name": "OrderLine",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "qty",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 100
+                }
+              }
+            ],
+            "ordinal": 2,
+            "default": 1
+          }
+        ]
+      },
+      "OrderInput": {
+        "kind": "input",
+        "name": "OrderInput",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "lines",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "OrderLine",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ]
+      },
+      "ReviewInput": {
+        "kind": "input",
+        "name": "ReviewInput",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "rating",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 5
+                }
+              }
+            ],
+            "ordinal": 2
+          },
+          {
+            "name": "body",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 2000
+                }
+              }
+            ],
+            "ordinal": 3
+          }
+        ]
+      },
+      "ReviewEdit": {
+        "kind": "input",
+        "name": "ReviewEdit",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "rating",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 5
+                }
+              }
+            ],
+            "ordinal": 1
+          },
+          {
+            "name": "body",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 2000
+                }
+              }
+            ],
+            "ordinal": 2
+          }
+        ]
+      },
+      "BookPatch": {
+        "kind": "input",
+        "name": "BookPatch",
+        "annotations": [],
+        "description": "Partial update: absent fields are left unchanged.",
+        "fields": [
+          {
+            "name": "title",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 1,
+                  "max": 200
+                }
+              }
+            ],
+            "ordinal": 1
+          },
+          {
+            "name": "price",
+            "type": {
+              "kind": "named",
+              "name": "Decimal",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 0
+                }
+              }
+            ],
+            "ordinal": 2
+          },
+          {
+            "name": "stock",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "range",
+                "args": {
+                  "min": 0
+                }
+              }
+            ],
+            "ordinal": 3
+          }
+        ]
+      },
+      "OutOfStock": {
+        "kind": "error",
+        "name": "OutOfStock",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "available",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ]
+      },
+      "PaymentDeclined": {
+        "kind": "error",
+        "name": "PaymentDeclined",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "reason",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ]
+      },
+      "OrderPlaced": {
+        "kind": "event",
+        "name": "OrderPlaced",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "orderId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "customerId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ]
+      },
+      "StockChanged": {
+        "kind": "event",
+        "name": "StockChanged",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "stock",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ]
+      },
+      "NotPayable": {
+        "kind": "error",
+        "name": "NotPayable",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "status",
+            "type": {
+              "kind": "named",
+              "name": "OrderStatus",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ]
+      },
+      "NotCancellable": {
+        "kind": "error",
+        "name": "NotCancellable",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "status",
+            "type": {
+              "kind": "named",
+              "name": "OrderStatus",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ]
+      }
+    },
+    "ops": {
+      "books": {
+        "kind": "query",
+        "name": "books",
+        "args": [
+          {
+            "name": "filter",
+            "type": {
+              "kind": "named",
+              "name": "BookFilter",
+              "nullable": true
+            },
+            "annotations": []
+          },
+          {
+            "name": "page",
+            "type": {
+              "kind": "named",
+              "name": "PageArgs",
+              "nullable": false
+            },
+            "annotations": [],
+            "default": {
+              "first": 20
+            }
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Page",
+          "nullable": false,
+          "args": [
+            {
+              "kind": "named",
+              "name": "Book",
+              "nullable": false
+            }
+          ]
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "cost",
+            "args": {
+              "base": 5,
+              "perItem": 1
+            }
+          },
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "QUERY"
+              },
+              "path": "/books",
+              "body": "*"
+            }
+          }
+        ],
+        "description": "List books, newest first."
+      },
+      "book": {
+        "kind": "query",
+        "name": "book",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "GET"
+              },
+              "path": "/books/{id}"
+            }
+          }
+        ]
+      },
+      "author": {
+        "kind": "query",
+        "name": "author",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Author",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "review": {
+        "kind": "query",
+        "name": "review",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Review",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "GET"
+              },
+              "path": "/reviews/{id}"
+            }
+          }
+        ]
+      },
+      "order": {
+        "kind": "query",
+        "name": "order",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Order",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "read": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "GET"
+              },
+              "path": "/orders/{id}"
+            }
+          }
+        ]
+      },
+      "myOrders": {
+        "kind": "query",
+        "name": "myOrders",
+        "args": [
+          {
+            "name": "page",
+            "type": {
+              "kind": "named",
+              "name": "PageArgs",
+              "nullable": false
+            },
+            "annotations": [],
+            "default": {
+              "first": 20
+            }
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Page",
+          "nullable": false,
+          "args": [
+            {
+              "kind": "named",
+              "name": "Order",
+              "nullable": false
+            }
+          ]
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "read": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "cache",
+            "args": {
+              "maxAge": {
+                "$duration": 0
+              },
+              "scope": {
+                "$ident": "private"
+              }
+            }
+          }
+        ]
+      },
+      "placeOrder": {
+        "kind": "command",
+        "name": "placeOrder",
+        "args": [
+          {
+            "name": "input",
+            "type": {
+              "kind": "named",
+              "name": "OrderInput",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Order",
+          "nullable": false
+        },
+        "throws": [
+          "OutOfStock",
+          "PaymentDeclined"
+        ],
+        "emits": [
+          "OrderPlaced",
+          "StockChanged"
+        ],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "POST"
+              },
+              "path": "/orders",
+              "body": {
+                "$ident": "input"
+              },
+              "location": "/orders/{id}"
+            }
+          }
+        ],
+        "description": "Place an order. Fails atomically if any line is out of stock."
+      },
+      "payOrder": {
+        "kind": "command",
+        "name": "payOrder",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Order",
+          "nullable": false
+        },
+        "throws": [
+          "PaymentDeclined",
+          "NotPayable"
+        ],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "POST"
+              },
+              "path": "/orders/{id}/pay"
+            }
+          }
+        ],
+        "description": "Pay for a placed order."
+      },
+      "cancelOrder": {
+        "kind": "command",
+        "name": "cancelOrder",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Order",
+          "nullable": false
+        },
+        "throws": [
+          "NotCancellable"
+        ],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "addReview": {
+        "kind": "command",
+        "name": "addReview",
+        "args": [
+          {
+            "name": "input",
+            "type": {
+              "kind": "named",
+              "name": "ReviewInput",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Review",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "editReview": {
+        "kind": "command",
+        "name": "editReview",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          },
+          {
+            "name": "input",
+            "type": {
+              "kind": "named",
+              "name": "ReviewEdit",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Review",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "PUT"
+              },
+              "path": "/reviews/{id}",
+              "body": {
+                "$ident": "input"
+              }
+            }
+          }
+        ],
+        "description": "Replace a review's rating and text. Only its author (or an admin) may edit it."
+      },
+      "updateBook": {
+        "kind": "command",
+        "name": "updateBook",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          },
+          {
+            "name": "patch",
+            "type": {
+              "kind": "named",
+              "name": "BookPatch",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "==",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": [
+                      "role"
+                    ]
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": "admin"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "PATCH"
+              },
+              "path": "/books/{id}",
+              "body": {
+                "$ident": "patch"
+              }
+            }
+          }
+        ],
+        "description": "Change some fields of a book; fields not sent are left as they are."
+      },
+      "deleteReview": {
+        "kind": "command",
+        "name": "deleteReview",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Review",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "!=",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": []
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "http",
+            "args": {
+              "method": {
+                "$ident": "DELETE"
+              },
+              "path": "/reviews/{id}"
+            }
+          }
+        ],
+        "description": "Delete a review. Only its author (or an admin) may delete it."
+      },
+      "restock": {
+        "kind": "command",
+        "name": "restock",
+        "args": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          },
+          {
+            "name": "qty",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [
+          "StockChanged"
+        ],
+        "annotations": [
+          {
+            "name": "allow",
+            "args": {
+              "write": {
+                "$expr": {
+                  "k": "bin",
+                  "op": "==",
+                  "l": {
+                    "k": "path",
+                    "root": "viewer",
+                    "path": [
+                      "role"
+                    ]
+                  },
+                  "r": {
+                    "k": "lit",
+                    "v": "admin"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "stockUpdates": {
+        "kind": "stream",
+        "name": "stockUpdates",
+        "args": [
+          {
+            "name": "bookIds",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "ID",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "StockChanged",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {
+      "Book.default": {
+        "type": "Book",
+        "name": "default",
+        "shape": {
+          "items": [
+            {
+              "kind": "field",
+              "name": "id"
+            },
+            {
+              "kind": "field",
+              "name": "title"
+            },
+            {
+              "kind": "field",
+              "name": "format"
+            },
+            {
+              "kind": "field",
+              "name": "price"
+            },
+            {
+              "kind": "field",
+              "name": "stock"
+            },
+            {
+              "kind": "field",
+              "name": "author",
+              "shape": {
+                "items": [
+                  {
+                    "kind": "field",
+                    "name": "id"
+                  },
+                  {
+                    "kind": "field",
+                    "name": "name"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "Book.card": {
+        "type": "Book",
+        "name": "card",
+        "shape": {
+          "items": [
+            {
+              "kind": "spread",
+              "type": "Book",
+              "view": "default"
+            },
+            {
+              "kind": "field",
+              "name": "reviews",
+              "args": {
+                "page": {
+                  "first": 3
+                }
+              },
+              "shape": {
+                "items": [
+                  {
+                    "kind": "field",
+                    "name": "items",
+                    "shape": {
+                      "items": [
+                        {
+                          "kind": "field",
+                          "name": "id"
+                        },
+                        {
+                          "kind": "field",
+                          "name": "rating"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "Author.default": {
+        "type": "Author",
+        "name": "default",
+        "shape": {
+          "items": [
+            {
+              "kind": "field",
+              "name": "id"
+            },
+            {
+              "kind": "field",
+              "name": "name"
+            }
+          ]
+        }
+      },
+      "Order.default": {
+        "type": "Order",
+        "name": "default",
+        "shape": {
+          "items": [
+            {
+              "kind": "field",
+              "name": "id"
+            },
+            {
+              "kind": "field",
+              "name": "status"
+            },
+            {
+              "kind": "field",
+              "name": "total"
+            },
+            {
+              "kind": "field",
+              "name": "items",
+              "shape": {
+                "items": [
+                  {
+                    "kind": "field",
+                    "name": "qty"
+                  },
+                  {
+                    "kind": "field",
+                    "name": "unitPrice"
+                  },
+                  {
+                    "kind": "field",
+                    "name": "book",
+                    "shape": {
+                      "items": [
+                        {
+                          "kind": "field",
+                          "name": "id"
+                        },
+                        {
+                          "kind": "field",
+                          "name": "title"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "lockedAt": "2026-09-10T10:06:46.589Z"
+}

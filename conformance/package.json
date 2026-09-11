@@ -1,0 +1,28 @@
+{
+  "name": "@rayfold/conformance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rayfold conformance fixtures and harness: the shared cases every Rayfold implementation must pass.",
+  "keywords": [
+    "rayfold",
+    "api",
+    "protocol",
+    "conformance",
+    "testing",
+    "fixtures"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./src/fixture.ts",
+  "types": "./src/fixture.ts",
+  "exports": {
+    ".": "./src/fixture.ts"
+  },
+  "dependencies": {
+    "@rayfold/schema": "*",
+    "@rayfold/server": "*"
+  }
+}

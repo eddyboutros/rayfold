@@ -1,0 +1,802 @@
+{
+ "openapi": "3.2.0",
+ "info": {
+  "title": "Rayfold API",
+  "version": "0.1"
+ },
+ "paths": {
+  "/items": {
+   "get": {
+    "operationId": "items",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "flag",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "name": "format",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "enum": [
+          "A",
+          "B"
+         ]
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "x-rayfold-range": {
+        "min": 2,
+        "max": 8
+       },
+       "minLength": 2,
+       "maxLength": 8
+      }
+     },
+     {
+      "name": "top",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "x-rayfold-range": {
+        "min": 1,
+        "max": 50
+       },
+       "minimum": 1,
+       "maximum": 50
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Item"
+         }
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/items/{n}/{id}": {
+   "get": {
+    "operationId": "item",
+    "parameters": [
+     {
+      "name": "n",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Item"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/secrets/{id}": {
+   "get": {
+    "operationId": "secret",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Secret"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/free": {
+   "post": {
+    "operationId": "free",
+    "parameters": [
+     {
+      "name": "Idempotency-Key",
+      "in": "header",
+      "required": false,
+      "description": "Replays the original response on retry",
+      "schema": {
+       "type": "string",
+       "minLength": 16,
+       "maxLength": 128
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "n"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Item"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/keyed": {
+   "post": {
+    "operationId": "keyed",
+    "parameters": [
+     {
+      "name": "Idempotency-Key",
+      "in": "header",
+      "required": true,
+      "description": "Replays the original response on retry",
+      "schema": {
+       "type": "string",
+       "minLength": 16,
+       "maxLength": 128
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "n"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Item"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/notes": {
+   "post": {
+    "operationId": "makeNote",
+    "parameters": [
+     {
+      "name": "Idempotency-Key",
+      "in": "header",
+      "required": true,
+      "description": "Replays the original response on retry",
+      "schema": {
+       "type": "string",
+       "minLength": 16,
+       "maxLength": 128
+      }
+     },
+     {
+      "name": "If-Match",
+      "in": "header",
+      "required": false,
+      "description": "Entity version from a previous response; 412 with the current entity when stale",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "n"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Note"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "412": {
+      "description": "VersionConflict: data.current carries the entity as stored",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/secrets": {
+   "get": {
+    "operationId": "secrets",
+    "parameters": [
+     {
+      "name": "page",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Secret"
+         }
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/priced/{id}": {
+   "get": {
+    "operationId": "priced",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Priced"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "Denied by a policy",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/prices": {
+   "get": {
+    "operationId": "prices",
+    "parameters": [
+     {
+      "name": "cap",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^-?\\d+(\\.\\d+)?$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "x-rayfold-range": {
+        "min": 0,
+        "max": 100
+       }
+      }
+     },
+     {
+      "name": "qn",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "x-rayfold-range": {
+        "min": 1,
+        "max": 10
+       },
+       "minLength": 1,
+       "maxLength": 10
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Item"
+         }
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Item": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Item"
+     },
+     "id": {
+      "type": "string"
+     },
+     "n": {
+      "type": "integer"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "n"
+    ]
+   },
+   "Secret": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Secret"
+     },
+     "id": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id"
+    ]
+   },
+   "Note": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Note"
+     },
+     "id": {
+      "type": "string"
+     },
+     "v": {
+      "type": "integer"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "v"
+    ]
+   },
+   "Priced": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Priced"
+     },
+     "id": {
+      "type": "string"
+     },
+     "cost": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id"
+    ]
+   },
+   "Problem": {
+    "type": "object",
+    "description": "RFC 9457 problem details; Rayfold errors keep code, type and data",
+    "properties": {
+     "type": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "status": {
+      "type": "integer"
+     },
+     "detail": {
+      "type": "string"
+     },
+     "code": {
+      "type": "string"
+     },
+     "path": {
+      "type": "string"
+     },
+     "data": {}
+    },
+    "required": [
+     "type",
+     "title",
+     "status",
+     "code"
+    ]
+   }
+  }
+ }
+}

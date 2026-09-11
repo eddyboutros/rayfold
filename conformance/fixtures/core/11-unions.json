@@ -1,0 +1,389 @@
+{
+  "name": "Unions and type conditions (spec 02 s1)",
+  "schema": "\nentity Book { id: ID title: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Book": {
+        "kind": "entity",
+        "name": "Book",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "title",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ],
+        "implements": []
+      },
+      "Author": {
+        "kind": "entity",
+        "name": "Author",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ],
+        "implements": []
+      },
+      "Hit": {
+        "kind": "union",
+        "name": "Hit",
+        "annotations": [],
+        "members": [
+          "Book",
+          "Author"
+        ]
+      }
+    },
+    "ops": {
+      "search": {
+        "kind": "query",
+        "name": "search",
+        "args": [],
+        "returns": {
+          "kind": "list",
+          "of": {
+            "kind": "named",
+            "name": "Hit",
+            "nullable": false
+          },
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {}
+  },
+  "data": {
+    "Hit": [
+      {
+        "$type": "Book",
+        "id": "b1",
+        "title": "T1"
+      },
+      {
+        "$type": "Author",
+        "id": "a1",
+        "name": "Ann"
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "search": {
+        "from": "Hit",
+        "mode": "list"
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "...on selects per concrete type and $type is always present",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "search",
+            "shape": "{ ...on Book { id title } ...on Author { name } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Book",
+              "id": "b1",
+              "title": "T1"
+            },
+            {
+              "$type": "Author",
+              "name": "Ann"
+            }
+          ],
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "no shape gives each member its default view",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "search"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Book",
+              "id": "b1",
+              "title": "T1"
+            },
+            {
+              "$type": "Author",
+              "id": "a1",
+              "name": "Ann"
+            }
+          ],
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "compact keeps $type on union members",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "search",
+            "compact": true
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Book",
+              "id": "b1",
+              "title": "T1"
+            },
+            {
+              "$type": "Author",
+              "id": "a1",
+              "name": "Ann"
+            }
+          ],
+          "fin": true
+        }
+      ]
+    }
+  ]
+}

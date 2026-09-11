@@ -1,0 +1,115 @@
+{
+  "generatedAt": "2026-09-10T23:53:44.260Z",
+  "node": "v24.8.0",
+  "iterations": 300,
+  "rows": [
+    {
+      "flow": "A. product page (book + author + 3 reviews)",
+      "impl": "REST",
+      "roundTrips": 2,
+      "bytesDown": 405,
+      "bytesUp": 0,
+      "p50": 0.444,
+      "p99": 1.714
+    },
+    {
+      "flow": "A. product page (book + author + 3 reviews)",
+      "impl": "GraphQL",
+      "roundTrips": 1,
+      "bytesDown": 282,
+      "bytesUp": 157,
+      "p50": 0.481,
+      "p99": 1.972
+    },
+    {
+      "flow": "A. product page (book + author + 3 reviews)",
+      "impl": "Rayfold (JSON)",
+      "roundTrips": 1,
+      "bytesDown": 302,
+      "bytesUp": 182,
+      "p50": 0.409,
+      "p99": 1.031
+    },
+    {
+      "flow": "A. product page (book + author + 3 reviews)",
+      "impl": "Rayfold (RB)",
+      "roundTrips": 1,
+      "bytesDown": 176,
+      "bytesUp": 143,
+      "p50": 0.434,
+      "p99": 1.876
+    },
+    {
+      "flow": "B. catalogue list (20 books with author names)",
+      "impl": "REST",
+      "roundTrips": 2,
+      "bytesDown": 2810,
+      "bytesUp": 0,
+      "p50": 0.828,
+      "p99": 4.344
+    },
+    {
+      "flow": "B. catalogue list (20 books with author names)",
+      "impl": "GraphQL",
+      "roundTrips": 1,
+      "bytesDown": 2074,
+      "bytesUp": 89,
+      "p50": 0.484,
+      "p99": 3.285
+    },
+    {
+      "flow": "B. catalogue list (20 books with author names)",
+      "impl": "Rayfold (JSON)",
+      "roundTrips": 1,
+      "bytesDown": 2083,
+      "bytesUp": 142,
+      "p50": 0.38,
+      "p99": 0.917
+    },
+    {
+      "flow": "B. catalogue list (20 books with author names)",
+      "impl": "Rayfold (RB)",
+      "roundTrips": 1,
+      "bytesDown": 1080,
+      "bytesUp": 94,
+      "p50": 0.436,
+      "p99": 1.054
+    },
+    {
+      "flow": "C. place order then read it back with book stock",
+      "impl": "REST",
+      "roundTrips": 3,
+      "bytesDown": 327,
+      "bytesUp": 35,
+      "p50": 0.47,
+      "p99": 3.444
+    },
+    {
+      "flow": "C. place order then read it back with book stock",
+      "impl": "GraphQL",
+      "roundTrips": 2,
+      "bytesDown": 157,
+      "bytesUp": 204,
+      "p50": 0.716,
+      "p99": 3.804
+    },
+    {
+      "flow": "C. place order then read it back with book stock",
+      "impl": "Rayfold (JSON)",
+      "roundTrips": 1,
+      "bytesDown": 220,
+      "bytesUp": 279,
+      "p50": 0.403,
+      "p99": 1.006
+    },
+    {
+      "flow": "C. place order then read it back with book stock",
+      "impl": "Rayfold (RB)",
+      "roundTrips": 1,
+      "bytesDown": 101,
+      "bytesUp": 172,
+      "p50": 0.419,
+      "p99": 0.821
+    }
+  ]
+}

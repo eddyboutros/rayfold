@@ -1,0 +1,12 @@
+entity Author { id: ID name: String }
+entity Book { id: ID title: String stock: Int author: Author }
+entity Secret @allow(read: viewer != null) { id: ID note: String }
+error OutOfStock { available: Int }
+
+query book(id: ID): Book?
+query books: [Book]
+query secret(id: ID): Secret?
+"""Who the server thinks is asking."""
+query me: String
+command buy(id: ID, qty: Int): Book throws OutOfStock
+stream countdown(from: Int): Int

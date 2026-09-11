@@ -1,0 +1,19 @@
+[
+ {
+  "uri": "rayfold://schema",
+  "name": "Rayfold schema (IR)",
+  "description": "The full schema as JSON IR",
+  "mimeType": "application/json"
+ },
+ {
+  "uri": "rayfold://query/books",
+  "name": "books",
+  "mimeType": "application/json",
+  "description": "List books, newest first."
+ },
+ {
+  "uri": "rayfold://query/myOrders",
+  "name": "myOrders",
+  "mimeType": "application/json"
+ }
+]

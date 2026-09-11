@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-09-11T10:05:59.959Z",
+  "node": "v24.8.0",
+  "seconds": 10,
+  "concurrency": 64,
+  "forcedGc": true,
+  "rows": [
+    {
+      "workload": "read batch (product page)",
+      "requests": 44162,
+      "perSecond": 4416,
+      "p50": 13.24,
+      "p99": 30.87,
+      "max": 67.49,
+      "failed": 0,
+      "heapGrowthMb": 2.3
+    },
+    {
+      "workload": "command (placeOrder)",
+      "requests": 44876,
+      "perSecond": 4488,
+      "p50": 13.51,
+      "p99": 24.34,
+      "max": 40.84,
+      "failed": 0,
+      "heapGrowthMb": 72.3
+    },
+    {
+      "workload": "GET read (cacheable)",
+      "requests": 68432,
+      "perSecond": 6843,
+      "p50": 8.16,
+      "p99": 18.25,
+      "max": 26.89,
+      "failed": 0,
+      "heapGrowthMb": 1.5
+    }
+  ]
+}

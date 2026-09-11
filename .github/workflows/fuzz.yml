@@ -1,0 +1,27 @@
+name: Fuzz
+
+# The property-based fuzz tests, a hundred times deeper than on every push, with a new seed each night. A failure
+# prints the seed and the shrunk input; rerun it with FUZZ_SEED=<seed> FUZZ_RUNS=20000.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Fuzz the readers and the transports
+        run: |
+          export FUZZ_SEED=$(( RANDOM * 32768 + RANDOM ))
+          echo "FUZZ_SEED=$FUZZ_SEED"
+          FUZZ_RUNS=20000 npx vitest run packages/schema/src/fuzz.test.ts packages/server/src/fuzz.test.ts

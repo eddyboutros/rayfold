@@ -1,0 +1,2273 @@
+{
+ "keys": [
+  "id",
+  "op",
+  "args",
+  "shape",
+  "vars",
+  "key",
+  "live",
+  "deadline",
+  "simulate",
+  "ops",
+  "meta",
+  "rayfold",
+  "data",
+  "ok",
+  "item",
+  "patch",
+  "at",
+  "error",
+  "fin",
+  "errors",
+  "code",
+  "type",
+  "message",
+  "path",
+  "retryable",
+  "set",
+  "value",
+  "del",
+  "inv",
+  "invOp",
+  "cost",
+  "cache",
+  "$type",
+  "$ref",
+  "client",
+  "replay",
+  "cursor",
+  "ms",
+  "CANCELLED",
+  "EBOOK",
+  "HARDCOVER",
+  "PAID",
+  "PAPERBACK",
+  "PLACED",
+  "SHIPPED",
+  "addReview",
+  "after",
+  "author",
+  "authorId",
+  "available",
+  "bio",
+  "body",
+  "book",
+  "bookId",
+  "bookIds",
+  "books",
+  "cancelOrder",
+  "costPrice",
+  "customerId",
+  "deleteReview",
+  "editReview",
+  "filter",
+  "first",
+  "format",
+  "hasMore",
+  "input",
+  "items",
+  "lines",
+  "maxPrice",
+  "myOrders",
+  "name",
+  "offset",
+  "order",
+  "orderId",
+  "ownerId",
+  "page",
+  "payOrder",
+  "placeOrder",
+  "price",
+  "qty",
+  "rating",
+  "reason",
+  "restock",
+  "review",
+  "reviewerId",
+  "reviews",
+  "status",
+  "stock",
+  "stockUpdates",
+  "title",
+  "titleContains",
+  "total",
+  "unitPrice",
+  "updateBook",
+  "version"
+ ],
+ "values": [
+  {
+   "name": "an envelope",
+   "json": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author { name } }\",\"compact\":true},{\"id\":2,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":{\"$ref\":\"1.id\"},\"qty\":2}]}},\"key\":\"k-0123456789abcdef\"}],\"meta\":{\"client\":\"web\",\"deadline\":5000}}",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "decoded": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author { name } }\",\"compact\":true},{\"id\":2,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":{\"$ref\":\"1.id\"},\"qty\":2}]}},\"key\":\"k-0123456789abcdef\"}],\"meta\":{\"client\":\"web\",\"deadline\":5000}}"
+  },
+  {
+   "name": "a data frame",
+   "json": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402",
+   "decoded": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}"
+  },
+  {
+   "name": "a command frame with patches",
+   "json": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\"}},{\"inv\":\"Book:b1\"},{\"invOp\":[\"books\"]}],\"fin\":true}",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b732402",
+   "decoded": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\"}},{\"inv\":\"Book:b1\"},{\"invOp\":[\"books\"]}],\"fin\":true}"
+  },
+  {
+   "name": "an error frame",
+   "json": "{\"id\":3,\"error\":{\"code\":\"domain\",\"type\":\"OutOfStock\",\"message\":\"Only 2 left\",\"data\":{\"bookId\":\"b1\",\"available\":2},\"path\":\"items.0\",\"retryable\":false},\"fin\":true}",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e3030012402",
+   "decoded": "{\"id\":3,\"error\":{\"code\":\"domain\",\"type\":\"OutOfStock\",\"message\":\"Only 2 left\",\"data\":{\"bookId\":\"b1\",\"available\":2},\"path\":\"items.0\",\"retryable\":false},\"fin\":true}"
+  },
+  {
+   "name": "a page with repeated strings",
+   "json": "{\"items\":[{\"$type\":\"Book\",\"format\":\"EBOOK\"},{\"$type\":\"Book\",\"format\":\"EBOOK\"},{\"$type\":\"Book\",\"format\":\"PAPERBACK\"}],\"total\":3,\"hasMore\":false,\"cursor\":null}",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800",
+   "decoded": "{\"items\":[{\"$type\":\"Book\",\"format\":\"EBOOK\"},{\"$type\":\"Book\",\"format\":\"EBOOK\"},{\"$type\":\"Book\",\"format\":\"PAPERBACK\"}],\"total\":3,\"hasMore\":false,\"cursor\":null}"
+  },
+  {
+   "name": "small, negative and large integers",
+   "json": "[0,1,127,128,255,16383,16384,-1,-64,-65,-128,2147483647,-2147483648,4294967296,9007199254740991,-9007199254740991]",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f",
+   "decoded": "[0,1,127,128,255,16383,16384,-1,-64,-65,-128,2147483647,-2147483648,4294967296,9007199254740991,-9007199254740991]"
+  },
+  {
+   "name": "non-integers and unsafe integers",
+   "json": "[0.5,-0.25,1.5,3.14159,123456789.125,1e+300,-1e-300,5e-324,9007199254740992,-9007199254740992,1e+21]",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b44",
+   "decoded": "[0.5,-0.25,1.5,3.14159,123456789.125,1e+300,-1e-300,5e-324,9007199254740992,-9007199254740992,1e+21]"
+  },
+  {
+   "name": "strings",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"\\ud800 lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "decoded": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "the same strings twice",
+   "json": "[\"repeat\",\"other\",\"repeat\",\"repeat\",\"other\"]",
+   "hex": "0705050672657065617405056f74686572060006000601",
+   "decoded": "[\"repeat\",\"other\",\"repeat\",\"repeat\",\"other\"]"
+  },
+  {
+   "name": "keys outside the dictionary",
+   "json": "{\"2\":6,\"10\":5,\"not-a-schema-name\":1,\"é\":2,\"__proto__x\":3,\"\":4}",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184",
+   "decoded": "{\"2\":6,\"10\":5,\"not-a-schema-name\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "booleans, null, empty containers",
+   "json": "[true,false,null,{},[],[[]],{\"a\":{}}]",
+   "hex": "07070201000800070007010700080103610800",
+   "decoded": "[true,false,null,{},[],[[]],{\"a\":{}}]"
+  },
+  {
+   "name": "64 levels deep",
+   "json": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "decoded": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+  }
+ ],
+ "decode": [
+  {
+   "name": "empty input",
+   "hex": "",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "an unknown tag",
+   "hex": "0a",
+   "error": "RB: unknown tag 0xa"
+  },
+  {
+   "name": "a truncated double",
+   "hex": "04010203",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "a varint that never ends",
+   "hex": "03ffffffffffffffffff01",
+   "error": "RB: varint too long"
+  },
+  {
+   "name": "a list claiming more items than bytes",
+   "hex": "070580",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "an object claiming more pairs than bytes",
+   "hex": "087f0080",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "a string reference before any string",
+   "hex": "0600",
+   "error": "RB: bad string reference"
+  },
+  {
+   "name": "an unknown key id",
+   "hex": "0801fe7f80",
+   "error": "RB: unknown key id 8191"
+  },
+  {
+   "name": "trailing bytes",
+   "hex": "8080",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "65 levels deep",
+   "hex": "0701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070180",
+   "error": "RB: nested deeper than 64 levels"
+  },
+  {
+   "name": "a string longer than the input",
+   "hex": "051061",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "a lone continuation byte in a string",
+   "hex": "0502c328",
+   "json": "\"�(\""
+  },
+  {
+   "name": "bytes",
+   "hex": "09030102ff",
+   "json": "\"AQL_\"",
+   "bytes": true
+  },
+  {
+   "name": "a double holding NaN",
+   "hex": "04000000000000f87f",
+   "json": "null"
+  },
+  {
+   "name": "a double holding negative zero",
+   "hex": "040000000000000080",
+   "json": "0"
+  },
+  {
+   "name": "an integer beyond 2^53",
+   "hex": "03808080808080808001",
+   "json": "36028797018963970"
+  },
+  {
+   "name": "fuzz 0",
+   "hex": "fb05cd15b2",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 1",
+   "hex": "07070201000800070007010700080103",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 2",
+   "hex": "080400811a08034005054f726465",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 3",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb60183800101480042",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 4",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b73240283",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 5",
+   "hex": "0701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 6",
+   "hex": "e41bf85a188dbbb41eab53657b71b5c3e3",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 7",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 8",
+   "hex": "84651f4658eb39a4",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 9",
+   "hex": "07070201000800070007010700080103610800dc",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 10",
+   "hex": "7911965964010a27d146cf8126c28a0e",
+   "error": "RB: unknown tag 0x79"
+  },
+  {
+   "name": "fuzz 11",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f7264657204",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 12",
+   "hex": "080603328605313085236e6f742d612d736368656d692d6e616d658105c3a982155f5f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-schemi-name\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 13",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea58104010000000000",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 14",
+   "hex": "ff5fa67b05e81857dc11d111f4827493aae66283c2c198",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 15",
+   "hex": "080400811a08034005054f727b65720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b732402",
+   "json": "{\"id\":1,\"ok\":{\"$type\":\"Or{er\",\"id\":\"o1\",\"status\":\"PLACED\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Or{er\",\"id\":\"o1\"}},{\"inv\":\"Book:b1\"},{\"invOp\":[\"books\"]}],\"fin\":true}"
+  },
+  {
+   "name": "fuzz 16",
+   "hex": "633f1f4330",
+   "error": "RB: unknown tag 0x63"
+  },
+  {
+   "name": "fuzz 17",
+   "hex": "0707020100080007000701070d080103610800",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 18",
+   "hex": "08030083220806280506646f6d61696e2a050a4f7574",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 19",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b4455",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 20",
+   "hex": "0701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 21",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1fc8",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 22",
+   "hex": "0804840107030802400504",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 23",
+   "hex": "08030083b50806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e3030012402",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 24",
+   "hex": "0705050672657065617405056f7468657206000600060177",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 25",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e36",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 26",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184dc",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 27",
+   "hex": "080603328605313085236e6f742d612d736368656d",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 28",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417528686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402",
+   "json": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Au(hor\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}"
+  },
+  {
+   "name": "fuzz 29",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040690400000000000040c30450efe2d6e41a4b44",
+   "json": "[0.5,-0.25,1.5,3.14159,123456789.125,1e+300,-1e-300,5e-324,9.568131466127622e+198,-9007199254740992,1e+21]"
+  },
+  {
+   "name": "fuzz 30",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c4143a9441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b732402",
+   "json": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLAC�D\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\"}},{\"inv\":\"Book:b1\"},{\"invOp\":[\"books\"]}],\"fin\":true}"
+  },
+  {
+   "name": "fuzz 31",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 32",
+   "hex": "08060332860531",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 33",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 34",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616136",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 35",
+   "hex": "075d050672657065617405056f74686572060006000601",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 36",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb6018380010148006e",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 37",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e08034005",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 38",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c8224027d",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 39",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb6018380010148002b",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 40",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b732402d7",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 41",
+   "hex": "08048401070308027d0504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 42",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 43",
+   "hex": "070505067265706561740505",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 44",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e615b658105c3a982155f5f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-schema-na[e\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 45",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e0c820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "error": "RB: unknown key id 783"
+  },
+  {
+   "name": "fuzz 46",
+   "hex": "320a7692ebdde57166ed97d4053c5fd848a79f3f",
+   "error": "RB: unknown tag 0x32"
+  },
+  {
+   "name": "fuzz 47",
+   "hex": "1e6cd26148c8974951",
+   "error": "RB: unknown tag 0x1e"
+  },
+  {
+   "name": "fuzz 48",
+   "hex": "fa6a65e466f163418f484d",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 49",
+   "hex": "b13fc3",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 50",
+   "hex": "59fc9533e50932f2b06487b2f2a13a2cda",
+   "error": "RB: unknown tag 0x59"
+  },
+  {
+   "name": "fuzz 51",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f98802065916f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 e�oji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 52",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701ae0107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 53",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e7e",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 54",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b73240235",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 55",
+   "hex": "080400811a08034005054f72",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 56",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904ef9",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 57",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b44ac",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 58",
+   "hex": "08e1760f7b11f2fc650ebbb8c9075448",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 59",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb6c1838001014800",
+   "error": "RB: unknown key id 134246491"
+  },
+  {
+   "name": "fuzz 60",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b73240236",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 61",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d2e41a4b44",
+   "json": "[0.5,-0.25,1.5,3.14159,123456789.125,1e+300,-1e-300,5e-324,9007199254740992,-9007199254740992,999999991203907000000]"
+  },
+  {
+   "name": "fuzz 62",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 63",
+   "hex": "0705050672657065617405056f74686572060006620601",
+   "error": "RB: bad string reference"
+  },
+  {
+   "name": "fuzz 64",
+   "hex": "9b9c0a960bb7e07291",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 65",
+   "hex": "a1fca83df238416e880938ba",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 66",
+   "hex": "651b0dc7334331b02f",
+   "error": "RB: unknown tag 0x65"
+  },
+  {
+   "name": "fuzz 67",
+   "hex": "08060332",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 68",
+   "hex": "",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 69",
+   "hex": "",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 70",
+   "hex": "0804840107030802400504426f6f6b7e050539424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800",
+   "json": "{\"items\":[{\"$type\":\"Book\",\"format\":\"9BOOK\"},{\"$type\":\"Book\",\"format\":\"9BOOK\"},{\"$type\":\"Book\",\"format\":\"PAPERBACK\"}],\"total\":3,\"hasMore\":false,\"cursor\":null}"
+  },
+  {
+   "name": "fuzz 71",
+   "hex": "1fe78a",
+   "error": "RB: unknown tag 0x1f"
+  },
+  {
+   "name": "fuzz 72",
+   "hex": "68106dc4c857c67858a3bb2abf4d167166c32828a9",
+   "error": "RB: unknown tag 0x68"
+  },
+  {
+   "name": "fuzz 73",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 74",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800fe",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 75",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161b36161616161616161616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa�aaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 76",
+   "hex": "4522494c627a81d0db18035ad0b989b677",
+   "error": "RB: unknown tag 0x45"
+  },
+  {
+   "name": "fuzz 77",
+   "hex": "bf7c4acf19519dd81b10ccb958ccea077149da96a87707",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 78",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f37207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "json": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title autho7 { name } }\",\"compact\":true},{\"id\":2,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":{\"$ref\":\"1.id\"},\"qty\":2}]}},\"key\":\"k-0123456789abcdef\"}],\"meta\":{\"client\":\"web\",\"deadline\":5000}}"
+  },
+  {
+   "name": "fuzz 79",
+   "hex": "070702010008000700ce010700080103610800",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 80",
+   "hex": "60657c47a609fad71cfc56b751",
+   "error": "RB: unknown tag 0x60"
+  },
+  {
+   "name": "fuzz 81",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e32",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 82",
+   "hex": "8a108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 83",
+   "hex": "776e0f77d2792d2e9b86cb",
+   "error": "RB: unknown tag 0x77"
+  },
+  {
+   "name": "fuzz 84",
+   "hex": "080603328605313085236e6f742d612d73633c656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-sc<ema-name\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 85",
+   "hex": "08",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 86",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b44",
+   "json": "[0.5,-0.25,1.5,3.14159,123456789.125,1e+300,-1e-300,5e-324,9007199254740992,-9007199254740992,1e+21]"
+  },
+  {
+   "name": "fuzz 87",
+   "hex": "080603328605313085236e6f742d612d7363688d6d612d6e616d658105c3a982155f5f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-sch�ma-name\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 88",
+   "hex": "07070201000800",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 89",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c8224022b",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 90",
+   "hex": "67d59e8981674b5d529c25e9dca5857d4029",
+   "error": "RB: unknown tag 0x67"
+  },
+  {
+   "name": "fuzz 91",
+   "hex": "07108081ff03800203fe0303feff01035e80020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 92",
+   "hex": "",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 93",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e05095041504552cc41434bb601838001014800",
+   "json": "{\"items\":[{\"$type\":\"Book\",\"format\":\"EBOOK\"},{\"$type\":\"Book\",\"format\":\"EBOOK\"},{\"$type\":\"Book\",\"format\":\"PAPER�ACK\"}],\"total\":3,\"hasMore\":false,\"cursor\":null}"
+  },
+  {
+   "name": "fuzz 94",
+   "hex": "22adbded9b7d",
+   "error": "RB: unknown tag 0x22"
+  },
+  {
+   "name": "fuzz 95",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402de",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 96",
+   "hex": "0707020100080007000701070008010361080099",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 97",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f7264",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 98",
+   "hex": "0705050672657065617405056f7468657206000600060137",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 99",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b449d",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 100",
+   "hex": "080603328605313085236e",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 101",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103fe",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 102",
+   "hex": "f7169e2a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 103",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1fb9",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 104",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184ca",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 105",
+   "hex": "",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 106",
+   "hex": "98e98cc0f916d422207af5b9b059ecac6d221f3828beb1",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 107",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a62",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 108",
+   "hex": "0705050672657065617405056f74686572060006000601a6",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 109",
+   "hex": "07c40201000800070007010700080103610800",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 110",
+   "hex": "07050506726570656174",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 111",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c82",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 112",
+   "hex": "0804840107030802400504426f6f6b7e050545",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 113",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e0703080232",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 114",
+   "hex": "d6abce",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 115",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e303001240280",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 116",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616162",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 117",
+   "hex": "08030083220806280506646f6d61696e2a05ba4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e3030012402",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 118",
+   "hex": "abc091fb145d2d8abfedde",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 119",
+   "hex": "45609ee1bf10cbc098e3e7fb97dfd05db04072",
+   "error": "RB: unknown tag 0x45"
+  },
+  {
+   "name": "fuzz 120",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f0380808080200335ffffffffffff1f03fdffffffffffff1f",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 121",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b44d5",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 122",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 123",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b62024006007e060108024006007e050950415045524241434bb601838001014800",
+   "error": "RB: unknown tag 0x62"
+  },
+  {
+   "name": "fuzz 124",
+   "hex": "080212070208050081020504626f6f6b040801000502623106de1c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "error": "RB: unknown tag 0x7b"
+  },
+  {
+   "name": "fuzz 125",
+   "hex": "4ee8e5d96b5ff8517ba4",
+   "error": "RB: unknown tag 0x4e"
+  },
+  {
+   "name": "fuzz 126",
+   "hex": "c7c2471d4e835d7723cc88b218b639dc0df3c1ef06156a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 127",
+   "hex": "0701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107018102",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 128",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 129",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181a8",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 130",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 131",
+   "hex": "e705beed",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 132",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f7373",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 133",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f7264657204080182010801860107010802c70801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 134",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c05a84f6e6c792032206c6566741808026a0502623162822e05076974656d732e3030012402",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 135",
+   "hex": "0705050672657065617405056f7468657206000600",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 136",
+   "hex": "070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701810c",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 137",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 138",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 139",
+   "hex": "070702010008005f0007010700080103610800",
+   "error": "RB: unknown tag 0x5f"
+  },
+  {
+   "name": "fuzz 140",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f11",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 141",
+   "hex": "07070201000800070007010700080103610800c2",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 142",
+   "hex": "080400811a08034005054f726465720005026f31",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 143",
+   "hex": "080400811a08034005054f726465720005",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 144",
+   "hex": "0707020100080007000701070008010361",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 145",
+   "hex": "9374d590dc23f6ae682cfe7843baa5536bd28062e0ddb7",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 146",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c80161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161f6616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa�aaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 147",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb60183800101480021",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 148",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d73ec3030012402",
+   "json": "{\"id\":3,\"error\":{\"code\":\"domain\",\"type\":\"OutOfStock\",\"message\":\"Only 2 left\",\"data\":{\"bookId\":\"b1\",\"available\":2},\"path\":\"items�0\",\"retryable\":false},\"fin\":true}"
+  },
+  {
+   "name": "fuzz 149",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c80161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161da616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa�aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 150",
+   "hex": "0705050672657065617405056f7468657206000600060177",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 151",
+   "hex": "080212070208050081020504626f6f6b04",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 152",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054682520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402",
+   "json": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"Th% Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}"
+  },
+  {
+   "name": "fuzz 153",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f7072",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 154",
+   "hex": "07070201000800070007",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 155",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430100000000000040c30450efe2d6e41a4b44",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 156",
+   "hex": "0707020100080007",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 157",
+   "hex": "0701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107f807010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 158",
+   "hex": "5e3277c25a9d46b6aaeff4409a26",
+   "error": "RB: unknown tag 0x5e"
+  },
+  {
+   "name": "fuzz 159",
+   "hex": "bcd19973609bfecbb802e283ac3fec548f7a1e7fb9",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 160",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402ea",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 161",
+   "hex": "070702010008000700070f0700080103610800",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 162",
+   "hex": "9d7395dcbbf74b3bac73d4d4b4",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 163",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070145010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "error": "RB: unknown tag 0x45"
+  },
+  {
+   "name": "fuzz 164",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 165",
+   "hex": "49aa40dcc8788c0ff7e2938159534845",
+   "error": "RB: unknown tag 0x49"
+  },
+  {
+   "name": "fuzz 166",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e303001240282",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 167",
+   "hex": "9534b2d0060b9587464c57",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 168",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f29",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 169",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161ca",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 170",
+   "hex": "edbb08fa9318",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 171",
+   "hex": "07090500050161050a617363696920746578740596c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 172",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181b8",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 173",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 174",
+   "hex": "44bc7b2ec9337e3e5433ac9a53e0",
+   "error": "RB: unknown tag 0x44"
+  },
+  {
+   "name": "fuzz 175",
+   "hex": "07070201000800070007010700080103",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 176",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e0601080240060e7e050950415045524241434bb601838001014800",
+   "error": "RB: bad string reference"
+  },
+  {
+   "name": "fuzz 177",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c0105053132",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 178",
+   "hex": "070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701812c",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 179",
+   "hex": "070702010008000700",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 180",
+   "hex": "c11fd1c96b",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 181",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402bf",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 182",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b4443",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 183",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f722050206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "json": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author P name } }\",\"compact\":true},{\"id\":2,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":{\"$ref\":\"1.id\"},\"qty\":2}]}},\"key\":\"k-0123456789abcdef\"}],\"meta\":{\"client\":\"web\",\"deadline\":5000}}"
+  },
+  {
+   "name": "fuzz 184",
+   "hex": "080603328605313085236e55742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"nUt-a-schema-name\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 185",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 186",
+   "hex": "b1",
+   "json": "49"
+  },
+  {
+   "name": "fuzz 187",
+   "hex": "e9b636d8354c6a09f037ae6220dcf27bd646bba999",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 188",
+   "hex": "07070201000800070007010700080125610800",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 189",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 190",
+   "hex": "070107010701070107010701070107010701075a0701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 191",
+   "hex": "3611cdcdbada2c35cc0476d07197fb9ca4498350c4c3",
+   "error": "RB: unknown tag 0x36"
+  },
+  {
+   "name": "fuzz 192",
+   "hex": "0705050672657065617405056f7468657206000600060183",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 193",
+   "hex": "0804840107030802400504426f6f6b9c050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800",
+   "error": "RB: unknown key id 334"
+  },
+  {
+   "name": "fuzz 194",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffff",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 195",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffff",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 196",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 197",
+   "hex": "080400811a08034005054f726465720005029131ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b732402",
+   "json": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"�1\",\"status\":\"PLACED\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"�1\"}},{\"inv\":\"Book:b1\"},{\"invOp\":[\"books\"]}],\"fin\":true}"
+  },
+  {
+   "name": "fuzz 198",
+   "hex": "07",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 199",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a98215685f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-schema-name\":1,\"é\":2,\"h_proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 200",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f03",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 201",
+   "hex": "0701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107018139",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 202",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f2a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 203",
+   "hex": "9326575a3fc6c37f2debe8fe6fe8dc4962e08915f91cfb",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 204",
+   "hex": "0705050672657065617405056f746865720600",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 205",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c80161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616d",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 206",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f3134080240060000",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 207",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c80161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612c",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 208",
+   "hex": "36a5f9f7d591cc3edf9d5da9",
+   "error": "RB: unknown tag 0x36"
+  },
+  {
+   "name": "fuzz 209",
+   "hex": "080400811a080340057c4f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b732402",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 210",
+   "hex": "3b8531a0343f1a041e96bde3f5e37501516351441d",
+   "error": "RB: unknown tag 0x3b"
+  },
+  {
+   "name": "fuzz 211",
+   "hex": "0705050672657065617405056f74686572060006000601ca",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 212",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e4e",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 213",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800c6",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 214",
+   "hex": "c47f1bd37a33c193ec",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 215",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaoaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 216",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161786161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaxaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 217",
+   "hex": "0705050672657065617405",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 218",
+   "hex": "c1354acb28595439d3df",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 219",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea58104010000000000000004000000000000404304000000",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 220",
+   "hex": "0707fa01000800070007010700080103610800",
+   "json": "[122,false,null,{},[],[[]],{\"a\":{}}]"
+  },
+  {
+   "name": "fuzz 221",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f7264e372040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "json": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author { name } }\",\"compact\":true},{\"id\":2,\"op\":\"placeOrd�r\",\"args\":{\"input\":{\"lines\":[{\"bookId\":{\"$ref\":\"1.id\"},\"qty\":2}]}},\"key\":\"k-0123456789abcdef\"}],\"meta\":{\"client\":\"web\",\"deadline\":5000}}"
+  },
+  {
+   "name": "fuzz 222",
+   "hex": "080603328605313085236e6f742d61bf736368656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a�schema-name\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 223",
+   "hex": "c5190b1d8498d6ea758de88edfdaa248df9ed0835e",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 224",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b4446",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 225",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c80161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 226",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e303001240219",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 227",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f3134",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 228",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e68",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 229",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f788301841a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 230",
+   "hex": "402d28c3e45a1ed4480566",
+   "error": "RB: unknown tag 0x40"
+  },
+  {
+   "name": "fuzz 231",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184fc",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 232",
+   "hex": "08060332",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 233",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e516d658105c3a982155f5f70726f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-schema-nQme\":1,\"é\":2,\"__proto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 234",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e0a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 235",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b7324029a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 236",
+   "hex": "07108078ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f",
+   "error": "RB: unknown tag 0x78"
+  },
+  {
+   "name": "fuzz 237",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 238",
+   "hex": "29cb20ace530356425bd8e4000b3ccb494",
+   "error": "RB: unknown tag 0x29"
+  },
+  {
+   "name": "fuzz 239",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e6b",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 240",
+   "hex": "070702010008dc070007010700080103610800",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 241",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb60183800101480057",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 242",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207db77d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "json": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author { name }�}\",\"compact\":true},{\"id\":2,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":{\"$ref\":\"1.id\"},\"qty\":2}]}},\"key\":\"k-0123456789abcdef\"}],\"meta\":{\"client\":\"web\",\"deadline\":5000}}"
+  },
+  {
+   "name": "fuzz 243",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c80161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 244",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800d5",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 245",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f3134080240060000064b0801380507426f6f6b3a623108013a07010505626f6f6b732402",
+   "error": "RB: bad string reference"
+  },
+  {
+   "name": "fuzz 246",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161615d616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 247",
+   "hex": "0705050672657065",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 248",
+   "hex": "a10a96140ffad295b79510de751464",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 249",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b7324022b",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 250",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 251",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 252",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 253",
+   "hex": "08030083220806280506646f6d61696e2a05074f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e3030012402",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 254",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f7264657204080182a508018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "error": "RB: unknown key id 67905"
+  },
+  {
+   "name": "fuzz 255",
+   "hex": "b060ed3022ab",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 256",
+   "hex": "",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 257",
+   "hex": "83bada",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 258",
+   "hex": "3dcd31895848",
+   "error": "RB: unknown tag 0x3d"
+  },
+  {
+   "name": "fuzz 259",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 260",
+   "hex": "144d",
+   "error": "RB: unknown tag 0x14"
+  },
+  {
+   "name": "fuzz 261",
+   "hex": "070b040000000000",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 262",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800f2",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 263",
+   "hex": "3bff11895ec58ab143d67d76f12a6c",
+   "error": "RB: unknown tag 0x3b"
+  },
+  {
+   "name": "fuzz 264",
+   "hex": "dce8cbbb2d2caff93df2366139",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 265",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a0512b22d303132333435363738396162636465661408024405037765620e03904e",
+   "json": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author { name } }\",\"compact\":true},{\"id\":2,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":{\"$ref\":\"1.id\"},\"qty\":2}]}},\"key\":\"�-0123456789abcdef\"}],\"meta\":{\"client\":\"web\",\"deadline\":5000}}"
+  },
+  {
+   "name": "fuzz 266",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f6761746505f9746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 267",
+   "hex": "93c377eea31543dd",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 268",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701030107010701070107010701070107010701070107010701070181",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 269",
+   "hex": "10202963bac6fc",
+   "error": "RB: unknown tag 0x10"
+  },
+  {
+   "name": "fuzz 270",
+   "hex": "3394c0ff7e57d57380410f",
+   "error": "RB: unknown tag 0x33"
+  },
+  {
+   "name": "fuzz 271",
+   "hex": "d27186f46d",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 272",
+   "hex": "fe1e967737d1ada41920ba006eacedeee5f8c331",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 273",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e0703",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 274",
+   "hex": "0705050672657065617405056f746865720600060006019b",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 275",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f7264",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 276",
+   "hex": "07050506726570c9617405056f74686572060006000601",
+   "json": "[\"rep�at\",\"other\",\"rep�at\",\"rep�at\",\"other\"]"
+  },
+  {
+   "name": "fuzz 277",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010719070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 278",
+   "hex": "1308c4a12af6d49937106e5a830463337691365168",
+   "error": "RB: unknown tag 0x13"
+  },
+  {
+   "name": "fuzz 279",
+   "hex": "f136d1632316e6faf813929ea3e94c4b",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 280",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b4445",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 281",
+   "hex": "f4b959ec4a658088cfcbc6",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 282",
+   "hex": "07108081ff03800203fe0303feff01038080020301cb7f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f",
+   "error": "RB: unknown tag 0x7f"
+  },
+  {
+   "name": "fuzz 283",
+   "hex": "07070201000800070007010700080103",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 284",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616169",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 285",
+   "hex": "080603328610313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f78830184",
+   "error": "RB: unknown tag 0x31"
+  },
+  {
+   "name": "fuzz 286",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161f2",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 287",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e0507",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 288",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f788301845d",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 289",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e3030012402c4",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 290",
+   "hex": "070b04001900000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b44",
+   "json": "[0.5000000000007105,-0.25,1.5,3.14159,123456789.125,1e+300,-1e-300,5e-324,9007199254740992,-9007199254740992,1e+21]"
+  },
+  {
+   "name": "fuzz 291",
+   "hex": "0802",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 292",
+   "hex": "0705050672657065617405056f746865721e0006000601",
+   "error": "RB: unknown tag 0x1e"
+  },
+  {
+   "name": "fuzz 293",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5f7883018410",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 294",
+   "hex": "aec4",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 295",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 296",
+   "hex": "070505067265706561d905056f74686572060006000601",
+   "json": "[\"repea�\",\"other\",\"repea�\",\"repea�\",\"other\"]"
+  },
+  {
+   "name": "fuzz 297",
+   "hex": "e25a8b94d28d3936a39f69e4e39904086ef5",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 298",
+   "hex": "070505",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 299",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 300",
+   "hex": "d3da61",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 301",
+   "hex": "023e68dca8351f3e5fb6",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 302",
+   "hex": "080484010703080240050442",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 303",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6cdd2032206c6566741808026a0502623162822e05076974656d732e3030012402",
+   "json": "{\"id\":3,\"error\":{\"code\":\"domain\",\"type\":\"OutOfStock\",\"message\":\"Onl� 2 left\",\"data\":{\"bookId\":\"b1\",\"available\":2},\"path\":\"items.0\",\"retryable\":false},\"fin\":true}"
+  },
+  {
+   "name": "fuzz 304",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c010f0531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402",
+   "error": "RB: unknown tag 0xf"
+  },
+  {
+   "name": "fuzz 305",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b4425",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 306",
+   "hex": "0705050672657065617405053674686572060006000601",
+   "json": "[\"repeat\",\"6ther\",\"repeat\",\"repeat\",\"6ther\"]"
+  },
+  {
+   "name": "fuzz 307",
+   "hex": "0705050672657065617405056f74686572060006000601a2",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 308",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f7264657204080182010801860107b708026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 309",
+   "hex": "17d55aad0850ab329b878723c56eab9d96",
+   "error": "RB: unknown tag 0x17"
+  },
+  {
+   "name": "fuzz 310",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 311",
+   "hex": "0705050672657065617405056f74686572060006000601fa",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 312",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181cf",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 313",
+   "hex": "dd435d28903776030098",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 314",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107011801070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "error": "RB: unknown tag 0x18"
+  },
+  {
+   "name": "fuzz 315",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d6581bcc3a982155f5f70726f746f5f5f78830184",
+   "error": "RB: unknown key id 2821009630"
+  },
+  {
+   "name": "fuzz 316",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c8016161616161616161616161616161616161616161e36161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "json": "[\"\",\"a\",\"ascii text\",\"été\",\"日本語\",\"😀 emoji\",\"� lone surrogate\",\"tab\\tnewline\\n\",\"aaaaaaaaaaaaaaaaaaaa�aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  {
+   "name": "fuzz 317",
+   "hex": "070107010701070107010701070107010701070107010701070107010701070107",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 318",
+   "hex": "a2ae3d4f8b0ecc823276d45da67a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 319",
+   "hex": "08",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 320",
+   "hex": "87893e933718db026b8ecadf326e8015a9c49a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 321",
+   "hex": "070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701811e",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 322",
+   "hex": "e69d224c2f0dbd45729357a3bfd40b2aa71e1173c1",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 323",
+   "hex": "07050506726570656174f3056f74686572060006000601",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 324",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb601838001014800fe",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 325",
+   "hex": "070702010008000700070107000801e0610800",
+   "error": "RB: unknown key id 6256"
+  },
+  {
+   "name": "fuzz 326",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c6120",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 327",
+   "hex": "070702010008000700070107000801036108006f",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 328",
+   "hex": "cd3a53fc1597",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 329",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904ebf",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 330",
+   "hex": "080603328605313085236e6f742d612d",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 331",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402a3",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 332",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70726f746f5f5fed830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-schema-name\":1,\"é\":2,\"__proto__�\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 333",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f37",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 334",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616156",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 335",
+   "hex": "07070201000800070007",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 336",
+   "hex": "6ba4e1bd79",
+   "error": "RB: unknown tag 0x6b"
+  },
+  {
+   "name": "fuzz 337",
+   "hex": "070107010701070107010701",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 338",
+   "hex": "080603328605313085236e6f742d612d736368656d61",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 339",
+   "hex": "c59f7211a08e30f743bb2d56a066c433",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 340",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f4e",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 341",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 342",
+   "hex": "fbcf0128eb",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 343",
+   "hex": "c1e841",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 344",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1f04",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 345",
+   "hex": "08040081180806400504426f6f6b0005026231b201051087686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402",
+   "json": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"�he Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}"
+  },
+  {
+   "name": "fuzz 346",
+   "hex": "080484010703080240050442",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 347",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616180",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 348",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e080340050641757468",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 349",
+   "hex": "080603328605313085236e6f742d612d736368656d612d6e616d658105c3a982155f5f70727f746f5f5f78830184",
+   "json": "{\"2\":6,\"10\":5,\"not-a-schema-name\":1,\"é\":2,\"__prto__x\":3,\"\":4}"
+  },
+  {
+   "name": "fuzz 350",
+   "hex": "08030083220806280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e303001240270",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 351",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c3040befe2d6e41a4b44",
+   "json": "[0.5,-0.25,1.5,3.14159,123456789.125,1e+300,-1e-300,5e-324,9007199254740992,-9007199254740992,999999999999991000000]"
+  },
+  {
+   "name": "fuzz 352",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557255756c61204b2e204c65204775696e1408013c822402",
+   "json": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"UrUula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}"
+  },
+  {
+   "name": "fuzz 353",
+   "hex": "070b04000000000000e03f04000000000000d0bf04",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 354",
+   "hex": "e512",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 355",
+   "hex": "77f6bb7641f7e9f030182ecaa1ecf9fc98fed1ded0cdfe",
+   "error": "RB: unknown tag 0x77"
+  },
+  {
+   "name": "fuzz 356",
+   "hex": "8ea56fe59bb2369ac67fef",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 357",
+   "hex": "593f10bbf19288512c455671e0",
+   "error": "RB: unknown tag 0x59"
+  },
+  {
+   "name": "fuzz 358",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e56",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 359",
+   "hex": "08030083226906280506646f6d61696e2a050a4f75744f6653746f636b2c050b4f6e6c792032206c6566741808026a0502623162822e05076974656d732e3030012402",
+   "error": "RB: unknown tag 0x69"
+  },
+  {
+   "name": "fuzz 360",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b732402ba",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 361",
+   "hex": "080212070208050081020504626f6f6b04080100050262310605",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 362",
+   "hex": "2b0c0f83cc662eb5f2b318d4da55ece8e92cbe",
+   "error": "RB: unknown tag 0x2b"
+  },
+  {
+   "name": "fuzz 363",
+   "hex": "ea1234dd8dcf5ef844",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 364",
+   "hex": "f42cda3212ca0f1292",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 365",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 366",
+   "hex": "080400811a08034005054f726465720005026f31ac010506504c414345441e070308023205084f726465723a6f313408024006000006010801380507426f6f6b3a623108013a07010505626f6f6b73240262",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 367",
+   "hex": "0705050672657065617405056f74686572060006000601eb",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 368",
+   "hex": "310bc1497397f62c431a09",
+   "error": "RB: unknown tag 0x31"
+  },
+  {
+   "name": "fuzz 369",
+   "hex": "0701070107010701070107010701070107010701070107010701070107",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 370",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f72000502613112010511557273756c61204b2e204c65204775696e1408013c822402",
+   "error": "RB: unknown tag 0x72"
+  },
+  {
+   "name": "fuzz 371",
+   "hex": "070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701817c",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 372",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 373",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 374",
+   "hex": "080400811a08034005054f726465720005026f31ac01",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 375",
+   "hex": "b0af",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 376",
+   "hex": "07108081ff03800203fe0303feff01038080020301037f03810103ff0103feffffff0f03ffffffff0f03808080802003feffffffffffff1f03fdffffffffffff1fd0",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 377",
+   "hex": "070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701817c",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 378",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb60183800101480004",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 379",
+   "hex": "08040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 380",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b442a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 381",
+   "hex": "070b04000000000000e03f04000000000000d0bf04000000000000f83f046e861bf0f92109400400008054346f9d41049c7500883ce4377e0459f3f8c21f6ea5810401000000000000000400000000000040430400000000000040c30450efe2d6e41a4b444a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 382",
+   "hex": "0707020100080007000701070008010361080009",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 383",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512efbfbd206c6f6e6520737572726f67617465050c746162096e65776c696e650a05c801616161616161616161616161616161616161616161616161616161616161616161",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 384",
+   "hex": "080212070208050081020504626f6f6b040801000502623106051c7b206964207469746c6520617574686f72207b206e616d65207d207d0f636f6d70616374020804008202050a706c6163654f72646572040801820108018601070108026a0801420504312e69649e01820a05126b2d303132333435363738396162636465661408024405037765620e03904e81",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 385",
+   "hex": "dd",
+   "json": "93"
+  },
+  {
+   "name": "fuzz 386",
+   "hex": "d90fcada02d2a292d5e8f144b9b904b067",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 387",
+   "hex": "07090500050161050a617363696920746578740505c3a974c3a90509e697a5e69cace8aa9e050af09f988020656d6f6a690512ef",
+   "error": "RB: unexpected end of input"
+  },
+  {
+   "name": "fuzz 388",
+   "hex": "07010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107620701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070107010701070181",
+   "error": "RB: length exceeds the input"
+  },
+  {
+   "name": "fuzz 389",
+   "hex": "ec40d4485ae8",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 390",
+   "hex": "52d82e53c596ba6c663c2d3c",
+   "error": "RB: unknown tag 0x52"
+  },
+  {
+   "name": "fuzz 391",
+   "hex": "08040081180806400504426f6f6b0005026231b20105105468d520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402",
+   "json": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"Th� Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}"
+  },
+  {
+   "name": "fuzz 392",
+   "hex": "36f00691461be2c380",
+   "error": "RB: unknown tag 0x36"
+  },
+  {
+   "name": "fuzz 393",
+   "hex": "07077c01000800070007010700080103610800",
+   "error": "RB: unknown tag 0x7c"
+  },
+  {
+   "name": "fuzz 394",
+   "hex": "a08fa56ccf4afa4289746182a4c162ba2581b366",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 395",
+   "hex": "0804840107030802400504426f6f6b7e050545424f4f4b08024006007e060108024006007e050950415045524241434bb6018380010148000a",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 396",
+   "hex": "bf9bed920551d9b422fa2af0d067bd335002c8d3b2",
+   "error": "RB: trailing bytes"
+  },
+  {
+   "name": "fuzz 397",
+   "hex": "4a5d4b44a6f6797f08ee117e5793",
+   "error": "RB: unknown tag 0x4a"
+  },
+  {
+   "name": "fuzz 398",
+   "hex": "1ae2938563e879f4fcda118f556f77",
+   "error": "RB: unknown tag 0x1a"
+  },
+  {
+   "name": "fuzz 399",
+   "hex": "07070201000800070007",
+   "error": "RB: unexpected end of input"
+  }
+ ],
+ "frames": [
+  {
+   "name": "two frames",
+   "hex": "6008040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c82240206080200812402",
+   "json": "[{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true},{\"id\":1,\"fin\":true}]"
+  },
+  {
+   "name": "zero-length keep-alives between and after frames",
+   "hex": "6008040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402000608020081240200",
+   "json": "[{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true},{\"id\":1,\"fin\":true}]"
+  },
+  {
+   "name": "a truncated frame",
+   "hex": "6008040081180806400504426f6f6b0005026231b201051054686520446973706f737365737365649c01050531322e3939ae01855e0803400506417574686f7200050261318c010511557273756c61204b2e204c65204775696e1408013c822402060802008124",
+   "error": "RB: truncated frame"
+  }
+ ]
+}

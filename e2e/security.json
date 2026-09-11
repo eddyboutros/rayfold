@@ -1,0 +1,757 @@
+{
+  "generatedAt": "2026-09-11T10:06:27.733Z",
+  "attacks": [
+    {
+      "area": "Requests a web page could make",
+      "attack": "A web page posts a command as text/plain, the one body type browsers send to other sites without a preflight check.",
+      "defence": "Bodies must be application/rayfold+json, application/json or application/rayfold; anything else gets 415 before parsing.",
+      "guard": "The same command sent as application/rayfold+json runs.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:49940",
+            "content-type": "text/plain",
+            "origin": "https://evil.example",
+            "authorization": "Bearer admin"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b1\",\"qty\":50},\"key\":\"attack-key-0000000001\"}]}"
+        },
+        "response": {
+          "status": 415,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/problem+json",
+            "cache-control": "no-store",
+            "accept-post": "application/rayfold+json, application/json, application/rayfold"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/rayfold+json\",\"code\":\"invalid_argument\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Requests a web page could make",
+      "attack": "A page on another site sends a JSON command with the user's credentials.",
+      "defence": "Requests that change data and carry an Origin must come from the server's own origin or an allowed one; others get 403.",
+      "guard": "The same request from the server's own origin runs.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50068",
+            "content-type": "application/rayfold+json",
+            "origin": "https://evil.example",
+            "authorization": "Bearer admin"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b1\",\"qty\":50},\"key\":\"attack-key-0000000001\"}]}"
+        },
+        "response": {
+          "status": 403,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/problem+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Requests a web page could make",
+      "attack": "An HTML form on another site posts to POST /orders/{id}/pay, a route with no body.",
+      "defence": "The Origin check covers the REST-style routes too, and POST routes also require an Idempotency-Key header, which a form cannot set.",
+      "guard": "The same POST from an app, with its Idempotency-Key, pays the order.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/orders/o1/pay",
+          "headers": {
+            "host": "127.0.0.1:50090",
+            "content-type": "application/x-www-form-urlencoded",
+            "origin": "https://evil.example",
+            "authorization": "Bearer u1"
+          },
+          "body": ""
+        },
+        "response": {
+          "status": 403,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/problem+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Requests a web page could make",
+      "attack": "A page renames its own domain to 127.0.0.1 (DNS rebinding) to talk to a server on the user's machine as if it were the same site.",
+      "defence": "A server reached on a loopback address answers only loopback host names (localhost, 127.0.0.1, [::1]); other Host headers get 403.",
+      "guard": "The same request with Host 127.0.0.1 is answered.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "GET",
+          "target": "/rayfold/manifest",
+          "headers": {
+            "host": "evil.example:50095"
+          }
+        },
+        "response": {
+          "status": 403,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/problem+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Host evil.example:50095 is not allowed on a loopback server\",\"code\":\"permission_denied\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Requests a web page could make",
+      "attack": "A web page sends tools/call to the MCP endpoint of a Rayfold server on the user's machine or intranet.",
+      "defence": "MCP requests with a foreign Origin get 403, as the MCP specification requires, and loopback servers check the Host header.",
+      "guard": "An AI client (no browser Origin) lists and calls tools.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/mcp",
+          "headers": {
+            "host": "127.0.0.1:50127",
+            "content-type": "application/json",
+            "origin": "https://evil.example",
+            "authorization": "Bearer admin"
+          },
+          "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"restock\",\"arguments\":{\"bookId\":\"b1\",\"qty\":5}}}"
+        },
+        "response": {
+          "status": 403,
+          "headers": {
+            "content-type": "application/problem+json",
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Requests a web page could make",
+      "attack": "A page sends MCP JSON-RPC as text/plain to avoid the browser's preflight check.",
+      "defence": "The MCP endpoint accepts only application/json (415 otherwise).",
+      "guard": "tools/list as application/json is answered.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/mcp",
+          "headers": {
+            "host": "127.0.0.1:50133",
+            "content-type": "text/plain"
+          },
+          "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}"
+        },
+        "response": {
+          "status": 415,
+          "headers": {
+            "content-type": "application/problem+json",
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/json\",\"code\":\"invalid_argument\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Requests a web page could make",
+      "attack": "A page on another site opens a WebSocket to Rayfold; the browser attaches the user's cookies to the handshake.",
+      "defence": "The handshake is refused with 403 unless the Origin is the server's own or allowed (and the Host is valid).",
+      "guard": "A client without a foreign Origin gets 101 Switching Protocols.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "GET",
+          "target": "/rayfold/ws",
+          "headers": {
+            "host": "127.0.0.1:50173",
+            "upgrade": "websocket",
+            "origin": "https://evil.example"
+          }
+        },
+        "response": {
+          "status": 403,
+          "headers": {},
+          "body": "Origin https://evil.example is not allowed"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A request nests its arguments 10,000 levels deep to exhaust the server's stack.",
+      "defence": "Arguments and variables deeper than 64 levels fail the batch with invalid_argument, checked without recursion.",
+      "guard": "A normal request is answered.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50181",
+            "content-type": "application/rayfold+json",
+            "accept": "application/json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\"… (60,049 characters in all)"
+        },
+        "response": {
+          "status": 400,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/json; charset=utf-8"
+          },
+          "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"ops[0].args: nested deeper than 64 levels\"},\"fin\":true}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A shape nested 5,000 levels deep, to make the parser recurse until it crashes.",
+      "defence": "The shape parser stops at 64 levels of nesting and answers invalid_argument; execution depth is capped separately (8 by default).",
+      "guard": "A shape nested a few levels runs.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50193",
+            "content-type": "application/rayfold+json",
+            "accept": "application/json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { … (52,766 characters in all)"
+        },
+        "response": {
+          "status": 400,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/json; charset=utf-8"
+          },
+          "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"Bad shape: Shape nested deeper than 64 levels (1:535)\"},\"fin\":true,\"id\":1}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "Three expensive list queries plus a fourth with a page size of -100,000, hoping the negative size cancels out their cost.",
+      "defence": "An op with invalid arguments never runs and costs 0; untrusted page sizes count as the largest page; every op costs at least 1.",
+      "guard": "One of the expensive queries alone fits the budget and runs.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50203",
+            "content-type": "application/rayfold+json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title author { name } } }\"},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title author { name } } }\"},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title author { name } } }\"},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":-100000}}}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"error\":{\"code\":\"resource_exhausted\",\"message\":\"Batch cost 1218 exceeds budget 1000\",\"data\":{\"cost\":1218,\"budget\":1000}},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A 1.5 MB request body, to make the server buffer and parse huge input.",
+      "defence": "Bodies over the limit (1 MiB by default) get 413 Content Too Large; the rest of the upload is drained up to a bound, then the connection is cut.",
+      "guard": "A normal body is answered.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50209",
+            "content-type": "application/rayfold+json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\",\"pad\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx… (1,500,058 characters in all)"
+        },
+        "response": {
+          "status": 413,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/problem+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/payload_too_large\",\"title\":\"payload too large\",\"status\":413,\"detail\":\"Body exceeds 1048576 bytes\",\"code\":\"resource_exhausted\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A WebSocket client announces a 2 MiB frame and keeps streaming, to fill the server's memory.",
+      "defence": "Frames and assembled messages over 1 MiB close the connection with code 1009 (message too big).",
+      "guard": "A normal message on a new socket is answered.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "WebSocket frame",
+          "target": "/rayfold/ws",
+          "headers": {},
+          "body": "text frame announcing 2,097,152 bytes, then 1.2 MB of data"
+        },
+        "response": {
+          "status": 101,
+          "headers": {},
+          "body": "close frame, code 1009 (message too big)"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A client sends thousands of distinct inline shapes; each one used to be remembered forever.",
+      "defence": "Shapes learned from requests are kept up to a limit (10,000 by default; 10 in this test), least recently used first out; rejected shapes are never kept.",
+      "guard": "Shapes registered by the server itself stay, and every request is still answered.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50234",
+            "content-type": "application/rayfold+json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id format price stock alias29: title }\"}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"alias29\":\"The Dispossessed\"},\"meta\":{\"cost\":1},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A client sends thousands of commands with new idempotency keys; the records used to be kept until someone read them again.",
+      "defence": "Records expire (24 hours by default), expired ones are swept on every write, and past a size limit (100,000 by default; 10 here) the oldest go first.",
+      "guard": "The most recent key still replays its result.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50270",
+            "content-type": "application/rayfold+json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b1\",\"qty\":1},\"key\":\"attack-key-0000000001-29\"}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"ok\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":35,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"patch\":[{\"set\":\"Book:b1\",\"value\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":35,\"author\":{\"$ref\":\"Author:a1\"}}},{\"set\":\"Author:a1\",\"value\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}}],\"meta\":{\"cost\":2},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A client sends a negative or enormous deadline.",
+      "defence": "Deadlines must be whole milliseconds from 0 to 600,000; anything else is invalid_argument.",
+      "guard": "A 5,000 ms deadline is honoured.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50293",
+            "content-type": "application/rayfold+json",
+            "accept": "application/json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"}}],\"meta\":{\"deadline\":-1}}"
+        },
+        "response": {
+          "status": 400,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/json; charset=utf-8"
+          },
+          "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"meta.deadline: expected whole milliseconds from 0 to 600000\"},\"fin\":true}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Replays and retries",
+      "attack": "A client reuses the key of a paid order's payOrder call on cancelOrder, so the cancel is answered with the stored payment result and never runs.",
+      "defence": "A key is bound to its operation and arguments; reusing it for anything else is already_exists, and the write policy is checked before any replay.",
+      "guard": "Retrying payOrder with its own key replays the payment.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50296",
+            "content-type": "application/rayfold+json",
+            "authorization": "Bearer u1"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"cancelOrder\",\"args\":{\"id\":\"o1\"},\"key\":\"attack-key-0000000001\"}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"error\":{\"code\":\"already_exists\",\"message\":\"Idempotency key attack-key-0000000001 was used for another operation or other arguments\"},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Replays and retries",
+      "attack": "An app on a flaky network sends the same order twice at the same moment; both copies used to run.",
+      "defence": "The first request claims the key; the second waits for it to finish and replays its result.",
+      "guard": "Both requests get the same order back.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50298",
+            "content-type": "application/rayfold+json",
+            "authorization": "Bearer u1"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}},\"key\":\"attack-key-0000000001\"}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}}]},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$ref\":\"Book:b3\"}}]}},{\"set\":\"Book:b3\",\"value\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}},{\"set\":\"Book:b3\",\"value\":{\"stock\":99}}],\"meta\":{\"cost\":3,\"replay\":true},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Replays and retries",
+      "attack": "Every anonymous caller shares one replay scope, so one guest could replay another guest's result, or probe which keys exist.",
+      "defence": "A command with an idempotency key needs an identified caller (a user, service or guest session); anonymous keyed commands are unauthenticated.",
+      "guard": "An identified caller's retry replays its own result.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "A customer asks for other customers' order ids with an explicit shape, to learn which orders exist.",
+      "defence": "A denied entity at a nullable position reads as null even with an explicit shape, so forbidden and missing look the same.",
+      "guard": "The owner gets the order.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50303",
+            "content-type": "application/rayfold+json",
+            "authorization": "Bearer u2"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"order\",\"args\":{\"id\":\"o1\"},\"shape\":\"{ id status }\"}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"data\":null,\"meta\":{\"cost\":1},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "An anonymous caller downloads the manifest to read every permission rule, such as who may see costPrice.",
+      "defence": "The manifest keeps names and types but removes policy expressions; the full schema is opt-in, and the manifest can be switched off.",
+      "guard": "Clients still get every type and operation they need.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "GET",
+          "target": "/rayfold/manifest",
+          "headers": {
+            "host": "127.0.0.1:50315"
+          }
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/json; charset=utf-8"
+          },
+          "body": "(schema without policy expressions, 18,562 characters)"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "A batch points $ref at \"1.constructor\" or \"1.__proto__\" to pull built-in objects into the arguments.",
+      "defence": "$ref paths read only the earlier result's own data; anything else resolves to nothing.",
+      "guard": "$ref to \"1.id\" passes the book's id along.",
+      "runtimes": [
+        "TypeScript"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50319",
+            "content-type": "application/rayfold+json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id }\"},{\"id\":2,\"op\":\"book\",\"args\":{\"id\":{\"$ref\":\"1.constructor\"}}}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\"},\"meta\":{\"cost\":1},\"fin\":true}\n{\"id\":2,\"error\":{\"code\":\"invalid_argument\",\"message\":\"ops.2.args.id: $ref 1.constructor resolved to nothing\"},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "A binary (RB) request carries an argument object whose key is \"__proto__\", so decoding it would swap the object's prototype and smuggle in arguments.",
+      "defence": "The decoder stores every key as plain data, so the request fails validation as an unknown argument.",
+      "guard": "A normal binary request is answered.",
+      "runtimes": [
+        "TypeScript"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50321",
+            "content-type": "application/rayfold",
+            "accept": "application/rayfold+json"
+          },
+          "body": "(45 bytes of RB)"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"error\":{\"code\":\"invalid_argument\",\"message\":\"book().__proto__: unknown argument\"},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "An AI agent asks for a dry run of a command whose code forgets to check ctx.simulate, so the \"dry run\" would really write.",
+      "defence": "Only commands that declare @simulate accept dry runs, and only they get a .simulate tool in MCP; others answer failed_precondition.",
+      "guard": "Declared commands, such as placeOrder, still offer a dry run that writes nothing.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "A rule denies payments over 1000, but Decimal amounts travel as text, and text compared with a number used to count as \"not greater\".",
+      "defence": "Numbers and numeric text compare exactly by value (also beyond 2^53), and a rule that cannot be evaluated fails closed.",
+      "guard": "An amount of 999.99 is allowed.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "A client sends the id 9007199254740993 as a JSON number, which JavaScript silently rounds to a different id.",
+      "defence": "Integers beyond 2^53 and Decimals written in exponent form are refused; send them as text.",
+      "guard": "The same id as text is accepted.",
+      "runtimes": [
+        "TypeScript"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50331",
+            "content-type": "application/rayfold+json",
+            "accept": "application/json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":9007199254740993}}]}"
+        },
+        "response": {
+          "status": 400,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/json; charset=utf-8"
+          },
+          "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"book().id: expected ID\"},\"fin\":true,\"id\":1}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "A browser second-guesses a response's type (MIME sniffing) and runs data as a script, or a shared cache keeps an error page.",
+      "defence": "Every response carries X-Content-Type-Options: nosniff, and refusals carry Cache-Control: no-store.",
+      "guard": "Responses keep their declared content types, and 304 answers stay minimal.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:50337",
+            "content-type": "text/plain"
+          },
+          "body": "{}"
+        },
+        "response": {
+          "status": 415,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/problem+json",
+            "cache-control": "no-store",
+            "accept-post": "application/rayfold+json, application/json, application/rayfold"
+          },
+          "body": "{\"type\":\"https://rayfold.dev/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/rayfold+json\",\"code\":\"invalid_argument\"}"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Overload and resource exhaustion",
+      "attack": "A client opens a WebSocket, starts a live query, then vanishes without a close frame, so the server would keep the socket and the subscription forever.",
+      "defence": "The server closes its side as soon as the client's side ends, which cancels that connection's live queries.",
+      "guard": "While the connection is open, its live query stays subscribed.",
+      "runtimes": [
+        "TypeScript",
+        "Kotlin"
+      ],
+      "result": "refused"
+    }
+  ]
+}

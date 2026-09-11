@@ -1,0 +1,1943 @@
+{
+  "generatedAt": "2026-09-11T10:06:27.984Z",
+  "rows": [
+    {
+      "aspect": "Product page (book + author + 3 reviews)",
+      "values": {
+        "REST": 466,
+        "GraphQL": 332,
+        "Rayfold": 176
+      },
+      "unit": "bytes on the wire (request + response)",
+      "better": "lower",
+      "metric": "requests and bytes for the page",
+      "REST": "3 requests in 2 waves, 466 B",
+      "GraphQL": "1 request, 332 B",
+      "Rayfold": "1 request, 176 B (named view + RB)",
+      "note": "GraphQL matches Rayfold on round trips; Rayfold moves fewer bytes because the shape names a server view and RB encodes the frames",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"448f56b82184d34f\""
+              },
+              "body": "{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"28bbc6e5edb7fc7e\""
+              },
+              "body": "{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\",\"bio\":\"American author of speculative fiction.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/reviews?bookId=b1&limit=3",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"cb5cb358af1b2242\""
+              },
+              "body": "{\"items\":[{\"id\":\"r1\",\"rating\":5,\"body\":\"Ambiguous utopia, unambiguous masterpiece.\",\"bookId\":\"b1\",\"reviewerId\":\"u2\",\"version\":1},{\"id\":\"r4\",\"rating\":3,\"body\":\"Slow start.\",\"bookId\":\"b1\",\"reviewerId\":\"u3\",\"version\":1}]}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ book(id: \\\"b1\\\") { id title format price stock author { id name } reviews(first: 3) { id rating } } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"book\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "accept": "application/rayfold",
+                "content-type": "application/rayfold"
+              },
+              "body": "RB request, 52 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ ...Book.card }\",\"compact\":true}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold"
+              },
+              "body": "RB, 116 bytes on the wire, shown decoded:\n{\"id\":1,\"data\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}},\"fin\":true}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "List of 20 books with author names",
+      "values": {
+        "REST": 9,
+        "GraphQL": 20,
+        "Rayfold": 1
+      },
+      "unit": "author lookups with straightforward code",
+      "better": "lower",
+      "metric": "author lookups at the backend",
+      "REST": "9 extra requests from the client (N+1 at the edge)",
+      "GraphQL": "20 with the obvious resolver; 1 only with a hand-written DataLoader (both measured)",
+      "Rayfold": "1: a batch loader is the only resolver shape",
+      "note": "`rayfold explain` shows one loader call per level",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books?limit=20",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"8d49a86461a8a49f\""
+              },
+              "body": "{\"items\":[{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\"},{\"id\":\"b10\",\"title\":\"Americanah\",\"format\":\"HARDCOVER\",\"price\":\"27.00\",\"stock\":4,\"authorId\":\"a6\",\"ownerId\":\"u2\"},{\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"format\":\"PAPERBACK\",\"price\":\"8.99\",\"stock\":12,\"authorId\":\"a7\",\"ownerId\":\"u1\"},{\"id\":\"b12\",\"title\":\"Never Let Me Go\",\"format\":\"EBOOK\",\"price\":\"6.99\",\"stock\":1000,\"authorId\":\"a7\",\"ownerId\":\"u1\"},{\"id\":\"b13\",\"title\":\"Klara and the Sun\",\"format\":\"HARDCOVER\",\"price\":\"28.00\",\"stock\":7,\"authorId\":\"a7\",\"ownerId\":\"u2\"},{\"id\":\"b14\",\"title\":\"Ficciones\",\"format\":\"PAPERBACK\",\"price\":\"9.00\",\"stock\":5,\"authorId\":\"a8\",\"ownerId\":\"u1\"},{\"id\":\"b15\",\"title\":\"Labyrinths\",\"format\":\"PAPERBACK\",\"price\":\"13.00\",\"stock\":3,\"authorId\":\"a8\",\"ownerId\":\"u2\"},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"format\":\"PAPERBACK\",\"price\":\"7.50\",\"stock\":18,\"authorId\":\"a9\",\"ownerId\":\"u1\"},{\"id\":\"b17\",\"title\":\"To the Lighthouse\",\"format\":\"HARDCOVER\",\"price\":\"19.00\",\"stock\":2,\"authorId\":\"a9\",\"ownerId\":\"u2\"},{\"id\":\"b18\",\"title\":\"Orlando\",\"format\":\"EBOOK\",\"price\":\"4.99\",\"stock\":1000,\"authorId\":\"a9\",\"ownerId\":\"u1\"},{\"id\":\"b19\",\"title\":\"Kafka on the Shore\",\"format\":\"PAPERBACK\",\"price\":\"12.50\",\"stock\":8,\"authorId\":\"a10\",\"ownerId\":\"u2\"},{\"id\":\"b2\",\"title\":\"Invisible Cities\",\"format\":\"HARDCOVER\",\"price\":\"19.50\",\"stock\":2,\"authorId\":\"a2\",\"ownerId\":\"u2\"},{\"id\":\"b20\",\"title\":\"Norwegian Wood\",\"format\":\"PAPERBACK\",\"price\":\"10.99\",\"stock\":11,\"authorId\":\"a10\",\"ownerId\":\"u1\"},{\"id\":\"b21\",\"title\":\"The Fifth Season\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":16,\"authorId\":\"a11\",\"ownerId\":\"u1\"},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":10,\"authorId\":\"a11\",\"ownerId\":\"u2\"},{\"id\":\"b23\",\"title\":\"The Stone Sky\",\"format\":\"HARDCOVER\",\"price\":\"26.00\",\"stock\":5,\"authorId\":\"a11\",\"ownerId\":\"u1\"},{\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\",\"format\":\"PAPERBACK\",\"price\":\"11.00\",\"stock\":13,\"authorId\":\"a12\",\"ownerId\":\"u2\"},{\"id\":\"b25\",\"title\":\"Exhalation\",\"format\":\"HARDCOVER\",\"price\":\"25.00\",\"stock\":6,\"authorId\":\"a12\",\"ownerId\":\"u1\"},{\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\",\"format\":\"PAPERBACK\",\"price\":\"10.49\",\"stock\":9,\"authorId\":\"a1\",\"ownerId\":\"u2\"},{\"id\":\"b27\",\"title\":\"The Lathe of Heaven\",\"format\":\"EBOOK\",\"price\":\"5.99\",\"stock\":1000,\"authorId\":\"a1\",\"ownerId\":\"u1\"}],\"total\":36}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"28bbc6e5edb7fc7e\""
+              },
+              "body": "{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\",\"bio\":\"American author of speculative fiction.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a6",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"de6a871eb8730c2d\""
+              },
+              "body": "{\"id\":\"a6\",\"name\":\"Chimamanda Ngozi Adichie\",\"bio\":\"Nigerian novelist and essayist.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a7",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"dca8d7b031d9dd19\""
+              },
+              "body": "{\"id\":\"a7\",\"name\":\"Kazuo Ishiguro\",\"bio\":\"Nobel laureate in Literature, 2017.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a8",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"74f6e8c2a1886d1b\""
+              },
+              "body": "{\"id\":\"a8\",\"name\":\"Jorge Luis Borges\",\"bio\":\"Argentine writer of short stories, essays and poems.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a9",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"b4e4cfde092a1b5e\""
+              },
+              "body": "{\"id\":\"a9\",\"name\":\"Virginia Woolf\",\"bio\":\"English modernist novelist and essayist.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a10",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"d74f7b665e26bb0e\""
+              },
+              "body": "{\"id\":\"a10\",\"name\":\"Haruki Murakami\",\"bio\":null}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a2",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"5251786f2bcf4a5b\""
+              },
+              "body": "{\"id\":\"a2\",\"name\":\"Italo Calvino\",\"bio\":null}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a11",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"6684c9a6cb4f0824\""
+              },
+              "body": "{\"id\":\"a11\",\"name\":\"N. K. Jemisin\",\"bio\":\"Won the Hugo Award for Best Novel three years running for the Broken Earth trilogy.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a12",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"ab92ad733f85292b\""
+              },
+              "body": "{\"id\":\"a12\",\"name\":\"Ted Chiang\",\"bio\":\"Author of the novella Story of Your Life.\"}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ books(first: 20) { items { id title author { name } } } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"books\":{\"items\":[{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b10\",\"title\":\"Americanah\",\"author\":{\"name\":\"Chimamanda Ngozi Adichie\"}},{\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b12\",\"title\":\"Never Let Me Go\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b13\",\"title\":\"Klara and the Sun\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b14\",\"title\":\"Ficciones\",\"author\":{\"name\":\"Jorge Luis Borges\"}},{\"id\":\"b15\",\"title\":\"Labyrinths\",\"author\":{\"name\":\"Jorge Luis Borges\"}},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b17\",\"title\":\"To the Lighthouse\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b18\",\"title\":\"Orlando\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b19\",\"title\":\"Kafka on the Shore\",\"author\":{\"name\":\"Haruki Murakami\"}},{\"id\":\"b2\",\"title\":\"Invisible Cities\",\"author\":{\"name\":\"Italo Calvino\"}},{\"id\":\"b20\",\"title\":\"Norwegian Wood\",\"author\":{\"name\":\"Haruki Murakami\"}},{\"id\":\"b21\",\"title\":\"The Fifth Season\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b23\",\"title\":\"The Stone Sky\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\",\"author\":{\"name\":\"Ted Chiang\"}},{\"id\":\"b25\",\"title\":\"Exhalation\",\"author\":{\"name\":\"Ted Chiang\"}},{\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b27\",\"title\":\"The Lathe of Heaven\",\"author\":{\"name\":\"Ursula K. Le Guin\"}}]}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ books(first: 20) { items { id title author { name } } } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"books\":{\"items\":[{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b10\",\"title\":\"Americanah\",\"author\":{\"name\":\"Chimamanda Ngozi Adichie\"}},{\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b12\",\"title\":\"Never Let Me Go\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b13\",\"title\":\"Klara and the Sun\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b14\",\"title\":\"Ficciones\",\"author\":{\"name\":\"Jorge Luis Borges\"}},{\"id\":\"b15\",\"title\":\"Labyrinths\",\"author\":{\"name\":\"Jorge Luis Borges\"}},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b17\",\"title\":\"To the Lighthouse\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b18\",\"title\":\"Orlando\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b19\",\"title\":\"Kafka on the Shore\",\"author\":{\"name\":\"Haruki Murakami\"}},{\"id\":\"b2\",\"title\":\"Invisible Cities\",\"author\":{\"name\":\"Italo Calvino\"}},{\"id\":\"b20\",\"title\":\"Norwegian Wood\",\"author\":{\"name\":\"Haruki Murakami\"}},{\"id\":\"b21\",\"title\":\"The Fifth Season\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b23\",\"title\":\"The Stone Sky\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\",\"author\":{\"name\":\"Ted Chiang\"}},{\"id\":\"b25\",\"title\":\"Exhalation\",\"author\":{\"name\":\"Ted Chiang\"}},{\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b27\",\"title\":\"The Lathe of Heaven\",\"author\":{\"name\":\"Ursula K. Le Guin\"}}]}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":20}},\"shape\":\"{ items { id title author { name } } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"author\":{\"$type\":\"Author\",\"name\":\"Ursula K. Le Guin\"}},{\"$type\":\"Book\",\"id\":\"b10\",\"title\":\"Americanah\",\"author\":{\"$type\":\"Author\",\"name\":\"Chimamanda Ngozi Adichie\"}},{\"$type\":\"Book\",\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"author\":{\"$type\":\"Author\",\"name\":\"Kazuo Ishiguro\"}},{\"$type\":\"Book\",\"id\":\"b12\",\"title\":\"Never Let Me Go\",\"author\":{\"$type\":\"Author\",\"name\":\"Kazuo Ishiguro\"}},{\"$type\":\"Book\",\"id\":\"b13\",\"title\":\"Klara and the Sun\",\"author\":{\"$type\":\"Author\",\"name\":\"Kazuo Ishiguro\"}},{\"$type\":\"Book\",\"id\":\"b14\",\"title\":\"Ficciones\",\"author\":{\"$type\":\"Author\",\"name\":\"Jorge Luis Borges\"}},{\"$type\":\"Book\",\"id\":\"b15\",\"title\":\"Labyrinths\",\"author\":{\"$type\":\"Author\",\"name\":\"Jorge Luis Borges\"}},{\"$type\":\"Book\",\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"author\":{\"$type\":\"Author\",\"name\":\"Virginia Woolf\"}},{\"$type\":\"Book\",\"id\":\"b17\",\"title\":\"To the Lighthouse\",\"author\":{\"$type\":\"Author\",\"name\":\"Virginia Woolf\"}},{\"$type\":\"Book\",\"id\":\"b18\",\"title\":\"Orlando\",\"author\":{\"$type\":\"Author\",\"name\":\"Virginia Woolf\"}},{\"$type\":\"Book\",\"id\":\"b19\",\"title\":\"Kafka on the Shore\",\"author\":{\"$type\":\"Author\",\"name\":\"Haruki Murakami\"}},{\"$type\":\"Book\",\"id\":\"b2\",\"title\":\"Invisible Cities\",\"author\":{\"$type\":\"Author\",\"name\":\"Italo Calvino\"}},{\"$type\":\"Book\",\"id\":\"b20\",\"title\":\"Norwegian Wood\",\"author\":{\"$type\":\"Author\",\"name\":\"Haruki Murakami\"}},{\"$type\":\"Book\",\"id\":\"b21\",\"title\":\"The Fifth Season\",\"author\":{\"$type\":\"Author\",\"name\":\"N. K. Jemisin\"}},{\"$type\":\"Book\",\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"author\":{\"$type\":\"Author\",\"name\":\"N. K. Jemisin\"}},{\"$type\":\"Book\",\"id\":\"b23\",\"title\":\"The Stone Sky\",\"author\":{\"$type\":\"Author\",\"name\":\"N. K. Jemisin\"}},{\"$type\":\"Book\",\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\",\"author\":{\"$type\":\"Author\",\"name\":\"Ted Chiang\"}},{\"$type\":\"Book\",\"id\":\"b25\",\"title\":\"Exhalation\",\"author\":{\"$type\":\"Author\",\"name\":\"Ted Chiang\"}},{\"$type\":\"Book\",\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\",\"author\":{\"$type\":\"Author\",\"name\":\"Ursula K. Le Guin\"}},{\"$type\":\"Book\",\"id\":\"b27\",\"title\":\"The Lathe of Heaven\",\"author\":{\"$type\":\"Author\",\"name\":\"Ursula K. Le Guin\"}}]},\"meta\":{\"cost\":46},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Payload for 20 books, only id + title wanted",
+      "values": {
+        "REST": 2375,
+        "GraphQL": 821,
+        "Rayfold": 635
+      },
+      "unit": "bytes (Rayfold = RB)",
+      "better": "lower",
+      "metric": "bytes on the wire",
+      "REST": "2375 (full resources)",
+      "GraphQL": "821",
+      "Rayfold": "830 compact JSON / 635 RB",
+      "note": "compact mode drops $type where the schema fixes it; RB halves it again",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books?limit=20",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"8d49a86461a8a49f\""
+              },
+              "body": "{\"items\":[{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\"},{\"id\":\"b10\",\"title\":\"Americanah\",\"format\":\"HARDCOVER\",\"price\":\"27.00\",\"stock\":4,\"authorId\":\"a6\",\"ownerId\":\"u2\"},{\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"format\":\"PAPERBACK\",\"price\":\"8.99\",\"stock\":12,\"authorId\":\"a7\",\"ownerId\":\"u1\"},{\"id\":\"b12\",\"title\":\"Never Let Me Go\",\"format\":\"EBOOK\",\"price\":\"6.99\",\"stock\":1000,\"authorId\":\"a7\",\"ownerId\":\"u1\"},{\"id\":\"b13\",\"title\":\"Klara and the Sun\",\"format\":\"HARDCOVER\",\"price\":\"28.00\",\"stock\":7,\"authorId\":\"a7\",\"ownerId\":\"u2\"},{\"id\":\"b14\",\"title\":\"Ficciones\",\"format\":\"PAPERBACK\",\"price\":\"9.00\",\"stock\":5,\"authorId\":\"a8\",\"ownerId\":\"u1\"},{\"id\":\"b15\",\"title\":\"Labyrinths\",\"format\":\"PAPERBACK\",\"price\":\"13.00\",\"stock\":3,\"authorId\":\"a8\",\"ownerId\":\"u2\"},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\",\"format\":\"PAPERBACK\",\"price\":\"7.50\",\"stock\":18,\"authorId\":\"a9\",\"ownerId\":\"u1\"},{\"id\":\"b17\",\"title\":\"To the Lighthouse\",\"format\":\"HARDCOVER\",\"price\":\"19.00\",\"stock\":2,\"authorId\":\"a9\",\"ownerId\":\"u2\"},{\"id\":\"b18\",\"title\":\"Orlando\",\"format\":\"EBOOK\",\"price\":\"4.99\",\"stock\":1000,\"authorId\":\"a9\",\"ownerId\":\"u1\"},{\"id\":\"b19\",\"title\":\"Kafka on the Shore\",\"format\":\"PAPERBACK\",\"price\":\"12.50\",\"stock\":8,\"authorId\":\"a10\",\"ownerId\":\"u2\"},{\"id\":\"b2\",\"title\":\"Invisible Cities\",\"format\":\"HARDCOVER\",\"price\":\"19.50\",\"stock\":2,\"authorId\":\"a2\",\"ownerId\":\"u2\"},{\"id\":\"b20\",\"title\":\"Norwegian Wood\",\"format\":\"PAPERBACK\",\"price\":\"10.99\",\"stock\":11,\"authorId\":\"a10\",\"ownerId\":\"u1\"},{\"id\":\"b21\",\"title\":\"The Fifth Season\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":16,\"authorId\":\"a11\",\"ownerId\":\"u1\"},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\",\"format\":\"PAPERBACK\",\"price\":\"9.99\",\"stock\":10,\"authorId\":\"a11\",\"ownerId\":\"u2\"},{\"id\":\"b23\",\"title\":\"The Stone Sky\",\"format\":\"HARDCOVER\",\"price\":\"26.00\",\"stock\":5,\"authorId\":\"a11\",\"ownerId\":\"u1\"},{\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\",\"format\":\"PAPERBACK\",\"price\":\"11.00\",\"stock\":13,\"authorId\":\"a12\",\"ownerId\":\"u2\"},{\"id\":\"b25\",\"title\":\"Exhalation\",\"format\":\"HARDCOVER\",\"price\":\"25.00\",\"stock\":6,\"authorId\":\"a12\",\"ownerId\":\"u1\"},{\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\",\"format\":\"PAPERBACK\",\"price\":\"10.49\",\"stock\":9,\"authorId\":\"a1\",\"ownerId\":\"u2\"},{\"id\":\"b27\",\"title\":\"The Lathe of Heaven\",\"format\":\"EBOOK\",\"price\":\"5.99\",\"stock\":1000,\"authorId\":\"a1\",\"ownerId\":\"u1\"}],\"total\":36}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ books(first: 20) { items { id title } } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"books\":{\"items\":[{\"id\":\"b1\",\"title\":\"The Dispossessed\"},{\"id\":\"b10\",\"title\":\"Americanah\"},{\"id\":\"b11\",\"title\":\"The Remains of the Day\"},{\"id\":\"b12\",\"title\":\"Never Let Me Go\"},{\"id\":\"b13\",\"title\":\"Klara and the Sun\"},{\"id\":\"b14\",\"title\":\"Ficciones\"},{\"id\":\"b15\",\"title\":\"Labyrinths\"},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\"},{\"id\":\"b17\",\"title\":\"To the Lighthouse\"},{\"id\":\"b18\",\"title\":\"Orlando\"},{\"id\":\"b19\",\"title\":\"Kafka on the Shore\"},{\"id\":\"b2\",\"title\":\"Invisible Cities\"},{\"id\":\"b20\",\"title\":\"Norwegian Wood\"},{\"id\":\"b21\",\"title\":\"The Fifth Season\"},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\"},{\"id\":\"b23\",\"title\":\"The Stone Sky\"},{\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\"},{\"id\":\"b25\",\"title\":\"Exhalation\"},{\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\"},{\"id\":\"b27\",\"title\":\"The Lathe of Heaven\"}]}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":20}},\"shape\":\"{ items { id title } }\",\"compact\":true}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"items\":[{\"id\":\"b1\",\"title\":\"The Dispossessed\"},{\"id\":\"b10\",\"title\":\"Americanah\"},{\"id\":\"b11\",\"title\":\"The Remains of the Day\"},{\"id\":\"b12\",\"title\":\"Never Let Me Go\"},{\"id\":\"b13\",\"title\":\"Klara and the Sun\"},{\"id\":\"b14\",\"title\":\"Ficciones\"},{\"id\":\"b15\",\"title\":\"Labyrinths\"},{\"id\":\"b16\",\"title\":\"Mrs Dalloway\"},{\"id\":\"b17\",\"title\":\"To the Lighthouse\"},{\"id\":\"b18\",\"title\":\"Orlando\"},{\"id\":\"b19\",\"title\":\"Kafka on the Shore\"},{\"id\":\"b2\",\"title\":\"Invisible Cities\"},{\"id\":\"b20\",\"title\":\"Norwegian Wood\"},{\"id\":\"b21\",\"title\":\"The Fifth Season\"},{\"id\":\"b22\",\"title\":\"The Obelisk Gate\"},{\"id\":\"b23\",\"title\":\"The Stone Sky\"},{\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\"},{\"id\":\"b25\",\"title\":\"Exhalation\"},{\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\"},{\"id\":\"b27\",\"title\":\"The Lathe of Heaven\"}]},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "accept": "application/rayfold",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":20}},\"shape\":\"{ items { id title } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold"
+              },
+              "body": "RB, 635 bytes on the wire, shown decoded:\n{\"id\":1,\"data\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\"},{\"$type\":\"Book\",\"id\":\"b10\",\"title\":\"Americanah\"},{\"$type\":\"Book\",\"id\":\"b11\",\"title\":\"The Remains of the Day\"},{\"$type\":\"Book\",\"id\":\"b12\",\"title\":\"Never Let Me Go\"},{\"$type\":\"Book\",\"id\":\"b13\",\"title\":\"Klara and the Sun\"},{\"$type\":\"Book\",\"id\":\"b14\",\"title\":\"Ficciones\"},{\"$type\":\"Book\",\"id\":\"b15\",\"title\":\"Labyrinths\"},{\"$type\":\"Book\",\"id\":\"b16\",\"title\":\"Mrs Dalloway\"},{\"$type\":\"Book\",\"id\":\"b17\",\"title\":\"To the Lighthouse\"},{\"$type\":\"Book\",\"id\":\"b18\",\"title\":\"Orlando\"},{\"$type\":\"Book\",\"id\":\"b19\",\"title\":\"Kafka on the Shore\"},{\"$type\":\"Book\",\"id\":\"b2\",\"title\":\"Invisible Cities\"},{\"$type\":\"Book\",\"id\":\"b20\",\"title\":\"Norwegian Wood\"},{\"$type\":\"Book\",\"id\":\"b21\",\"title\":\"The Fifth Season\"},{\"$type\":\"Book\",\"id\":\"b22\",\"title\":\"The Obelisk Gate\"},{\"$type\":\"Book\",\"id\":\"b23\",\"title\":\"The Stone Sky\"},{\"$type\":\"Book\",\"id\":\"b24\",\"title\":\"Stories of Your Life and Others\"},{\"$type\":\"Book\",\"id\":\"b25\",\"title\":\"Exhalation\"},{\"$type\":\"Book\",\"id\":\"b26\",\"title\":\"The Left Hand of Darkness\"},{\"$type\":\"Book\",\"id\":\"b27\",\"title\":\"The Lathe of Heaven\"}]},\"meta\":{\"cost\":26},\"fin\":true}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Place an order, then pay for it",
+      "values": {
+        "REST": 2,
+        "GraphQL": 2,
+        "Rayfold": 1
+      },
+      "unit": "round trips",
+      "better": "lower",
+      "metric": "round trips for two dependent commands",
+      "REST": "2",
+      "GraphQL": "2 (a mutation's result cannot feed a second mutation in the same document)",
+      "Rayfold": "1 ($ref pipelining)",
+      "note": "reading back the created order is 1 request on GraphQL too, via the mutation's selection set; dependent commands are where pipelining matters",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json",
+                "idempotency-key": "k-rest-pay-00001"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o1"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders/o1/pay",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PAID\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { placeOrder(lines: [{ bookId: \\\"b3\\\", qty: 1 }]) { id status } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"placeOrder\":{\"id\":\"o1\",\"status\":\"PLACED\"}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation($id: ID!) { payOrder(id: $id) { status } }\",\"variables\":{\"id\":\"o1\"}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"payOrder\":{\"status\":\"PAID\"}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}},\"key\":\"e2e-place-pay-0001\",\"shape\":\"{ id }\"},{\"id\":2,\"op\":\"payOrder\",\"args\":{\"id\":{\"$ref\":\"1.id\"}},\"key\":\"e2e-place-pay-0002\",\"shape\":\"{ id status }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\"}},{\"set\":\"Book:b3\",\"value\":{\"stock\":99}}],\"meta\":{\"cost\":1},\"fin\":true}\n{\"id\":2,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PAID\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PAID\"}}],\"meta\":{\"cost\":1},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Retrying a create",
+      "values": {
+        "REST": 1,
+        "GraphQL": 1,
+        "Rayfold": 0
+      },
+      "unit": "duplicate orders (client forgot the key)",
+      "better": "lower",
+      "metric": "duplicate orders after a retry",
+      "REST": "0 with Idempotency-Key, 1 without (optional convention)",
+      "GraphQL": "1 (no idempotency concept)",
+      "Rayfold": "0 (key mandatory, replay returned, missing key rejected)",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json",
+                "idempotency-key": "k-rest-1"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o1"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json",
+                "idempotency-key": "k-rest-1"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "idempotent-replayed": "true"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            },
+            "label": "retry with the same Idempotency-Key: replayed"
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o2"
+              },
+              "body": "{\"id\":\"o2\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            },
+            "label": "a client that forgets the header"
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o3"
+              },
+              "body": "{\"id\":\"o3\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b3\",\"qty\":1,\"unitPrice\":\"8.00\"}],\"total\":\"8.00\"}"
+            },
+            "label": "its retry: a second order"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { placeOrder(lines: [{ bookId: \\\"b3\\\", qty: 1 }]) { id } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"placeOrder\":{\"id\":\"o1\"}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { placeOrder(lines: [{ bookId: \\\"b3\\\", qty: 1 }]) { id } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"placeOrder\":{\"id\":\"o2\"}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}},\"key\":\"e2e-retry-000000001\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}}]},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$ref\":\"Book:b3\"}}]}},{\"set\":\"Book:b3\",\"value\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}},{\"set\":\"Book:b3\",\"value\":{\"stock\":99}}],\"meta\":{\"cost\":3},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}},\"key\":\"e2e-retry-000000001\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}}]},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$ref\":\"Book:b3\"}}]}},{\"set\":\"Book:b3\",\"value\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}},{\"set\":\"Book:b3\",\"value\":{\"stock\":99}}],\"meta\":{\"cost\":3,\"replay\":true},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}}}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"invalid_argument\",\"message\":\"placeOrder(): commands require an idempotency key of 16-128 characters\"},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Domain error (out of stock)",
+      "values": {
+        "REST": 0,
+        "GraphQL": 0,
+        "Rayfold": 1
+      },
+      "unit": "declared in the contract (1 = yes)",
+      "better": "higher",
+      "metric": "how a client learns the error type",
+      "REST": "HTTP 409 + body shape by convention, undocumented",
+      "GraphQL": "HTTP 200, errors[].extensions.code by convention, data: null",
+      "Rayfold": "declared `throws OutOfStock { bookId, available }`, typed payload, generated client union",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b4\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 409,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"error\":\"out_of_stock\",\"bookId\":\"b4\",\"available\":0}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { placeOrder(lines: [{ bookId: \\\"b4\\\", qty: 1 }]) { id } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"errors\":[{\"message\":\"Only 0 of A Wizard of Earthsea left\",\"locations\":[{\"line\":1,\"column\":12}],\"path\":[\"placeOrder\"],\"extensions\":{\"code\":\"OUT_OF_STOCK\",\"bookId\":\"b4\",\"available\":0}}],\"data\":null}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b4\",\"qty\":1}]}},\"key\":\"e2e-oos-0000000001\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"domain\",\"message\":\"Only 0 of A Wizard of Earthsea left\",\"type\":\"OutOfStock\",\"data\":{\"bookId\":\"b4\",\"available\":0}},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Invalid input (qty: \"two\", then qty: 0)",
+      "values": {
+        "REST": 0,
+        "GraphQL": 1,
+        "Rayfold": 2
+      },
+      "unit": "of 2 bad requests rejected before side effects",
+      "better": "higher",
+      "metric": "rejected before side effects?",
+      "REST": "neither (orders created with NaN and 0 quantity)",
+      "GraphQL": "type error only; qty 0 creates an order",
+      "Rayfold": "both: type system plus @range(min: 1) declared in the schema",
+      "note": "constraints live in the contract, so generated clients, agents and docs see them too",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b1\",\"qty\":\"two\"}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o1"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b1\",\"qty\":\"two\",\"unitPrice\":\"12.99\"}],\"total\":\"NaN\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b1\",\"qty\":0}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o2"
+              },
+              "body": "{\"id\":\"o2\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b1\",\"qty\":0,\"unitPrice\":\"12.99\"}],\"total\":\"0.00\"}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { placeOrder(lines: [{ bookId: \\\"b1\\\", qty: \\\"two\\\" }]) { id } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"errors\":[{\"message\":\"Int cannot represent non-integer value: \\\"two\\\"\",\"locations\":[{\"line\":1,\"column\":52}]}]}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { placeOrder(lines: [{ bookId: \\\"b1\\\", qty: 0 }]) { id } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"placeOrder\":{\"id\":\"o1\"}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":\"two\"}]}},\"key\":\"e2e-bad-00000000001\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"invalid_argument\",\"message\":\"placeOrder().input.lines.0.qty: expected Int\"},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":0}]}},\"key\":\"e2e-bad-00000000002\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"invalid_argument\",\"message\":\"placeOrder().input.lines.0.qty: must be >= 1\"},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Field-level authorization (costPrice)",
+      "values": {
+        "REST": 0,
+        "GraphQL": 0,
+        "Rayfold": 1
+      },
+      "unit": "rule in the contract, explicit denial (1 = yes)",
+      "better": "higher",
+      "metric": "where the rule lives / what a denied caller sees",
+      "REST": "in each handler; field omitted",
+      "GraphQL": "in each resolver; null (ambiguous)",
+      "Rayfold": "in the schema (`@allow`); explicit unauthenticated/permission_denied with path, default view omits it",
+      "note": "Rayfold's `rayfold check` warns when a policy is added or removed",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"448f56b82184d34f\""
+              },
+              "body": "{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "private, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"48dabfb775d04fcf\""
+              },
+              "body": "{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\",\"costPrice\":\"6.10\"}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ book(id: \\\"b1\\\") { costPrice } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"book\":{\"costPrice\":null}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ book(id: \\\"b1\\\") { costPrice } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"book\":{\"costPrice\":\"6.10\"}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id costPrice }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"unauthenticated\",\"message\":\"Sign in to access Book.costPrice\",\"path\":\"costPrice\"},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u2",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id costPrice }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"permission_denied\",\"message\":\"Not allowed to access Book.costPrice\",\"path\":\"costPrice\"},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id costPrice }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"costPrice\":\"6.10\"},\"meta\":{\"cost\":1},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"}}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"$type\":\"Author\",\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"}},\"meta\":{\"cost\":2},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Shared HTTP caching of a whole product page",
+      "values": {
+        "REST": 486,
+        "GraphQL": 355,
+        "Rayfold": 344
+      },
+      "unit": "bytes on the repeat view (headers + body)",
+      "better": "lower",
+      "metric": "repeat view through a shared cache",
+      "REST": "3 revalidations (3 x 304), 486 B",
+      "GraphQL": "1 uncacheable POST, 355 B",
+      "Rayfold": "1 safe batch, 1 x 304, 344 B",
+      "note": "Rayfold derives Cache-Control from @cache and policies; viewer-guarded data is private automatically",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"448f56b82184d34f\""
+              },
+              "body": "{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a1",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"28bbc6e5edb7fc7e\""
+              },
+              "body": "{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\",\"bio\":\"American author of speculative fiction.\"}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/reviews?bookId=b1&limit=3",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"cb5cb358af1b2242\""
+              },
+              "body": "{\"items\":[{\"id\":\"r1\",\"rating\":5,\"body\":\"Ambiguous utopia, unambiguous masterpiece.\",\"bookId\":\"b1\",\"reviewerId\":\"u2\",\"version\":1},{\"id\":\"r4\",\"rating\":3,\"body\":\"Slow start.\",\"bookId\":\"b1\",\"reviewerId\":\"u3\",\"version\":1}]}"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b1",
+              "headers": {
+                "if-none-match": "\"448f56b82184d34f\""
+              }
+            },
+            "response": {
+              "status": 304,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "etag": "\"448f56b82184d34f\""
+              },
+              "body": ""
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a1",
+              "headers": {
+                "if-none-match": "\"28bbc6e5edb7fc7e\""
+              }
+            },
+            "response": {
+              "status": 304,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "etag": "\"28bbc6e5edb7fc7e\""
+              },
+              "body": ""
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/reviews?bookId=b1&limit=3",
+              "headers": {
+                "if-none-match": "\"cb5cb358af1b2242\""
+              }
+            },
+            "response": {
+              "status": 304,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "etag": "\"cb5cb358af1b2242\""
+              },
+              "body": ""
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ book(id: \\\"b1\\\") { id title author { name } reviews(first: 3) { id rating } } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"book\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"author\":{\"name\":\"Ursula K. Le Guin\"},\"reviews\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ book(id: \\\"b1\\\") { id title author { name } reviews(first: 3) { id rating } } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"book\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"author\":{\"name\":\"Ursula K. Le Guin\"},\"reviews\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "rayfold-safe": "true"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author { name } reviews(page: { first: 3 }) { items { id rating } } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/rayfold-frames+json",
+                "etag": "\"sha256-1a9004707c0a94e790d7b9c5ea61fb3f2c641ea488b43df8eb50fdd40839b23b\""
+              },
+              "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\",\"title\":\"The Dispossessed\",\"author\":{\"$type\":\"Author\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"$type\":\"Review\",\"id\":\"r1\",\"rating\":5},{\"$type\":\"Review\",\"id\":\"r4\",\"rating\":3}]}},\"meta\":{\"cost\":7},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json",
+                "if-none-match": "\"sha256-1a9004707c0a94e790d7b9c5ea61fb3f2c641ea488b43df8eb50fdd40839b23b\"",
+                "rayfold-safe": "true"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id title author { name } reviews(page: { first: 3 }) { items { id rating } } }\"}]}"
+            },
+            "response": {
+              "status": 304,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "etag": "\"sha256-1a9004707c0a94e790d7b9c5ea61fb3f2c641ea488b43df8eb50fdd40839b23b\""
+              },
+              "body": ""
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/rayfold/order?a=eyJpZCI6Im8xIn0",
+              "headers": {
+                "authorization": "Bearer u1"
+              }
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "private, max-age=0, no-cache",
+                "content-type": "application/rayfold-frames+json",
+                "etag": "\"sha256-1233f8eaec85365829104f897cf9f44339e436b423200dbd5b66ddee90603f40\""
+              },
+              "body": "{\"id\":1,\"data\":null,\"meta\":{\"cost\":3},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "List view after placing an order",
+      "values": {
+        "REST": 1,
+        "GraphQL": 1,
+        "Rayfold": 0
+      },
+      "unit": "extra requests to be correct",
+      "better": "lower",
+      "metric": "requests to make the earlier view correct",
+      "REST": "1 refetch (or a stale UI)",
+      "GraphQL": "1 refetch: a normalized cache only learns what the mutation selected, and stock was a side effect",
+      "Rayfold": "0: the server sends the stock change as a patch even though the command selected only the order",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books?limit=5",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"b81d0f6498ed0df8\""
+              },
+              "body": "{\"items\":[{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"authorId\":\"a1\",\"ownerId\":\"u1\"},{\"id\":\"b10\",\"title\":\"Americanah\",\"format\":\"HARDCOVER\",\"price\":\"27.00\",\"stock\":4,\"authorId\":\"a6\",\"ownerId\":\"u2\"},{\"id\":\"b11\",\"title\":\"The Remains of the Day\",\"format\":\"PAPERBACK\",\"price\":\"8.99\",\"stock\":12,\"authorId\":\"a7\",\"ownerId\":\"u1\"},{\"id\":\"b12\",\"title\":\"Never Let Me Go\",\"format\":\"EBOOK\",\"price\":\"6.99\",\"stock\":1000,\"authorId\":\"a7\",\"ownerId\":\"u1\"},{\"id\":\"b13\",\"title\":\"Klara and the Sun\",\"format\":\"HARDCOVER\",\"price\":\"28.00\",\"stock\":7,\"authorId\":\"a7\",\"ownerId\":\"u2\"}],\"total\":36}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/orders",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json",
+                "idempotency-key": "k-rest-coh"
+              },
+              "body": "{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}"
+            },
+            "response": {
+              "status": 201,
+              "headers": {
+                "content-type": "application/json",
+                "location": "/orders/o1"
+              },
+              "body": "{\"id\":\"o1\",\"status\":\"PLACED\",\"customerId\":\"u1\",\"items\":[{\"bookId\":\"b1\",\"qty\":1,\"unitPrice\":\"12.99\"}],\"total\":\"12.99\"}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ books(first: 5) { items { __typename id stock } } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"books\":{\"items\":[{\"__typename\":\"Book\",\"id\":\"b1\",\"stock\":5},{\"__typename\":\"Book\",\"id\":\"b10\",\"stock\":4},{\"__typename\":\"Book\",\"id\":\"b11\",\"stock\":12},{\"__typename\":\"Book\",\"id\":\"b12\",\"stock\":1000},{\"__typename\":\"Book\",\"id\":\"b13\",\"stock\":7}]}}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { placeOrder(lines: [{ bookId: \\\"b1\\\", qty: 1 }]) { __typename id status total } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"placeOrder\":{\"__typename\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"12.99\"}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "accept": "application/rayfold-frames+json",
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":5}},\"shape\":\"{ items { id stock } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\",\"stock\":5},{\"$type\":\"Book\",\"id\":\"b10\",\"stock\":4},{\"$type\":\"Book\",\"id\":\"b11\",\"stock\":12},{\"$type\":\"Book\",\"id\":\"b12\",\"stock\":1000},{\"$type\":\"Book\",\"id\":\"b13\",\"stock\":7}]},\"meta\":{\"cost\":11},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "accept": "application/rayfold-frames+json",
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"d996514cbdee4480b8a6b138eff66565\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"12.99\"},\"patch\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"12.99\"}},{\"set\":\"Book:b1\",\"value\":{\"stock\":4}}],\"meta\":{\"cost\":1},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Realtime stock updates",
+      "values": {
+        "REST": 3,
+        "GraphQL": 4,
+        "Rayfold": 1
+      },
+      "unit": "pieces the developer writes",
+      "better": "lower",
+      "metric": "what the developer writes",
+      "REST": "an SSE endpoint + event fan-out + client merge code",
+      "GraphQL": "a Subscription type + resolver + async iterator + client merge code",
+      "Rayfold": "`live: true` on the existing query; server diffs, client cache patched",
+      "note": "Rayfold: the subscription reuses shape, policies and cache",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/events",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "text/event-stream"
+              },
+              "body": ": connected\n\ndata: {\"bookId\":\"b2\",\"stock\":3}\n\n\n(stream closed by the client)"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/books/b2?action=restock&qty=1",
+              "headers": {
+                "authorization": "Bearer admin",
+                "content-type": "application/json"
+              },
+              "body": "{}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"id\":\"b2\",\"title\":\"Invisible Cities\",\"format\":\"HARDCOVER\",\"price\":\"19.50\",\"stock\":3,\"authorId\":\"a2\",\"ownerId\":\"u2\",\"costPrice\":\"9.00\"}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"subscription { stockChanged(bookId: \\\"b2\\\") { bookId stock } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "text/event-stream"
+              },
+              "body": ": subscribed\n\ndata: {\"data\":{\"stockChanged\":{\"bookId\":\"b2\",\"stock\":3}}}\n\n\n(stream closed by the client)"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "authorization": "Bearer admin",
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"mutation { restock(bookId: \\\"b2\\\", qty: 1) { stock } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"restock\":{\"stock\":3}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "accept": "application/rayfold-frames+json",
+                "authorization": "Bearer u1",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b2\"},\"shape\":\"{ id stock }\",\"live\":true}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b2\",\"stock\":2},\"meta\":{\"cost\":1}}\n{\"id\":1,\"patch\":[{\"set\":\"Book:b2\",\"value\":{\"stock\":3}}]}\n\n(stream closed by the client)"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "accept": "application/rayfold-frames+json",
+                "authorization": "Bearer admin",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"ee9e30051054497a9e9e07da534dd0a3\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"ok\":{\"$type\":\"Book\",\"id\":\"b2\",\"title\":\"Invisible Cities\",\"format\":\"HARDCOVER\",\"price\":\"19.50\",\"stock\":3,\"author\":{\"$type\":\"Author\",\"id\":\"a2\",\"name\":\"Italo Calvino\"}},\"patch\":[{\"set\":\"Book:b2\",\"value\":{\"$type\":\"Book\",\"id\":\"b2\",\"title\":\"Invisible Cities\",\"format\":\"HARDCOVER\",\"price\":\"19.50\",\"stock\":3,\"author\":{\"$ref\":\"Author:a2\"}}},{\"set\":\"Author:a2\",\"value\":{\"$type\":\"Author\",\"id\":\"a2\",\"name\":\"Italo Calvino\"}}],\"meta\":{\"cost\":2},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Removing a field",
+      "values": {
+        "REST": 1,
+        "GraphQL": 2,
+        "Rayfold": 3
+      },
+      "unit": "removals decided right, of 3 (unannounced, before sunset, after sunset)",
+      "better": "higher",
+      "metric": "what the tooling decides",
+      "REST": "no field-level contract to diff: every removal ships, announced or not",
+      "GraphQL": "graphql-js findBreakingChanges flags every removal; @deprecated has no date, so a finished deprecation is flagged too",
+      "Rayfold": "`rayfold check` blocks unannounced and early removals and allows them after @deprecated(sunset:)",
+      "note": "Removing Review.body. rayfold check: breaking:field-removed / breaking:field-removed / compatible:field-removed-after-sunset. graphql-js: \"Review.body was removed.\" in all three cases.",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/openapi.json",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"4bb8237a4458deae\""
+              },
+              "body": "{\"openapi\":\"3.1.0\",\"paths\":{\"/books\":{},\"/books/{id}\":{},\"/authors/{id}\":{},\"/reviews\":{},\"/orders\":{},\"/orders/{id}\":{}}}"
+            },
+            "label": "the published contract a diff tool would compare"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ __type(name: \\\"Review\\\") { fields(includeDeprecated: true) { name isDeprecated deprecationReason } } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"__type\":{\"fields\":[{\"name\":\"id\",\"isDeprecated\":false,\"deprecationReason\":null},{\"name\":\"rating\",\"isDeprecated\":false,\"deprecationReason\":null},{\"name\":\"body\",\"isDeprecated\":false,\"deprecationReason\":null},{\"name\":\"reviewerId\",\"isDeprecated\":false,\"deprecationReason\":null}]}}}"
+            },
+            "label": "what a client or a tool can learn about Review.body"
+          }
+        ],
+        "Rayfold": []
+      }
+    },
+    {
+      "aspect": "Abusive query (200 x 200 x 200 nested)",
+      "values": {
+        "REST": 0,
+        "GraphQL": 0,
+        "Rayfold": 1
+      },
+      "unit": "rejected before execution (1 = yes)",
+      "better": "higher",
+      "metric": "rejected before execution?",
+      "REST": "n/a (no query language)",
+      "GraphQL": "no, unless a cost plugin is added",
+      "Rayfold": "yes: static cost vs budget, from @cost and page sizes",
+      "verdict": "lead",
+      "examples": {
+        "REST": [],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ books(first: 200) { items { id author { name } } } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"books\":{\"items\":[{\"id\":\"b1\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b10\",\"author\":{\"name\":\"Chimamanda Ngozi Adichie\"}},{\"id\":\"b11\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b12\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b13\",\"author\":{\"name\":\"Kazuo Ishiguro\"}},{\"id\":\"b14\",\"author\":{\"name\":\"Jorge Luis Borges\"}},{\"id\":\"b15\",\"author\":{\"name\":\"Jorge Luis Borges\"}},{\"id\":\"b16\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b17\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b18\",\"author\":{\"name\":\"Virginia Woolf\"}},{\"id\":\"b19\",\"author\":{\"name\":\"Haruki Murakami\"}},{\"id\":\"b2\",\"author\":{\"name\":\"Italo Calvino\"}},{\"id\":\"b20\",\"author\":{\"name\":\"Haruki Murakami\"}},{\"id\":\"b21\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b22\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b23\",\"author\":{\"name\":\"N. K. Jemisin\"}},{\"id\":\"b24\",\"author\":{\"name\":\"Ted Chiang\"}},{\"id\":\"b25\",\"author\":{\"name\":\"Ted Chiang\"}},{\"id\":\"b26\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b27\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b28\",\"author\":{\"name\":\"Italo Calvino\"}},{\"id\":\"b29\",\"author\":{\"name\":\"Italo Calvino\"}},{\"id\":\"b3\",\"author\":{\"name\":\"Octavia E. Butler\"}},{\"id\":\"b30\",\"author\":{\"name\":\"Octavia E. Butler\"}},{\"id\":\"b31\",\"author\":{\"name\":\"Octavia E. Butler\"}},{\"id\":\"b32\",\"author\":{\"name\":\"Toni Morrison\"}},{\"id\":\"b33\",\"author\":{\"name\":\"Gabriel García Márquez\"}},{\"id\":\"b34\",\"author\":{\"name\":\"Chimamanda Ngozi Adichie\"}},{\"id\":\"b35\",\"author\":{\"name\":\"Haruki Murakami\"}},{\"id\":\"b36\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b4\",\"author\":{\"name\":\"Ursula K. Le Guin\"}},{\"id\":\"b5\",\"author\":{\"name\":\"Toni Morrison\"}},{\"id\":\"b6\",\"author\":{\"name\":\"Toni Morrison\"}},{\"id\":\"b7\",\"author\":{\"name\":\"Gabriel García Márquez\"}},{\"id\":\"b8\",\"author\":{\"name\":\"Gabriel García Márquez\"}},{\"id\":\"b9\",\"author\":{\"name\":\"Chimamanda Ngozi Adichie\"}}]}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id author { books(page: { first: 200 }) { items { id author { books(page: { first: 200 }) { items { id } } } } } } } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"error\":{\"code\":\"resource_exhausted\",\"message\":\"Batch cost 8160806 exceeds budget 1000\",\"data\":{\"cost\":8160806,\"budget\":1000}},\"fin\":true}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Exposing the API to an AI agent",
+      "values": {
+        "REST": 2,
+        "GraphQL": 2,
+        "Rayfold": 0
+      },
+      "unit": "extra components to build",
+      "better": "lower",
+      "metric": "extra work for tools with typed input/output",
+      "REST": "hand-written OpenAPI + adapter; no dry-run",
+      "GraphQL": "introspection + custom glue; no dry-run",
+      "Rayfold": "none: /mcp lists tools with JSON Schema, `.simulate` dry-runs, typed errors",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/openapi.json",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"4bb8237a4458deae\""
+              },
+              "body": "{\"openapi\":\"3.1.0\",\"paths\":{\"/books\":{},\"/books/{id}\":{},\"/authors/{id}\":{},\"/reviews\":{},\"/orders\":{},\"/orders/{id}\":{}}}"
+            }
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ __schema { mutationType { fields { name } } } }\",\"variables\":{}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"__schema\":{\"mutationType\":{\"fields\":[{\"name\":\"placeOrder\"},{\"name\":\"payOrder\"},{\"name\":\"restock\"},{\"name\":\"editReview\"},{\"name\":\"updateBook\"},{\"name\":\"deleteReview\"}]}}}}"
+            }
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/mcp",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"books\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"filter\":{\"anyOf\":[{\"$ref\":\"#/$defs/BookFilter\"},{\"type\":\"null\"}]},\"page\":{\"$ref\":\"#/$defs/PageArgs\"}},\"additionalProperties\":false,\"$defs\":{\"BookFilter\":{\"type\":\"object\",\"properties\":{\"titleContains\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"format\":{\"anyOf\":[{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},{\"type\":\"null\"}]},\"authorId\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"maxPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}]}},\"additionalProperties\":false},\"PageArgs\":{\"type\":\"object\",\"properties\":{\"first\":{\"type\":\"integer\"},\"after\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"offset\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Page_Book\"}},\"required\":[\"result\"],\"$defs\":{\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"List books, newest first. Read-only.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"book\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"anyOf\":[{\"$ref\":\"#/$defs/Book\"},{\"type\":\"null\"}]}},\"required\":[\"result\"],\"$defs\":{\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Read-only.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"author\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"anyOf\":[{\"$ref\":\"#/$defs/Author\"},{\"type\":\"null\"}]}},\"required\":[\"result\"],\"$defs\":{\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Read-only.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"review\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"anyOf\":[{\"$ref\":\"#/$defs/Review\"},{\"type\":\"null\"}]}},\"required\":[\"result\"],\"$defs\":{\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]}}},\"description\":\"Read-only.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"order\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"anyOf\":[{\"$ref\":\"#/$defs/Order\"},{\"type\":\"null\"}]}},\"required\":[\"result\"],\"$defs\":{\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Read-only.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"myOrders\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"page\":{\"$ref\":\"#/$defs/PageArgs\"}},\"additionalProperties\":false,\"$defs\":{\"PageArgs\":{\"type\":\"object\",\"properties\":{\"first\":{\"type\":\"integer\"},\"after\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"offset\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Page_Order\"}},\"required\":[\"result\"],\"$defs\":{\"Page_Order\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Order\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Read-only.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"placeOrder\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"input\":{\"$ref\":\"#/$defs/OrderInput\"}},\"additionalProperties\":false,\"required\":[\"input\"],\"$defs\":{\"OrderInput\":{\"type\":\"object\",\"properties\":{\"lines\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderLine\"}}},\"additionalProperties\":false,\"required\":[\"lines\"]},\"OrderLine\":{\"type\":\"object\",\"properties\":{\"bookId\":{\"type\":\"string\"},\"qty\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":100},\"minimum\":1,\"maximum\":100}},\"additionalProperties\":false,\"required\":[\"bookId\"]}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Order\"}},\"required\":[\"result\"],\"$defs\":{\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Place an order. Fails atomically if any line is out of stock. May fail with: OutOfStock, PaymentDeclined. Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"placeOrder.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"input\":{\"$ref\":\"#/$defs/OrderInput\"}},\"additionalProperties\":false,\"required\":[\"input\"],\"$defs\":{\"OrderInput\":{\"type\":\"object\",\"properties\":{\"lines\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderLine\"}}},\"additionalProperties\":false,\"required\":[\"lines\"]},\"OrderLine\":{\"type\":\"object\",\"properties\":{\"bookId\":{\"type\":\"string\"},\"qty\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":100},\"minimum\":1,\"maximum\":100}},\"additionalProperties\":false,\"required\":[\"bookId\"]}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Order\"}},\"required\":[\"result\"],\"$defs\":{\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Dry run of placeOrder: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"payOrder\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Order\"}},\"required\":[\"result\"],\"$defs\":{\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Pay for a placed order. May fail with: PaymentDeclined, NotPayable. Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"payOrder.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Order\"}},\"required\":[\"result\"],\"$defs\":{\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Dry run of payOrder: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"cancelOrder\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Order\"}},\"required\":[\"result\"],\"$defs\":{\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"May fail with: NotCancellable. Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"cancelOrder.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Order\"}},\"required\":[\"result\"],\"$defs\":{\"Order\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Order\"},\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"PLACED\",\"PAID\",\"SHIPPED\",\"CANCELLED\"]},\"customerId\":{\"type\":\"string\"},\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/OrderItem\"}},\"total\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"customerId\",\"items\",\"total\"]},\"OrderItem\":{\"type\":\"object\",\"properties\":{\"book\":{\"$ref\":\"#/$defs/Book\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"}},\"additionalProperties\":false,\"required\":[\"book\",\"qty\",\"unitPrice\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Dry run of cancelOrder: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"addReview\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"input\":{\"$ref\":\"#/$defs/ReviewInput\"}},\"additionalProperties\":false,\"required\":[\"input\"],\"$defs\":{\"ReviewInput\":{\"type\":\"object\",\"properties\":{\"bookId\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\",\"x-rayfold-range\":{\"min\":1,\"max\":2000},\"minLength\":1,\"maxLength\":2000}},\"additionalProperties\":false,\"required\":[\"bookId\",\"rating\",\"body\"]}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Review\"}},\"required\":[\"result\"],\"$defs\":{\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]}}},\"description\":\"Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"addReview.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"input\":{\"$ref\":\"#/$defs/ReviewInput\"}},\"additionalProperties\":false,\"required\":[\"input\"],\"$defs\":{\"ReviewInput\":{\"type\":\"object\",\"properties\":{\"bookId\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\",\"x-rayfold-range\":{\"min\":1,\"max\":2000},\"minLength\":1,\"maxLength\":2000}},\"additionalProperties\":false,\"required\":[\"bookId\",\"rating\",\"body\"]}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Review\"}},\"required\":[\"result\"],\"$defs\":{\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]}}},\"description\":\"Dry run of addReview: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"editReview\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"input\":{\"$ref\":\"#/$defs/ReviewEdit\"}},\"additionalProperties\":false,\"required\":[\"id\",\"input\"],\"$defs\":{\"ReviewEdit\":{\"type\":\"object\",\"properties\":{\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\",\"x-rayfold-range\":{\"min\":1,\"max\":2000},\"minLength\":1,\"maxLength\":2000}},\"additionalProperties\":false,\"required\":[\"rating\",\"body\"]}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Review\"}},\"required\":[\"result\"],\"$defs\":{\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]}}},\"description\":\"Replace a review's rating and text. Only its author (or an admin) may edit it. Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"editReview.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"input\":{\"$ref\":\"#/$defs/ReviewEdit\"}},\"additionalProperties\":false,\"required\":[\"id\",\"input\"],\"$defs\":{\"ReviewEdit\":{\"type\":\"object\",\"properties\":{\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\",\"x-rayfold-range\":{\"min\":1,\"max\":2000},\"minLength\":1,\"maxLength\":2000}},\"additionalProperties\":false,\"required\":[\"rating\",\"body\"]}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Review\"}},\"required\":[\"result\"],\"$defs\":{\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]}}},\"description\":\"Dry run of editReview: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"updateBook\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"patch\":{\"$ref\":\"#/$defs/BookPatch\"}},\"additionalProperties\":false,\"required\":[\"id\",\"patch\"],\"$defs\":{\"BookPatch\":{\"type\":\"object\",\"properties\":{\"title\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"x-rayfold-range\":{\"min\":1,\"max\":200},\"minLength\":1,\"maxLength\":200},\"price\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"x-rayfold-range\":{\"min\":0}},\"stock\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}],\"x-rayfold-range\":{\"min\":0},\"minimum\":0}},\"additionalProperties\":false,\"description\":\"Partial update: absent fields are left unchanged.\"}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Book\"}},\"required\":[\"result\"],\"$defs\":{\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Change some fields of a book; fields not sent are left as they are. Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"updateBook.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"patch\":{\"$ref\":\"#/$defs/BookPatch\"}},\"additionalProperties\":false,\"required\":[\"id\",\"patch\"],\"$defs\":{\"BookPatch\":{\"type\":\"object\",\"properties\":{\"title\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"x-rayfold-range\":{\"min\":1,\"max\":200},\"minLength\":1,\"maxLength\":200},\"price\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"x-rayfold-range\":{\"min\":0}},\"stock\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}],\"x-rayfold-range\":{\"min\":0},\"minimum\":0}},\"additionalProperties\":false,\"description\":\"Partial update: absent fields are left unchanged.\"}}},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Book\"}},\"required\":[\"result\"],\"$defs\":{\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Dry run of updateBook: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"deleteReview\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Review\"}},\"required\":[\"result\"],\"$defs\":{\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]}}},\"description\":\"Delete a review. Only its author (or an admin) may delete it. Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"deleteReview.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Review\"}},\"required\":[\"result\"],\"$defs\":{\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]},\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]}}},\"description\":\"Dry run of deleteReview: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}},{\"name\":\"restock\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"bookId\":{\"type\":\"string\"},\"qty\":{\"type\":\"integer\"}},\"additionalProperties\":false,\"required\":[\"bookId\",\"qty\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Book\"}},\"required\":[\"result\"],\"$defs\":{\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Changes state; idempotent per call key.\",\"annotations\":{\"readOnlyHint\":false,\"destructiveHint\":true,\"idempotentHint\":true}},{\"name\":\"restock.simulate\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"bookId\":{\"type\":\"string\"},\"qty\":{\"type\":\"integer\"}},\"additionalProperties\":false,\"required\":[\"bookId\",\"qty\"]},\"outputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"result\":{\"$ref\":\"#/$defs/Book\"}},\"required\":[\"result\"],\"$defs\":{\"Book\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Book\"},\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"format\":{\"type\":\"string\",\"enum\":[\"HARDCOVER\",\"PAPERBACK\",\"EBOOK\"]},\"price\":{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\",\"description\":\"Unit price in the store currency.\"},\"stock\":{\"type\":\"integer\"},\"author\":{\"$ref\":\"#/$defs/Author\"},\"reviews\":{\"$ref\":\"#/$defs/Page_Review\"},\"costPrice\":{\"anyOf\":[{\"type\":\"string\",\"pattern\":\"^-?\\\\d+(\\\\.\\\\d+)?$\"},{\"type\":\"null\"}],\"description\":\"Only the owner (or an admin) can see the cost price.\"},\"ownerId\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"format\",\"price\",\"stock\",\"author\",\"reviews\",\"ownerId\"]},\"Author\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Author\"},\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"bio\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"books\":{\"$ref\":\"#/$defs/Page_Book\"}},\"additionalProperties\":false,\"required\":[\"id\",\"name\",\"books\"]},\"Page_Book\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Book\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Page_Review\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Review\"}},\"cursor\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"hasMore\":{\"type\":\"boolean\"},\"total\":{\"anyOf\":[{\"type\":\"integer\"},{\"type\":\"null\"}]}},\"additionalProperties\":false,\"required\":[\"items\",\"hasMore\"]},\"Review\":{\"type\":\"object\",\"properties\":{\"$type\":{\"const\":\"Review\"},\"id\":{\"type\":\"string\"},\"rating\":{\"type\":\"integer\",\"x-rayfold-range\":{\"min\":1,\"max\":5},\"minimum\":1,\"maximum\":5},\"body\":{\"type\":\"string\"},\"book\":{\"$ref\":\"#/$defs/Book\"},\"reviewerId\":{\"type\":\"string\"},\"version\":{\"type\":\"integer\",\"description\":\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"}},\"additionalProperties\":false,\"required\":[\"id\",\"rating\",\"body\",\"book\",\"reviewerId\",\"version\"]}}},\"description\":\"Dry run of restock: returns the would-be result and effects without committing.\",\"annotations\":{\"readOnlyHint\":true,\"idempotentHint\":true}}],\"ttlMs\":300000,\"cacheScope\":\"public\"}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/mcp",
+              "headers": {
+                "authorization": "Bearer u1",
+                "content-type": "application/json"
+              },
+              "body": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"placeOrder.simulate\",\"arguments\":{\"input\":{\"lines\":[{\"bookId\":\"b3\",\"qty\":1}]}}}}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"$type\\\": \\\"Order\\\",\\n  \\\"id\\\": \\\"o1\\\",\\n  \\\"status\\\": \\\"PLACED\\\",\\n  \\\"total\\\": \\\"8.00\\\",\\n  \\\"items\\\": [\\n    {\\n      \\\"qty\\\": 1,\\n      \\\"unitPrice\\\": \\\"8.00\\\",\\n      \\\"book\\\": {\\n        \\\"$type\\\": \\\"Book\\\",\\n        \\\"id\\\": \\\"b3\\\",\\n        \\\"title\\\": \\\"Kindred\\\"\\n      }\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"result\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}}]},\"effects\":[{\"set\":\"Order:o1\",\"value\":{\"$type\":\"Order\",\"id\":\"o1\",\"status\":\"PLACED\",\"total\":\"8.00\",\"items\":[{\"qty\":1,\"unitPrice\":\"8.00\",\"book\":{\"$ref\":\"Book:b3\"}}]}},{\"set\":\"Book:b3\",\"value\":{\"$type\":\"Book\",\"id\":\"b3\",\"title\":\"Kindred\"}},{\"set\":\"Book:b3\",\"value\":{\"stock\":99}}]},\"resultType\":\"complete\"}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "aspect": "Deferring a slow field",
+      "values": {
+        "REST": 0,
+        "GraphQL": 0,
+        "Rayfold": 1
+      },
+      "unit": "slow field sent later in the same response (1 = yes)",
+      "better": "higher",
+      "metric": "mechanism",
+      "REST": "the book carries only authorId; the bio takes a second request to /authors/a4",
+      "GraphQL": "one JSON body: the whole page waits for the bio (@defer is not in graphql-js 16)",
+      "Rayfold": "`@lazy` bio arrives in a later frame at path `author`, same request",
+      "verdict": "lead",
+      "examples": {
+        "REST": [
+          {
+            "request": {
+              "method": "GET",
+              "target": "/books/b5",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"0f0cd477ae2d745b\""
+              },
+              "body": "{\"id\":\"b5\",\"title\":\"Beloved\",\"format\":\"PAPERBACK\",\"price\":\"9.50\",\"stock\":14,\"authorId\":\"a4\",\"ownerId\":\"u1\"}"
+            },
+            "label": "the book, with the author only as an id"
+          },
+          {
+            "request": {
+              "method": "GET",
+              "target": "/authors/a4",
+              "headers": {}
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "public, max-age=60",
+                "content-type": "application/json",
+                "etag": "\"bb4fa4da37e09e5c\""
+              },
+              "body": "{\"id\":\"a4\",\"name\":\"Toni Morrison\",\"bio\":\"Nobel laureate in Literature, 1993.\"}"
+            },
+            "label": "a second request for the author and the slow bio"
+          }
+        ],
+        "GraphQL": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/graphql",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": "{\"query\":\"{ book(id: \\\"b5\\\") { title author { name bio } } }\"}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/graphql-response+json"
+              },
+              "body": "{\"data\":{\"book\":{\"title\":\"Beloved\",\"author\":{\"name\":\"Toni Morrison\",\"bio\":\"Nobel laureate in Literature, 1993.\"}}}}"
+            },
+            "label": "one query: the whole body waits for the bio"
+          }
+        ],
+        "Rayfold": [
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b5\"},\"shape\":\"{ title author { name bio } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"title\":\"Beloved\",\"author\":{\"$type\":\"Author\",\"name\":\"Toni Morrison\"}},\"meta\":{\"cost\":2}}\n{\"id\":1,\"at\":\"author\",\"data\":{\"bio\":\"Nobel laureate in Literature, 1993.\"}}\n{\"id\":1,\"fin\":true}\n"
+            },
+            "label": "one request: the page first, the lazy bio in a later frame"
+          }
+        ]
+      }
+    }
+  ],
+  "methods": []
+}

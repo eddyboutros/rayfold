@@ -1,0 +1,30 @@
+{
+  "at": "2026-09-10T15:33:03.558Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+  "attacks": [
+    {
+      "attempt": "POST a placeOrder batch to /rayfold as text/plain, with the cookie (a request browsers send without asking)",
+      "observed": "sent; the response is opaque to this page (opaque)"
+    },
+    {
+      "attempt": "POST the same batch as application/rayfold+json, with the cookie (needs a CORS preflight)",
+      "observed": "the browser blocked it: Failed to fetch"
+    },
+    {
+      "attempt": "Submit an HTML form to POST /orders/o2/pay (pays the visitor's unpaid order)",
+      "observed": "form submitted; the result page is cross-origin and unreadable"
+    },
+    {
+      "attempt": "Open a WebSocket to /rayfold/ws (the browser attaches the cookie) and send placeOrder",
+      "observed": "the handshake was refused (no socket)"
+    },
+    {
+      "attempt": "POST MCP tools/call placeOrder to /mcp as text/plain, with the cookie",
+      "observed": "sent; the response is opaque to this page (opaque)"
+    },
+    {
+      "attempt": "Read the visitor's orders from /rayfold (a safe read, with the cookie)",
+      "observed": "the browser blocked it: Failed to fetch"
+    }
+  ]
+}

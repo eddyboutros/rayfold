@@ -1,0 +1,35 @@
+name: Specification change
+description: Propose a change to the protocol itself (spec/process.md explains how changes are made).
+labels: [spec]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - Core (frozen at 0.1; errata and clarifications only)
+        - Extension live
+        - Extension rb
+        - Extension mcp
+        - Extension http
+        - A new extension
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem, and who it affects
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: The change you propose
+      description: The rule as the spec would state it, and an example request with the frames it should produce.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility
+      description: What existing clients and servers would see.

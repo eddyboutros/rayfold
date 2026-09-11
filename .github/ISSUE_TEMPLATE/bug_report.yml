@@ -1,0 +1,38 @@
+name: Bug report
+description: A Rayfold package or the specification does not do what its documentation says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: For a security problem, do not open an issue; follow SECURITY.md instead.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - TypeScript server or client (@rayfold/*)
+        - React hooks
+        - Kotlin runtime (rayfold-core)
+        - Java API or Spring Boot starter
+        - Kotlin or Android client
+        - CLI or code generation
+        - Specification or conformance fixtures
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "@rayfold/server 0.1.0, or dev.rayfold:rayfold-core:0.1.0"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The schema, the request, and the frames you got back, if you can share them.
+      render: text

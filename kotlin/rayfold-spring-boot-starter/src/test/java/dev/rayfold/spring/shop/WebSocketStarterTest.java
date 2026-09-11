@@ -1,0 +1,185 @@
+package dev.rayfold.spring.shop;
+
+import dev.rayfold.core.RayfoldServer;
+import dev.rayfold.core.RbCodec;
+import dev.rayfold.java.Rayfold;
+import kotlinx.serialization.json.Json;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
+import java.net.http.WebSocketHandshakeException;
+import java.nio.ByteBuffer;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+
+import static dev.rayfold.spring.shop.ShopStarterTest.at;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
+
+/**
+ * The WebSocket transport on the application's own port, from spring-boot-starter-websocket, opened as a browser or
+ * a JVM client would: batches and live queries, RB, the viewer from the handshake, and the Origin refusal with its
+ * guard. Every wait is bounded at 5 s.
+ */
+@SpringBootTest(classes = ShopApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class WebSocketStarterTest {
+    @Value("${local.server.port}")
+    int port;
+
+    @Autowired
+    ShopResolvers shop;
+
+    @Autowired
+    RayfoldServer server;
+
+    final HttpClient client = HttpClient.newHttpClient();
+    final List<WebSocket> opened = new ArrayList<>();
+
+    @BeforeEach
+    void reset() {
+        shop.reset();
+    }
+
+    @AfterEach
+    void close() {
+        opened.forEach(WebSocket::abort);
+    }
+
+    /** Whole messages as they arrive: text as parsed JSON, binary as the list of RB frames it holds. */
+    final class Messages implements WebSocket.Listener {
+        final BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+        final RbCodec codec = new RbCodec(server.getIr());
+        private StringBuilder text = new StringBuilder();
+        private final ByteArrayOutputStream binary = new ByteArrayOutputStream();
+
+        @Override
+        public CompletionStage<?> onText(WebSocket ws, CharSequence data, boolean last) {
+            text.append(data);
+            if (last) {
+                queue.add(Rayfold.parseJson(text.toString()));
+                text = new StringBuilder();
+            }
+            ws.request(1);
+            return null;
+        }
+
+        @Override
+        public CompletionStage<?> onBinary(WebSocket ws, ByteBuffer data, boolean last) {
+            byte[] b = new byte[data.remaining()];
+            data.get(b);
+            binary.writeBytes(b);
+            if (last) {
+                queue.add(codec.decodeFrames(binary.toByteArray()).stream().map(f -> Rayfold.parseJson(f.toString())).toList());
+                binary.reset();
+            }
+            ws.request(1);
+            return null;
+        }
+
+        Object next() throws InterruptedException {
+            Object m = queue.poll(5, TimeUnit.SECONDS);
+            assertThat(m).as("a message within 5 s").isNotNull();
+            return m;
+        }
+    }
+
+    WebSocket open(Messages m, String... headers) throws Exception {
+        WebSocket.Builder b = client.newWebSocketBuilder().subprotocols("rayfold.0.1").connectTimeout(Duration.ofSeconds(5));
+        for (int i = 0; i < headers.length; i += 2) b.header(headers[i], headers[i + 1]);
+        WebSocket ws = b.buildAsync(URI.create("ws://127.0.0.1:" + port + "/rayfold/ws"), m).get(5, TimeUnit.SECONDS);
+        opened.add(ws);
+        return ws;
+    }
+
+    static void until(BooleanSupplier condition, String what) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) fail("not within 5 s: " + what);
+            Thread.onSpinWait();
+        }
+    }
+
+    @Test
+    void theSocketRunsOnTheApplicationsPortWithTheViewerFromTheHandshakeAndLiveQueriesGetPatches() throws Exception {
+        Messages m = new Messages();
+        WebSocket ws = open(m, "X-User", "alice");
+        assertThat(ws.getSubprotocol()).isEqualTo("rayfold.0.1");
+        ws.sendText("""
+            {"ops":[{"id":1,"op":"me"}]}""", true).get(5, TimeUnit.SECONDS);
+        assertThat((String) at(m.next(), "data")).isEqualTo("alice/customer");
+
+        ws.sendText("""
+            {"ops":[{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}]}""", true).get(5, TimeUnit.SECONDS);
+        int stock = ShopStarterTest.<Number>at(m.next(), "data", "stock").intValue();
+        assertThat(server.getChanges().getSize()).as("the live query holds a subscription").isEqualTo(1);
+
+        // a purchase over HTTP on the same server reaches the socket as a patch; a fresh key, since the cached test
+        // context keeps its idempotency records and a replay commits nothing
+        String buy = """
+            {"ops":[{"id":1,"op":"buy","args":{"id":"b1","qty":1},"key":"%s","shape":"{ id stock }"}]}""".formatted("ws-" + UUID.randomUUID());
+        HttpResponse<String> bought = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/rayfold"))
+            .timeout(Duration.ofSeconds(5)).header("Content-Type", "application/rayfold+json").header("X-User", "alice")
+            .POST(HttpRequest.BodyPublishers.ofString(buy)).build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(bought.statusCode()).as(bought.body()).isEqualTo(200);
+        assertThat(bought.body()).as("the purchase ran").contains("\"ok\"").doesNotContain("replay");
+        Object patch = m.next();
+        assertThat((String) at(patch, "patch", 0, "set")).isEqualTo("Book:b1");
+        assertThat(ShopStarterTest.<Number>at(patch, "patch", 0, "value", "stock").intValue()).isEqualTo(stock - 1);
+
+        ws.sendText("""
+            {"cancel":2}""", true).get(5, TimeUnit.SECONDS);
+        assertThat((String) at(m.next(), "error", "code")).isEqualTo("canceled");
+        until(() -> server.getChanges().getSize() == 0, "the cancelled live query lets go of its subscription");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void anRbMessageIsAnsweredInRbAndAClientThatVanishesReleasesItsLiveQuery() throws Exception {
+        Messages m = new Messages();
+        WebSocket ws = open(m);
+        RbCodec codec = new RbCodec(server.getIr());
+        byte[] batch = codec.encode(Json.Default.parseToJsonElement("""
+            {"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id title }","live":true}]}"""));
+        ws.sendBinary(ByteBuffer.wrap(batch), true).get(5, TimeUnit.SECONDS);
+        List<Object> frames = (List<Object>) m.next();
+        assertThat((String) at(frames, 0, "data", "$type")).isEqualTo("Book");
+        assertThat((String) at(frames, 0, "data", "id")).isEqualTo("b1");
+        assertThat(server.getChanges().getSize()).as("guard: while the socket is open, its live query stays subscribed").isEqualTo(1);
+        ws.abort(); // no close frame: the connection just drops
+        until(() -> server.getChanges().getSize() == 0, "the vanished client's live query is released");
+    }
+
+    @Test
+    void aForeignPageCannotOpenTheSocketButAnAllowedOriginCan() throws Exception {
+        try {
+            open(new Messages(), "Origin", "https://evil.example");
+            fail("a foreign Origin was let in");
+        } catch (ExecutionException e) {
+            assertThat(e.getCause()).isInstanceOf(WebSocketHandshakeException.class);
+            assertThat(((WebSocketHandshakeException) e.getCause()).getResponse().statusCode()).isEqualTo(403);
+        }
+        Messages m = new Messages();
+        WebSocket ws = open(m, "Origin", "https://app.example");
+        ws.sendText("""
+            {"ops":[{"id":1,"op":"me"}]}""", true).get(5, TimeUnit.SECONDS);
+        assertThat((String) at(m.next(), "data")).as("guard: rayfold.allowed-origins lets this page in").isEqualTo("anonymous");
+    }
+}

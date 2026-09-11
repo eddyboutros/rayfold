@@ -1,0 +1,114 @@
+// Bookstore — the reference domain used by the examples, benchmarks and conformance suite.
+
+entity Author @cache(maxAge: 5m, scope: public) {
+  id: ID
+  name: String
+  bio: String? @lazy
+  books(page: PageArgs = { first: 10 }): Page<Book>
+}
+
+entity Book @cache(maxAge: 60s, scope: public) {
+  id: ID
+  title: String
+  format: Format
+  """Unit price in the store currency."""
+  price: Decimal @unit("USD")
+  stock: Int
+  author: Author
+  reviews(page: PageArgs = { first: 10 }): Page<Review>
+  """Only the owner (or an admin) can see the cost price."""
+  costPrice: Decimal? @allow(read: viewer.role == "admin" || viewer.id == ownerId)
+  ownerId: ID
+}
+
+entity Review {
+  id: ID
+  rating: Int @range(min: 1, max: 5)
+  body: String
+  book: Book
+  reviewerId: ID
+  """Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."""
+  version: Int @version
+}
+
+entity Order @cache(maxAge: 0s, scope: private) @allow(read: viewer.id == customerId || viewer.role == "admin") {
+  id: ID
+  status: OrderStatus
+  customerId: ID
+  items: [OrderItem]
+  total: Decimal
+}
+
+object OrderItem {
+  book: Book
+  qty: Int
+  unitPrice: Decimal
+}
+
+enum Format { HARDCOVER PAPERBACK EBOOK }
+enum OrderStatus { PLACED PAID SHIPPED CANCELLED }
+
+input BookFilter {
+  titleContains: String?
+  format: Format?
+  authorId: ID?
+  maxPrice: Decimal?
+}
+
+input OrderLine { bookId: ID, qty: Int = 1 @range(min: 1, max: 100) }
+input OrderInput { lines: [OrderLine] }
+input ReviewInput { bookId: ID, rating: Int @range(min: 1, max: 5), body: String @range(min: 1, max: 2000) }
+input ReviewEdit { rating: Int @range(min: 1, max: 5), body: String @range(min: 1, max: 2000) }
+"""Partial update: absent fields are left unchanged."""
+input BookPatch { title: String? @range(min: 1, max: 200), price: Decimal? @range(min: 0), stock: Int? @range(min: 0) }
+
+error OutOfStock { bookId: ID, available: Int }
+error PaymentDeclined { reason: String }
+
+event OrderPlaced { orderId: ID, customerId: ID }
+event StockChanged { bookId: ID, stock: Int }
+
+view Book.default = { id title format price stock author { id name } }
+view Book.card    = { ...Book.default reviews(page: { first: 3 }) { items { id rating } } }
+view Author.default = { id name }
+view Order.default = { id status total items { qty unitPrice book { id title } } }
+
+"""List books, newest first."""
+query books(filter: BookFilter?, page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1) @http(method: QUERY, path: "/books", body: "*")
+query book(id: ID): Book? @http(method: GET, path: "/books/{id}")
+query author(id: ID): Author?
+query review(id: ID): Review? @http(method: GET, path: "/reviews/{id}")
+query order(id: ID): Order? @allow(read: viewer != null) @http(method: GET, path: "/orders/{id}")
+query myOrders(page: PageArgs = { first: 20 }): Page<Order> @allow(read: viewer != null) @cache(maxAge: 0s, scope: private)
+
+"""Place an order. Fails atomically if any line is out of stock."""
+command placeOrder(input: OrderInput): Order
+  throws OutOfStock | PaymentDeclined
+  emits OrderPlaced StockChanged
+  @allow(write: viewer != null) @simulate
+  @http(method: POST, path: "/orders", body: input, location: "/orders/{id}")
+
+"""Pay for a placed order."""
+command payOrder(id: ID): Order
+  throws PaymentDeclined | NotPayable { status: OrderStatus }
+  @allow(write: viewer != null) @simulate
+  @http(method: POST, path: "/orders/{id}/pay")
+
+command cancelOrder(id: ID): Order
+  throws NotCancellable { status: OrderStatus }
+  @allow(write: viewer != null) @simulate
+
+command addReview(input: ReviewInput): Review @allow(write: viewer != null) @simulate
+
+"""Replace a review's rating and text. Only its author (or an admin) may edit it."""
+command editReview(id: ID, input: ReviewEdit): Review @allow(write: viewer != null) @simulate @http(method: PUT, path: "/reviews/{id}", body: input)
+
+"""Change some fields of a book; fields not sent are left as they are."""
+command updateBook(id: ID, patch: BookPatch): Book @allow(write: viewer.role == "admin") @simulate @http(method: PATCH, path: "/books/{id}", body: patch)
+
+"""Delete a review. Only its author (or an admin) may delete it."""
+command deleteReview(id: ID): Review @allow(write: viewer != null) @simulate @http(method: DELETE, path: "/reviews/{id}")
+
+command restock(bookId: ID, qty: Int): Book emits StockChanged @allow(write: viewer.role == "admin") @simulate
+
+stream stockUpdates(bookIds: [ID]): StockChanged
