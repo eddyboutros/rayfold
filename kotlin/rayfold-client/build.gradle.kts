@@ -12,7 +12,7 @@ java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaV
 
 dependencies {
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     // `check` fails when the client calls an API that Android 8.0 (API level 26) lacks
     signature("net.sf.androidscents.signature:android-api-level-26:8.0.0_r2@signature")
     // the tests run the client against the real Kotlin server
