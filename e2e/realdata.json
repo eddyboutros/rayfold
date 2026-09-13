@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T10:06:30.596Z",
+  "generatedAt": "2026-09-13T10:30:35.130Z",
   "rows": [
     {
       "aspect": "Title search on the real catalogue",
@@ -7,13 +7,13 @@
       "values": {
         "REST": 4526,
         "GraphQL": 2356,
-        "Rayfold": 1851
+        "Rayfold": 1853
       },
       "unit": "bytes on the wire (request + response)",
       "better": "lower",
       "REST": "2 requests (GET with query parameters, then QUERY with a body), 4526 B",
       "GraphQL": "1 request (two aliased fields), 2356 B",
-      "Rayfold": "1 request (a batch of two ops), 1851 B",
+      "Rayfold": "1 request (a batch of two ops), 1853 B",
       "note": "\"frankenstein\": the catalogue's 6 editions (three English, three French volumes), all of them; \"love\": total 556, first 20 by id. Ids, titles and totals match the catalogue file on every stack. Rayfold is measured as its client sends when it has the schema: compact frames in its binary encoding (RB). The identical ops as JSON took 2501 B, with the identical data",
       "verdict": "lead",
       "examples": {
@@ -101,7 +101,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 139 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"titleContains\":\"frankenstein\"},\"page\":{\"first\":50}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"filter\":{\"titleContains\":\"love\"},\"page\":{\"first\":20}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 141 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"titleContains\":\"frankenstein\"},\"page\":{\"first\":50}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"filter\":{\"titleContains\":\"love\"},\"page\":{\"first\":20}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -121,13 +121,13 @@
       "values": {
         "REST": 75860,
         "GraphQL": 31394,
-        "Rayfold": 23480
+        "Rayfold": 23491
       },
       "unit": "bytes on the wire (request + response)",
       "better": "lower",
       "REST": "11 round trips, 75860 B (whole book resources)",
       "GraphQL": "11 round trips, 31394 B",
-      "Rayfold": "11 round trips, 23480 B",
+      "Rayfold": "11 round trips, 23491 B",
       "note": "Every stack follows its cursor, so round trips are equal and bytes decide. The catalogue lists Mark Twain twice (ga43 with 196 books, ga10926 with 1). Rayfold is measured as its client sends when it has the schema: compact frames in its binary encoding (RB). The identical ops as JSON took 31434 B, with the identical data",
       "verdict": "lead",
       "examples": {
@@ -753,7 +753,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 91 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 92 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -772,7 +772,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 99 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50,\"after\":\"g3197\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50,\"after\":\"g3197\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -791,7 +791,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 99 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50,\"after\":\"g5838\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50,\"after\":\"g5838\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -810,7 +810,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 99 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50,\"after\":\"g7197\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga43\"},\"page\":{\"first\":50,\"after\":\"g7197\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -829,7 +829,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 91 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 92 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -848,7 +848,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g15032\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 101 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g15032\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -867,7 +867,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g15847\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 101 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g15847\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -886,7 +886,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g18144\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 101 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g18144\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -905,7 +905,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 99 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g2265\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g2265\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -924,7 +924,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g37835\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 101 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g37835\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -943,7 +943,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 100 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g63368\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 101 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"filter\":{\"authorId\":\"ga56\"},\"page\":{\"first\":50,\"after\":\"g63368\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -3558,7 +3558,7 @@
       "better": "lower",
       "REST": "10 pages of 500, one request each, 838428 B (whole book resources)",
       "GraphQL": "10 pages of 500, one request each, 392488 B",
-      "Rayfold": "7 requests carrying 25 pages of 200: four pages a request, each page continuing after the previous page's cursor ($ref), 332516 B",
+      "Rayfold": "7 requests carrying 25 pages of 200: four pages a request, each page continuing after the previous page's cursor ($ref), 332541 B",
       "note": "Rayfold serves at most 200 rows a page and bounds each request by its cost budget; four 200-row pages (4 x 206 = 824 of the default 1,000) fit in one request because a later op can read an earlier op's cursor. REST and GraphQL here have no page cap and serve the 500 asked for, but a request cannot use a cursor it has not received yet, so each page is a round trip. All three return the catalogue's first 5,000 ids in order, with no duplicate and no gap. Rayfold is measured as its client sends when it has the schema: compact frames in its binary encoding (RB). The identical ops as JSON took 396086 B, with the identical data",
       "verdict": "lead",
       "examples": {
@@ -4143,7 +4143,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 215 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 219 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -4162,7 +4162,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 224 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g10871\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 228 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g10871\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -4181,7 +4181,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 224 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g11595\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 228 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g11595\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -4200,7 +4200,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 224 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g12340\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 228 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g12340\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -4219,7 +4219,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 224 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g13087\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 228 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g13087\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -4238,7 +4238,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 223 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g1381\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 227 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g1381\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"1.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"2.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":{\"$ref\":\"3.cursor\"}}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,
@@ -4257,7 +4257,7 @@
                 "accept": "application/rayfold",
                 "content-type": "application/rayfold"
               },
-              "body": "RB request, 91 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g1453\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
+              "body": "RB request, 92 bytes on the wire, shown decoded:\n{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200,\"after\":\"g1453\"}},\"shape\":\"{ items { id title } total hasMore cursor }\",\"compact\":true}]}"
             },
             "response": {
               "status": 200,

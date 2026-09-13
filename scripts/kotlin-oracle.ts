@@ -119,6 +119,19 @@ union AB @deprecated(reason: "use nodes") = A | B
 query ab: [AB]
 view AB.default = { ...on A { a } ...on B { b } }
 `,
+  "interface-type-conditions": `
+object Named @interface { id: ID name: String }
+entity Person implements Named { id: ID name: String email: String }
+entity Bot { id: ID name: String }
+entity Note { id: ID author: Named }
+query note(id: ID): Note?
+view Note.ok = { author { ...on Person { email } } }
+view Note.bad = { author { ...on Bot { name } } }
+`,
+  "merge-policies": `
+entity Doc { id: ID title: String @merge(serverWins) body: String @merge(crdtText) muddled: String @merge(whenever) }
+query doc(id: ID): Doc?
+`,
   "throws-emits": `
 error Denied { reason: String }
 event Changed { id: ID at: Instant }

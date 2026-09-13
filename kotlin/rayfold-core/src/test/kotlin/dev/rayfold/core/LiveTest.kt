@@ -253,7 +253,8 @@ class LiveTest {
             "a union member's type is the only way to know it, so compaction keeps it (the Book-with-author test shows other types lose it)")
         fx.store.table("Hit").add(mutableMapOf("\$type" to JsonPrimitive("Book"), "id" to JsonPrimitive("b2"), "title" to JsonPrimitive("T2")))
         fx.server.changes.publish(Change(setOf("Book:b2"), emptySet()))
-        assertEquals(obj("""{"id":1,"data":[{"${'$'}type":"Book","id":"b1","title":"T1"},{"${'$'}type":"Author","name":"Ann"},{"${'$'}type":"Book","id":"b2","title":"T2"}]}"""), live.next())
+        // the row that appeared travels on its own (spec 04 section 2b), and a union member keeps its type inside it
+        assertEquals(obj("""{"id":1,"patch":[{"list":"","ins":[{"at":2,"value":{"${'$'}type":"Book","id":"b2","title":"T2"}}]}]}"""), live.next())
         live.stop()
         assertEquals(0, fx.server.changes.size)
     }

@@ -46,6 +46,8 @@ object Live {
         fun strings(v: JsonElement?) = (v as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: emptyList()
         for (p in patch) when {
             "set" in p -> (p["set"] as? JsonPrimitive)?.content?.let { keys.add(it) }
+            // result-scoped operations (spec 04 section 2b) name no entity and no operation
+            "list" in p || "at" in p -> Unit
             "del" in p -> (p["del"] as? JsonPrimitive)?.content?.let { keys.add(it) }
             "inv" in p -> keys.addAll(strings(p["inv"]))
             "invOp" in p -> ops.addAll(strings(p["invOp"]))
@@ -79,24 +81,145 @@ object Live {
     fun readSetOf(data: JsonElement?): Set<String> = normalize(data).entities.keys
 
     sealed class Diff {
-        /** Only entity fields changed: one `set` per entity with the fields that changed. */
+        /** The change described as operations: `set` per entity, plus result-scoped `at` and `list` (spec 04 section 2b). */
         class Patch(val patch: List<JsonObject>) : Diff()
 
-        /** The structure changed (membership, order, an entity appearing or disappearing): the whole new result. */
+        /** The change cannot be described (a different set of fields, or a patch dearer than the result): send it whole. */
         class Data(val data: JsonElement) : Diff()
     }
 
-    /** Null when nothing changed. Values compare by their serialized text, key order included, as the TS runtime does. */
+    /** What a value is known by inside a list: its entity key, or its own content. */
+    private fun identityOf(v: JsonElement): String {
+        if (v is JsonObject) {
+            val tn = (v["\$type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val id = (v["id"] as? JsonPrimitive)?.takeIf { it !is JsonNull && (it.isString || StrictJson.isNumber(it.content)) }?.content
+            if (tn != null && id != null) return "$tn:$id"
+        }
+        return "#" + v.toString()
+    }
+
+    private fun entityAt(v: JsonElement): String? = identityOf(v).takeIf { !it.startsWith("#") }
+    private fun joinPath(path: String, part: Any): String = if (path.isEmpty()) part.toString() else path + "." + part
+    private fun isLeaf(v: JsonElement): Boolean = v !is JsonObject && v !is JsonArray
+
+    /** Operations collected while walking, and the entity keys whose values travel inside an insertion. */
+    private class Ops {
+        val out = mutableListOf<JsonObject>()
+        val carried = mutableSetOf<String>()
+    }
+
+    /**
+     * Describes how [b] differs from [a] as operations the client can apply to its stored result, or returns false
+     * when the difference cannot be expressed. Entities are not descended into: their fields travel as `set`.
+     */
+    private fun structuralDiff(a: JsonElement, b: JsonElement, path: String, ops: Ops): Boolean {
+        if (a.toString() == b.toString()) return true
+        val ea = entityAt(a)
+        val eb = entityAt(b)
+        if (ea != null || eb != null) return ea != null && ea == eb
+        if (a is JsonArray && b is JsonArray) return listDiff(a, b, path, ops)
+        if (a is JsonObject && b is JsonObject) {
+            if (a.keys != b.keys) return false
+            val merge = linkedMapOf<String, JsonElement>()
+            for (k in b.keys) {
+                val av = a.getValue(k)
+                val bv = b.getValue(k)
+                if (av.toString() == bv.toString()) continue
+                if (isLeaf(av) && isLeaf(bv)) {
+                    merge[k] = bv
+                    continue
+                }
+                if (!structuralDiff(av, bv, joinPath(path, k), ops)) return false
+            }
+            if (merge.isNotEmpty()) ops.out.add(buildJsonObject { put("at", path); put("value", JsonObject(merge)) })
+            return true
+        }
+        return false
+    }
+
+    /** Positions removed and elements inserted, verified by replaying them; anything else is refused. */
+    private fun listDiff(a: JsonArray, b: JsonArray, path: String, ops: Ops): Boolean {
+        val identified = { xs: JsonArray -> xs.isNotEmpty() && xs.all { entityAt(it) != null } }
+        val objects = { xs: JsonArray -> xs.all { it is JsonObject } }
+        // Rows with an identity of their own are matched by it. Elements without one (plain objects, such as a
+        // board's columns) are matched by position, so a change inside one of them is described in place.
+        if (!(identified(a) && identified(b)) && a.size == b.size && objects(a) && objects(b)) {
+            for (n in b.indices) if (!structuralDiff(a[n], b[n], joinPath(path, n), ops)) return false
+            return true
+        }
+        val oldKeys = a.map { identityOf(it) }
+        val newKeys = b.map { identityOf(it) }
+        val del = mutableListOf<Int>()
+        val ins = mutableListOf<Pair<Int, JsonElement>>()
+        val pairs = mutableListOf<Pair<Int, Int>>()
+        var i = 0
+        var j = 0
+        while (i < a.size && j < b.size) {
+            when {
+                oldKeys[i] == newKeys[j] -> {
+                    pairs.add(i to j)
+                    i++
+                    j++
+                }
+                newKeys.subList(j, newKeys.size).none { it == oldKeys[i] } -> {
+                    del.add(i)
+                    i++
+                }
+                else -> {
+                    ins.add(j to b[j])
+                    j++
+                }
+            }
+        }
+        while (i < a.size) {
+            del.add(i)
+            i++
+        }
+        while (j < b.size) {
+            ins.add(j to b[j])
+            j++
+        }
+        val replay = a.filterIndexed { n, _ -> n !in del }.toMutableList()
+        for ((at, v) in ins) replay.add(at, v)
+        if (replay.map { identityOf(it) } != newKeys) return false
+        for ((x, y) in pairs) if (!structuralDiff(a[x], b[y], joinPath(path, y), ops)) return false
+        if (del.isNotEmpty() || ins.isNotEmpty()) {
+            for ((_, v) in ins) ops.carried.addAll(normalize(v).entities.keys)
+            ops.out.add(
+                buildJsonObject {
+                    put("list", path)
+                    if (del.isNotEmpty()) put("del", JsonArray(del.map { JsonPrimitive(it) }))
+                    if (ins.isNotEmpty()) put("ins", JsonArray(ins.map { (at, v) -> buildJsonObject { put("at", at); put("value", v) } }))
+                },
+            )
+        }
+        return true
+    }
+
+    /**
+     * Null when nothing changed. Values compare by their serialized text, key order included, as the TS runtime does.
+     */
     fun diffResults(prev: JsonElement?, next: JsonElement?): Diff? {
         val a = normalize(prev)
         val b = normalize(next)
-        if (a.skeleton.toString() != b.skeleton.toString()) return Diff.Data(next ?: JsonNull)
+        val ops = Ops()
+        if (a.skeleton.toString() != b.skeleton.toString() &&
+            !structuralDiff(prev ?: JsonNull, next ?: JsonNull, "", ops)
+        ) {
+            return Diff.Data(next ?: JsonNull)
+        }
         val patch = mutableListOf<JsonObject>()
         for ((key, fields) in b.entities) {
+            if (key in ops.carried) continue // its fields travel inside an insertion
             val before = a.entities[key]
             val changed = fields.filter { (k, v) -> before?.get(k)?.toString() != v.toString() }
             if (changed.isNotEmpty()) patch.add(buildJsonObject { put("set", key); put("value", JsonObject(changed)) })
         }
+        // Describing the structure costs more than resending it only when nearly every row changed; then send the result.
+        if (ops.out.isNotEmpty() && JsonArray(ops.out).toString().length >= (next ?: JsonNull).toString().length) {
+            return Diff.Data(next ?: JsonNull)
+        }
+        patch.addAll(ops.out)
         return if (patch.isEmpty()) null else Diff.Patch(patch)
     }
 

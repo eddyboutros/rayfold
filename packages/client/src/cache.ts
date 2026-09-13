@@ -26,6 +26,9 @@ export interface CachedResult {
 
 export type CacheListener = (changed: { keys: Set<EntityKey>; ops: Set<string> }) => void;
 
+/** How a field settles when a prediction and the server disagree (spec 08 section 5, `@merge`). */
+export type MergePolicy = "serverWins" | "keepLocal" | "lww" | "crdtText" | "custom";
+
 /** A predicted change to one entity's fields (sub-profile `sync`, spec 08 section 5). */
 export interface OptimisticOp {
   set: EntityKey;
@@ -55,7 +58,14 @@ export class RayfoldCache {
   /** The server's own values of the entities a prediction covers, for as long as one does. */
   private readonly shadow = new Map<EntityKey, Record<string, unknown> | undefined>();
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly now: () => number = Date.now,
+    /**
+     * A field's conflict policy, read from the schema when the client was given one. Without a policy a prediction
+     * stands until its command settles, which is what the sub-profile has always done.
+     */
+    private readonly mergeOf: (type: string, field: string) => MergePolicy | undefined = () => undefined,
+  ) {}
 
   // ----------------------------------------------------------- entities
 
@@ -82,6 +92,23 @@ export class RayfoldCache {
     this.setBase(key, next);
     this.staleKeys.delete(key);
     touched.add(key);
+    // A field the server has just spoken for leaves any prediction that also set it, when the field's policy says so
+    // (spec 08 section 5). `lww` settles the same way here: the server's write is the later one.
+    const type = key.slice(0, key.indexOf(":"));
+    let overruled = false;
+    for (const layer of this.layers) {
+      for (const op of layer.ops) {
+        if (op.set !== key) continue;
+        for (const field of Object.keys(fields)) {
+          if (!(field in op.value)) continue;
+          const policy = this.mergeOf(type, field);
+          if (policy !== "serverWins" && policy !== "lww") continue;
+          delete op.value[field];
+          overruled = true;
+        }
+      }
+    }
+    if (overruled) this.rebuild(key);
     return touched;
   }
 
@@ -202,11 +229,17 @@ export class RayfoldCache {
 
   // ------------------------------------------------------------ patches
 
-  applyPatch(ops: PatchOp[]): void {
+  /**
+   * `set`, `del`, `inv` and `invOp` act on the whole cache. `at` and `list` describe one stored result and are
+   * applied only when the frame's result key is known (spec 04 section 2b).
+   */
+  applyPatch(ops: PatchOp[], resultKey?: string): void {
     const keys = new Set<EntityKey>();
     const opNames = new Set<string>();
     for (const p of ops) {
       if ("set" in p) this.merge(p.set, p.value, keys);
+      else if ("list" in p) this.applyList(resultKey, p, keys, opNames);
+      else if ("at" in p) this.applyAt(resultKey, p.at, p.value, keys, opNames);
       else if ("del" in p) {
         this.setBase(p.del, undefined);
         keys.add(p.del);
@@ -236,6 +269,36 @@ export class RayfoldCache {
     this.emit(keys, opNames);
   }
 
+  /** Merge fields into the plain object at a path inside one stored result. */
+  private applyAt(resultKey: string | undefined, path: string, value: Record<string, unknown>, touched: Set<EntityKey>, opNames: Set<string>): void {
+    const r = resultKey === undefined ? undefined : this.results.get(resultKey);
+    if (!r) return;
+    const target = path === "" ? r.data : this.getPath(r.data, path.split("."));
+    if (!target || typeof target !== "object" || Array.isArray(target)) return;
+    const norm = this.normalizeValue(value, touched);
+    Object.assign(target as Record<string, unknown>, norm.value as Record<string, unknown>);
+    for (const k of touched) r.keys.add(k);
+    opNames.add(r.op);
+    this.results.set(resultKey!, { ...r });
+  }
+
+  /**
+   * Remove the named old positions of a list inside one stored result, then insert the carried elements at their
+   * new positions. Insertions carry the projected element, so normalizing them stores the entity and records
+   * which fields this result selected.
+   */
+  private applyList(resultKey: string | undefined, op: { list: string; del?: number[]; ins?: Array<{ at: number; value: unknown }> }, touched: Set<EntityKey>, opNames: Set<string>): void {
+    const r = resultKey === undefined ? undefined : this.results.get(resultKey);
+    if (!r) return;
+    const arr = op.list === "" ? r.data : this.getPath(r.data, op.list.split("."));
+    if (!Array.isArray(arr)) return;
+    for (const n of [...(op.del ?? [])].sort((a, b) => b - a)) arr.splice(n, 1);
+    for (const x of op.ins ?? []) arr.splice(x.at, 0, this.normalizeValue(x.value, touched).value);
+    for (const k of touched) r.keys.add(k);
+    opNames.add(r.op);
+    this.results.set(resultKey!, { ...r });
+  }
+
   // --------------------------------------------------------- predictions
 
   /**
@@ -244,6 +307,16 @@ export class RayfoldCache {
    * server said: that is the rebase after success and the rollback after failure.
    */
   addLayer(id: string, ops: OptimisticOp[]): void {
+    for (const op of ops) {
+      const type = op.set.slice(0, op.set.indexOf(":"));
+      for (const field of Object.keys(op.value)) {
+        const policy = this.mergeOf(type, field);
+        // Declared but not implemented: predicting such a field would need a merge this client cannot perform.
+        if (policy === "crdtText" || policy === "custom") {
+          throw new Error(`@merge(${policy}) is not implemented: ${type}.${field} cannot be predicted optimistically`);
+        }
+      }
+    }
     const keys = new Set<EntityKey>();
     for (const op of ops) {
       if (!this.shadow.has(op.set)) this.shadow.set(op.set, this.entities.get(op.set));

@@ -20,7 +20,7 @@ class RayfoldCacheTest {
 
     @Test
     fun `entities are stored once and each result reads back with exactly the fields it selected`() {
-        val c = RayfoldCache { 0 }
+        val c = RayfoldCache(now = { 0 })
         val r = c.putResult("k", "books", j("""{"items":[{"#type":"Book","id":"b1","title":"T","author":{"#type":"Author","id":"a1","name":"A"}},{"#type":"Book","id":"b1","title":"T"}]}"""))
         assertEquals(2, c.size)
         assertEquals(setOf("Book:b1", "Author:a1"), r.keys)
@@ -35,7 +35,7 @@ class RayfoldCacheTest {
 
     @Test
     fun `set, del, inv and invOp patches apply and notify the affected ops`() {
-        val c = RayfoldCache { 0 }
+        val c = RayfoldCache(now = { 0 })
         c.putResult("q1", "books", j("""{"items":[{"#type":"Book","id":"b1","stock":5},{"#type":"Book","id":"b2","stock":1}]}"""))
         c.putResult("q2", "author", j("""{"#type":"Author","id":"a1"}"""))
         val events = mutableListOf<Pair<Set<String>, Set<String>>>()
@@ -50,7 +50,7 @@ class RayfoldCacheTest {
 
     @Test
     fun `deleting an entity removes it from lists held inside other entities`() {
-        val c = RayfoldCache { 0 }
+        val c = RayfoldCache(now = { 0 })
         val r = c.putResult("k", "author", j("""{"#type":"Author","id":"a1","books":[{"#type":"Book","id":"b1"},{"#type":"Book","id":"b2"}]}"""))
         c.applyPatch(listOf(o("""{"del":"Book:b1"}""")))
         assertEquals(j("""{"#type":"Author","id":"a1","books":[{"#type":"Book","id":"b2"}]}"""), c.getResult("k")?.let { c.denormalize(it.data) })
@@ -60,7 +60,7 @@ class RayfoldCacheTest {
 
     @Test
     fun `a deferred part merges into the entity at its path, and the result record is replaced`() {
-        val c = RayfoldCache { 0 }
+        val c = RayfoldCache(now = { 0 })
         val before = c.putResult("k", "book", j("""{"#type":"Book","id":"b1","author":{"#type":"Author","id":"a1","name":"A"}}"""))
         c.mergeAt("k", "author", j("""{"bio":"Wrote books."}"""))
         val after = c.getResult("k") ?: error("result gone")
@@ -71,7 +71,7 @@ class RayfoldCacheTest {
 
     @Test
     fun `a transaction reports its changes once`() {
-        val c = RayfoldCache { 0 }
+        val c = RayfoldCache(now = { 0 })
         var calls = 0
         c.subscribe { calls++ }
         c.transaction {
@@ -87,7 +87,7 @@ class RayfoldCacheTest {
 
     @Test
     fun `threads writing at once lose nothing`() {
-        val c = RayfoldCache { 0 }
+        val c = RayfoldCache(now = { 0 })
         val pool = Executors.newFixedThreadPool(8)
         val done = CountDownLatch(8)
         try {

@@ -27,6 +27,35 @@ const resolvers = {
 };
 ```
 
+## One statement for a whole screen
+
+The resolvers above send one query per nesting level, which is already the shape of the problem GraphQL solves with
+DataLoader. `store.screen()` goes further: it compiles the shape the op asked for into a **single** statement, gathering
+related rows with correlated JSON subqueries, pushing each level's read policy into its own `WHERE`, and giving every
+nested page its own `total`. Depth costs no extra round trip to the database.
+
+Declare the relations a shape may follow, then hand the store the shape the runtime gives the resolver as `ctx.shape`:
+
+```ts
+const store = createPgStore(new pg.Pool(), {
+  ir: server.ir,
+  naming: "snake",
+  tables: {
+    Book: { table: "books", columns: { authorId: "author_id" }, relations: { author: { type: "Author", kind: "one", key: "authorId" } } },
+    Author: { table: "authors", relations: { books: { type: "Book", kind: "page", key: "authorId" } } },
+  },
+});
+
+const resolvers = {
+  Query: { books: (args, ctx) => store.screen("Book", ctx.shape, args.page, {}, ctx) },
+};
+```
+
+`kind: "one"` names the field on *this* type holding the other row's key; `kind: "page"` names the field on the *other*
+type holding this row's key. Nested pages are first pages, which is what a screen shows; the root page still takes a
+cursor. A field the shape selects must be a mapped column or a declared relation, so a shape that reaches past the
+mapping is refused rather than quietly served wrong.
+
 ## Why pass `ctx`
 
 When a resolver loads an entity whose read policy can run in SQL (it reads only the viewer, the arguments, literals and
@@ -44,5 +73,6 @@ test runs every translation against a real Postgres for many policies, viewers a
 
 The [package README](../../packages/postgres/README.md) lists every call and the SQL it sends.
 
-On the JVM, the same pushdown hint is not wired yet: resolvers get no `ctx.policy`, and the runtime's own check does the
-filtering.
+On the JVM the hint reaches resolvers the same way, as `ctx.policy`: the pushable part of the type's read policy, or
+null when nothing can be pushed. The rule for what is pushable is the same in both runtimes, and both are held to it by
+tests. [`dev.rayfold:rayfold-jdbc`](jdbc.md) is the JVM counterpart of this package and uses that hint the same way.

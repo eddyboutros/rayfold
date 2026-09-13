@@ -65,7 +65,11 @@ export type PatchOp =
   | { set: string; value: Record<string, unknown> }
   | { del: string }
   | { inv: string[] }
-  | { invOp: string[] };
+  | { invOp: string[] }
+  /** Result-scoped (spec 04 section 2b): merge these fields into the plain object at this result path. */
+  | { at: string; value: Record<string, unknown> }
+  /** Result-scoped: remove these old positions, then insert these elements at these new positions. */
+  | { list: string; del?: number[]; ins?: Array<{ at: number; value: unknown }> };
 
 export interface FrameMeta {
   cost?: number;

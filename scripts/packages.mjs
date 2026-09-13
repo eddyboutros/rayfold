@@ -9,6 +9,8 @@ export const PACKAGES = [
   { dir: "packages/server" },
   { dir: "packages/postgres" },
   { dir: "packages/otel" },
+  { dir: "packages/explorer" },
+  { dir: "packages/lsp" },
   { dir: "packages/client" },
   { dir: "packages/react" },
   { dir: "packages/cli", bin: { rayfold: "main.js" } },

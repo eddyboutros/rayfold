@@ -23,7 +23,7 @@ const list = (dir) => readdirSync(join(ROOT, dir)).filter((f) => f.endsWith(".md
 /** Every page: its source (repo-relative, forward slashes), its output path and its navigation section. */
 const pages = [
   { src: "docs/index.md", section: "" },
-  ...["quickstart", "react", "kotlin", "java-spring", "offline", "postgres", "tracing", "from-rest", "from-graphql"].map((g) => ({ src: `docs/guide/${g}.md`, section: "Guides" })),
+  ...["quickstart", "react", "kotlin", "java-spring", "offline", "postgres", "jdbc", "tracing", "explorer", "editors", "typescript", "from-rest", "from-graphql"].map((g) => ({ src: `docs/guide/${g}.md`, section: "Guides" })),
   ...list("spec").map((src) => ({ src, section: "Specification" })),
   ...list("spec/adr").map((src) => ({ src, section: "Design decisions" })),
   { src: "docs/comparison.md", section: "Background" },

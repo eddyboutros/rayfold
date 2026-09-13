@@ -48,8 +48,9 @@ import { createRayfoldServer, listen } from "@rayfold/server";
 import { RayfoldClient, RayfoldClientError, createFetchTransport } from "@rayfold/client";
 import { loadSchema } from "@rayfold/schema";
 import { RbCodec } from "@rayfold/rb";
-import { defineSchema, entity, query, t, type Infer } from "@rayfold/builder";
+import { defineSchema, entity, query, t, typedClient, type Infer, type Select } from "@rayfold/builder";
 import { groupFrames } from "@rayfold/conformance";
+import { explorerHtml } from "@rayfold/explorer";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { RayfoldProvider, useQuery } from "@rayfold/react";
@@ -134,9 +135,21 @@ try {
   assert.equal(typed.title, "Dune");
   assert.ok(schema.ir.ops["book"]);
 
+  // the shape narrows the result type, read from the published declarations with skipLibCheck off
+  const card: Select<Infer<typeof schema, "Book">, "{ id title }"> = { $type: "Book", id: "b1", title: "Dune" };
+  assert.equal(card.title, "Dune");
+  const api = typedClient<typeof schema>(client);
+  const shaped = await api.query("book", { id: "b1" }, { shape: "{ id title }" });
+  assert.equal(shaped?.title, "Dune");
+
   const fixtures = join(dirname(createRequire(import.meta.url).resolve("@rayfold/conformance/package.json")), "fixtures", "core");
   assert.equal(readdirSync(fixtures).length, ${readdirSync(join(ROOT, "conformance", "fixtures", "core")).length});
   assert.deepEqual(Object.keys(groupFrames([{ id: 1, data: null, fin: true }] as never)), ["1"]);
+
+  const page = explorerHtml({ endpoint: "/rayfold", title: "Smoke" });
+  assert.match(page, /Rayfold explorer/);
+  assert.ok(page.includes('"title":"Smoke"'), "the explorer page is configured for this service");
+  assert.ok(!page.includes("http://") && !page.includes("https://"), "the explorer page loads nothing from anywhere else");
 
   // @rayfold/react on the server: the loading state, and no request
   function Title() {
@@ -225,6 +238,33 @@ try {
   sh("npx rayfold check schema.rayfold");
   const types = sh("npx rayfold gen ts schema.rayfold");
   if (!/Book/.test(types)) throw new Error(`rayfold gen ts printed no Book type:\n${types}`);
+
+  // a broken schema is pointed at, not just named; the codeframe comes from @rayfold/lsp, which the CLI must carry
+  writeFileSync(join(app, "broken.rayfold"), ["entity Book {", "  id: ID", "  title: Strng", "}", "query book(id: ID): Book?", ""].join("\n"));
+  let report = null;
+  try {
+    execSync("npx rayfold check broken.rayfold", { cwd: app, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e) {
+    report = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+  }
+  if (report === null) throw new Error("rayfold check accepted a schema with an unknown type");
+  if (!report.includes("--> broken.rayfold:3:3")) throw new Error(`rayfold check did not point at the line:\n${report}`);
+  if (!report.includes("did you mean String?")) throw new Error(`rayfold check did not suggest the fix:\n${report}`);
+
+  step("talk to the language server from the packed CLI");
+  const frame = (message) => {
+    const body = Buffer.from(JSON.stringify(message), "utf8");
+    return Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "utf8"), body]);
+  };
+  const conversation = Buffer.concat([
+    frame({ jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } }),
+    frame({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri: "file:///schema.rayfold", text: SCHEMA } } }),
+    frame({ jsonrpc: "2.0", id: 2, method: "shutdown" }),
+    frame({ jsonrpc: "2.0", method: "exit" }),
+  ]);
+  const lsp = execSync("npx rayfold lsp", { cwd: app, input: conversation, encoding: "utf8" });
+  if (!lsp.includes("documentSymbolProvider")) throw new Error(`the language server did not answer initialize: ${lsp}`);
+  if (!lsp.includes("publishDiagnostics")) throw new Error(`the language server published no diagnostics: ${lsp}`);
 
   ok = true;
   console.log("smoke test passed");

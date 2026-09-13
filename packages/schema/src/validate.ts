@@ -36,7 +36,8 @@ export class RayfoldSchemaError extends Error {
   }
 }
 
-const KNOWN_ANNOTATIONS: Record<string, Set<string>> = {
+/** Every annotation the schema language defines, and where each one may be written. */
+export const KNOWN_ANNOTATIONS: Record<string, Set<string>> = {
   cache: new Set(["entity", "query"]),
   allow: new Set(["entity", "object", "field", "query", "command", "stream"]),
   deny: new Set(["entity", "object", "field", "query", "command", "stream"]),
@@ -58,7 +59,11 @@ const KNOWN_ANNOTATIONS: Record<string, Set<string>> = {
   version: new Set(["field"]),
   http: new Set(["query", "command"]),
   simulate: new Set(["command"]),
+  merge: new Set(["field"]),
 };
+
+/** How a field settles when a prediction and the server disagree (spec 08 section 5). */
+export const MERGE_POLICIES = ["serverWins", "keepLocal", "lww", "crdtText", "custom"];
 
 const INPUT_KINDS = new Set(["scalar", "enum", "input"]);
 const OUTPUT_KINDS = new Set(["scalar", "enum", "entity", "object", "union"]);
@@ -118,6 +123,12 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
         }
         if (a.args["maxAge"] !== undefined && !(typeof a.args["maxAge"] === "object" && a.args["maxAge"] && "$duration" in a.args["maxAge"])) {
           err("bad-cache-maxage", at, `@cache maxAge must be a duration like 60s`);
+        }
+      }
+      if (a.name === "merge") {
+        const v = a.args["value"];
+        if (!(v && typeof v === "object" && "$ident" in v && MERGE_POLICIES.includes(String((v as { $ident: string }).$ident)))) {
+          err("bad-merge", at, `@merge takes one of ${MERGE_POLICIES.join(", ")}`);
         }
       }
       if (a.name === "load") {
@@ -273,6 +284,8 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
     reachable.add(n);
     if ("fields" in d) for (const f of d.fields) visit(f.type);
     if (d.kind === "union") for (const m of d.members) visit({ kind: "named", name: m, nullable: false });
+    // An interface reaches its implementors: they are what a field of that type actually returns.
+    if (d.kind === "object" && d.interface) for (const e of Object.values(ir.types)) if (e.kind === "entity" && e.implements.includes(n)) visit({ kind: "named", name: e.name, nullable: false });
     if (t.kind === "named" && t.args) t.args.forEach(visit);
   };
   for (const op of Object.values(ir.ops)) {
@@ -355,6 +368,7 @@ function checkShapeAgainst(
         const sub = ir.types[item.type];
         if (!sub) err("unknown-type", at, `Unknown type ${item.type} in ...on`);
         else if (t.kind === "union" && !t.members.includes(item.type)) err("bad-type-condition", at, `${item.type} is not a member of ${t.name}`);
+        else if (t.kind === "object" && t.interface && !(sub.kind === "entity" && sub.implements.includes(t.name))) err("bad-type-condition", at, `${item.type} does not implement ${t.name}`);
         else checkShapeAgainst(ir, item.shape, { kind: "named", name: item.type, nullable: false }, at, err, seenViews);
         break;
       }

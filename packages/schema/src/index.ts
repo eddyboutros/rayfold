@@ -1,7 +1,7 @@
 export * from "./ir.ts";
 export { tokenize, TokenStream, RayfoldSyntaxError, type Token, type TokenKind } from "./lexer.ts";
 export { parseSchemaText } from "./parser.ts";
-export { validateIR, assertValid, fieldsOf, RayfoldSchemaError, type Diagnostic } from "./validate.ts";
+export { validateIR, assertValid, fieldsOf, KNOWN_ANNOTATIONS, RayfoldSchemaError, type Diagnostic } from "./validate.ts";
 export {
   parseShapeText,
   parseShape,
@@ -26,6 +26,7 @@ export { ExprError,
 } from "./expr.ts";
 export { canonicalJson, sha256Hex, hashJson, base64url, fromBase64url } from "./canonical.ts";
 export { loadSchema, schemaHash, type LoadedSchema } from "./load.ts";
+export { printSchemaText } from "./print.ts";
 export { diffSchemas, isBreaking, type Change, type ChangeLevel, type DiffOptions } from "./diff.ts";
 export { generateTypeScript } from "./gen-ts.ts";
 export { generateKotlin } from "./gen-kotlin.ts";

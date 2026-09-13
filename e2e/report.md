@@ -4,7 +4,7 @@ Same bookstore, same data, same flows, each stack behind real HTTP with good-pra
 
 | Aspect | Metric | REST | GraphQL | Rayfold | Note |
 |---|---|---|---|---|---|
-| Product page (book + author + 3 reviews) | requests and bytes for the page | 3 requests in 2 waves, 466 B | 1 request, 332 B | 1 request, 176 B (named view + RB) | GraphQL matches Rayfold on round trips; Rayfold moves fewer bytes because the shape names a server view and RB encodes the frames |
+| Product page (book + author + 3 reviews) | requests and bytes for the page | 3 requests in 2 waves, 466 B | 1 request, 332 B | 1 request, 177 B (named view + RB) | GraphQL matches Rayfold on round trips; Rayfold moves fewer bytes because the shape names a server view and RB encodes the frames |
 | List of 20 books with author names | author lookups at the backend | 9 extra requests from the client (N+1 at the edge) | 20 with the obvious resolver; 1 only with a hand-written DataLoader (both measured) | 1: a batch loader is the only resolver shape | `rayfold explain` shows one loader call per level |
 | Payload for 20 books, only id + title wanted | bytes on the wire | 2375 (full resources) | 821 | 830 compact JSON / 635 RB | compact mode drops $type where the schema fixes it; RB halves it again |
 | Place an order, then pay for it | round trips for two dependent commands | 2 | 2 (a mutation's result cannot feed a second mutation in the same document) | 1 ($ref pipelining) | reading back the created order is 1 request on GraphQL too, via the mutation's selection set; dependent commands are where pipelining matters |

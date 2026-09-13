@@ -1,5 +1,7 @@
 package dev.rayfold.core
 
+import kotlinx.coroutines.CompletableDeferred
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -10,7 +12,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /** What a resolver receives. */
-class RayfoldContext(
+data class RayfoldContext(
     val viewer: JsonElement,
     val simulate: Boolean,
     val opId: Int,
@@ -20,6 +22,20 @@ class RayfoldContext(
     val isCancelled: () -> Boolean = { false },
     val compact: Boolean = false,
     val ifVersion: JsonElement? = null,
+    /**
+     * Shared by every op of the batch: what is remembered is the load in flight, so an entity another op is already
+     * loading is not loaded again (spec 03 section 2).
+     */
+    val batch: MutableMap<String, CompletableDeferred<JsonElement>> = ConcurrentHashMap(),
+    /** The shape this op asked for, so an adapter can plan a whole screen at once (spec 02). */
+    val shape: Shape? = null,
+    /** The `Rayfold-Client` name of the caller, for usage telemetry (spec 11); empty when it did not name itself. */
+    val client: String = "",
+    /**
+     * The pushable read policy of what this resolver is about to load (spec 06 section 4), so a data source can
+     * apply it itself instead of loading rows the viewer may not see. Null when nothing can be pushed.
+     */
+    val policy: JsonObject? = null,
 ) {
     /** Conditional write (spec 03 section 4a): fails when the request's ifVersion differs from the stored version. */
     fun checkVersion(key: String, actual: JsonElement?, current: JsonObject) {
@@ -69,6 +85,8 @@ class Executor(
     private val resolvers: Resolvers,
     private val views: Views,
     private val instrumentation: Instrumentation = Instrumentation.NONE,
+    /** Records which members each client asked for (spec 11). Nothing is recorded without one. */
+    private val usage: UsageSink? = null,
 ) {
 
     /** Output cells hold JsonElement, a child Slot, or a list of cells; materialised once children are projected. */
@@ -230,6 +248,12 @@ class Executor(
     }
 
     /** [nullable]: the slots sit at a nullable position that is not a list element, where a denied entity reads as null. */
+    private val implementors = mutableMapOf<String, Set<String>>()
+
+    /** Entities that implement an interface. */
+    private fun implementorsOf(iface: String): Set<String> =
+        implementors.getOrPut(iface) { ir.types.values.filter { it.kind == "entity" && iface in it.implements }.map { it.name }.toSet() }
+
     private suspend fun projectMany(slots: List<Slot>, t: TypeRef, shape: Shape, st: State, nullable: Boolean) {
         if (slots.isEmpty()) return
         val def = ir.types[t.listBase().name] ?: throw RayfoldException(Code.INTERNAL, "Unknown type ${t.baseName()}")
@@ -251,6 +275,24 @@ class Executor(
             }
             return
         }
+
+        // An interface position (spec 01 section 2.1): like a union, the concrete type is known only from the value's
+        // `$type`, so the slots are grouped by it and projected as that entity. `...on Concrete` then selects fields the
+        // interface does not declare, and `$type` survives compact mode because the schema does not fix it here.
+        if (def.kind == "object" && def.isInterface) {
+            val members = implementorsOf(def.name)
+            val groups = linkedMapOf<String, MutableList<Slot>>()
+            for (s in slots) {
+                val tn = (s.value["\$type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (tn == null || tn !in members) throw RayfoldException(Code.INTERNAL, "Interface ${def.name} value at ${s.path} lacks a valid \$type", path = s.path)
+                s.out["\$type"] = JsonPrimitive(tn)
+                s.unionMember = true
+                st.unionPaths.add(s.path)
+                groups.getOrPut(tn) { mutableListOf() }.add(s)
+            }
+            for ((tn, group) in groups) projectMany(group, TypeRef("named", tn), shape, st, nullable)
+            return
+        }
         if (!def.hasFields) throw RayfoldException(Code.INTERNAL, "Cannot project ${def.kind} ${def.name}")
 
         var allowed = slots
@@ -268,6 +310,11 @@ class Executor(
 
         val fields = ir.fieldsOf(t) ?: def.fields
         val (groups, defers) = flatten(shape, def, fields, st)
+        // What this client asked for, for `rayfold check --unused` (spec 11). Only the member's path is kept.
+        usage?.let { sink ->
+            val at = System.currentTimeMillis()
+            for (g in groups) sink.record(UsageEvent(st.ctx.opName, "${def.name}.${g.field.name}", st.ctx.client), at)
+        }
 
         class Child(val slots: List<Slot>, val type: TypeRef, val shape: Shape, val explicit: Boolean, val nullable: Boolean)
         val children = mutableListOf<Child>()
@@ -355,7 +402,59 @@ class Executor(
             if (field.args.isNotEmpty()) throw RayfoldException(Code.UNIMPLEMENTED, "No loader for ${def.name}.${field.name}")
             return targets.map { it.value[field.name] }
         }
-        return instrumentation.loader(LoaderInfo(def.name, field.name, targets.size)) { loader(targets.map { it.value }, args, ctx) }
+        // One load per (field, arguments, entity) for the whole batch: an entity another op already loaded, or is
+        // loading right now, or that appears twice at this level, is not loaded again. Only entities take part.
+        val prefix = "${def.name}.${field.name}|$args"
+        val keys = targets.map { s ->
+            if (def.kind != "entity") {
+                null
+            } else {
+                (s.value["id"] as? JsonPrimitive)?.takeIf { it.isString || StrictJson.isNumber(it.content) }?.let { "$prefix|${it.content}" }
+            }
+        }
+        val waiting = mutableListOf<CompletableDeferred<JsonElement>>()
+        val need = mutableListOf<Slot>()
+        val settlers = mutableListOf<CompletableDeferred<JsonElement>>()
+        val mine = HashMap<String, Int>()
+        for (i in targets.indices) {
+            val k = keys[i]
+            val already = k?.let { ctx.batch[it] }
+            if (already != null) {
+                waiting.add(already)
+                continue
+            }
+            val shared = k?.let { mine[it] }
+            if (shared != null) {
+                waiting.add(waiting[shared])
+                continue
+            }
+            val pending = CompletableDeferred<JsonElement>()
+            waiting.add(pending)
+            settlers.add(pending)
+            if (k != null) {
+                ctx.batch[k] = pending
+                mine[k] = i
+            }
+            need.add(targets[i])
+        }
+
+        if (need.isNotEmpty()) {
+            try {
+                // the loader gets the read policy of what it loads, so it can filter at the source (spec 06 section 4)
+                val hint = ir.types[field.type.baseName()]?.annotations?.let { Policy.pushableFilter(it) }
+                val hinted = if (hint == null) ctx else ctx.copy(policy = hint)
+                val loaded = instrumentation.loader(LoaderInfo(def.name, field.name, need.size)) { loader(need.map { it.value }, args, hinted) }
+                if (loaded.size != need.size) {
+                    throw RayfoldException(Code.INTERNAL, "Loader for ${def.name}.${field.name} returned ${loaded.size} for ${need.size} parents")
+                }
+                loaded.forEachIndexed { n, v -> settlers[n].complete(v ?: JsonNull) }
+            } catch (e: Throwable) {
+                for (k in mine.keys) ctx.batch.remove(k) // a load that failed is not remembered
+                settlers.forEach { it.completeExceptionally(e) }
+                throw e
+            }
+        }
+        return waiting.map { it.await() }
     }
 
     private fun flatten(shape: Shape, def: TypeDef, fields: List<FieldDef>, st: State): Pair<List<Group>, List<Shape>> {

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Rayfold",
+  "scopeName": "source.rayfold",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#annotations" },
+    { "include": "#keywords" },
+    { "include": "#durations" },
+    { "include": "#numbers" },
+    { "include": "#types" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.rayfold", "match": "//.*$" },
+        { "name": "comment.block.rayfold", "begin": "/[*]", "end": "[*]/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.triple.rayfold", "begin": "\"\"\"", "end": "\"\"\"" },
+        { "name": "string.quoted.double.rayfold", "begin": "\"", "end": "\"" }
+      ]
+    },
+    "annotations": {
+      "name": "entity.name.function.annotation.rayfold",
+      "match": "@[A-Za-z][A-Za-z0-9_.]*"
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.other.declaration.rayfold",
+          "match": "(?<![A-Za-z0-9_])(entity|object|input|enum|union|scalar|error|event|query|command|stream|view)(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "keyword.control.rayfold",
+          "match": "(?<![A-Za-z0-9_])(implements|throws|emits|interface)(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "constant.language.rayfold",
+          "match": "(?<![A-Za-z0-9_])(true|false|null|viewer|this|public|private)(?![A-Za-z0-9_])"
+        }
+      ]
+    },
+    "durations": {
+      "name": "constant.numeric.duration.rayfold",
+      "match": "(?<![A-Za-z0-9_])[0-9]+(ms|s|m|h|d)(?![A-Za-z0-9_])"
+    },
+    "numbers": {
+      "name": "constant.numeric.rayfold",
+      "match": "(?<![A-Za-z0-9_])[0-9]+([.][0-9]+)?(?![A-Za-z0-9_])"
+    },
+    "types": {
+      "name": "support.type.rayfold",
+      "match": "(?<![A-Za-z0-9_])[A-Z][A-Za-z0-9_]*"
+    }
+  }
+}

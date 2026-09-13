@@ -67,6 +67,21 @@ class RayfoldProperties {
 
     /** Serve the WebSocket transport at `{path}/ws` on the application's port; needs spring-boot-starter-websocket. */
     var websocket: Boolean = true
+
+    /** The explorer at `{path}/explorer`. */
+    var explorer: ExplorerProperties = ExplorerProperties()
+}
+
+/** `rayfold.explorer.*` settings. */
+class ExplorerProperties {
+    /**
+     * Serve the explorer at `{path}/explorer`. Off by default: the page reads whatever the viewer's token allows, so
+     * turn it on where the application's own security already stands in front of it, or only in development.
+     */
+    var enabled: Boolean = false
+
+    /** Shown in the explorer's header, to tell one service from another. */
+    var title: String? = null
 }
 
 /** Turns a request into the viewer the schema's policies see: a map or a record with at least `id`, or null when anonymous. */
@@ -121,6 +136,8 @@ class RayfoldAutoConfiguration {
             allowedHosts = properties.allowedHosts?.toSet(),
             manifest = properties.manifest,
             maxBodyBytes = properties.maxBodyBytes,
+            explorer = properties.explorer.enabled,
+            explorerTitle = properties.explorer.title,
         ),
     )
 

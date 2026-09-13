@@ -68,6 +68,11 @@ data class ClientOptions(
      * idempotency keys, on [RayfoldClient.drain]: call it when the device is back online. Their predictions stay shown.
      */
     val offline: OfflineOptions? = null,
+    /**
+     * `Type.field` to its `@merge` policy (spec 08 section 5), so a prediction settles the way the schema says.
+     * A server built on rayfold-core can produce this map from its IR; the client stays free of the schema types.
+     */
+    val mergePolicies: Map<String, String> = emptyMap(),
 )
 
 data class OfflineOptions(val storage: QueueStorage = MemoryQueueStorage())
@@ -135,7 +140,7 @@ private fun request(id: Int, op: String, args: JsonObject, shape: String?, vars:
  * ```
  */
 class RayfoldClient @JvmOverloads constructor(private val transport: Transport, private val options: ClientOptions = ClientOptions()) {
-    val cache: RayfoldCache = options.cache ?: RayfoldCache(options.now)
+    val cache: RayfoldCache = options.cache ?: RayfoldCache(options.now, options.mergePolicies)
     private val queries = ConcurrentHashMap.newKeySet<String>().apply { addAll(options.queries) }
     private val queue: OfflineQueue? = options.offline?.let { o ->
         OfflineQueue(o.storage, { c -> settled(c, sendCommand(c)) }, { c -> cache.removeLayer(c.key) }, { c -> c.optimistic?.let { cache.addLayer(c.key, it) } })
@@ -331,7 +336,8 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
                         if (fin) h.result.complete(cache.denormalize(r.data))
                     }
                     "at" in f -> cache.mergeAt(key, (f["at"] as? JsonPrimitive)?.contentOrNull ?: "", f["data"] ?: JsonNull)
-                    "patch" in f -> (f["patch"] as? JsonArray)?.let { p -> cache.applyPatch(p.mapNotNull { it as? JsonObject }) }
+                    // a live update: `at` and `list` describe this op's own stored result
+                    "patch" in f -> (f["patch"] as? JsonArray)?.let { p -> cache.applyPatch(p.mapNotNull { it as? JsonObject }, key) }
                     fin && !h.result.isCompleted -> h.result.complete(cache.getResult(key)?.let { cache.denormalize(it.data) } ?: JsonNull)
                 }
                 onFrame?.invoke(f) // after the cache has taken the frame in

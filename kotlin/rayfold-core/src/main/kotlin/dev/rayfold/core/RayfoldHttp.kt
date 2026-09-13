@@ -21,6 +21,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.Base64
 import java.util.concurrent.Executor
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -58,6 +59,13 @@ data class HttpOptions(
      * notices a client that went away: neither the JDK server nor a servlet container reports it otherwise.
      */
     val keepAliveMs: Long = 15_000,
+    /**
+     * Serve the explorer at `{path}/explorer` (see [RayfoldExplorer]). Off by default: the page reads whatever the
+     * viewer's token allows, so it is served only where it is turned on, behind the application's own security.
+     */
+    val explorer: Boolean = false,
+    /** Shown in the explorer's header, to tell one service from another. */
+    val explorerTitle: String? = null,
 )
 
 /**
@@ -110,6 +118,9 @@ class RayfoldHttp(
 
     private val redacted by lazy { server.ir.withoutPolicies() }
 
+    /** One page per mount path: the page carries the endpoint it talks to. */
+    private val explorerPages = ConcurrentHashMap<String, String>()
+
     private val rb by lazy { RbCodec(server.ir) }
 
     /** `http` is listed when the schema binds REST-style routes. */
@@ -155,6 +166,7 @@ class RayfoldHttp(
             checkOrigin(call)
             if (sub == "/manifest" && call.method == "GET") return manifest(call, path)
             if (sub == "/openapi.json" && call.method == "GET") return json(call, 200, OpenApi.document(server.ir))
+            if (sub == "/explorer" && call.method == "GET") return explorer(call, base, path)
             val envelope: JsonObject
             var safe = false
             if (sub.isEmpty() || sub == "/") {
@@ -262,6 +274,15 @@ class RayfoldHttp(
             put("rayfold", "0.1"); put("extensions", JsonArray(extensions.map { JsonPrimitive(it) }))
             put("schema", RayfoldSchemaIR.json.encodeToJsonElement(RayfoldSchemaIR.serializer(), ir))
         })
+    }
+
+    /** The explorer page, configured for the path this server is mounted at. */
+    private fun explorer(call: HttpCall, base: String, path: String) {
+        if (!options.explorer) throw RayfoldException(Code.NOT_FOUND, "No route for GET $path")
+        val bytes = explorerPages.computeIfAbsent(base) { RayfoldExplorer.page(it, options.explorerTitle ?: "Rayfold") }.toByteArray()
+        call.setHeader("Content-Type", "text/html; charset=utf-8")
+        call.setHeader("Cache-Control", "no-store") // it carries the endpoint it talks to
+        call.respond(200, bytes.size.toLong()).use { it.write(bytes) }
     }
 
     private fun problem(call: HttpCall, e: Throwable) {

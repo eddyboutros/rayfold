@@ -17,7 +17,7 @@ same three flows cost over REST, GraphQL and Rayfold (`npm run bench`, `bench/re
 | Authorization | middleware | per-resolver | interceptors | middleware | rules in code | OAuth only | **policy expressions in the schema**, evaluated per op / type / field; default views never leak |
 | Cost / DoS control | rate limits | bolt-on complexity analysis | none | none | none | none | static cost from `@cost` and page sizes, per-batch budget, trusted-shape allowlist |
 | Cache coherence after writes | none | manual cache updates | none | invalidate | automatic | none | commands return **patches**; every client view updates without refetch |
-| Realtime | SSE/WebSocket by hand | subscriptions (separate type) | streams | subscriptions | live queries | none | `"live": true` on any query; server diffs; `patch` or `data` frames |
+| Realtime | SSE/WebSocket by hand | subscriptions (separate type) | streams | subscriptions | live queries | none | `"live": true` on any query; the server diffs the result it already served and sends **only what changed** (changed entity fields, rows added to or removed from a list, fields of a plain object), falling back to a fresh `data` frame when the change cannot be described |
 | Streaming / incremental | chunked by hand | `@defer` still a draft | streams | no | no | SSE | every response is frames; `@lazy`/`@defer` deliver later; streams with `fin` |
 | Idempotency | Idempotency-Key convention | none | none | none | mutations are transactions | none | **mandatory key** on commands, replay with `meta.replay` |
 | Evolution | versions | deprecation only | field numbers | none | none | none | additive-only enforced by `rayfold check`, sunset dates, lockfile ordinals, no versions |
@@ -59,6 +59,33 @@ What the numbers say, honestly:
   `meta.cost` to every frame.
 * **Latency** differences at this scale are mostly noise. Rayfold's median was the lowest in every flow, which
   shows only that its executor is not slower than graphql-js or a hand-written REST handler.
+
+## 3. The large example: an issue tracker
+
+The numbers above come from the bookstore, which is small on purpose. `examples/workspace-ts` is the opposite: a
+multi-tenant issue tracker with 2 organisations, 4 teams, 7 projects, 18 sprints, 630 issues
+(with sub-issues, labels, estimates and versions), 900 comments, 1156 activity entries of four different kinds,
+and notifications. It uses an interface for the feed, a union for search, row and field policies, per-parent
+pagination, conditional writes, bulk commands, live queries, `@lazy` and `@partial` fields, `@cost` budgets,
+`@cache` scopes, `@http` bindings, a stream and the MCP bridge.
+
+`e2e/workspace.test.ts` builds that domain three ways (REST, GraphQL with and without DataLoader, Rayfold) and runs
+17 scenarios against all three over real HTTP, checking they give the same answers before measuring what they cost.
+Results: `e2e/workspace.md` and the "Issue tracker" section of the HTML report. Rayfold was ahead on 10, level on
+7, behind on none.
+
+Some of what it measured:
+
+* **One board** (six columns, their totals and the first ten issues of each, with the assignee and labels):
+  57 486 bytes over REST, 21 783 over GraphQL, 9 446 over Rayfold's binary wire, from one request on each.
+* **One issue page** (project, people, labels, sub-issues, comments): five round trips over REST, one on the
+  other two.
+* **Closing a sprint**: the command answers with 11 entity patches, so every cached screen holding those issues is
+  corrected without a refetch. The other two report the new sprint state and leave the client to refetch.
+* **One tenant rule**: `@allow` on the entity is enforced on the batch endpoint, the `@http` route, the MCP
+  resource and the live query alike; REST and GraphQL enforce theirs in the one handler each was written in.
+* **N+1**: the same GraphQL query and schema without DataLoader made many times more data-source calls than with
+  it; Rayfold has no such mode, because a field loader is handed the whole level.
 
 Not measured yet: CDN hit rates for `GET`/`QUERY` reads (needs a real cache in front), live-query update
 latency versus polling, and the Kotlin runtime.

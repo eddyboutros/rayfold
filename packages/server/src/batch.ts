@@ -7,6 +7,8 @@ import { estimateCost } from "./cost.ts";
 import { compactQueryFrame, type Executor } from "./executor.ts";
 import { RayfoldError, VersionConflict, toWireError, type Frame, type RequestEnvelope, type RequestMeta, type RequestOp, type WireError } from "./protocol.ts";
 import { resolveRequestShape, type ShapeRegistry } from "./views.ts";
+import type { UsageSink } from "./usage.ts";
+import { capabilityAllows } from "./capability.ts";
 import { ChangeBus, changeFromPatch, diffResults, foldFrames, readSetOf } from "./live.ts";
 
 export interface BatchOptions {
@@ -28,6 +30,8 @@ export interface BatchRuntime {
   changes: ChangeBus;
   options: BatchOptions;
   instrumentation?: Instrumentation;
+  /** Records which operations each client called (spec 11). */
+  usage?: UsageSink;
   /** Commands running right now, by idempotency scope and key: a concurrent retry waits for the first, then replays. */
   inflight: Map<string, Promise<void>>;
 }
@@ -40,6 +44,8 @@ export interface ExecuteOptions {
    * without an idempotency key. Never settable from the wire envelope.
    */
   keyOptional?: boolean;
+  /** @internal Set by the batch itself: the memo every op of this request shares. Never read from the wire. */
+  batchState?: Map<string, unknown>;
 }
 
 /** Unbounded async queue of frames; `close()` ends iteration once drained. */
@@ -163,6 +169,8 @@ async function runBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: Execu
     timer = setTimeout(() => batchAbort.abort(new RayfoldError("deadline_exceeded", "Batch deadline exceeded")), envelope.meta.deadline);
   }
 
+  // One memo for the whole batch: a field loaded for an entity by one op is not loaded again by another.
+  const scoped: ExecuteOptions = { ...opts, batchState: new Map<string, unknown>() };
   const results = new Map<number, unknown>();
   const status = new Map<number, "ok" | "failed">();
   const done = new Map<number, Promise<void>>();
@@ -180,7 +188,7 @@ async function runBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: Execu
       const task = (async () => {
         await Promise.all(p.deps.map((d) => done.get(d) ?? Promise.resolve()));
         await gate;
-        await runOne(rt, p, envelope.meta ?? {}, opts, batchAbort.signal, viewerScope, results, status, sink);
+        await runOne(rt, p, envelope.meta ?? {}, scoped, batchAbort.signal, viewerScope, results, status, sink);
         resolvers.get(p.req.id)!();
       })();
       if (p.op.kind === "command") prevCommand = task;
@@ -297,7 +305,9 @@ async function runOp(
       opId: id,
       opName: p.op.name,
       policy: {},
+      shape: p.shape,
       state: new Map(),
+      batch: opts.batchState ?? new Map(),
       now: rt.options.now,
       checkVersion(key, actual, current) {
         const want = ctx.ifVersion;
@@ -305,6 +315,12 @@ async function runOp(
         if (String(actual) !== String(want)) throw new VersionConflict(key, want, actual, current);
       },
     };
+    // A capability token may call only the operations it names (spec 06 section 6); any other viewer is left to
+    // the schema's own policies.
+    if (!capabilityAllows(opts.viewer, p.op.name)) {
+      throw new RayfoldError("permission_denied", `This capability does not allow ${p.op.name}()`);
+    }
+    rt.usage?.record({ op: p.op.name, path: "", client: String(meta.client ?? "") }, rt.options.now());
     if (p.req.ifVersion !== undefined) ctx.ifVersion = p.req.ifVersion;
     if (p.req.vars) ctx.vars = p.req.vars;
     if (p.req.compact) ctx.compact = true;

@@ -897,7 +897,10 @@ internal object SchemaValidator {
         "version" to setOf("field"),
         "http" to setOf("query", "command"),
         "simulate" to setOf("command"),
+        "merge" to setOf("field"),
     )
+    /** How a field settles when a prediction and the server disagree (spec 08 section 5). */
+    private val MERGE_POLICIES = setOf("serverWins", "keepLocal", "lww", "crdtText", "custom")
     private val INPUT_KINDS = setOf("scalar", "enum", "input")
     private val OUTPUT_KINDS = setOf("scalar", "enum", "entity", "object", "union")
     private val STREAM_KINDS = OUTPUT_KINDS + "event"
@@ -953,6 +956,7 @@ internal object SchemaValidator {
                     if (a.args.containsKey("maxAge") && !(maxAge is JsonObject && maxAge.containsKey("\$duration"))) err("bad-cache-maxage", at, "@cache maxAge must be a duration like 60s")
                 }
                 if (a.name == "load" && a.args["value"].identOrNull() !in setOf("batch", "single")) err("bad-load", at, "@load must be batch or single")
+                if (a.name == "merge" && a.args["value"].identOrNull() !in MERGE_POLICIES) err("bad-merge", at, "@merge takes one of " + MERGE_POLICIES.joinToString(", "))
             }
         }
 
@@ -1075,6 +1079,10 @@ internal object SchemaValidator {
             reachable.add(n)
             if (d.hasFields) for (f in d.fields) visit(f.type)
             if (d.kind == "union") for (m in d.members) visit(TypeRef(kind = "named", name = m, nullable = false))
+            // An interface reaches its implementors: they are what a field of that type actually returns.
+            if (d.kind == "object" && d.isInterface) {
+                for (e in ir.types.values) if (e.kind == "entity" && n in e.implements) visit(TypeRef(kind = "named", name = e.name, nullable = false))
+            }
             if (!t.isList) t.args?.forEach { visit(it) }
         }
         for (op in ir.ops.values) {
@@ -1122,6 +1130,8 @@ internal object SchemaValidator {
                     when {
                         sub == null -> err("unknown-type", at, "Unknown type $cond in ...on")
                         t.kind == "union" && cond !in t.members -> err("bad-type-condition", at, "$cond is not a member of ${t.name}")
+                        t.kind == "object" && t.isInterface && !(sub.kind == "entity" && t.name in sub.implements) ->
+                            err("bad-type-condition", at, "$cond does not implement ${t.name}")
                         else -> checkShape(ir, item.subShape, TypeRef(kind = "named", name = cond, nullable = false), at, err, seenViews)
                     }
                 }

@@ -65,6 +65,26 @@ execution; exceeding it is `resource_exhausted` with `data: { cost, budget }`. A
 
 ## 6. Capability tokens (extension `cap`)
 
-A server MAY issue **capability tokens**: short-lived, scoped, delegatable references to a viewer with a
-narrowed policy environment (`viewer.caps`). They let an agent or downstream service perform exactly one
-class of operation without holding the user's credentials. Defined in the `cap` extension.
+A server MAY issue **capability tokens**: short-lived, scoped, delegatable references to a viewer. They let an agent
+or a downstream service perform exactly one class of operation without ever holding the user's credentials.
+
+A token carries what it claims and is signed, so verifying one needs no storage and no round trip:
+
+```
+rfcap1.<payload as base64url JSON>.<HMAC-SHA256 over "rfcap1.<payload>", base64url>
+```
+
+The payload is `{ viewer, ops, exp, jti, iss?, caps? }`: the viewer it speaks for, the operation names its holder may
+call, the epoch milliseconds after which it is refused, an id naming this token, optionally who issued it, and
+optionally extra facts. Nothing in it is secret from its holder: a token is a reference, not a password, and the
+signature is what stops it being edited.
+
+A server that accepts a token MUST refuse it when the signature does not match, when the payload is not readable, or
+when `exp` has passed, each as `unauthenticated`. The viewer it yields carries `caps` (`{ ops, exp, jti, iss?, ... }`),
+which the schema's policies read as `viewer.caps.*`, and the runtime MUST refuse any operation not named in
+`caps.ops` with `permission_denied`, before the operation runs. A viewer without `caps.ops` is not a capability
+holder and is governed by the schema's policies alone.
+
+**Attenuation only narrows.** A token derived from another MAY drop operations and shorten the life; it MUST NOT add
+an operation or extend `exp` beyond the token it came from. A derived token is a token in its own right and may be
+narrowed again, so a chain of delegations can only ever lose authority.

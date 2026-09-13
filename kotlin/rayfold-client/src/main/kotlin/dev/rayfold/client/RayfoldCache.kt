@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** A stored result: its skeleton (entities replaced by refs), the op that produced it and the entity keys it holds. */
@@ -31,7 +32,14 @@ data class OptimisticOp(val set: String, val value: JsonObject)
  * where the selection records the fields that result asked for, so reading it back gives exactly the requested shape
  * while every value comes from the one shared entity. Safe to use from several threads.
  */
-class RayfoldCache(private val now: () -> Long = System::currentTimeMillis) {
+class RayfoldCache(
+    private val now: () -> Long = System::currentTimeMillis,
+    /**
+     * `Type.field` to its `@merge` policy (spec 08 section 5). Without one, a prediction stands until its command
+     * settles, which is what the sub-profile has always done.
+     */
+    private val mergePolicies: Map<String, String> = emptyMap(),
+) {
     private val lock = Any()
     private val entities = LinkedHashMap<String, JsonObject>()
     private val results = HashMap<String, CachedResult>()
@@ -59,6 +67,28 @@ class RayfoldCache(private val now: () -> Long = System::currentTimeMillis) {
         setBase(key, JsonObject(next))
         staleKeys.remove(key)
         touched.add(key)
+        // A field the server has just spoken for leaves any prediction that also set it, when the field's policy says
+        // so (spec 08 section 5). `lww` settles the same way here: the server's write is the later one.
+        if (mergePolicies.isNotEmpty()) {
+            val type = key.substringBefore(':')
+            var overruled = false
+            for (i in layers.indices) {
+                val (id, ops) = layers[i]
+                var changed = false
+                val kept = ops.map { op ->
+                    if (op.set != key) {
+                        op
+                    } else {
+                        val drop = op.value.keys.filter { f ->
+                            f in fields && mergePolicies["$type.$f"] in setOf("serverWins", "lww")
+                        }
+                        if (drop.isEmpty()) op else { changed = true; OptimisticOp(op.set, JsonObject(op.value - drop.toSet())) }
+                    }
+                }
+                if (changed) { layers[i] = id to kept; overruled = true }
+            }
+            if (overruled) rebuild(key)
+        }
         touched
     }
 
@@ -196,8 +226,11 @@ class RayfoldCache(private val now: () -> Long = System::currentTimeMillis) {
 
     // ------------------------------------------------------------ patches
 
-    /** Applies patch operations from a command or a live query: set, del, inv (entities) and invOp (whole queries). */
-    fun applyPatch(ops: List<JsonObject>) = synchronized(lock) {
+    /**
+     * Applies patch operations. `set`, `del`, `inv` and `invOp` act on the whole cache; `at` and `list` describe one
+     * stored result (spec 04 section 2b) and are applied only when that result's key is known.
+     */
+    fun applyPatch(ops: List<JsonObject>, resultKey: String? = null) = synchronized(lock) {
         val keys = mutableSetOf<String>()
         val opNames = mutableSetOf<String>()
         for (p in ops) {
@@ -205,6 +238,8 @@ class RayfoldCache(private val now: () -> Long = System::currentTimeMillis) {
             val del = p.str("del")
             when {
                 set != null -> merge(set, p["value"] as? JsonObject ?: JsonObject(emptyMap()), keys)
+                "list" in p -> applyList(resultKey, p, keys, opNames)
+                "at" in p -> applyAt(resultKey, p, keys, opNames)
                 del != null -> {
                     setBase(del, null)
                     keys.add(del)
@@ -230,12 +265,66 @@ class RayfoldCache(private val now: () -> Long = System::currentTimeMillis) {
 
     // ------------------------------------------------------------ predictions
 
+    /** Merges fields into the plain object at a path inside one stored result (spec 04 section 2b). */
+    private fun applyAt(resultKey: String?, p: JsonObject, touched: MutableSet<String>, opNames: MutableSet<String>) {
+        val r = resultKey?.let { results[it] } ?: return
+        val path = p.str("at") ?: return
+        val fields = (p["value"] as? JsonObject)?.let { normalizeValue(it, touched).first as? JsonObject } ?: return
+        val parts = if (path.isEmpty()) emptyList() else path.split(".")
+        val data = updateAt(r.data, parts) { target ->
+            if (target is JsonObject && refKey(target) == null) JsonObject(LinkedHashMap(target).apply { putAll(fields) }) else target
+        }
+        r.keys.addAll(touched)
+        opNames.add(r.op)
+        results[resultKey] = CachedResult(data, r.op, r.keys, r.storedAt, r.stale)
+    }
+
+    /**
+     * Removes the named old positions of a list inside one stored result, then inserts the carried elements at their
+     * new positions. An insertion carries the projected element, so normalizing it stores the entity and records the
+     * fields this result selected.
+     */
+    private fun applyList(resultKey: String?, p: JsonObject, touched: MutableSet<String>, opNames: MutableSet<String>) {
+        val r = resultKey?.let { results[it] } ?: return
+        val path = p.str("list") ?: return
+        val parts = if (path.isEmpty()) emptyList() else path.split(".")
+        val dels = (p["del"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.intOrNull }?.sortedDescending() ?: emptyList()
+        val inserts = (p["ins"] as? JsonArray)?.mapNotNull { it as? JsonObject } ?: emptyList()
+        val data = updateAt(r.data, parts) { target ->
+            if (target !is JsonArray) {
+                target
+            } else {
+                val rows = target.toMutableList()
+                for (n in dels) if (n in rows.indices) rows.removeAt(n)
+                for (x in inserts) {
+                    val at = (x["at"] as? JsonPrimitive)?.intOrNull ?: continue
+                    val v = x["value"] ?: continue
+                    rows.add(at.coerceIn(0, rows.size), normalizeValue(v, touched).first)
+                }
+                JsonArray(rows)
+            }
+        }
+        r.keys.addAll(touched)
+        opNames.add(r.op)
+        results[resultKey] = CachedResult(data, r.op, r.keys, r.storedAt, r.stale)
+    }
+
     /**
      * Shows a prediction, tagged by the command's idempotency key, over the server's values until [removeLayer]. The
      * server's writes keep landing underneath, so removing it leaves exactly what the server said: the rebase after
      * success and the rollback after failure.
      */
     fun addLayer(id: String, ops: List<OptimisticOp>) = synchronized(lock) {
+        for (op in ops) {
+            val type = op.set.substringBefore(':')
+            for (f in op.value.keys) {
+                // Declared but not implemented: predicting such a field would need a merge this client cannot perform.
+                val policy = mergePolicies["$type.$f"]
+                if (policy == "crdtText" || policy == "custom") {
+                    throw IllegalArgumentException("@merge($policy) is not implemented: $type.$f cannot be predicted optimistically")
+                }
+            }
+        }
         val keys = ops.map { it.set }.toSet()
         for (k in keys) if (k !in shadow) shadow[k] = entities[k]
         layers.add(id to ops)

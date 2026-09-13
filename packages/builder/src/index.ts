@@ -307,3 +307,5 @@ export type InferArgs<S, OpName extends string> = S extends { ops: infer OS } ? 
 export type InferResult<S, OpName extends string> = S extends { ops: infer OS } ? (OpName extends keyof OS ? (OS[OpName] extends OpBuilder<infer _K, infer _A, infer R> ? Resolve<S, R, []> : never) : never) : never;
 
 export type { Expr, TypeRef, RayfoldSchemaIR };
+
+export { typedClient, type Select, type SelectResult, type ShapedClient, type TypedClient } from "./select.ts";

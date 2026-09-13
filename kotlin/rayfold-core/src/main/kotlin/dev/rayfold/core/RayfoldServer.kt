@@ -17,6 +17,8 @@ class RayfoldServer(
     idempotency: IdempotencyStore = MemoryIdempotencyStore(),
     /** Hooks around batches, ops and loaders, for tracing (module rayfold-opentelemetry makes them spans). */
     instrumentation: Instrumentation = Instrumentation.NONE,
+    /** Where to record which members each client asks for (spec 11). Without one, nothing is recorded. */
+    val usage: UsageSink? = null,
 ) {
     init { ir.checkFormats() }
 
@@ -25,9 +27,9 @@ class RayfoldServer(
     /** Entity and op change notifications driving live queries (spec 08 section 3); committed commands publish their patches here. */
     val changes = ChangeBus()
     val views = Views(ir, options.maxInlineShapes)
-    private val executor = Executor(ir, resolvers, views, instrumentation)
+    private val executor = Executor(ir, resolvers, views, instrumentation, usage)
     private val cost = Cost(ir, views)
-    private val runner = BatchRunner(ir, executor, views, cost, idempotency, events, options, changes, instrumentation)
+    private val runner = BatchRunner(ir, executor, views, cost, idempotency, events, options, changes, instrumentation, usage)
 
     /** sha256 of the canonical IR: the hash `@rayfold/schema` computes for the same schema ([SchemaText.hash]). */
     val hash: String by lazy { SchemaText.hash(ir) }

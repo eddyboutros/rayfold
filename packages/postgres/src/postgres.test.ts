@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { evalExpr, loadSchema, parseExprText, type ExprEnv } from "@rayfold/schema";
+import { evalExpr, loadSchema, parseExprText, parseShapeText, type ExprEnv } from "@rayfold/schema";
 import { createRayfoldServer, decide, type RayfoldContext, type RayfoldServer } from "@rayfold/server";
 import { compilePolicy, createPgStore, type PageRequest, type PgStore, type PolicyColumn, type Queryable, type Row } from "./index.ts";
 
@@ -52,7 +52,11 @@ function bookstore(sql: Queryable): { server: RayfoldServer; store: PgStore } {
   const store = createPgStore(sql, {
     ir,
     naming: "snake",
-    tables: { Author: { table: "authors" }, Book: { table: "books", columns: { authorId: "author_id" } }, Order: { table: "order" } },
+    tables: {
+      Author: { table: "authors", relations: { books: { type: "Book", kind: "page", key: "authorId" } } },
+      Book: { table: "books", columns: { authorId: "author_id" }, relations: { author: { type: "Author", kind: "one", key: "authorId" } } },
+      Order: { table: "order" },
+    },
   });
   const server = createRayfoldServer({
     schema: SCHEMA,
@@ -93,6 +97,41 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
       },
     });
     expect(log).toHaveLength(3);
+  });
+
+  it("serves the whole screen in one statement: the page, each book's author, and that author's own books", async () => {
+    const { store } = bookstore(counted);
+    const shape = parseShapeText("{ id title author { name books(page: { first: 2 }) { total items { id } } } }");
+    const page = await store.screen("Book", shape, { first: 3 });
+    expect(page).toMatchObject({
+      total: 7,
+      hasMore: true,
+      cursor: "b3",
+      items: [
+        { id: "b1", title: "The Dispossessed", author: { name: "Ursula K. Le Guin", books: { total: 3, items: [{ id: "b1" }, { id: "b4" }] } } },
+        { id: "b2", title: "Kindred", author: { name: "Octavia E. Butler", books: { total: 2, items: [{ id: "b2" }, { id: "b5" }] } } },
+        { id: "b3", title: "Invisible Cities", author: { name: "Italo Calvino", books: { total: 2, items: [{ id: "b3" }, { id: "b7" }] } } },
+      ],
+    });
+    // the same screen the per-level loaders serve in three statements, in one
+    expect(log).toHaveLength(1);
+  });
+
+  it("pushes each level's read policy into the one statement, and keeps paging from a cursor", async () => {
+    const { store } = bookstore(counted);
+    const mine = await store.screen("Order", parseShapeText("{ id total }"), { first: 10 }, {}, { viewer: { id: "u1" } });
+    expect(mine.items.map((o) => o["id"])).toEqual(["o1", "o3"]); // never o2, never the unowned o4
+    expect(mine.total).toBe(2);
+    expect(log).toHaveLength(1);
+
+    const admin = await store.screen("Order", parseShapeText("{ id }"), { first: 10 }, {}, { viewer: { id: "u9", role: "admin" } });
+    expect(admin.items.map((o) => o["id"])).toEqual(["o1", "o2", "o3", "o4"]); // guard: the rule is not a blanket refusal
+
+    const second = await store.screen("Book", parseShapeText("{ id }"), { first: 3, after: "b3" });
+    expect(second.items.map((b) => b["id"])).toEqual(["b4", "b5", "b6"]);
+    expect(second).toMatchObject({ total: 7, hasMore: true, cursor: "b6" });
+    const last = await store.screen("Book", parseShapeText("{ id }"), { first: 3, after: "b7" });
+    expect(last).toMatchObject({ items: [], total: 7, hasMore: false, cursor: null });
   });
 
   it("walks every page with the cursor: no duplicate, no gap, the total on each page, and an empty page after the last", async () => {

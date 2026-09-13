@@ -1,0 +1,605 @@
+{
+  "name": "Interfaces and type conditions (spec 01 s2.1, spec 02 s1)",
+  "schema": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Named": {
+        "kind": "object",
+        "name": "Named",
+        "annotations": [
+          {
+            "name": "interface",
+            "args": {}
+          }
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ],
+        "interface": true
+      },
+      "Person": {
+        "kind": "entity",
+        "name": "Person",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "email",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ],
+        "implements": [
+          "Named"
+        ]
+      },
+      "Bot": {
+        "kind": "entity",
+        "name": "Bot",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "model",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ],
+        "implements": [
+          "Named"
+        ]
+      },
+      "Note": {
+        "kind": "entity",
+        "name": "Note",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "body",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "author",
+            "type": {
+              "kind": "named",
+              "name": "Named",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ],
+        "implements": []
+      }
+    },
+    "ops": {
+      "note": {
+        "kind": "query",
+        "name": "note",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Note",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "named": {
+        "kind": "query",
+        "name": "named",
+        "args": [],
+        "returns": {
+          "kind": "list",
+          "of": {
+            "kind": "named",
+            "name": "Named",
+            "nullable": false
+          },
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {}
+  },
+  "data": {
+    "Note": [
+      {
+        "id": "n1",
+        "body": "B1",
+        "authorId": "p1"
+      },
+      {
+        "id": "n2",
+        "body": "B2",
+        "authorId": "bot1"
+      }
+    ],
+    "Named": [
+      {
+        "$type": "Person",
+        "id": "p1",
+        "name": "Ada",
+        "email": "ada@x.dev"
+      },
+      {
+        "$type": "Bot",
+        "id": "bot1",
+        "name": "Helper",
+        "model": "m5"
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "note": {
+        "from": "Note",
+        "where": {
+          "id": "$args.id"
+        },
+        "mode": "one"
+      },
+      "named": {
+        "from": "Named",
+        "mode": "list"
+      }
+    },
+    "fields": {
+      "Note": {
+        "author": {
+          "from": "Named",
+          "key": "authorId",
+          "match": "id",
+          "mode": "one"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "...on selects per concrete type at an interface field, and $type names it",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "note",
+            "args": {
+              "id": "n1"
+            },
+            "shape": "{ id author { name ...on Person { email } ...on Bot { model } } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Note",
+            "id": "n1",
+            "author": {
+              "$type": "Person",
+              "name": "Ada",
+              "email": "ada@x.dev"
+            }
+          },
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "the same shape on the other implementor selects that type's fields",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "note",
+            "args": {
+              "id": "n2"
+            },
+            "shape": "{ id author { name ...on Person { email } ...on Bot { model } } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Note",
+            "id": "n2",
+            "author": {
+              "$type": "Bot",
+              "name": "Helper",
+              "model": "m5"
+            }
+          },
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "no sub-shape gives the interface's default view",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "note",
+            "args": {
+              "id": "n1"
+            },
+            "shape": "{ id author }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Note",
+            "id": "n1",
+            "author": {
+              "$type": "Person",
+              "id": "p1",
+              "name": "Ada"
+            }
+          },
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "compact keeps $type at an interface position and drops it where the schema fixes it",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "note",
+            "args": {
+              "id": "n1"
+            },
+            "compact": true,
+            "shape": "{ id author { name ...on Person { email } } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "id": "n1",
+            "author": {
+              "$type": "Person",
+              "name": "Ada",
+              "email": "ada@x.dev"
+            }
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a list of the interface groups by concrete type",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "named",
+            "shape": "{ id name ...on Bot { model } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Person",
+              "id": "p1",
+              "name": "Ada"
+            },
+            {
+              "$type": "Bot",
+              "id": "bot1",
+              "name": "Helper",
+              "model": "m5"
+            }
+          ],
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    }
+  ]
+}

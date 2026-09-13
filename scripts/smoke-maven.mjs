@@ -104,6 +104,7 @@ repositories {
 dependencies {
     implementation("${group}:rayfold-java:${version}")
     implementation("${group}:rayfold-client:${version}")
+    implementation("${group}:rayfold-jdbc:${version}")
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) } }
 java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }

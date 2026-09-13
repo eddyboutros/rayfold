@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T23:53:44.260Z",
+  "generatedAt": "2026-09-13T00:31:19.541Z",
   "node": "v24.8.0",
   "iterations": 300,
   "rows": [
@@ -9,8 +9,8 @@
       "roundTrips": 2,
       "bytesDown": 405,
       "bytesUp": 0,
-      "p50": 0.444,
-      "p99": 1.714
+      "p50": 0.513,
+      "p99": 2.843
     },
     {
       "flow": "A. product page (book + author + 3 reviews)",
@@ -18,8 +18,8 @@
       "roundTrips": 1,
       "bytesDown": 282,
       "bytesUp": 157,
-      "p50": 0.481,
-      "p99": 1.972
+      "p50": 0.556,
+      "p99": 1.994
     },
     {
       "flow": "A. product page (book + author + 3 reviews)",
@@ -27,17 +27,17 @@
       "roundTrips": 1,
       "bytesDown": 302,
       "bytesUp": 182,
-      "p50": 0.409,
-      "p99": 1.031
+      "p50": 0.484,
+      "p99": 1.072
     },
     {
       "flow": "A. product page (book + author + 3 reviews)",
       "impl": "Rayfold (RB)",
       "roundTrips": 1,
-      "bytesDown": 176,
+      "bytesDown": 177,
       "bytesUp": 143,
-      "p50": 0.434,
-      "p99": 1.876
+      "p50": 0.515,
+      "p99": 1.734
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
@@ -45,8 +45,8 @@
       "roundTrips": 2,
       "bytesDown": 2810,
       "bytesUp": 0,
-      "p50": 0.828,
-      "p99": 4.344
+      "p50": 0.886,
+      "p99": 4.565
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
@@ -54,8 +54,8 @@
       "roundTrips": 1,
       "bytesDown": 2074,
       "bytesUp": 89,
-      "p50": 0.484,
-      "p99": 3.285
+      "p50": 0.526,
+      "p99": 3.378
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
@@ -63,17 +63,17 @@
       "roundTrips": 1,
       "bytesDown": 2083,
       "bytesUp": 142,
-      "p50": 0.38,
-      "p99": 0.917
+      "p50": 0.422,
+      "p99": 1.065
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
       "impl": "Rayfold (RB)",
       "roundTrips": 1,
       "bytesDown": 1080,
-      "bytesUp": 94,
-      "p50": 0.436,
-      "p99": 1.054
+      "bytesUp": 95,
+      "p50": 0.478,
+      "p99": 0.983
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -81,8 +81,8 @@
       "roundTrips": 3,
       "bytesDown": 327,
       "bytesUp": 35,
-      "p50": 0.47,
-      "p99": 3.444
+      "p50": 0.501,
+      "p99": 1.807
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -90,8 +90,8 @@
       "roundTrips": 2,
       "bytesDown": 157,
       "bytesUp": 204,
-      "p50": 0.716,
-      "p99": 3.804
+      "p50": 0.773,
+      "p99": 2.058
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -99,8 +99,8 @@
       "roundTrips": 1,
       "bytesDown": 220,
       "bytesUp": 279,
-      "p50": 0.403,
-      "p99": 1.006
+      "p50": 0.438,
+      "p99": 1.023
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -108,8 +108,8 @@
       "roundTrips": 1,
       "bytesDown": 101,
       "bytesUp": 172,
-      "p50": 0.419,
-      "p99": 0.821
+      "p50": 0.459,
+      "p99": 0.987
     }
   ]
 }

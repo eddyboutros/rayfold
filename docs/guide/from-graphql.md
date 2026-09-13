@@ -22,6 +22,20 @@ that the parts GraphQL leaves to libraries and conventions are part of the contr
 | Query cost plugins | Static cost from `@cost` and page sizes, checked against a budget before anything runs |
 | Apollo or Relay cache updates after a mutation | Commands return patches; the client cache applies them, so no `update` functions and no refetching |
 
+## Start from the SDL you have
+
+```sh
+npm install graphql       # the importer reads the SDL with it
+npx rayfold import graphql schema.graphql --out api.rayfold
+```
+
+`Query` fields become queries, `Mutation` fields commands, `Subscription` fields streams, and the type system carries
+across almost whole. The change that touches every line is nullability, which is the other way round: `String!`
+becomes `String`, and `String` becomes `String?`.
+
+A mutation says nothing about what it can fail with or what it emits, and a Relay connection is not a `Page`, so the
+importer leaves a note rather than inventing either. The notes go to stderr; the schema goes to stdout.
+
 ## A migration in four steps
 
 1. **Translate the SDL.** Types map almost one to one. Mark the fields that can be null with `?`, turn mutations into

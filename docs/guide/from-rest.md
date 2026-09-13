@@ -18,6 +18,22 @@ usual path is: describe what you have, serve it both ways, and move screens one 
 | Middleware for authorization | `@allow`/`@deny` in the schema, evaluated on every path: queries, commands, live updates, MCP |
 | Webhooks or SSE for changes | `live: true` on any query; commands return patches that keep every client cache current |
 
+## Start from the document you have
+
+If you publish an OpenAPI document, the first draft of the schema can be read from it:
+
+```sh
+npx rayfold import openapi openapi.json --out api.rayfold
+```
+
+A `GET` becomes a query, anything that changes data becomes a command, `components.schemas` become types, and every
+operation keeps the URL it already has with `@http`. An object with a non-null `id` becomes an entity, since that is
+what gives the cache and the patches something to address.
+
+What the document cannot say, the importer does not invent: what may be cached, who may read what, which errors a
+command throws, which events it emits. Those are the parts that make the schema worth having, and they go in by hand.
+Everything it had to assume is listed on stderr, so the schema on stdout stays a schema.
+
 ## A migration in five steps
 
 1. **Write the schema for the resources you have.** Entities for your resources, queries for your `GET` endpoints,

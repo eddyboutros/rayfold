@@ -96,14 +96,17 @@ class OpenTelemetryTest {
         val book = named("rayfold query book")
         val list = named("rayfold query books")
         val loads = spans().filter { it.name == "rayfold load Book.author" }
-        assertEquals(2, loads.size)
         assertEquals(false, batch.parentSpanContext.isValid, "the batch is the root")
         assertEquals(listOf(batch.spanId, batch.spanId), listOf(book.parentSpanId, list.parentSpanId))
-        assertEquals(setOf(book.spanId, list.spanId), loads.map { it.parentSpanId }.toSet())
+        // Both ops need b1's author and a batch loads a row once, so which op pays for it depends on which asked
+        // first. What is fixed: every load hangs under the op that asked for it.
+        assertTrue(loads.isNotEmpty(), "the author was loaded at least once")
+        assertTrue(loads.all { it.parentSpanId == book.spanId || it.parentSpanId == list.spanId }, "a load belongs to the op that asked")
         assertEquals(1, spans().map { it.traceId }.toSet().size)
         assertEquals(2L, attr(batch, "rayfold.ops"))
         assertEquals("android", attr(batch, "rayfold.client"))
-        assertEquals(2L, attr(loads.first { it.parentSpanId == list.spanId }, "rayfold.parents"), "one call served both books")
+        // b1 and b2, each loaded once: the row both ops wanted is not fetched twice
+        assertEquals(2L, loads.sumOf { (attr(it, "rayfold.parents") as? Long) ?: 0L }, "b1 and b2, each loaded once")
         // the resolver's own spans nest under the loader call that ran them
         assertEquals(loads.map { it.spanId }.toSet(), spans().filter { it.name == "db select" }.map { it.parentSpanId }.toSet())
         assertTrue(spans().none { it.status.statusCode == StatusCode.ERROR })

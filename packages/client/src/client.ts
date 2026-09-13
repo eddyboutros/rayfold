@@ -1,7 +1,8 @@
 /** RayfoldClient: batches with refs, cache-coherent commands, live-updating watches. */
 import type { Frame, PatchOp, RequestEnvelope, RequestOp, WireError } from "@rayfold/server/protocol";
 import type { RayfoldSchemaIR } from "@rayfold/schema";
-import { RayfoldCache, type CacheListener, type CachedResult, type OptimisticOp } from "./cache.ts";
+import { annotation } from "@rayfold/schema";
+import { RayfoldCache, type CacheListener, type CachedResult, type MergePolicy, type OptimisticOp } from "./cache.ts";
 import { OfflineQueue, isUnreachable, memoryQueue, type QueueEvent, type QueueStorage, type QueuedCommand } from "./offline.ts";
 import type { Transport } from "./transport.ts";
 import { restoreTypes, typeAtPath } from "./types.ts";
@@ -135,7 +136,7 @@ export class RayfoldClient {
 
   constructor(private readonly opts: ClientOptions) {
     this.now = opts.now ?? Date.now;
-    this.cache = opts.cache ?? new RayfoldCache(this.now);
+    this.cache = opts.cache ?? new RayfoldCache(this.now, mergePolicyOf(opts.schema));
     this.keyGen = opts.keyGen ?? (() => (globalThis.crypto?.randomUUID?.() ?? `${this.now().toString(36)}-${Math.random().toString(36).slice(2)}`).replace(/-/g, ""));
     this.schema = opts.schema;
     if (this.schema) for (const op of Object.values(this.schema.ops)) if (op.kind === "query") this.opKinds.set(op.name, "query");
@@ -388,7 +389,8 @@ export class RayfoldClient {
         } else if ("at" in f) {
           this.cache.mergeAt(resultKeys.get(h.id)!, f.at, this.typed(h.req.op, f.data, f.at));
         } else if ("patch" in f) {
-          this.cache.applyPatch(f.patch as PatchOp[]);
+          // a live update: `at` and `list` ops describe this op's own stored result
+          this.cache.applyPatch(f.patch as PatchOp[], resultKeys.get(h.id)!);
         } else if ("fin" in f && f.fin && !settled.has(h.id)) {
           const r = this.cache.getResult(resultKeys.get(h.id)!);
           resolve(h, r ? this.cache.denormalize(r.data) : undefined);
@@ -425,4 +427,20 @@ function pick(o: OpOptions): Partial<RequestOp> {
   if (o.live !== undefined) out.live = o.live;
   if (o.ifVersion !== undefined) out.ifVersion = o.ifVersion;
   return out;
+}
+
+/** A field's `@merge` policy from the schema, memoised; without a schema there is no policy to read. */
+function mergePolicyOf(schema: RayfoldSchemaIR | undefined): (type: string, field: string) => MergePolicy | undefined {
+  if (!schema) return () => undefined;
+  const seen = new Map<string, MergePolicy | undefined>();
+  return (type, field) => {
+    const key = `${type}.${field}`;
+    if (seen.has(key)) return seen.get(key);
+    const def = schema.types[type];
+    const f = def && "fields" in def ? def.fields.find((x) => x.name === field) : undefined;
+    const value = f ? annotation(f, "merge")?.args["value"] : undefined;
+    const policy = value && typeof value === "object" && "$ident" in value ? (String((value as { $ident: string }).$ident) as MergePolicy) : undefined;
+    seen.set(key, policy);
+    return policy;
+  };
 }

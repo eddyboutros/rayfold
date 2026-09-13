@@ -9,7 +9,7 @@
  * check then removes it), but it never drops a row the policy allows. Comparisons it cannot translate exactly, such as
  * ordering text or comparing across types, are left to the runtime.
  */
-import { evalExpr, type Expr, type ExprEnv, type FieldDef, type RayfoldSchemaIR } from "@rayfold/schema";
+import { evalExpr, type Expr, type ExprEnv, type FieldDef, type RayfoldSchemaIR, type Shape } from "@rayfold/schema";
 
 /** Anything with pg's `query(text, params)`: `pg.Pool`, `pg.Client`, `PGlite`. */
 export interface Queryable {
@@ -23,6 +23,19 @@ export interface TableMapping {
   id?: string;
   /** Field name to column name, for fields whose column is named otherwise (after `naming`). */
   columns?: Record<string, string>;
+  /** Fields that lead to another mapped type. `screen` needs these; the batch loaders do not. */
+  relations?: Record<string, Relation>;
+}
+
+/**
+ * How a field reaches another table. `one`: `key` is the field on *this* type holding the other row's key
+ * (`Book.authorId`). `page`: `key` is the field on the *other* type holding this row's key (`Book.authorId`, as seen
+ * from `Author.books`).
+ */
+export interface Relation {
+  type: string;
+  kind: "one" | "page";
+  key: string;
 }
 
 export interface PgStoreOptions {
@@ -162,17 +175,116 @@ export class PgStore {
     });
   }
 
+  /**
+   * One statement for a whole screen: a page of `type` with every nested field the shape asks for, gathered as JSON
+   * by correlated subqueries. Depth costs no extra round trip, and each level's read policy is pushed into its own
+   * `WHERE`, so a nested list never carries rows its viewer may not see.
+   *
+   * Nested pages are first pages (`first`), which is what a screen shows; the root page takes a cursor as usual.
+   * Every selected field must be a mapped column or a declared relation.
+   */
+  async screen(type: string, shape: Shape, page: PageRequest, where: Record<string, unknown> = {}, ctx: PolicyContext = {}, args: Record<string, unknown> = {}): Promise<Page> {
+    const t = this.table(type);
+    const params: unknown[] = [];
+    // The caller may pass the shape of the Page the query returns, or the shape of one row.
+    const rowShape = t.def.fields.some((f) => f.name === "items") ? shape : itemsOf(shape);
+    const projection = this.project(t, "__r0", rowShape, ctx, args, params, 0);
+    const conds = [...this.equalities(t, where, params), ...this.policyWhere(t, ctx, args, params, "__r0", ctx.policy?.filter ?? this.filterFor(type))];
+    const filtered =
+      `SELECT ${projection} AS "__row", __r0.${t.id}::text AS "__key", count(*) OVER () AS "__total" ` +
+      `FROM ${t.name} AS __r0${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""}`;
+    let after = "";
+    if (page.after) {
+      params.push(page.after);
+      after = ` WHERE "__s"."__key" > $${params.length}::text`;
+    }
+    params.push(page.first + 1);
+    const raw = (await this.db.query<Row>(`SELECT * FROM (${filtered}) AS "__s"${after} ORDER BY "__s"."__key" LIMIT $${params.length}`, params)).rows;
+    let total = raw.length ? Number(raw[0]!["__total"]) : 0;
+    if (!raw.length && page.after) {
+      const cp: unknown[] = [];
+      const cc = [...this.equalities(t, where, cp), ...this.policyWhere(t, ctx, args, cp, "__r0", ctx.policy?.filter ?? this.filterFor(type))];
+      const counted = await this.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t.name} AS __r0${cc.length ? ` WHERE ${cc.join(" AND ")}` : ""}`, cp);
+      total = Number(counted.rows[0]?.n ?? 0);
+    }
+    const rows = raw.slice(0, page.first);
+    return {
+      items: rows.map((r) => r["__row"] as Row),
+      cursor: rows.length ? String(rows[rows.length - 1]!["__key"]) : null,
+      hasMore: raw.length > page.first,
+      total,
+    };
+  }
+
+  /** The JSON projection of one level of a screen: scalars from columns, relations from correlated subqueries. */
+  private project(t: Table, alias: string, shape: Shape, ctx: PolicyContext, args: Record<string, unknown>, params: unknown[], depth: number): string {
+    if (depth > 8) throw new Error("@rayfold/postgres: a screen nested deeper than 8 levels");
+    const relations = this.opts.tables[t.def.name]?.relations ?? {};
+    const parts: string[] = [];
+    for (const item of shape.items) {
+      if (item.kind !== "field") continue; // views and type conditions are expanded before a shape reaches the store
+      const name = item.name;
+      const out = item.alias ?? name;
+      const def = t.def.fields.find((f) => f.name === name);
+      if (!def) throw new Error(`@rayfold/postgres: ${t.def.name} has no field ${name}`);
+      const rel = relations[name];
+      if (!rel) {
+        const col = t.column(name);
+        if (!col) throw new Error(`@rayfold/postgres: ${t.def.name}.${name} has no column and no relation`);
+        const scalar = def.type.kind === "named" ? this.scalarOf(def.type.name) : "";
+        parts.push(`'${out}', ${alias}.${col}${AS_TEXT.has(scalar) ? "::text" : ""}`);
+        continue;
+      }
+      const child = this.table(rel.type);
+      const ca = `__r${depth + 1}`;
+      // A paged field is selected through its Page envelope, so the rows are described by its `items`.
+      const selected = item.shape ?? { items: [] };
+      const childProjection = this.project(child, ca, rel.kind === "page" ? itemsOf(selected) : selected, ctx, args, params, depth + 1);
+      const childPolicy = this.policyWhere(child, ctx, args, params, ca, this.filterFor(rel.type));
+      if (rel.kind === "one") {
+        const parentCol = t.column(rel.key);
+        if (!parentCol) throw new Error(`@rayfold/postgres: ${t.def.name} has no field ${rel.key}`);
+        const conds = [`${ca}.${child.id} = ${alias}.${parentCol}`, ...childPolicy];
+        parts.push(`'${out}', (SELECT ${childProjection} FROM ${child.name} AS ${ca} WHERE ${conds.join(" AND ")} LIMIT 1)`);
+        continue;
+      }
+      const childCol = child.column(rel.key);
+      if (!childCol) throw new Error(`@rayfold/postgres: ${rel.type} has no field ${rel.key}`);
+      params.push(firstOf(item.args) ?? 10);
+      const conds = [`${ca}.${childCol} = ${alias}.${t.id}`, ...childPolicy];
+      const rows =
+        `SELECT ${childProjection} AS "__row", ${ca}.${child.id}::text AS "__key", count(*) OVER () AS "__total" ` +
+        `FROM ${child.name} AS ${ca} WHERE ${conds.join(" AND ")} ORDER BY ${ca}.${child.id}::text LIMIT $${params.length}`;
+      parts.push(
+        `'${out}', (SELECT json_build_object(` +
+          `'items', coalesce(json_agg("__p"."__row" ORDER BY "__p"."__key"), '[]'::json), ` +
+          `'total', coalesce(max("__p"."__total"), 0)::int, ` +
+          `'hasMore', coalesce(count(*) < max("__p"."__total"), false), ` +
+          `'cursor', max("__p"."__key")` +
+          `) FROM (${rows}) AS "__p")`,
+      );
+    }
+    return `json_build_object(${parts.join(", ")})`;
+  }
+
   /** The WHERE fragment for the read policy the runtime pushed down, or nothing when there is none to push. */
-  private policyWhere(t: Table, ctx: PolicyContext, args: Record<string, unknown>, params: unknown[]): string[] {
-    const filter = ctx.policy?.filter;
+  private policyWhere(t: Table, ctx: PolicyContext, args: Record<string, unknown>, params: unknown[], alias?: string, own?: Expr): string[] {
+    const filter = own ?? ctx.policy?.filter;
     if (!filter) return [];
     const env: ExprEnv = { viewer: ctx.viewer ?? null, args, this: null, ...(ctx.now ? { now: ctx.now } : {}) };
     const f = compilePolicy(filter, env, (name) => {
       const col = t.column(name);
       const def = t.def.fields.find((x) => x.name === name);
-      return col && def && def.type.kind === "named" ? { column: col, scalar: this.scalarOf(def.type.name) } : undefined;
+      const qualified = col && alias ? `${alias}.${col}` : col;
+      return qualified && def && def.type.kind === "named" ? { column: qualified, scalar: this.scalarOf(def.type.name) } : undefined;
     }, params);
     return f.sql === "TRUE" ? [] : [f.sql];
+  }
+
+  /** The read policy declared on a type, for the levels of a screen the runtime handed no hint for. */
+  private filterFor(type: string): Expr | undefined {
+    const def = this.opts.ir.types[type];
+    return def ? pushableFilterOf(def.annotations) : undefined;
   }
 
   private equalities(t: Table, where: Record<string, unknown>, params: unknown[]): string[] {
@@ -208,6 +320,29 @@ export class PgStore {
 }
 
 // ---------------------------------------------------------------- policies to SQL
+
+/** The rows of a `Page<T>` selection: the sub-shape of its `items`, or the shape itself when it selects rows. */
+function itemsOf(shape: Shape): Shape {
+  const items = shape.items.find((i) => i.kind === "field" && i.name === "items");
+  return items && items.kind === "field" && items.shape ? items.shape : shape;
+}
+
+/** Scalars Postgres would render as a JSON number, but Rayfold carries as text. */
+const AS_TEXT = new Set(["Decimal", "Long"]);
+
+/** The page size a shape asked for (`page: { first: n }` or `first: n`), when it is a plain number. */
+function firstOf(a: Record<string, unknown> | undefined): number | undefined {
+  const page = a?.["page"];
+  const n = page && typeof page === "object" && !Array.isArray(page) ? (page as Record<string, unknown>)["first"] : a?.["first"];
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/** The pushable part of a type's `@allow(read:)`, for the levels of a screen the runtime gave no hint for. */
+function pushableFilterOf(annotations: Array<{ name: string; args: Record<string, unknown> }>): Expr | undefined {
+  const allow = annotations.find((a) => a.name === "allow");
+  const read = allow?.args["read"];
+  return read && typeof read === "object" && "$expr" in read ? (read as { $expr: Expr }).$expr : undefined;
+}
 
 /** A column a policy may read, with the Rayfold scalar type of its field. */
 export interface PolicyColumn { column: string; scalar: string }

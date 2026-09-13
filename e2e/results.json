@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-09-11T10:06:27.984Z",
+  "generatedAt": "2026-09-13T10:30:31.257Z",
   "rows": [
     {
       "aspect": "Product page (book + author + 3 reviews)",
       "values": {
         "REST": 466,
         "GraphQL": 332,
-        "Rayfold": 176
+        "Rayfold": 177
       },
       "unit": "bytes on the wire (request + response)",
       "better": "lower",
       "metric": "requests and bytes for the page",
       "REST": "3 requests in 2 waves, 466 B",
       "GraphQL": "1 request, 332 B",
-      "Rayfold": "1 request, 176 B (named view + RB)",
+      "Rayfold": "1 request, 177 B (named view + RB)",
       "note": "GraphQL matches Rayfold on round trips; Rayfold moves fewer bytes because the shape names a server view and RB encodes the frames",
       "verdict": "lead",
       "examples": {
@@ -104,7 +104,7 @@
                 "cache-control": "no-store",
                 "content-type": "application/rayfold"
               },
-              "body": "RB, 116 bytes on the wire, shown decoded:\n{\"id\":1,\"data\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}},\"fin\":true}"
+              "body": "RB, 117 bytes on the wire, shown decoded:\n{\"id\":1,\"data\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}},\"fin\":true}"
             }
           }
         ]
@@ -1486,7 +1486,7 @@
                 "authorization": "Bearer u1",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"d996514cbdee4480b8a6b138eff66565\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"8a92f44b5cde4a55b58d5c5cc31c1171\"}]}"
             },
             "response": {
               "status": 200,
@@ -1620,7 +1620,7 @@
                 "authorization": "Bearer admin",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"ee9e30051054497a9e9e07da534dd0a3\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"ff59a4d28113459c9db0bc93c45e60d9\"}]}"
             },
             "response": {
               "status": 200,

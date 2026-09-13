@@ -48,6 +48,22 @@ A patch is a list of operations on the client's normalized cache, keyed by globa
 | `inv` | Mark entities stale; the client refetches on next read. |
 | `invOp` | Mark every cached result of these operations stale. |
 
+### 2b. Result-scoped operations
+
+Two operations describe one operation's own result rather than the cache as a whole, and are valid only in a
+`patch` frame that carries an `id` (live queries, [08](08-live-and-sync.md)). A client that does not track the
+result of that operation ignores them.
+
+| Operation | Meaning |
+|---|---|
+| `at` | `{ "at": "columns.2", "value": { "count": 9 } }` merges these fields into the plain object at this path of the result. The path is dotted, array positions included; `""` is the result itself. |
+| `list` | `{ "list": "items", "del": [3], "ins": [{ "at": 0, "value": { … } }] }` removes those positions of the list at that path, then inserts those elements at those positions. `del` names positions in the list as the client currently holds it; `ins` positions are in the list after the removals, applied in order. |
+
+An `ins` carries the projected element exactly as a `data` frame would carry it, so the client stores its
+entities and records which fields the result selected. A server MUST NOT also send those entities as `set`
+operations in the same patch. A server MUST NOT describe a change it cannot express this way (a reordering, a
+different set of fields): it sends a fresh `data` frame instead.
+
 A command's `ok` frame MUST include a `patch` that makes the client cache consistent with the command's
 effect for every entity the command returned or the resolver declared as touched. In compact mode
 ([03 §1](03-batch-and-pipelining.md)) the server omits the `set` entries that merely restate entities already

@@ -6,6 +6,7 @@
 | `dev.rayfold:rayfold-client` | A client for Kotlin on the JVM and for Android (Java 17 bytecode, no server code). |
 | `dev.rayfold:rayfold-client-okhttp` | The WebSocket transport on OkHttp, for live queries on Android. |
 | `dev.rayfold:rayfold-opentelemetry` | OpenTelemetry tracing for the server ([Tracing](tracing.md)). |
+| `dev.rayfold:rayfold-jdbc` | A SQL database behind resolvers, with read policies pushed into the query ([JDBC](jdbc.md)). |
 
 ```kotlin
 dependencies {
@@ -47,6 +48,10 @@ Resolvers are suspend functions over kotlinx.serialization JSON. A command retur
 `RayfoldException.domain("OutOfStock", data, message)` for an error the operation declares with `throws`.
 
 If you prefer plain Java types and functional interfaces, use `rayfold-java` ([Java guide](java-spring.md)).
+
+`HttpOptions(explorer = true)` serves the [explorer](explorer.md) at `/rayfold/explorer`, the same page
+`@rayfold/explorer` serves; `RayfoldExplorer(endpoint, title).mount(http)` puts it on a server of its own. It is off
+until it is turned on.
 
 ## A client
 

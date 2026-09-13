@@ -66,6 +66,33 @@ describe("live queries through the client", () => {
     expect(bs.server.changes.size).toBe(0);
   });
 
+  it("a live list is kept correct by a list patch, without the page being resent", async () => {
+    const local = createLocalTransport(bs.server, () => u1);
+    const wire: Frame[] = [];
+    const tap: Transport = {
+      send: (env, o) =>
+        (async function* () {
+          for await (const f of local.send(env, o)) {
+            wire.push(f);
+            yield f;
+          }
+        })(),
+    };
+    const c = new RayfoldClient({ transport: tap });
+    const seen = new Signal<Array<{ id: string }>>();
+    const stop = c.live<{ items: Array<{ id: string }> }>("books", { page: { first: 10 } }, { shape: "{ items { id title } }" }, (d) => seen.push(d.items));
+    await seen.atLeast(1, "the initial list");
+    const before = seen.items[0]!.length;
+    bs.store.books.set("b9", { id: "b9", title: "New", format: "EBOOK" as const, price: "1.00", stock: 1, authorId: "a1", costPrice: null, ownerId: "u1" });
+    bs.server.changes.publish({ keys: new Set(), ops: new Set(["books"]) });
+    await seen.atLeast(2, "the list patch");
+    stop();
+    const patched = wire.find((f) => "patch" in f) as { patch: Array<Record<string, unknown>> };
+    expect(patched.patch.some((p) => "list" in p)).toBe(true); // the new row, not the page
+    expect(seen.items[1]!.length).toBe(before + 1);
+    expect(seen.items[1]!.map((b) => b.id)).toContain("b9");
+  });
+
   it("a schema-aware client's live query travels compact and still receives patches", async () => {
     const local = createLocalTransport(bs.server, () => u1);
     const wire: Frame[] = [];

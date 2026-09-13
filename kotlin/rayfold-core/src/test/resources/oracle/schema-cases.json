@@ -10371,6 +10371,395 @@
   "hash": "b3eefd396812227745f6f6b13cbad24f1163b4c131ad0b2609e5be1fdede8eff"
  },
  {
+  "name": "fixture 12-interfaces.json",
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Named": {
+     "kind": "object",
+     "name": "Named",
+     "annotations": [
+      {
+       "name": "interface",
+       "args": {}
+      }
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "interface": true
+    },
+    "Person": {
+     "kind": "entity",
+     "name": "Person",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "email",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": [
+      "Named"
+     ]
+    },
+    "Bot": {
+     "kind": "entity",
+     "name": "Bot",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "model",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": [
+      "Named"
+     ]
+    },
+    "Note": {
+     "kind": "entity",
+     "name": "Note",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "body",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "author",
+       "type": {
+        "kind": "named",
+        "name": "Named",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "note": {
+     "kind": "query",
+     "name": "note",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Note",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "named": {
+     "kind": "query",
+     "name": "named",
+     "args": [],
+     "returns": {
+      "kind": "list",
+      "of": {
+       "kind": "named",
+       "name": "Named",
+       "nullable": false
+      },
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [],
+  "hash": "7191db34374e14995e9e850f783c464cbcac79ce05601e4b84c7a7dd747177f7"
+ },
+ {
   "name": "fixture 13-writes.json",
   "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
   "ir": {
@@ -11287,6 +11676,287 @@
   },
   "diagnostics": [],
   "hash": "b3eefd396812227745f6f6b13cbad24f1163b4c131ad0b2609e5be1fdede8eff"
+ },
+ {
+  "name": "fixture 14-shared-loads.json",
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Author": {
+     "kind": "entity",
+     "name": "Author",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    },
+    "Book": {
+     "kind": "entity",
+     "name": "Book",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "title",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "author",
+       "type": {
+        "kind": "named",
+        "name": "Author",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "book": {
+     "kind": "query",
+     "name": "book",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Book",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [],
+  "hash": "428e4713ee9b74ccea71a347c060506d9b5fd8568a8cbffefebfa70bd5826e2a"
  },
  {
   "name": "bookstore",
@@ -16339,6 +17009,722 @@
    }
   ],
   "hash": "e7ceb8eb8569f0e2ef135419644011a05f500abf457d263a089822eb6bc3204a"
+ },
+ {
+  "name": "interface-type-conditions",
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot { id: ID name: String }\nentity Note { id: ID author: Named }\nquery note(id: ID): Note?\nview Note.ok = { author { ...on Person { email } } }\nview Note.bad = { author { ...on Bot { name } } }\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Named": {
+     "kind": "object",
+     "name": "Named",
+     "annotations": [
+      {
+       "name": "interface",
+       "args": {}
+      }
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "interface": true
+    },
+    "Person": {
+     "kind": "entity",
+     "name": "Person",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "email",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": [
+      "Named"
+     ]
+    },
+    "Bot": {
+     "kind": "entity",
+     "name": "Bot",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    },
+    "Note": {
+     "kind": "entity",
+     "name": "Note",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "author",
+       "type": {
+        "kind": "named",
+        "name": "Named",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "note": {
+     "kind": "query",
+     "name": "note",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Note",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {
+    "Note.ok": {
+     "type": "Note",
+     "name": "ok",
+     "shape": {
+      "items": [
+       {
+        "kind": "field",
+        "name": "author",
+        "shape": {
+         "items": [
+          {
+           "kind": "on",
+           "type": "Person",
+           "shape": {
+            "items": [
+             {
+              "kind": "field",
+              "name": "email"
+             }
+            ]
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "Note.bad": {
+     "type": "Note",
+     "name": "bad",
+     "shape": {
+      "items": [
+       {
+        "kind": "field",
+        "name": "author",
+        "shape": {
+         "items": [
+          {
+           "kind": "on",
+           "type": "Bot",
+           "shape": {
+            "items": [
+             {
+              "kind": "field",
+              "name": "name"
+             }
+            ]
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    }
+   }
+  },
+  "diagnostics": [
+   {
+    "severity": "error",
+    "code": "bad-type-condition",
+    "at": "Note.bad",
+    "message": "Bot does not implement Named"
+   },
+   {
+    "severity": "warning",
+    "code": "unreachable",
+    "at": "Bot",
+    "message": "entity Bot is not reachable from any operation"
+   }
+  ],
+  "hash": "e4da811087388674581730803dba4d1b13f027e756ae08b2ab3de9926c9962ca",
+  "loadError": "Invalid schema:\n  Note.bad: Bot does not implement Named [bad-type-condition]"
+ },
+ {
+  "name": "merge-policies",
+  "text": "\nentity Doc { id: ID title: String @merge(serverWins) body: String @merge(crdtText) muddled: String @merge(whenever) }\nquery doc(id: ID): Doc?\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Doc": {
+     "kind": "entity",
+     "name": "Doc",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "title",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "merge",
+         "args": {
+          "value": {
+           "$ident": "serverWins"
+          }
+         }
+        }
+       ],
+       "ordinal": 2
+      },
+      {
+       "name": "body",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "merge",
+         "args": {
+          "value": {
+           "$ident": "crdtText"
+          }
+         }
+        }
+       ],
+       "ordinal": 3
+      },
+      {
+       "name": "muddled",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "merge",
+         "args": {
+          "value": {
+           "$ident": "whenever"
+          }
+         }
+        }
+       ],
+       "ordinal": 4
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "doc": {
+     "kind": "query",
+     "name": "doc",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Doc",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [
+   {
+    "severity": "error",
+    "code": "bad-merge",
+    "at": "Doc.muddled",
+    "message": "@merge takes one of serverWins, keepLocal, lww, crdtText, custom"
+   }
+  ],
+  "hash": "cf2ba10347e24a1114a27abcc3717dc2c5e6d763ea3880fbf8618e3dd00031e0",
+  "loadError": "Invalid schema:\n  Doc.muddled: @merge takes one of serverWins, keepLocal, lww, crdtText, custom [bad-merge]"
  },
  {
   "name": "throws-emits",
@@ -21811,8 +23197,8 @@
  },
  {
   "name": "fuzz 1",
-  "text": "\nentity Book { id: ID title: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [H[",
-  "error": "Expected \"]\" but found \"[\" (5:17)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named:[]\n",
+  "error": "Expected name but found \"]\" (7:14)"
  },
  {
   "name": "fuzz 2",
@@ -21861,13 +23247,13 @@
  },
  {
   "name": "fuzz 11",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(view5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand commandchBook(id: ID, patch: BookPatch): Book\nevent B$ught { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected \"{\" but found \"$\" (24:8)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String view: Author }\nquery book(id: Icommand B$ok?\n",
+  "error": "Expected \":\" but found \"$\" (4:26)"
  },
  {
   "name": "fuzz 12",
-  "text": "\nentity B  id: Iétle: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hité",
-  "error": "Unexpected character \"é\" (2:16)"
+  "text": "\nobject Named @inter { id: ID name: Stré}\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Né",
+  "error": "Unexpected character \"é\" (2:39)"
  },
  {
   "name": "fuzz 13",
@@ -21906,8 +23292,8 @@
  },
  {
   "name": "fuzz 20",
-  "text": "\nentity Book { id: ID title: St...ng }\n=Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
-  "error": "Expected name but found \"...\" (2:31)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implemen... Named { id: ID=String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected \"{\" but found \"implemen\" (3:15)"
  },
  {
   "name": "fuzz 21",
@@ -21926,8 +23312,8 @@
  },
  {
   "name": "fuzz 24",
-  "text": "\nentity Book( ID title: Strin=tity Author { id: ID name: String }\nunioncommandHit = Book | Author\nquery search: [Hit]\n",
-  "error": "Expected \"{\" but found \"(\" (2:12)"
+  "text": "\nobject Named @interface { i(name: String }\nentity Person implement=d { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\necommandtity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected name but found \"}\" (2:42)"
  },
  {
   "name": "fuzz 25",
@@ -21951,8 +23337,8 @@
  },
  {
   "name": "fuzz 29",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id ==:omerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ti{: Int): 1e999",
-  "error": "Unexpected \":\" in expression (14:39)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\n:y Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Nam1e999",
+  "error": "Expected a definition keyword (entity, query, ...) but found \":\" (4:1)"
  },
  {
   "name": "fuzz 30",
@@ -22974,8 +24360,8 @@
  },
  {
   "name": "fuzz 51",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery orde)id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand r stock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\n,m ticks(n: Int): Tick\n",
-  "error": "Expected \":\" but found \")\" (20:11)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String auth): Author }\nquery book( d: ID): Book,",
+  "error": "Expected \":\" but found \")\" (3:40)"
  },
  {
   "name": "fuzz 52",
@@ -22984,13 +24370,13 @@
  },
  {
   "name": "fuzz 53",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @vers:nput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: )viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \":\" (10:21)"
+  "text": "\nentity Author { id: ID name: S:\nentity Bo)ok { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Expected name but found \":\" (2:31)"
  },
  {
   "name": "fuzz 54",
-  "text": "\nentit]{ id: ID title: String }\nentity Author { id: I=name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"entit\" (2:1)"
+  "text": "\nobject Named ]ace { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot im=ements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected \"{\" but found \"]\" (2:14)"
  },
  {
   "name": "fuzz 55",
@@ -23024,8 +24410,8 @@
  },
  {
   "name": "fuzz 61",
-  "text": "\nentity Book { id: ID title: String }\nentity Author { /*name: =g }\nunion Hit = Book | Author\nquery search: [Hit]\n",
-  "error": "Unterminated block comment (3:17)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID book/*qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Boo=ery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Unterminated block comment (14:80)"
  },
  {
   "name": "fuzz 62",
@@ -23049,8 +24435,292 @@
  },
  {
   "name": "fuzz 66",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommandcommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"commandcommand\" (23:1)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: commandID): Book?\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Author": {
+     "kind": "entity",
+     "name": "Author",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    },
+    "Book": {
+     "kind": "entity",
+     "name": "Book",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "title",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "author",
+       "type": {
+        "kind": "named",
+        "name": "Author",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "book": {
+     "kind": "query",
+     "name": "book",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "commandID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Book",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [
+   {
+    "severity": "error",
+    "code": "unknown-type",
+    "at": "book().id",
+    "message": "Unknown type commandID"
+   }
+  ],
+  "hash": "107f3103ed93bd88d560fd166554fe4e4c2031eca39503857811b3635c5f20cc",
+  "loadError": "Invalid schema:\n  book().id: Unknown type commandID [unknown-type]"
  },
  {
   "name": "fuzz 67",
@@ -23074,18 +24744,18 @@
  },
  {
   "name": "fuzz 71",
-  "text": "\nentity Author { id: ID name: String bio: String]lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"]\" (2:48)"
+  "text": "\nenti]Author { id: ID name: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"enti\" (2:1)"
  },
  {
   "name": "fuzz 72",
-  "text": "\nentity Au( { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order thr( OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected \"{\" but found \"(\" (2:10)"
+  "text": "\no(t Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String (hor: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"o\" (2:1)"
  },
  {
   "name": "fuzz 73",
-  "text": "\nentity //{ id: ID name: String bio: String? @lazy }\nentqueryity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @c@ost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected \"{\" but found \"Book\" (3:13)"
+  "text": "// Booqueryk { id: ID title: String }\nentity Author { id: ID name: String @}\nunion Hit = Book | Author\nquery search: [Hit]\n",
+  "error": "Expected name but found \"}\" (2:38)"
  },
  {
   "name": "fuzz 74",
@@ -23114,8 +24784,8 @@
  },
  {
   "name": "fuzz 79",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 1//}): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } em)s Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"@\" (10:16)"
+  "text": "\nentity Book { id: ID title://tring }\nentity Author { id: ID name: String }\nunion Hit = Book | Autho)query search: [Hit]\n",
+  "error": "Expected \":\" but found \"{\" (3:15)"
  },
  {
   "name": "fuzz 80",
@@ -23144,18 +24814,18 @@
  },
  {
   "name": "fuzz 85",
-  "text": "\nentity Book { iviewitle: String }\nentity Author { id: ID name: String }(ion Hit = Book | Author\nq-search: [Hit]\n",
-  "error": "Unexpected character \"-\" (4:2)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  aviewAuthor\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: (query author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write-wer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Unexpected character \"-\" (20:144)"
  },
  {
   "name": "fuzz 86",
-  "text": "\nentity Author view id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nqu\\oks(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncoqueryd patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"\\\\\" (18:3)"
+  "text": "\nobviewect Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID n\\tring model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Nquery\nquery named: [Named]\n",
+  "error": "Unexpected character \"\\\\\" (4:39)"
  },
  {
   "name": "fuzz 87",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String?? }\nentity Review { id: ID)ating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n:@Int): Tick\n",
-  "error": "Expected name but found \"?\" (12:76)"
+  "text": "\nentity Author { id: ID name: String }\ne?nt)y Book { id: ID title: String author: Author }\nquery book(id: ID): Book?@",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"e\" (3:1)"
  },
  {
   "name": "fuzz 88",
@@ -23174,8 +24844,8 @@
  },
  {
   "name": "fuzz 91",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == éerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book=t(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: I:t } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"é\" (14:40)"
+  "text": "\nentity Author { id: ID name: String }\nentity Booé: ID title: Strin=or: Author }\nquer: book(id: ID): Book?\n",
+  "error": "Unexpected character \"é\" (3:11)"
  },
  {
   "name": "fuzz 92",
@@ -23184,8 +24854,8 @@
  },
  {
   "name": "fuzz 93",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, av\\able: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"\\\\\" (21:104)"
+  "text": "\nentity Book { id: ID title: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Aut\\\nquery search: [Hit]\n",
+  "error": "Unexpected character \"\\\\\" (4:23)"
  },
  {
   "name": "fuzz 94",
@@ -24120,8 +25790,8 @@
  },
  {
   "name": "fuzz 97",
-  "text": "\nentity Book { id: ID title: String \ny Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
-  "error": "Expected \":\" but found \"Author\" (3:3)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id\nme: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected \":\" but found \"me\" (4:1)"
  },
  {
   "name": "fuzz 98",
@@ -25048,930 +26718,8 @@
  },
  {
   "name": "fuzz 100",
-  "text": "\nentity Author { i,: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewe1e999r.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfSto{ bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "ir": {
-   "rayfold": "0.1",
-   "types": {
-    "ID": {
-     "kind": "scalar",
-     "name": "ID",
-     "annotations": [],
-     "builtin": true
-    },
-    "String": {
-     "kind": "scalar",
-     "name": "String",
-     "annotations": [],
-     "builtin": true
-    },
-    "Int": {
-     "kind": "scalar",
-     "name": "Int",
-     "annotations": [],
-     "builtin": true
-    },
-    "Long": {
-     "kind": "scalar",
-     "name": "Long",
-     "annotations": [],
-     "builtin": true
-    },
-    "Float": {
-     "kind": "scalar",
-     "name": "Float",
-     "annotations": [],
-     "builtin": true
-    },
-    "Boolean": {
-     "kind": "scalar",
-     "name": "Boolean",
-     "annotations": [],
-     "builtin": true
-    },
-    "Decimal": {
-     "kind": "scalar",
-     "name": "Decimal",
-     "annotations": [],
-     "builtin": true
-    },
-    "Instant": {
-     "kind": "scalar",
-     "name": "Instant",
-     "annotations": [],
-     "builtin": true
-    },
-    "Date": {
-     "kind": "scalar",
-     "name": "Date",
-     "annotations": [],
-     "builtin": true
-    },
-    "Duration": {
-     "kind": "scalar",
-     "name": "Duration",
-     "annotations": [],
-     "builtin": true
-    },
-    "Bytes": {
-     "kind": "scalar",
-     "name": "Bytes",
-     "annotations": [],
-     "builtin": true
-    },
-    "JSON": {
-     "kind": "scalar",
-     "name": "JSON",
-     "annotations": [],
-     "builtin": true
-    },
-    "Page": {
-     "kind": "object",
-     "name": "Page",
-     "builtin": true,
-     "typeParams": [
-      "T"
-     ],
-     "annotations": [],
-     "fields": [
-      {
-       "name": "items",
-       "type": {
-        "kind": "list",
-        "of": {
-         "kind": "named",
-         "name": "T",
-         "nullable": false
-        },
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "cursor",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "hasMore",
-       "type": {
-        "kind": "named",
-        "name": "Boolean",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "total",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      }
-     ]
-    },
-    "PageArgs": {
-     "kind": "input",
-     "name": "PageArgs",
-     "builtin": true,
-     "annotations": [],
-     "fields": [
-      {
-       "name": "first",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "default": 20,
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "after",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "offset",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ]
-    },
-    "Author": {
-     "kind": "entity",
-     "name": "Author",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "i",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "name",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bio",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "lazy",
-         "args": {}
-        }
-       ],
-       "ordinal": 3
-      }
-     ],
-     "implements": []
-    },
-    "Book": {
-     "kind": "entity",
-     "name": "Book",
-     "annotations": [
-      {
-       "name": "cache",
-       "args": {
-        "maxAge": {
-         "$duration": 60000
-        },
-        "scope": {
-         "$ident": "public"
-        }
-       }
-      }
-     ],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "title",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "stock",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "author",
-       "type": {
-        "kind": "named",
-        "name": "Author",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      },
-      {
-       "name": "secret",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "allow",
-         "args": {
-          "read": {
-           "$expr": {
-            "k": "bin",
-            "op": "==",
-            "l": {
-             "k": "path",
-             "root": "viewer",
-             "path": [
-              "role"
-             ]
-            },
-            "r": {
-             "k": "lit",
-             "v": "admin"
-            }
-           }
-          }
-         }
-        }
-       ],
-       "ordinal": 5
-      },
-      {
-       "name": "reviews",
-       "type": {
-        "kind": "named",
-        "name": "Page",
-        "nullable": false,
-        "args": [
-         {
-          "kind": "named",
-          "name": "Review",
-          "nullable": false
-         }
-        ]
-       },
-       "args": [
-        {
-         "name": "page",
-         "type": {
-          "kind": "named",
-          "name": "PageArgs",
-          "nullable": false
-         },
-         "annotations": [],
-         "default": {
-          "first": 10
-         }
-        }
-       ],
-       "annotations": [],
-       "ordinal": 6
-      },
-      {
-       "name": "version",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "version",
-         "args": {}
-        }
-       ],
-       "ordinal": 7
-      }
-     ],
-     "implements": []
-    },
-    "BookPatch": {
-     "kind": "input",
-     "name": "BookPatch",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "title",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "stock",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "range",
-         "args": {
-          "min": 0
-         }
-        }
-       ],
-       "ordinal": 2
-      },
-      {
-       "name": "secret",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ]
-    },
-    "Review": {
-     "kind": "entity",
-     "name": "Review",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "rating",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ],
-     "implements": []
-    },
-    "Order": {
-     "kind": "entity",
-     "name": "Order",
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "read": {
-         "$expr": {
-          "k": "bin",
-          "op": "==",
-          "l": {
-           "k": "path",
-           "root": "this",
-           "path": [
-            "viewe1e999r",
-            "id"
-           ]
-          },
-          "r": {
-           "k": "path",
-           "root": "this",
-           "path": [
-            "customerId"
-           ]
-          }
-         }
-        }
-       }
-      }
-     ],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "customerId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      }
-     ],
-     "implements": []
-    },
-    "Tick": {
-     "kind": "object",
-     "name": "Tick",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "n",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      }
-     ]
-    },
-    "OutOfSto": {
-     "kind": "error",
-     "name": "OutOfSto",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "available",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      }
-     ]
-    },
-    "Bought": {
-     "kind": "event",
-     "name": "Bought",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "orderId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      }
-     ]
-    }
-   },
-   "ops": {
-    "book": {
-     "kind": "query",
-     "name": "book",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "books": {
-     "kind": "query",
-     "name": "books",
-     "args": [
-      {
-       "name": "page",
-       "type": {
-        "kind": "named",
-        "name": "PageArgs",
-        "nullable": false
-       },
-       "annotations": [],
-       "default": {
-        "first": 20
-       }
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Page",
-      "nullable": false,
-      "args": [
-       {
-        "kind": "named",
-        "name": "Book",
-        "nullable": false
-       }
-      ]
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": [
-      {
-       "name": "cost",
-       "args": {
-        "base": 5,
-        "perItem": 1
-       }
-      }
-     ]
-    },
-    "author": {
-     "kind": "query",
-     "name": "author",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Author",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "order": {
-     "kind": "query",
-     "name": "order",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Order",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "read": {
-         "$expr": {
-          "k": "bin",
-          "op": "!=",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": []
-          },
-          "r": {
-           "k": "lit",
-           "v": null
-          }
-         }
-        }
-       }
-      }
-     ]
-    },
-    "buy": {
-     "kind": "command",
-     "name": "buy",
-     "args": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": [
-        {
-         "name": "range",
-         "args": {
-          "min": 1,
-          "max": 10
-         }
-        }
-       ],
-       "default": 1
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Order",
-      "nullable": false
-     },
-     "throws": [
-      "OutOfSto"
-     ],
-     "emits": [
-      "Bought"
-     ],
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "write": {
-         "$expr": {
-          "k": "bin",
-          "op": "!=",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": []
-          },
-          "r": {
-           "k": "lit",
-           "v": null
-          }
-         }
-        }
-       }
-      },
-      {
-       "name": "simulate",
-       "args": {}
-      }
-     ]
-    },
-    "restock": {
-     "kind": "command",
-     "name": "restock",
-     "args": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "patchBook": {
-     "kind": "command",
-     "name": "patchBook",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "patch",
-       "type": {
-        "kind": "named",
-        "name": "BookPatch",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "ticks": {
-     "kind": "stream",
-     "name": "ticks",
-     "args": [
-      {
-       "name": "n",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Tick",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    }
-   },
-   "views": {
-    "Book.default": {
-     "type": "Book",
-     "name": "default",
-     "shape": {
-      "items": [
-       {
-        "kind": "field",
-        "name": "id"
-       },
-       {
-        "kind": "field",
-        "name": "title"
-       },
-       {
-        "kind": "field",
-        "name": "stock"
-       }
-      ]
-     }
-    }
-   }
-  },
-  "diagnostics": [
-   {
-    "severity": "error",
-    "code": "entity-id",
-    "at": "Author",
-    "message": "entity Author must declare id: ID"
-   }
-  ],
-  "hash": "beca9286d638153156a7f8610e7c83560a240db7e46a8054f0261960ec05f6df",
-  "loadError": "Invalid schema:\n  Author: entity Author must declare id: ID [entity-id]"
+  "text": "\ne,tity Author { id: ID name: String }\nentity Bo1e999ok { id: ID title: String author: Author }\nry book(id: ID): Book?\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"e\" (2:1)"
  },
  {
   "name": "fuzz 101",
@@ -25980,27 +26728,27 @@
  },
  {
   "name": "fuzz 102",
-  "text": "\nentity Book { id: ID title: String }\nentity Author 1e999 ID name:/* String }\nunion Hit = Book | Author\nquery search: [Hit]\n(",
-  "error": "Unterminated block comment (3:29)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer1e999= customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book/*(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int(: Tick\n",
+  "error": "Unterminated block comment (17:11)"
  },
  {
   "name": "fuzz 103",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qt/*}\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated block comment (14:89)"
+  "text": "\nentity Book { id: ID title: String }\nentity Author { id:/*e: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
+  "error": "Unterminated block comment (3:20)"
  },
  {
   "name": "fuzz 104",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  seét: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { i)le stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Or[throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"é\" (8:5)"
+  "text": "\nentity Author { é ID name: String }\nentity Book { id: ID t) String author: Author }\n[y book(id: ID): Book?\n",
+  "error": "Unexpected character \"é\" (2:17)"
  },
  {
   "name": "fuzz 105",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs-rst: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought...llow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"-\" (18:27)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: S-uthor: Author }\nquery ...k(id: ID): Book?\n",
+  "error": "Unexpected character \"-\" (3:30)"
  },
  {
   "name": "fuzz 106",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.ro,== \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "text": "\nentity Book { id: ID ,le: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
   "ir": {
    "rayfold": "0.1",
    "types": {
@@ -26177,6 +26925,36 @@
       }
      ]
     },
+    "Book": {
+     "kind": "entity",
+     "name": "Book",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "le",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    },
     "Author": {
      "kind": "entity",
      "name": "Author",
@@ -26203,686 +26981,32 @@
        "args": [],
        "annotations": [],
        "ordinal": 2
-      },
-      {
-       "name": "bio",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "lazy",
-         "args": {}
-        }
-       ],
-       "ordinal": 3
       }
      ],
      "implements": []
     },
-    "Book": {
-     "kind": "entity",
-     "name": "Book",
-     "annotations": [
-      {
-       "name": "cache",
-       "args": {
-        "maxAge": {
-         "$duration": 60000
-        },
-        "scope": {
-         "$ident": "public"
-        }
-       }
-      }
-     ],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "title",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "stock",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "author",
-       "type": {
-        "kind": "named",
-        "name": "Author",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      },
-      {
-       "name": "secret",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "allow",
-         "args": {
-          "read": {
-           "$expr": {
-            "k": "bin",
-            "op": "==",
-            "l": {
-             "k": "path",
-             "root": "viewer",
-             "path": [
-              "ro"
-             ]
-            },
-            "r": {
-             "k": "lit",
-             "v": "admin"
-            }
-           }
-          }
-         }
-        }
-       ],
-       "ordinal": 5
-      },
-      {
-       "name": "reviews",
-       "type": {
-        "kind": "named",
-        "name": "Page",
-        "nullable": false,
-        "args": [
-         {
-          "kind": "named",
-          "name": "Review",
-          "nullable": false
-         }
-        ]
-       },
-       "args": [
-        {
-         "name": "page",
-         "type": {
-          "kind": "named",
-          "name": "PageArgs",
-          "nullable": false
-         },
-         "annotations": [],
-         "default": {
-          "first": 10
-         }
-        }
-       ],
-       "annotations": [],
-       "ordinal": 6
-      },
-      {
-       "name": "version",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "version",
-         "args": {}
-        }
-       ],
-       "ordinal": 7
-      }
-     ],
-     "implements": []
-    },
-    "BookPatch": {
-     "kind": "input",
-     "name": "BookPatch",
+    "Hit": {
+     "kind": "union",
+     "name": "Hit",
      "annotations": [],
-     "fields": [
-      {
-       "name": "title",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "stock",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "range",
-         "args": {
-          "min": 0
-         }
-        }
-       ],
-       "ordinal": 2
-      },
-      {
-       "name": "secret",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ]
-    },
-    "Review": {
-     "kind": "entity",
-     "name": "Review",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "rating",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ],
-     "implements": []
-    },
-    "Order": {
-     "kind": "entity",
-     "name": "Order",
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "read": {
-         "$expr": {
-          "k": "bin",
-          "op": "==",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": [
-            "id"
-           ]
-          },
-          "r": {
-           "k": "path",
-           "root": "this",
-           "path": [
-            "customerId"
-           ]
-          }
-         }
-        }
-       }
-      }
-     ],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "customerId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      }
-     ],
-     "implements": []
-    },
-    "Tick": {
-     "kind": "object",
-     "name": "Tick",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "n",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      }
-     ]
-    },
-    "OutOfStock": {
-     "kind": "error",
-     "name": "OutOfStock",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "available",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      }
-     ]
-    },
-    "Bought": {
-     "kind": "event",
-     "name": "Bought",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "orderId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      }
+     "members": [
+      "Book",
+      "Author"
      ]
     }
    },
    "ops": {
-    "book": {
+    "search": {
      "kind": "query",
-     "name": "book",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
+     "name": "search",
+     "args": [],
      "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "books": {
-     "kind": "query",
-     "name": "books",
-     "args": [
-      {
-       "name": "page",
-       "type": {
-        "kind": "named",
-        "name": "PageArgs",
-        "nullable": false
-       },
-       "annotations": [],
-       "default": {
-        "first": 20
-       }
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Page",
-      "nullable": false,
-      "args": [
-       {
-        "kind": "named",
-        "name": "Book",
-        "nullable": false
-       }
-      ]
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": [
-      {
-       "name": "cost",
-       "args": {
-        "base": 5,
-        "perItem": 1
-       }
-      }
-     ]
-    },
-    "author": {
-     "kind": "query",
-     "name": "author",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Author",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "order": {
-     "kind": "query",
-     "name": "order",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Order",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "read": {
-         "$expr": {
-          "k": "bin",
-          "op": "!=",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": []
-          },
-          "r": {
-           "k": "lit",
-           "v": null
-          }
-         }
-        }
-       }
-      }
-     ]
-    },
-    "buy": {
-     "kind": "command",
-     "name": "buy",
-     "args": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
+      "kind": "list",
+      "of": {
+       "kind": "named",
+       "name": "Hit",
+       "nullable": false
       },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": [
-        {
-         "name": "range",
-         "args": {
-          "min": 1,
-          "max": 10
-         }
-        }
-       ],
-       "default": 1
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Order",
-      "nullable": false
-     },
-     "throws": [
-      "OutOfStock"
-     ],
-     "emits": [
-      "Bought"
-     ],
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "write": {
-         "$expr": {
-          "k": "bin",
-          "op": "!=",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": []
-          },
-          "r": {
-           "k": "lit",
-           "v": null
-          }
-         }
-        }
-       }
-      },
-      {
-       "name": "simulate",
-       "args": {}
-      }
-     ]
-    },
-    "restock": {
-     "kind": "command",
-     "name": "restock",
-     "args": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "patchBook": {
-     "kind": "command",
-     "name": "patchBook",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "patch",
-       "type": {
-        "kind": "named",
-        "name": "BookPatch",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "ticks": {
-     "kind": "stream",
-     "name": "ticks",
-     "args": [
-      {
-       "name": "n",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Tick",
       "nullable": false
      },
      "throws": [],
@@ -26890,31 +27014,10 @@
      "annotations": []
     }
    },
-   "views": {
-    "Book.default": {
-     "type": "Book",
-     "name": "default",
-     "shape": {
-      "items": [
-       {
-        "kind": "field",
-        "name": "id"
-       },
-       {
-        "kind": "field",
-        "name": "title"
-       },
-       {
-        "kind": "field",
-        "name": "stock"
-       }
-      ]
-     }
-    }
-   }
+   "views": {}
   },
   "diagnostics": [],
-  "hash": "53f87b04787d0abb2cee4309d1939dd005704cbc787b1979d97c2582b7958a51"
+  "hash": "0ac971831ac0cba709d8b5d79728f03c3034d99984ba76d903a9bb8b02b20577"
  },
  {
   "name": "fuzz 107",
@@ -27860,8 +27963,8 @@
  },
  {
   "name": "fuzz 110",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id:  ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Ord$@allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"$\" (20:25)"
+  "text": "\nobject Named @interface { id : ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity $ { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected name but found \"$\" (5:8)"
  },
  {
   "name": "fuzz 111",
@@ -28834,8 +28937,8 @@
  },
  {
   "name": "fuzz 119",
-  "text": "\nentity Book { id: ID title: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [H ",
-  "error": "Expected \"]\" but found end of input (5:18)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { ord  ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected \":\" but found \"ID\" (24:21)"
  },
  {
   "name": "fuzz 120",
@@ -28854,8 +28957,8 @@
  },
  {
   "name": "fuzz 123",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId){ { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book\"d: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Pagcommandok> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated string (17:11)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book {{ id: ID tit\": Strcommandauthor: Author }\nquery book(id: ID): Book?\n",
+  "error": "Unterminated string (3:26)"
  },
  {
   "name": "fuzz 124",
@@ -28889,8 +28992,8 @@
  },
  {
   "name": "fuzz 130",
-  "text": "\nentity Book { id: ID title: String }\nen]uthor { id: ID name: }ring }\nunion Hit = Book | (\nquery search: [Hit]\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"en\" (3:1)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity]w { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: Pa}Args = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order thr(tOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected name but found \"]\" (13:7)"
  },
  {
   "name": "fuzz 131",
@@ -28904,927 +29007,8 @@
  },
  {
   "name": "fuzz 133",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.rolequery\"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "ir": {
-   "rayfold": "0.1",
-   "types": {
-    "ID": {
-     "kind": "scalar",
-     "name": "ID",
-     "annotations": [],
-     "builtin": true
-    },
-    "String": {
-     "kind": "scalar",
-     "name": "String",
-     "annotations": [],
-     "builtin": true
-    },
-    "Int": {
-     "kind": "scalar",
-     "name": "Int",
-     "annotations": [],
-     "builtin": true
-    },
-    "Long": {
-     "kind": "scalar",
-     "name": "Long",
-     "annotations": [],
-     "builtin": true
-    },
-    "Float": {
-     "kind": "scalar",
-     "name": "Float",
-     "annotations": [],
-     "builtin": true
-    },
-    "Boolean": {
-     "kind": "scalar",
-     "name": "Boolean",
-     "annotations": [],
-     "builtin": true
-    },
-    "Decimal": {
-     "kind": "scalar",
-     "name": "Decimal",
-     "annotations": [],
-     "builtin": true
-    },
-    "Instant": {
-     "kind": "scalar",
-     "name": "Instant",
-     "annotations": [],
-     "builtin": true
-    },
-    "Date": {
-     "kind": "scalar",
-     "name": "Date",
-     "annotations": [],
-     "builtin": true
-    },
-    "Duration": {
-     "kind": "scalar",
-     "name": "Duration",
-     "annotations": [],
-     "builtin": true
-    },
-    "Bytes": {
-     "kind": "scalar",
-     "name": "Bytes",
-     "annotations": [],
-     "builtin": true
-    },
-    "JSON": {
-     "kind": "scalar",
-     "name": "JSON",
-     "annotations": [],
-     "builtin": true
-    },
-    "Page": {
-     "kind": "object",
-     "name": "Page",
-     "builtin": true,
-     "typeParams": [
-      "T"
-     ],
-     "annotations": [],
-     "fields": [
-      {
-       "name": "items",
-       "type": {
-        "kind": "list",
-        "of": {
-         "kind": "named",
-         "name": "T",
-         "nullable": false
-        },
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "cursor",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "hasMore",
-       "type": {
-        "kind": "named",
-        "name": "Boolean",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "total",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      }
-     ]
-    },
-    "PageArgs": {
-     "kind": "input",
-     "name": "PageArgs",
-     "builtin": true,
-     "annotations": [],
-     "fields": [
-      {
-       "name": "first",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "default": 20,
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "after",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "offset",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ]
-    },
-    "Author": {
-     "kind": "entity",
-     "name": "Author",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "name",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bio",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "lazy",
-         "args": {}
-        }
-       ],
-       "ordinal": 3
-      }
-     ],
-     "implements": []
-    },
-    "Book": {
-     "kind": "entity",
-     "name": "Book",
-     "annotations": [
-      {
-       "name": "cache",
-       "args": {
-        "maxAge": {
-         "$duration": 60000
-        },
-        "scope": {
-         "$ident": "public"
-        }
-       }
-      }
-     ],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "title",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "stock",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "author",
-       "type": {
-        "kind": "named",
-        "name": "Author",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      },
-      {
-       "name": "secret",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "allow",
-         "args": {
-          "read": {
-           "$expr": {
-            "k": "path",
-            "root": "viewer",
-            "path": [
-             "rolequery"
-            ]
-           }
-          },
-          "value": {
-           "$expr": {
-            "k": "lit",
-            "v": "admin"
-           }
-          }
-         }
-        }
-       ],
-       "ordinal": 5
-      },
-      {
-       "name": "reviews",
-       "type": {
-        "kind": "named",
-        "name": "Page",
-        "nullable": false,
-        "args": [
-         {
-          "kind": "named",
-          "name": "Review",
-          "nullable": false
-         }
-        ]
-       },
-       "args": [
-        {
-         "name": "page",
-         "type": {
-          "kind": "named",
-          "name": "PageArgs",
-          "nullable": false
-         },
-         "annotations": [],
-         "default": {
-          "first": 10
-         }
-        }
-       ],
-       "annotations": [],
-       "ordinal": 6
-      },
-      {
-       "name": "version",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "version",
-         "args": {}
-        }
-       ],
-       "ordinal": 7
-      }
-     ],
-     "implements": []
-    },
-    "BookPatch": {
-     "kind": "input",
-     "name": "BookPatch",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "title",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "stock",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [
-        {
-         "name": "range",
-         "args": {
-          "min": 0
-         }
-        }
-       ],
-       "ordinal": 2
-      },
-      {
-       "name": "secret",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": true
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ]
-    },
-    "Review": {
-     "kind": "entity",
-     "name": "Review",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "rating",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      }
-     ],
-     "implements": []
-    },
-    "Order": {
-     "kind": "entity",
-     "name": "Order",
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "read": {
-         "$expr": {
-          "k": "bin",
-          "op": "==",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": [
-            "id"
-           ]
-          },
-          "r": {
-           "k": "path",
-           "root": "this",
-           "path": [
-            "customerId"
-           ]
-          }
-         }
-        }
-       }
-      }
-     ],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "customerId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 4
-      }
-     ],
-     "implements": []
-    },
-    "Tick": {
-     "kind": "object",
-     "name": "Tick",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "n",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      }
-     ]
-    },
-    "OutOfStock": {
-     "kind": "error",
-     "name": "OutOfStock",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "available",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      }
-     ]
-    },
-    "Bought": {
-     "kind": "event",
-     "name": "Bought",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "orderId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      }
-     ]
-    }
-   },
-   "ops": {
-    "book": {
-     "kind": "query",
-     "name": "book",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "books": {
-     "kind": "query",
-     "name": "books",
-     "args": [
-      {
-       "name": "page",
-       "type": {
-        "kind": "named",
-        "name": "PageArgs",
-        "nullable": false
-       },
-       "annotations": [],
-       "default": {
-        "first": 20
-       }
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Page",
-      "nullable": false,
-      "args": [
-       {
-        "kind": "named",
-        "name": "Book",
-        "nullable": false
-       }
-      ]
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": [
-      {
-       "name": "cost",
-       "args": {
-        "base": 5,
-        "perItem": 1
-       }
-      }
-     ]
-    },
-    "author": {
-     "kind": "query",
-     "name": "author",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Author",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "order": {
-     "kind": "query",
-     "name": "order",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Order",
-      "nullable": true
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "read": {
-         "$expr": {
-          "k": "bin",
-          "op": "!=",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": []
-          },
-          "r": {
-           "k": "lit",
-           "v": null
-          }
-         }
-        }
-       }
-      }
-     ]
-    },
-    "buy": {
-     "kind": "command",
-     "name": "buy",
-     "args": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": [
-        {
-         "name": "range",
-         "args": {
-          "min": 1,
-          "max": 10
-         }
-        }
-       ],
-       "default": 1
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Order",
-      "nullable": false
-     },
-     "throws": [
-      "OutOfStock"
-     ],
-     "emits": [
-      "Bought"
-     ],
-     "annotations": [
-      {
-       "name": "allow",
-       "args": {
-        "write": {
-         "$expr": {
-          "k": "bin",
-          "op": "!=",
-          "l": {
-           "k": "path",
-           "root": "viewer",
-           "path": []
-          },
-          "r": {
-           "k": "lit",
-           "v": null
-          }
-         }
-        }
-       }
-      },
-      {
-       "name": "simulate",
-       "args": {}
-      }
-     ]
-    },
-    "restock": {
-     "kind": "command",
-     "name": "restock",
-     "args": [
-      {
-       "name": "bookId",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "qty",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "patchBook": {
-     "kind": "command",
-     "name": "patchBook",
-     "args": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "annotations": []
-      },
-      {
-       "name": "patch",
-       "type": {
-        "kind": "named",
-        "name": "BookPatch",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Book",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    },
-    "ticks": {
-     "kind": "stream",
-     "name": "ticks",
-     "args": [
-      {
-       "name": "n",
-       "type": {
-        "kind": "named",
-        "name": "Int",
-        "nullable": false
-       },
-       "annotations": []
-      }
-     ],
-     "returns": {
-      "kind": "named",
-      "name": "Tick",
-      "nullable": false
-     },
-     "throws": [],
-     "emits": [],
-     "annotations": []
-    }
-   },
-   "views": {
-    "Book.default": {
-     "type": "Book",
-     "name": "default",
-     "shape": {
-      "items": [
-       {
-        "kind": "field",
-        "name": "id"
-       },
-       {
-        "kind": "field",
-        "name": "title"
-       },
-       {
-        "kind": "field",
-        "name": "stock"
-       }
-      ]
-     }
-    }
-   }
-  },
-  "diagnostics": [
-   {
-    "severity": "error",
-    "code": "bad-policy-arg",
-    "at": "Book.secret",
-    "message": "@allow accepts read: and write:, not value:"
-   }
-  ],
-  "hash": "ea968c485770881591c96ba922d6e5a31a9eed2dc7de94909c0f643cd3fc5e9a",
-  "loadError": "Invalid schema:\n  Book.secret: @allow accepts read: and write:, not value: [bad-policy-arg]"
+  "text": "\nentity Author { id: queryame: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Expected name but found \":\" (2:29)"
  },
  {
   "name": "fuzz 134",
@@ -29843,8 +29027,8 @@
  },
  {
   "name": "fuzz 137",
-  "text": "}entity Book { id: ID title: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"}\" (1:1)"
+  "text": "\n}bject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"}\" (2:1)"
  },
  {
   "name": "fuzz 138",
@@ -29858,8 +29042,8 @@
  },
  {
   "name": "fuzz 140",
-  "text": "\nen:..ook { id: ID title: String }\nentity Author { id: ID nam?ring }\nunion Hit = Book | Author\nquery search: [Hit]\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"en\" (2:1)"
+  "text": "\nentity Author { id: ID name: Stri:o: String? @lazy }\nentity Book ...ache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title st?\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected name but found \":\" (2:34)"
  },
  {
   "name": "fuzz 141",
@@ -30786,13 +29970,13 @@
  },
  {
   "name": "fuzz 143",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")1e999ews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity R\"{ id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated string (12:9)"
+  "text": "\nentity Author { id: I1e999 String }\nen\"ook { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Unterminated string (3:3)"
  },
  {
   "name": "fuzz 144",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(m/*1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated block comment (21:46)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author/*uery book(id: ID): Book?\n",
+  "error": "Unterminated block comment (3:50)"
  },
  {
   "name": "fuzz 145",

@@ -36,6 +36,7 @@
     "release:dry-run": "node scripts/publish.mjs --dry-run",
     "release": "node scripts/publish.mjs",
     "docs:site": "node scripts/build-site.mjs",
+    "sync:explorer": "node scripts/sync-explorer.mjs",
     "smoke:maven": "node scripts/smoke-maven.mjs"
   },
   "devDependencies": {

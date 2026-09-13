@@ -7,6 +7,7 @@ export { MemoryShapeRegistry, defaultShape, resolveRequestShape, type ShapeRegis
 export { coerceArgs, coerceValue, coerceScalar, resolveRefs, collectRefs, getPath } from "./args.ts";
 export { estimateCost, type CostEstimate } from "./cost.ts";
 export { decide, decisionError, pushableFilter, hasPolicy, type Decision } from "./policy.ts";
+export { checkWiring } from "./wiring.ts";
 export { createHttpHandler, listen, applyCacheHeaders, type HttpOptions } from "./http.ts";
 export { createBindingHandler, bindingsOf, type Binding, type BindingOptions } from "./bindings.ts";
 export { openApiFor } from "./openapi.ts";
@@ -15,3 +16,5 @@ export { attachWebSocket, encodeFrame, decodeFrame, SUBPROTOCOL, type WsOptions 
 export { createMcpHandler, handleMcp, mcpTools, mcpResources, jsonSchemaFor, MCP_PROTOCOL_VERSION, type McpTool, type McpResource } from "./mcp.ts";
 export { hostProblem, originProblem, type OriginOptions } from "./guard.ts";
 export type { Instrumentation, BatchInfo, OpInfo, LoaderInfo, Outcome } from "./instrumentation.ts";
+export { MemoryUsage, type UsageSink, type UsageEvent, type UsageEntry } from "./usage.ts";
+export { Capabilities, capabilityAllows, type Capability, type CapabilitiesOptions, type MintOptions } from "./capability.ts";

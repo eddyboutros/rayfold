@@ -21,6 +21,8 @@ Rayfold gives you:
 | A React app | `npm install @rayfold/react @rayfold/client` | [React](docs/guide/react.md) |
 | Resolvers over Postgres | `npm install @rayfold/postgres` | [Postgres](docs/guide/postgres.md) |
 | OpenTelemetry tracing | `npm install @rayfold/otel` | [Tracing](docs/guide/tracing.md) |
+| An explorer next to the endpoint | `npm install @rayfold/explorer` | [Explorer](docs/guide/explorer.md) |
+| Editor support for `.rayfold` | `npm install --save-dev @rayfold/lsp` | [Editors](docs/guide/editors.md) |
 | Schema tooling: check, lock, explain, gen | `npm install --save-dev @rayfold/cli` | [CLI](packages/cli/README.md) |
 | A Kotlin server | `dev.rayfold:rayfold-core` | [Kotlin](docs/guide/kotlin.md) |
 | A Kotlin or Android client | `dev.rayfold:rayfold-client` (and `rayfold-client-okhttp` on Android) | [Kotlin client](docs/guide/kotlin.md#a-client) |
@@ -73,7 +75,7 @@ npm run typecheck
 npm run build                              # the npm packages into packages/*/dist
 npm run smoke:packages                     # install the packed packages in a fresh project and use them there
 npm run docs:site                          # the documentation site into site/ (fails on a broken link)
-npm run rayfold -- dev examples/bookstore-ts   # playground http://localhost:4400, /rayfold, /rayfold/ws, /mcp
+npm run rayfold -- dev examples/bookstore-ts   # explorer http://localhost:4400, /rayfold, /rayfold/ws, /mcp
 npm run bench                              # REST vs GraphQL vs Rayfold (JSON, RB) -> bench/results/latest.md
 npm run e2e && npm run e2e:html            # the comparison suite -> e2e/report.html
 npm run demo                               # web demo on the Project Gutenberg catalogue: http://localhost:4610
@@ -93,8 +95,8 @@ npm run smoke:maven                        # publish the JVM modules locally and
 | [`packages/rb`](packages/rb) | Rayfold Binary codec |
 | [`packages/cli`](packages/cli) | `rayfold check | lock | hash | explain | gen ts|kotlin|java | shapes | dev` |
 | [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass |
-| [`kotlin/`](kotlin) | JVM modules: `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry` |
-| [`examples/`](examples) | the bookstore used by tests, playground and bench; the web demo |
+| [`kotlin/`](kotlin) | JVM modules: `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`, `rayfold-jdbc` |
+| [`examples/`](examples) | the bookstore used by tests, explorer and bench; the web demo; `workspace-ts`, a multi-tenant issue tracker that exercises every part of the protocol at once |
 | [`e2e/`](e2e/report.md) | the same flows over REST, GraphQL and Rayfold, every report cell asserted |
 | [`scripts/`](scripts) | build, publish, set-version, smoke tests, docs site, oracles for the Kotlin tests |
 | [`data/`](data) | the Project Gutenberg catalogue used by the real-data tests and the demo (see its README for attribution) |

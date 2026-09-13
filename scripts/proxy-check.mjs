@@ -123,6 +123,23 @@ await check("the shared cache serves a public read from the cache, byte for byte
   return `${one.headers.get("x-cache-status")} then HIT, ${one.headers.get("cache-control")}`;
 });
 
+await check("a whole screen is one cache entry: the book, its author and its reviews together", async () => {
+  const shape = "{ id title format author { id name } reviews(page: { first: 3 }) { items { id rating } } }";
+  const url = `${base}/rayfold/book?a=${b64({ id: book })}&s=${encodeURIComponent(shape)}`;
+  const one = await fetch(url, { signal: within(5000) });
+  const two = await fetch(url, { signal: within(5000) });
+  assert(one.status === 200, `status ${one.status}`);
+  assert(one.headers.get("cache-control")?.startsWith("public"), `Cache-Control ${one.headers.get("cache-control")}`);
+  assert(two.headers.get("x-cache-status") === "HIT", `second read was ${two.headers.get("x-cache-status")}`);
+  const body = await one.text();
+  assert(body === (await two.text()), "the cached body differs");
+  const frame = JSON.parse(body.trim());
+  assert(frame.data?.author?.name, "the author is missing from the screen");
+  assert(Array.isArray(frame.data?.reviews?.items), "the reviews are missing from the screen");
+  // REST would need one cache entry and one request per resource for the same screen; a POST query cannot be cached at all
+  return `book + author + ${frame.data.reviews.items.length} reviews in one entry, ${one.headers.get("cache-control")}`;
+});
+
 await check("a signed-in read is private: never stored, never served to anyone from the cache", async () => {
   const url = `${base}/rayfold/book?a=${b64({ id: book })}&s=${encodeURIComponent("{ id title price }")}`;
   const one = await fetch(url, { headers: { cookie }, signal: within(5000) });

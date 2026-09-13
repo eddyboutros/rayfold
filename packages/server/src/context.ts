@@ -1,4 +1,4 @@
-import type { Expr } from "@rayfold/schema";
+import type { Expr, Shape } from "@rayfold/schema";
 import type { RequestMeta } from "./protocol.ts";
 
 /** In-process event bus used for `emits` and for streams that subscribe to events. */
@@ -88,10 +88,17 @@ export interface RayfoldContext<V = unknown> {
   opId: number;
   opName: string;
   policy: PolicyHint;
+  /** The shape this op asked for, so an adapter can plan a whole screen at once (spec 02). */
+  shape?: Shape;
   /** Values for `$name` references in the op's shape. */
   vars?: Record<string, unknown>;
   /** Per-request scratch space (e.g. per-request loader caches). */
   state: Map<string, unknown>;
+  /**
+   * Scratch space shared by every op of the batch. The executor keeps loaded field values here, so an entity one op
+   * already loaded is not loaded again by another op of the same request (spec 03 section 2).
+   */
+  batch: Map<string, unknown>;
   /** Wall clock, injectable for tests. */
   now: () => number;
 }

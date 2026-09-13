@@ -223,6 +223,48 @@ describe("schema constraints and compact frames", () => {
     });
     expect(await union.collect({ ops: [{ id: 1, op: "search", compact: true }] })).toEqual([{ id: 1, data: [{ $type: "Book", id: "b1", title: "T" }, { $type: "Author", id: "a1", name: "A" }], fin: true }]);
   });
+
+  it("an interface position resolves the concrete type from $type, and refuses a value without one", async () => {
+    const schema = `object Named @interface { id: ID name: String } entity Person implements Named { id: ID name: String email: String } entity Note { id: ID author: Named } query note: Note`;
+    const untagged = createRayfoldServer({ schema, resolvers: { Query: { note: () => ({ id: "n1" }) }, Note: { author: () => [{ id: "p1", name: "Ada", email: "a@x.dev" }] } } });
+    expect(await untagged.collect({ ops: [{ id: 1, op: "note", shape: "{ id author { name } }" }] })).toMatchObject([{ id: 1, error: { code: "internal", path: "author" } }]);
+    // guard: the same value carrying its $type projects, including the fields only Person declares
+    const tagged = createRayfoldServer({ schema, resolvers: { Query: { note: () => ({ id: "n1" }) }, Note: { author: () => [{ $type: "Person", id: "p1", name: "Ada", email: "a@x.dev" }] } } });
+    expect(await tagged.collect({ ops: [{ id: 1, op: "note", shape: "{ id author { name ...on Person { email } } }" }] })).toEqual([
+      { id: 1, data: { $type: "Note", id: "n1", author: { $type: "Person", name: "Ada", email: "a@x.dev" } }, meta: { cost: 2 }, fin: true },
+    ]);
+  });
+});
+
+describe("loads shared across a batch", () => {
+  it("an entity one op loaded is not loaded again by another op of the same request", async () => {
+    const frames = await bs.server.collect({
+      ops: [
+        { id: 1, op: "book", args: { id: "b1" }, shape: "{ id author { id name } }" },
+        { id: 2, op: "book", args: { id: "b1" }, shape: "{ title author { id } }" },
+      ],
+    });
+    // both ops are queries, so they finish in whichever order they finish: take each one's own result frame
+    const dataOf = (id: number) => (frames.find((f) => (f as { id: number }).id === id && "data" in f && !("at" in f)) as { data: Record<string, unknown> }).data;
+    expect((dataOf(1)["author"] as { name: string }).name).toBe("Ursula K. Le Guin");
+    expect((dataOf(2)["author"] as { id: string }).id).toBe("a1");
+    expect(bs.store.calls["Book.author"]).toBe(1); // one load serves both ops
+    expect(bs.store.calls["Query.book"]).toBe(2); // the ops themselves still run: the memo is for field loads
+
+    // guard: the memo belongs to the request, so the next one loads it again rather than serving stale values
+    await bs.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ author { id } }" }] });
+    expect(bs.store.calls["Book.author"]).toBe(2);
+  });
+
+  it("the same entity twice at one level is loaded once", async () => {
+    const frames = await bs.server.collect({
+      ops: [{ id: 1, op: "books", args: { filter: { authorId: "a1" }, page: { first: 10 } }, shape: "{ items { id author { name } } }" }],
+    });
+    const items = (frames[0] as { data: { items: Array<{ author: { name: string } }> } }).data.items;
+    expect(items.length).toBeGreaterThan(1); // several books by one author
+    expect(items.every((b) => b.author.name === "Ursula K. Le Guin")).toBe(true);
+    expect(bs.store.calls["Book.author"]).toBe(1);
+  });
 });
 
 describe("authorization", () => {
@@ -417,6 +459,22 @@ describe("deadlines", () => {
     await vi.advanceTimersByTimeAsync(40);
     expect(await p).toEqual([{ id: 1, data: { $type: "A", id: "q" }, meta: { cost: 1 }, fin: true }]);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a deferred part still running at the deadline does not take back what already arrived", async () => {
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID slow: String? @lazy } query a: A`,
+      resolvers: {
+        Query: { a: () => ({ id: "a1" }) },
+        A: { slow: (_p: unknown[], _a: unknown, ctx: { signal: AbortSignal }) => new Promise((_r, rej) => ctx.signal.addEventListener("abort", () => rej(ctx.signal.reason))) },
+      },
+    });
+    const p = s.collect({ ops: [{ id: 1, op: "a", shape: "{ id slow }" }], meta: { deadline: 50 } });
+    await vi.advanceTimersByTimeAsync(60);
+    const frames = await p;
+    // the page arrived before the deadline and stands; only the part that was still being fetched fails
+    expect(frames[0]).toMatchObject({ id: 1, data: { $type: "A", id: "a1" } });
+    expect(frames.at(-1)).toMatchObject({ id: 1, error: { code: "deadline_exceeded" }, fin: true });
   });
 
   it("a per-op deadline cancels only that op; its batch sibling completes", async () => {

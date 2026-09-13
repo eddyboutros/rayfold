@@ -1,0 +1,36 @@
+{
+  "name": "rayfold-vscode",
+  "displayName": "Rayfold",
+  "description": "Highlighting for .rayfold schemas, and the editor side of the Rayfold language server.",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "rayfold",
+        "aliases": [
+          "Rayfold",
+          "rayfold"
+        ],
+        "extensions": [
+          ".rayfold"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "rayfold",
+        "scopeName": "source.rayfold",
+        "path": "./syntaxes/rayfold.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -64,6 +64,32 @@ A transport failure (fetch's `TypeError`, an `IOException` on the JVM) or an `un
 other error, such as a permission denial or a domain error like `OutOfStock`, is the server's answer: the command
 leaves the queue, its prediction is rolled back, and the error reaches the caller.
 
+## When a prediction and the server disagree
+
+A prediction stands until its command settles. If the server changes the same field while the command is still in
+flight, the field decides what happens, by declaring a policy in the schema:
+
+```
+entity Doc {
+  id: ID
+  title: String @merge(serverWins)
+  notes: String
+}
+```
+
+`serverWins` (and `lww`, which settles the same way: the server's write is the later one) drops the predicted value
+the moment the server speaks for that field, so the screen shows the truth immediately. `keepLocal`, and a field with
+no annotation, keep the prediction until the command settles and the server's answer replaces it.
+
+A client picks this up on its own, as long as it was given the schema:
+
+```ts
+const client = new RayfoldClient({ transport, schema });
+```
+
+`@merge(crdtText)` and `@merge(custom)` are declared in the specification but not implemented here. A client refuses
+to predict such a field, with a message naming it, rather than merge it wrongly.
+
 ## Limits
 
 - A prediction sets fields of entities; it does not add an entity to a list or remove one.

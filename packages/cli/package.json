@@ -2,7 +2,7 @@
   "name": "@rayfold/cli",
   "version": "0.1.0",
   "private": true,
-  "description": "Rayfold command line: check, lock, hash, explain, gen, shapes, and a dev server with a playground.",
+  "description": "Rayfold command line: check, lock, hash, explain, gen, shapes, import from OpenAPI or GraphQL, a mock server, a language server, and a dev server with the explorer.",
   "keywords": [
     "rayfold",
     "api",
@@ -16,7 +16,17 @@
   "engines": {
     "node": ">=22"
   },
+  "peerDependencies": {
+    "graphql": "^16.0.0"
+  },
+  "peerDependenciesMeta": {
+    "graphql": {
+      "optional": true
+    }
+  },
   "dependencies": {
+    "@rayfold/explorer": "*",
+    "@rayfold/lsp": "*",
     "@rayfold/schema": "*",
     "@rayfold/server": "*",
     "@rayfold/rb": "*"

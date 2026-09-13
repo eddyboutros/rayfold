@@ -54,14 +54,18 @@ describe("OpenTelemetry tracing", () => {
     const book = named("rayfold query book");
     const books = named("rayfold query books");
     const loads = spans().filter((s) => s.name === "rayfold load Book.author");
-    expect(loads).toHaveLength(2);
     expect(parentOf(batch)).toBeUndefined();
     expect([parentOf(book), parentOf(books)]).toEqual([batch.spanContext().spanId, batch.spanContext().spanId]);
-    expect(loads.map(parentOf).sort()).toEqual([book.spanContext().spanId, books.spanContext().spanId].sort());
+    // Both ops need b1's author and a batch loads a row once, so which op pays for it depends on which asked first.
+    // What is fixed: every load hangs under the op that asked, and together they cover the two authors, never three.
+    const opSpans = [book.spanContext().spanId, books.spanContext().spanId];
+    expect(loads.length).toBeGreaterThanOrEqual(1);
+    expect(loads.every((s) => opSpans.includes(parentOf(s) ?? ""))).toBe(true);
+    expect(loads.reduce((n, s) => n + Number(s.attributes["rayfold.parents"] ?? 0), 0)).toBe(2);
     expect(new Set(spans().map((s) => s.spanContext().traceId)).size).toBe(1);
     expect(batch.attributes).toMatchObject({ "rayfold.ops": 2, "rayfold.client": "web" });
     expect(book.attributes).toMatchObject({ "rayfold.op": "book", "rayfold.op.kind": "query", "rayfold.op.id": 1 });
-    expect(loads.find((s) => parentOf(s) === books.spanContext().spanId)?.attributes).toMatchObject({ "rayfold.parents": 2 });
+    expect(loads[0]?.attributes).toMatchObject({ "rayfold.type": "Book" });
     expect(spans().every((s) => s.status.code !== SpanStatusCode.ERROR)).toBe(true);
   });
 

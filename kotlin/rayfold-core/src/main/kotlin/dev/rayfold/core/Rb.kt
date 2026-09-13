@@ -289,6 +289,7 @@ class RbCodec(ir: RayfoldSchemaIR? = null) {
             "id", "op", "args", "shape", "vars", "key", "live", "deadline", "simulate", "ops", "meta", "rayfold",
             "data", "ok", "item", "patch", "at", "error", "fin", "errors", "code", "type", "message", "path", "retryable",
             "set", "value", "del", "inv", "invOp", "cost", "cache", "\$type", "\$ref", "client", "replay", "cursor", "ms",
+            "list", "ins",
         )
 
         private const val T_NULL = 0x00

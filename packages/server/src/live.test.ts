@@ -42,6 +42,69 @@ describe("diffResults", () => {
   });
 });
 
+describe("diffResults describes structure", () => {
+  const row = (id: string, state = "TODO") => ({ $type: "Issue", id, state });
+  const page = (ids: string[], state = "TODO") => ({ items: ids.map((id) => row(id, state)), total: ids.length });
+
+  it("a row added to a list costs the row, not the page", () => {
+    const prev = page(["i1", "i2", "i3", "i4", "i5"]);
+    const next = { items: [row("i9"), ...prev.items], total: 6 };
+    expect(diffResults(prev, next)).toEqual({
+      patch: [
+        { list: "items", ins: [{ at: 0, value: row("i9") }] },
+        { at: "", value: { total: 6 } },
+      ],
+    });
+    // the inserted row travels once: it is not repeated as a `set`
+    expect(JSON.stringify(diffResults(prev, next)).length).toBeLessThan(JSON.stringify(next).length);
+  });
+
+  it("a row removed costs its position, and rows that only move are described as a move", () => {
+    const prev = page(["i1", "i2", "i3", "i4", "i5", "i6"]);
+    const next = { items: prev.items.filter((_, n) => n !== 2), total: 5 };
+    expect(diffResults(prev, next)).toEqual({
+      patch: [
+        { list: "items", del: [2] },
+        { at: "", value: { total: 5 } },
+      ],
+    });
+    // the same rows in another order: a removal and an insertion, not the whole page
+    const reordered = { items: [prev.items[1]!, prev.items[0]!, ...prev.items.slice(2)], total: 6 };
+    expect(diffResults(prev, reordered)).toEqual({ patch: [{ list: "items", del: [1], ins: [{ at: 0, value: row("i2") }] }] });
+    // guard: a result that gained a field cannot be described as operations, so the whole result is sent
+    const widened = { ...prev, cursor: "c1" };
+    expect(diffResults(prev, widened)).toEqual({ data: widened });
+  });
+
+  it("a board: the moved row and the two counts, not the six columns", () => {
+    const column = (state: string, ids: string[]) => ({ state, count: ids.length, issues: page(ids, state) });
+    const rest = [column("REVIEW", ["i17", "i18"]), column("DONE", ["i19", "i20"]), column("TRIAGE", ["i21"]), column("BACKLOG", ["i22"])];
+    const todo = ["i1", "i2", "i3", "i4", "i5", "i6", "i7", "i8"];
+    const doing = ["i9", "i10", "i11", "i12", "i13", "i14", "i15", "i16"];
+    const prev = { columns: [column("TODO", todo), column("DOING", doing), ...rest] };
+    const next = { columns: [column("TODO", todo.slice(1)), column("DOING", ["i1", ...doing]), ...rest] };
+    const diff = diffResults(prev, next) as { patch: unknown[] };
+    expect(diff).toEqual({
+      patch: [
+        { list: "columns.0.issues.items", del: [0] },
+        { at: "columns.0.issues", value: { total: 7 } },
+        { at: "columns.0", value: { count: 7 } },
+        { list: "columns.1.issues.items", ins: [{ at: 0, value: row("i1", "DOING") }] },
+        { at: "columns.1.issues", value: { total: 9 } },
+        { at: "columns.1", value: { count: 9 } },
+      ],
+    });
+    // the moved row travels once; the other five columns do not travel at all
+    expect(JSON.stringify(diff).length).toBeLessThan(JSON.stringify(next).length / 4);
+  });
+
+  it("still sends a plain `set` when only an entity field changed", () => {
+    const prev = page(["i1", "i2", "i3", "i4", "i5"]);
+    const next = { ...prev, items: [{ ...prev.items[0]!, state: "DONE" }, ...prev.items.slice(1)] };
+    expect(diffResults(prev, next)).toEqual({ patch: [{ set: "Issue:i1", value: { state: "DONE" } }] });
+  });
+});
+
 describe("live queries", () => {
   it("re-runs on a command patch touching its read set and sends a minimal patch", async () => {
     const live = startLive([{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }]);

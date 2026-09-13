@@ -50,6 +50,10 @@ data class ExecuteOptions(
     val cancel: Job? = null,
     /** False on transports that cannot notice a vanished client (the JDK HTTP server): live ops answer `unimplemented`. */
     val allowLive: Boolean = true,
+    /** Set by the batch itself: the memo its ops share so a row is loaded once. Never read from the wire. */
+    val batchState: MutableMap<String, CompletableDeferred<JsonElement>>? = null,
+    /** Set by the batch itself from `meta.client`, for usage telemetry (spec 11). */
+    val client: String = "",
 )
 
 /** A command's first run, or its failure after the side effect. Both frame forms are kept so a retry is answered in the form it asks for. */
@@ -170,6 +174,8 @@ class BatchRunner(
     private val options: BatchOptions,
     private val changes: ChangeBus = ChangeBus(),
     private val instrumentation: Instrumentation = Instrumentation.NONE,
+    /** Records which operations each client called (spec 11). */
+    private val usage: UsageSink? = null,
 ) {
     private class Planned(val req: RequestOp, val op: OpDef, val explicit: Boolean, val deps: List<Int>) {
         var shape: Shape = Shape()
@@ -236,6 +242,11 @@ class BatchRunner(
         // only inline shapes whose op passed planning, in a batch within budget, are remembered by id
         for (p in planned) p.resolved?.let { r -> r.inlineId?.let { views.registerInline(it, r.shape) } }
 
+        // One memo for the whole batch: a field loaded for an entity by one op is not loaded again by another.
+        val scoped = opts.copy(
+            batchState = ConcurrentHashMap(),
+            client = (envelope.meta["client"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: "",
+        )
         val results = ConcurrentHashMap<Int, JsonElement>()
         val status = ConcurrentHashMap<Int, String>()
         val done = planned.associate { it.req.id to CompletableDeferred<Unit>() }
@@ -251,7 +262,7 @@ class BatchRunner(
                         val body: suspend () -> Unit = {
                             p.deps.forEach { done[it]?.await() }
                             gate?.await()
-                            runOne(p, opts, viewerScope, results, status, sink)
+                            runOne(p, scoped, viewerScope, results, status, sink)
                         }
                         val own = p.req.deadline
                         if (own == null) body()
@@ -380,7 +391,8 @@ class BatchRunner(
                 val rawArgs = Args.resolveRefs(p.req.args, { opId, path -> Args.getPath(results[opId], path) }, "ops.$id.args") as JsonObject
                 Args.coerce(ir, p.op.args, rawArgs, "${p.op.name}()")
             }
-            val ctx = RayfoldContext(viewer, p.req.simulate, id, p.op.name, p.req.vars, events, compact = p.req.compact, ifVersion = p.req.ifVersion)
+            usage?.record(UsageEvent(p.op.name, "", opts.client), System.currentTimeMillis())
+            val ctx = RayfoldContext(viewer, p.req.simulate, id, p.op.name, p.req.vars, events, compact = p.req.compact, ifVersion = p.req.ifVersion, batch = opts.batchState ?: ConcurrentHashMap(), shape = p.shape, client = opts.client)
             when (p.op.kind) {
                 "query" -> {
                     if (p.req.live) {
@@ -474,7 +486,7 @@ class BatchRunner(
     private suspend fun runLive(p: Planned, args: JsonObject, ctx: RayfoldContext, sink: Sink, results: MutableMap<Int, JsonElement>) {
         val id = p.req.id
         // read sets and diffs need `$type`, so the query always runs in full form; compaction happens on the way out
-        val runCtx = if (!ctx.compact) ctx else RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, ctx.isCancelled, compact = false, ifVersion = ctx.ifVersion)
+        val runCtx = if (!ctx.compact) ctx else RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, ctx.isCancelled, compact = false, ifVersion = ctx.ifVersion, batch = ctx.batch, shape = ctx.shape, client = ctx.client)
         class Run(val frames: List<JsonObject>, val data: JsonElement, val unions: Set<String>)
         suspend fun collect(): Run {
             val frames = mutableListOf<JsonObject>()

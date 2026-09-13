@@ -7,10 +7,10 @@ published under the owner's name.
 
 | Area | State |
 |---|---|
-| npm packages | Ten packages build to self-contained `dist/` folders with compiled ESM, type declarations, a publish-ready `package.json`, README, LICENSE and NOTICE: `@rayfold/schema`, `rb`, `builder`, `server`, `postgres`, `otel`, `client`, `react`, `cli`, `conformance`. `npm run smoke:packages` installs the packed tarballs into a fresh project and checks them under plain Node, with strict types, in a browser bundle and with React server rendering. `npm run release:dry-run` lists what each package would contain. |
-| JVM artifacts | Six modules publish to Maven Central through the Central Portal, each with sources, javadoc and a POM (Apache-2.0): `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`. `npm run smoke:maven` publishes them to the local Maven repository and builds a separate project against the jars. |
+| npm packages | Twelve packages build to self-contained `dist/` folders with compiled ESM, type declarations, a publish-ready `package.json`, README, LICENSE and NOTICE: `@rayfold/schema`, `rb`, `builder`, `server`, `postgres`, `otel`, `explorer`, `lsp`, `client`, `react`, `cli`, `conformance`. `npm run smoke:packages` installs the packed tarballs into a fresh project and checks them under plain Node, with strict types, in a browser bundle and with React server rendering. `npm run release:dry-run` lists what each package would contain. |
+| JVM artifacts | Seven modules publish to Maven Central through the Central Portal, each with sources, javadoc and a POM (Apache-2.0): `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`, `rayfold-jdbc`. `npm run smoke:maven` publishes them to the local Maven repository and builds a separate project against the jars. |
 | Platforms | Node.js server and client; browsers; React 18/19 hooks; Kotlin server that reads `.rayfold` itself, with JSON and RB over HTTP and WebSocket, cache headers and live queries; Java API; Spring Boot 4 starter with Spring Security and the WebSocket on the application's port; Kotlin and Android client with an OkHttp WebSocket transport; optimistic commands and an offline queue in both clients; Postgres resolvers with policies pushed into SQL; OpenTelemetry tracing in both runtimes; Java code generation (`rayfold gen java`). |
-| Tests | 406 TypeScript tests (28 files), including property-based fuzzing of every reader and transport, and 731 JVM tests across the six modules (`./gradlew check`, which also checks the client modules against Android API level 26). The web demo runs in Chromium, Firefox and WebKit (`npm run test:browsers`, 9 tests) and behind a real nginx proxy and shared cache (`npm run check:proxy`, 8 checks). `npm run bench:load` measures sustained load. |
+| Tests | 453 TypeScript tests (32 files), including property-based fuzzing of every reader and transport, and 769 JVM tests across the seven modules (`./gradlew check`, which also checks the client modules against Android API level 26). The web demo runs in Chromium, Firefox and WebKit (`npm run test:browsers`, 9 tests) and behind a real nginx proxy and shared cache (`npm run check:proxy`, 9 checks). `npm run bench:load` measures sustained load. |
 | CI | `ci.yml`: TypeScript on Node 22 and 24, the JVM check, the three browsers, the nginx proxy check, and dependency and secret scanning (npm audit, OSV-Scanner, gitleaks). `fuzz.yml`: the fuzz tests a hundred times deeper every night, with a new seed. `release.yml`: npm and Maven Central on a `v*` tag, then a GitHub release with CycloneDX SBOMs for both. `docs.yml`: the docs site on GitHub Pages. Every action is pinned to a commit, and Dependabot watches npm, Gradle and the actions. **None has run yet**: nothing is pushed. |
 | Documentation | Guides in `docs/guide/` (quickstart, React, Kotlin and Android, Java and Spring Boot, offline and optimistic updates, Postgres, tracing, coming from REST, coming from GraphQL), `docs/versioning.md`, the specification with its change process (`spec/process.md`), `CHANGELOG.md`, and `npm run docs:site`, which builds everything into `site/` and fails on a broken link. |
 | Project files | `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue and pull-request templates, `.github/dependabot.yml`, `.gitattributes` (LF everywhere). |
@@ -79,17 +79,19 @@ Unpublishing is only possible within 72 hours.
 - **Data attribution:** if the demo or the real-data set is published, keep `data/README.md` with it. The catalogue
   comes from Project Gutenberg, and its name is their trademark.
 
-## 5. Next: an API explorer
+## 5. The explorer
 
-Rayfold needs its own counterpart to Swagger UI and GraphiQL, in both runtimes: a page, served by the server, that
-lists every operation from `/rayfold/manifest` with its arguments, types, cost and the names of its policies; helps
-write a shape with completion from the schema; sends the batch (JSON or RB, optionally live) and shows the frames as
-they arrive, with the plan and cost; and tries commands as dry runs where `@simulate` allows.
+Rayfold's counterpart to Swagger UI and GraphiQL is a page served next to the endpoint that reads everything it shows
+from `/rayfold/manifest`: every operation with its arguments, result, cost and the policies that guard it; a starting
+shape; the batch sent and the frames shown as they arrive, with their cost; dry runs where `@simulate` allows; and
+live queries that keep updating. One page, two runtimes, kept identical by `npm run sync:explorer`.
 
-- **TypeScript:** a package (`@rayfold/explorer`) mounted next to the endpoint, at `/rayfold/explorer`, grown from the
-  playground of `rayfold dev`; on in development, opt-in in production.
-- **Spring, Java and Kotlin:** the same page, served by `rayfold-core` (`RayfoldExplorer(server).mount(http)`) and by
-  the Spring Boot starter at `/rayfold/explorer` with `rayfold.explorer.enabled=true`, behind the application's
-  security like the endpoint itself.
+- **TypeScript:** `@rayfold/explorer`, mounted next to the endpoint with `createExplorerHandler()`. `rayfold dev`
+  serves it at `/rayfold/explorer`, in place of the playground it grew from.
+- **Spring, Java and Kotlin:** the same page from `rayfold-core`, either mounted on a server of its own
+  (`RayfoldExplorer(endpoint, title).mount(http)`) or turned on next to the endpoint with `HttpOptions(explorer = true)`;
+  in Spring Boot, `rayfold.explorer.enabled=true`, behind the application's security like the endpoint itself.
+- **Off unless it is turned on.** The page reads whatever the visitor's own token allows and nothing more, but it is
+  still an administration surface: nothing is served until an application mounts it.
 - **Already there:** routes bound with `@http` are described in `/rayfold/openapi.json`, which Swagger UI can render
   today.

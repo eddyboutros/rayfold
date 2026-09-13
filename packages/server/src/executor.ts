@@ -22,6 +22,7 @@ import { coerceArgs } from "./args.ts";
 import type { RayfoldContext , PolicyHint } from "./context.ts";
 import { decide, decisionError, pushableFilter } from "./policy.ts";
 import { RayfoldError, VersionConflict, toWireError, type Frame, type PatchOp, type WireError } from "./protocol.ts";
+import type { UsageSink } from "./usage.ts";
 import { defaultShape, isScalarLike } from "./views.ts";
 
 export type FieldResolver<P = unknown, A = Record<string, unknown>, R = unknown> = (
@@ -64,6 +65,8 @@ export interface ExecutorOptions {
   maxDepth: number;
   maxFields: number;
   instrumentation?: Instrumentation;
+  /** Records which members each client asked for (spec 11). Nothing is recorded without one. */
+  usage?: UsageSink;
 }
 
 interface Slot {
@@ -341,6 +344,25 @@ export class Executor {
       }
       return;
     }
+
+    // An interface position (spec 01 §2.1): like a union, the concrete type is known only from the value's `$type`,
+    // so the slots are grouped by it and projected as that entity. `...on Concrete` then selects fields the interface
+    // does not declare, and `$type` survives compact mode because the schema does not fix it here.
+    if (def.kind === "object" && def.interface) {
+      const members = implementorsOf(this.ir, def.name);
+      const groups = new Map<string, Slot[]>();
+      for (const s of slots) {
+        const tn = s.value["$type"];
+        if (typeof tn !== "string" || !members.has(tn)) {
+          throw new RayfoldError("internal", `Interface ${def.name} value at ${s.path} lacks a valid $type`, { path: s.path });
+        }
+        s.out["$type"] = tn;
+        Object.defineProperty(s.out, UNION_MEMBER, { value: true, enumerable: false });
+        (groups.get(tn) ?? groups.set(tn, []).get(tn)!).push(s);
+      }
+      for (const [tn, group] of groups) await this.projectMany(group, { kind: "named", name: tn, nullable: false }, shape, st);
+      return;
+    }
     if (!("fields" in def)) throw new RayfoldError("internal", `Cannot project ${def.kind} ${def.name}`);
 
     // Type-level read policy (spec 06 §2 step 2).
@@ -360,6 +382,12 @@ export class Executor {
 
     const fields = fieldsOf(this.ir, t) ?? def.fields;
     const { groups, defers } = this.flatten(shape, def, fields, st);
+    // What this client asked for, for `rayfold check --unused` (spec 11). Only the member's path is kept.
+    if (this.opts.usage) {
+      const client = String(st.ctx.meta.client ?? "");
+      const at = st.ctx.now();
+      for (const g of groups) this.opts.usage.record({ op: st.ctx.opName, path: `${def.name}.${g.field.name}`, client }, at);
+    }
 
     // Phase 1: resolve every field group at this level (batched), collecting children.
     const children: Array<{ slots: Slot[]; type: TypeRef; shape: Shape; explicit: boolean }> = [];
@@ -467,16 +495,67 @@ export class Executor {
     const hinted: RayfoldContext = { ...ctx, policy: this.policyHint(field.type) };
     const load = annotation(field, "load");
     const single = load && typeof load.args["value"] === "object" && load.args["value"] && "$ident" in load.args["value"] && (load.args["value"] as { $ident: string }).$ident === "single";
-    const call = async (): Promise<unknown[]> => {
-      if (single) {
-        const fn = resolver as SingleFieldResolver<never, never, unknown>;
-        return Promise.all(targets.map((s) => fn(s.value as never, args as never, hinted as RayfoldContext<never>)));
+    // One load per (field, arguments, entity) for the whole batch: an entity another op already loaded, or is
+    // loading right now, or that appears twice at this level, is not loaded again. What is remembered is the load
+    // in flight, not its result, so ops running at the same time share it. Only entities take part: they have identity.
+    const memo = ctx.batch as Map<string, Promise<unknown>>;
+    const prefix = `${def.name}.${field.name}|${JSON.stringify(args)}`;
+    const keys = targets.map((s): string | null => {
+      if (def.kind !== "entity") return null;
+      const id = s.value["id"];
+      return typeof id === "string" || typeof id === "number" ? `${prefix}|${id}` : null;
+    });
+    const waiting: Array<Promise<unknown>> = [];
+    const need: Slot[] = [];
+    const settlers: Array<{ resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
+    const mine = new Map<string, number>();
+    targets.forEach((s, i) => {
+      const k = keys[i]!;
+      const already = k === null ? undefined : memo.get(k);
+      if (already) {
+        waiting.push(already);
+        return;
       }
-      const fn = resolver as FieldResolver<never, never, unknown>;
-      return fn(targets.map((s) => s.value) as never[], args as never, hinted as RayfoldContext<never>);
-    };
-    const hook = this.opts.instrumentation?.loader;
-    return hook ? hook({ type: def.name, field: field.name, parents: targets.length }, call) : call();
+      if (k !== null && mine.has(k)) {
+        waiting.push(waiting[mine.get(k)!]!);
+        return;
+      }
+      let settle!: { resolve: (v: unknown) => void; reject: (e: unknown) => void };
+      const pending = new Promise<unknown>((resolve, reject) => (settle = { resolve, reject }));
+      // The group's failure is reported by the throw below; this keeps a shared load that nobody awaited quiet.
+      pending.catch(() => {});
+      waiting.push(pending);
+      settlers.push(settle);
+      if (k !== null) {
+        memo.set(k, pending);
+        mine.set(k, i);
+      }
+      need.push(s);
+    });
+
+    if (need.length) {
+      const call = async (): Promise<unknown[]> => {
+        if (single) {
+          const fn = resolver as SingleFieldResolver<never, never, unknown>;
+          return Promise.all(need.map((s) => fn(s.value as never, args as never, hinted as RayfoldContext<never>)));
+        }
+        const fn = resolver as FieldResolver<never, never, unknown>;
+        return fn(need.map((s) => s.value) as never[], args as never, hinted as RayfoldContext<never>);
+      };
+      const hook = this.opts.instrumentation?.loader;
+      try {
+        const loaded = await (hook ? hook({ type: def.name, field: field.name, parents: need.length }, call) : call());
+        if (!Array.isArray(loaded) || loaded.length !== need.length) {
+          throw new RayfoldError("internal", `Loader for ${def.name}.${field.name} returned ${Array.isArray(loaded) ? loaded.length : "a non-list"} for ${need.length} parents`);
+        }
+        loaded.forEach((v, n) => settlers[n]!.resolve(v));
+      } catch (e) {
+        for (const k of mine.keys()) memo.delete(k); // a load that failed is not remembered
+        for (const s of settlers) s.reject(e);
+        throw e;
+      }
+    }
+    return Promise.all(waiting);
   }
 
   /** The pushable read policy of the entity a resolver loads, handed to it as ctx.policy.filter (spec 06 section 4). */
@@ -559,6 +638,19 @@ function mergeShapes(a: Shape, b: Shape): Shape {
 function join(path: string, name: string): string {
   return path ? `${path}.${name}` : name;
 }
+
+/** Entities that implement an interface, memoised per schema. */
+function implementorsOf(ir: RayfoldSchemaIR, iface: string): Set<string> {
+  let memo = implementors.get(ir);
+  if (!memo) implementors.set(ir, (memo = new Map()));
+  let set = memo.get(iface);
+  if (!set) {
+    set = new Set(Object.values(ir.types).filter((t) => t.kind === "entity" && t.implements.includes(iface)).map((t) => t.name));
+    memo.set(iface, set);
+  }
+  return set;
+}
+const implementors = new WeakMap<RayfoldSchemaIR, Map<string, Set<string>>>();
 
 function markNull(s: Slot): void {
   // A denied entity inside a default view becomes null in its parent (spec 06 §3).

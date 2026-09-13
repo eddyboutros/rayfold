@@ -1,0 +1,312 @@
+// Workspace - a multi-tenant issue tracker (organisations, teams, projects, issues, sprints, activity, search).
+//
+// The bookstore is the small reference domain; this is the large one. It exists to put every part of Rayfold under
+// load at once: row and field policies across tenants, per-parent pagination, a polymorphic activity feed behind an
+// interface, a search union, conditional writes with versions, bulk commands that return many patches, live queries,
+// lazy and partial fields, typed errors, cost budgets, cache scopes, HTTP bindings and streams.
+
+scalar Url @format("uri")
+
+object Activity @interface {
+  id: ID
+  at: Instant
+  actor: Member
+}
+
+enum Role { OWNER ADMIN MEMBER GUEST }
+enum Plan { FREE TEAM ENTERPRISE }
+enum IssueState { TRIAGE BACKLOG TODO IN_PROGRESS IN_REVIEW DONE CANCELLED }
+enum Priority { NONE LOW MEDIUM HIGH URGENT }
+enum ProjectStatus { PLANNED ACTIVE PAUSED COMPLETED ARCHIVED }
+enum SprintState { UPCOMING ACTIVE CLOSED }
+enum NotificationKind { ASSIGNED MENTIONED STATE_CHANGED COMMENTED }
+
+entity Org @cache(maxAge: 5m, scope: public) {
+  id: ID
+  slug: String
+  name: String
+  plan: Plan
+  """Seats paid for. Only owners and admins of the organisation may read it."""
+  seats: Int @allow(read: viewer.role == "OWNER" || viewer.role == "ADMIN")
+  teams(page: PageArgs = { first: 10 }): Page<Team>
+}
+
+entity User @cache(maxAge: 5m, scope: public) {
+  id: ID
+  name: String
+  """Private: a member sees their own address, admins see any."""
+  email: String @allow(read: viewer.id == id || viewer.role == "ADMIN" || viewer.role == "OWNER")
+  avatarUrl: Url?
+}
+
+entity Member {
+  id: ID
+  orgId: ID
+  user: User
+  role: Role
+  joinedAt: Instant
+  """Issues assigned to this member, newest first."""
+  assigned(page: PageArgs = { first: 10 }): Page<Issue>
+}
+
+entity Team @cache(maxAge: 60s, scope: public) {
+  id: ID
+  orgId: ID
+  key: String @range(min: 2, max: 5)
+  name: String
+  members(page: PageArgs = { first: 20 }): Page<Member>
+  projects(page: PageArgs = { first: 10 }): Page<Project>
+}
+
+entity Project @cache(maxAge: 60s, scope: public) @allow(read: viewer.orgId == orgId) {
+  id: ID
+  orgId: ID
+  key: String
+  name: String
+  status: ProjectStatus
+  startDate: Date?
+  targetDate: Date?
+  team: Team
+  lead: Member?
+  """A long rollup that costs real work to build; it arrives after the rest of the page."""
+  summary: String? @lazy
+  """Read from the billing service, which is allowed to be down without failing the page."""
+  spend: Decimal? @partial @unit("USD")
+  issues(page: PageArgs = { first: 20 }): Page<Issue>
+  sprints(page: PageArgs = { first: 10 }): Page<Sprint>
+  labels: [Label]
+}
+
+entity Label @cache(maxAge: 5m, scope: public) {
+  id: ID
+  name: String
+  color: String @format("hex-color")
+}
+
+entity Sprint {
+  id: ID
+  orgId: ID
+  name: String
+  state: SprintState
+  startsAt: Instant
+  endsAt: Instant
+  project: Project
+  issues(page: PageArgs = { first: 20 }): Page<Issue>
+}
+
+entity Issue @allow(read: viewer.orgId == orgId) {
+  id: ID
+  orgId: ID
+  """Human key, like ENG-142."""
+  key: String @example("ENG-142")
+  title: String @range(min: 1, max: 200)
+  """The full body. Large, and rarely needed on a list, so it is sent after the rest of the frame."""
+  description: String? @lazy
+  state: IssueState
+  priority: Priority
+  estimate: Int? @range(min: 0, max: 21) @unit("points")
+  createdAt: Instant
+  updatedAt: Instant
+  """Bumped on every write; send it back as ifVersion (or If-Match) to avoid lost updates."""
+  version: Int @version
+  project: Project
+  sprint: Sprint?
+  reporter: Member
+  assignee: Member?
+  labels: [Label]
+  parent: Issue?
+  children(page: PageArgs = { first: 10 }): Page<Issue>
+  comments(page: PageArgs = { first: 10 }): Page<Comment>
+  attachments: [Attachment]
+  """The state in the customer's own tracker. A flaky integration: it may fail without failing the issue."""
+  externalState: String? @partial
+}
+
+entity Comment {
+  id: ID
+  orgId: ID
+  issue: Issue
+  author: Member
+  body: String @range(min: 1, max: 10000)
+  createdAt: Instant
+  version: Int @version
+}
+
+object Attachment {
+  filename: String
+  contentType: String
+  size: Int @unit("bytes")
+  url: Url
+}
+
+entity Notification @cache(maxAge: 0s, scope: private) @allow(read: viewer.id == recipientId) {
+  id: ID
+  recipientId: ID
+  kind: NotificationKind
+  issue: Issue
+  at: Instant
+  readAt: Instant?
+}
+
+// ---- the activity feed: one page, many kinds of fact, each with its own fields
+
+entity IssueOpened implements Activity {
+  id: ID
+  at: Instant
+  actor: Member
+  issue: Issue
+}
+
+entity IssueMovedActivity implements Activity {
+  id: ID
+  at: Instant
+  actor: Member
+  issue: Issue
+  from: IssueState
+  to: IssueState
+}
+
+entity IssueCommented implements Activity {
+  id: ID
+  at: Instant
+  actor: Member
+  comment: Comment
+}
+
+entity SprintClosedActivity implements Activity {
+  id: ID
+  at: Instant
+  actor: Member
+  sprint: Sprint
+  completed: Int
+  carriedOver: Int
+}
+
+union SearchHit = Issue | Project | Comment
+
+object Board {
+  project: Project
+  columns: [BoardColumn]
+}
+
+"""One column of the board: a state, how many issues are in it, and the first page of them."""
+object BoardColumn {
+  state: IssueState
+  count: Int
+  issues(page: PageArgs = { first: 10 }): Page<Issue>
+}
+
+object BulkResult {
+  sprint: Sprint
+  moved: Int
+  carriedOver: Int
+}
+
+input IssueFilter {
+  projectId: ID?
+  state: IssueState?
+  priority: Priority?
+  assigneeId: ID?
+  labelId: ID?
+  sprintId: ID?
+  titleContains: String?
+}
+
+input IssueInput {
+  projectId: ID
+  title: String @range(min: 1, max: 200)
+  description: String?
+  priority: Priority = MEDIUM
+  assigneeId: ID?
+  labelIds: [ID] = []
+  parentId: ID?
+  estimate: Int? @range(min: 0, max: 21)
+}
+
+"""Partial update: absent fields are left unchanged."""
+input IssuePatch {
+  title: String? @range(min: 1, max: 200)
+  description: String?
+  priority: Priority?
+  estimate: Int? @range(min: 0, max: 21)
+  assigneeId: ID?
+  sprintId: ID?
+}
+
+input CommentInput { issueId: ID, body: String @range(min: 1, max: 10000) }
+input ProjectInput { teamId: ID, name: String @range(min: 1, max: 120), key: String @range(min: 2, max: 5), targetDate: Date? }
+
+error NotFound { what: String, id: ID }
+error Forbidden { reason: String }
+error InvalidTransition { from: IssueState, to: IssueState }
+error SprintNotActive { state: SprintState }
+
+event IssueCreated { issueId: ID, projectId: ID, key: String }
+event IssueMoved { issueId: ID, from: IssueState, to: IssueState }
+event CommentAdded { commentId: ID, issueId: ID }
+event SprintClosed { sprintId: ID, moved: Int }
+
+view User.default = { id name avatarUrl }
+view Member.default = { id role user { id name avatarUrl } }
+view Label.default = { id name color }
+view Issue.default = { id key title state priority updatedAt }
+view Issue.row = { ...Issue.default assignee { ...Member.default } labels { ...Label.default } }
+view Issue.card = { ...Issue.row estimate project { id key name } sprint { id name } }
+view Comment.default = { id body createdAt author { ...Member.default } }
+view Project.default = { id key name status targetDate }
+view Sprint.default = { id name state startsAt endsAt }
+view Team.default = { id key name }
+view SearchHit.default = { ...on Issue { ...Issue.row } ...on Project { ...Project.default } ...on Comment { ...Comment.default } }
+
+"""One board screen: every column with its count and its first page of issues."""
+query board(projectId: ID): Board @cost(base: 5) @http(method: GET, path: "/projects/{projectId}/board")
+query issue(id: ID): Issue? @http(method: GET, path: "/issues/{id}")
+query issues(filter: IssueFilter?, page: PageArgs = { first: 20 }): Page<Issue> @cost(base: 5, perItem: 1) @http(method: QUERY, path: "/issues", body: "*")
+query project(id: ID): Project? @http(method: GET, path: "/projects/{id}")
+query team(id: ID): Team?
+query org(slug: String): Org? @http(method: GET, path: "/orgs/{slug}")
+query member(id: ID): Member?
+query sprint(id: ID): Sprint? @http(method: GET, path: "/sprints/{id}")
+"""Everything matching a phrase, whatever kind of thing it is."""
+query search(q: String, page: PageArgs = { first: 20 }): Page<SearchHit> @cost(base: 10, perItem: 2) @live(false)
+"""What happened in a project, newest first: one page holding several kinds of fact."""
+query activity(projectId: ID, page: PageArgs = { first: 20 }): Page<Activity> @cost(base: 5, perItem: 1)
+query notifications(page: PageArgs = { first: 20 }): Page<Notification> @allow(read: viewer != null) @cache(maxAge: 0s, scope: private)
+
+"""Open an issue. Returns it with the fields the board needs, and patches the board's counts."""
+command createIssue(input: IssueInput): Issue
+  throws NotFound | Forbidden
+  emits IssueCreated
+  @allow(write: viewer != null) @simulate
+  @http(method: POST, path: "/issues", body: input, location: "/issues/{id}")
+
+"""Move an issue to another state. Refuses transitions the workflow does not allow."""
+command moveIssue(id: ID, to: IssueState): Issue
+  throws NotFound | InvalidTransition | Forbidden
+  emits IssueMoved
+  @allow(write: viewer != null) @simulate
+  @http(method: POST, path: "/issues/{id}/move")
+
+"""Change some fields of an issue; fields not sent are left as they are."""
+command updateIssue(id: ID, patch: IssuePatch): Issue
+  throws NotFound | Forbidden
+  @allow(write: viewer != null) @simulate
+  @http(method: PATCH, path: "/issues/{id}", body: patch)
+
+command assignIssue(id: ID, memberId: ID?): Issue throws NotFound | Forbidden @allow(write: viewer != null) @simulate
+command addComment(input: CommentInput): Comment throws NotFound | Forbidden emits CommentAdded @allow(write: viewer != null) @simulate
+command deleteComment(id: ID): Comment throws NotFound | Forbidden @allow(write: viewer != null) @simulate @http(method: DELETE, path: "/comments/{id}")
+command createProject(input: ProjectInput): Project throws NotFound | Forbidden @allow(write: viewer.role == "OWNER" || viewer.role == "ADMIN") @simulate
+
+"""Close a sprint: everything unfinished moves to the next one. One command, many entities changed."""
+command closeSprint(id: ID, carryTo: ID?): BulkResult
+  throws NotFound | SprintNotActive | Forbidden
+  emits SprintClosed IssueMoved
+  @allow(write: viewer.role == "OWNER" || viewer.role == "ADMIN") @simulate
+  @cost(base: 20)
+
+"""Mark every notification up to a point as read. Idempotent by nature, so no key is required."""
+command readNotifications(upTo: Instant): Int @idempotent(false) @allow(write: viewer != null)
+
+"""Everything that happens in a project, as it happens."""
+stream projectFeed(projectId: ID): IssueMoved @cost(base: 5)

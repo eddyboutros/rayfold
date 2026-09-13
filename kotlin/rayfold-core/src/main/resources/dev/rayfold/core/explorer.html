@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rayfold explorer</title>
+<style>
+:root { color-scheme: light dark; --ink: #16202b; --muted: #5b6875; --rule: #d6dde5; --surface: #fff; --ground: #f3f6f9; --accent: #2a78d6; --ok: #0a7d3f; --bad: #b3261e; }
+@media (prefers-color-scheme: dark) { :root { --ink: #e8eef5; --muted: #a2aebc; --rule: #2b333d; --surface: #171c22; --ground: #0f1318; --accent: #5aa2f0; --ok: #4cc073; --bad: #f2836f; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.55 ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+header { display: flex; gap: 12px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--rule); background: var(--surface); }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header .meta { color: var(--muted); font: 12px/1.4 ui-monospace, monospace; }
+main { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 0; height: calc(100vh - 49px); }
+@media (max-width: 800px) { main { grid-template-columns: 1fr; height: auto; } }
+aside { border-right: 1px solid var(--rule); overflow: auto; background: var(--surface); }
+aside h2 { font: 600 11px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 12px 6px; }
+button.op { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; }
+button.op:hover, button.op.on { background: var(--ground); }
+button.op .kind { font: 11px ui-monospace, monospace; color: var(--muted); margin-left: 6px; }
+section.work { display: grid; grid-template-rows: auto auto 1fr; min-width: 0; }
+.doc { padding: 12px 16px; border-bottom: 1px solid var(--rule); background: var(--surface); }
+.doc h3 { margin: 0 0 4px; font-size: 15px; }
+.doc dl { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 2px 10px; margin: 6px 0 0; font-size: 13px; }
+.doc dt { color: var(--muted); font: 12px ui-monospace, monospace; }
+.doc dd { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.editor { display: grid; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+textarea, input[type=text] { width: 100%; font: 12.5px/1.5 ui-monospace, monospace; color: inherit; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px; }
+textarea { min-height: 120px; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row label { font-size: 12.5px; color: var(--muted); display: flex; gap: 5px; align-items: center; }
+button.go { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: 600 13px/1 inherit; cursor: pointer; }
+button.go:disabled { opacity: .55; cursor: default; }
+.out { overflow: auto; padding: 12px 16px; display: grid; gap: 8px; align-content: start; }
+.frame { border: 1px solid var(--rule); border-left-width: 3px; border-radius: 6px; background: var(--surface); padding: 8px 10px; }
+.frame pre { margin: 4px 0 0; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.frame .tag { font: 600 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.frame.ok, .frame.data { border-left-color: var(--ok); }
+.frame.error { border-left-color: var(--bad); }
+.frame.patch, .frame.item, .frame.at { border-left-color: var(--accent); }
+.hint { color: var(--muted); font-size: 12.5px; }
+code { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<script type="application/json" id="config">__RAYFOLD_EXPLORER_CONFIG__</script>
+<header>
+  <h1 id="title">Rayfold</h1>
+  <span class="meta" id="about">reading the manifest…</span>
+</header>
+<main>
+  <aside id="ops"></aside>
+  <section class="work">
+    <div class="doc" id="doc"><p class="hint">Pick an operation on the left. The explorer reads everything it shows from the server's manifest.</p></div>
+    <div class="editor">
+      <textarea id="req" spellcheck="false"></textarea>
+      <div class="row">
+        <button class="go" id="send">Send</button>
+        <label><input type="checkbox" id="simulate"> dry run</label>
+        <label><input type="checkbox" id="live"> live</label>
+        <label>auth <input type="text" id="token" placeholder="bearer token" style="width:170px"></label>
+        <span class="hint" id="status"></span>
+      </div>
+      <p class="hint">A batch can hold several ops, and a later one can use an earlier result: <code>{"$ref": "1.id"}</code> in its args. Ctrl+Enter sends.</p>
+    </div>
+    <div class="out" id="out"></div>
+  </section>
+</main>
+<script>
+var CONFIG = JSON.parse(document.getElementById("config").textContent);
+var $ = function (sel) { return document.querySelector(sel); };
+var manifest = null;
+var current = null;
+
+document.getElementById("title").textContent = CONFIG.title;
+
+function text(node, s) { node.textContent = s; return node; }
+function el(tag, cls, s) { var n = document.createElement(tag); if (cls) n.className = cls; if (s !== undefined) n.textContent = s; return n; }
+function typeName(t) {
+  if (!t) return "?";
+  if (t.kind === "list") return "[" + typeName(t.of) + "]" + (t.nullable ? "?" : "");
+  var args = t.args && t.args.length ? "<" + t.args.map(typeName).join(", ") + ">" : "";
+  return t.name + args + (t.nullable ? "?" : "");
+}
+function annotationsOf(def, name) { return (def.annotations || []).filter(function (a) { return a.name === name; }); }
+function costOf(def) {
+  var c = annotationsOf(def, "cost")[0];
+  if (!c) return "default";
+  return Object.keys(c.args).map(function (k) { return k + " " + JSON.stringify(c.args[k]); }).join(", ");
+}
+function policiesOf(def) {
+  var names = [];
+  annotationsOf(def, "allow").forEach(function () { names.push("allow"); });
+  annotationsOf(def, "deny").forEach(function () { names.push("deny"); });
+  return names.length ? names.join(", ") : "none on the operation";
+}
+/** A shape that selects the scalar fields of what an op returns: a starting point, not a rule. */
+function defaultShape(typeRef) {
+  var base = typeRef;
+  while (base && base.kind === "list") base = base.of;
+  if (!base) return "";
+  var def = manifest.schema.types[base.name];
+  if (!def || !def.fields) return "";
+  if (base.name === "Page" && base.args && base.args.length) {
+    return "{ total hasMore cursor items " + (defaultShape(base.args[0]) || "{ id }") + " }";
+  }
+  var scalars = def.fields.filter(function (f) {
+    var t = f.type.kind === "list" ? f.type.of : f.type;
+    var sub = manifest.schema.types[t.name];
+    return !f.args.length && sub && (sub.kind === "scalar" || sub.kind === "enum");
+  });
+  if (!scalars.length) return "";
+  return "{ " + scalars.map(function (f) { return f.name; }).join(" ") + " }";
+}
+function argSkeleton(def) {
+  var args = {};
+  def.args.forEach(function (a) {
+    if (a.default !== undefined) { args[a.name] = a.default; return; }
+    var t = a.type.kind === "list" ? a.type.of : a.type;
+    var sub = manifest.schema.types[t.name];
+    args[a.name] = a.type.kind === "list" ? [] : sub && sub.kind === "enum" ? sub.values[0].name : t.name === "Int" || t.name === "Float" || t.name === "Long" ? 0 : t.name === "Boolean" ? false : "";
+  });
+  return args;
+}
+function show(op) {
+  current = op;
+  Array.prototype.forEach.call(document.querySelectorAll("button.op"), function (b) { b.classList.toggle("on", b.dataset.op === op.name); });
+  var doc = document.getElementById("doc");
+  doc.innerHTML = "";
+  doc.appendChild(el("h3", null, op.name + "(" + op.args.map(function (a) { return a.name + ": " + typeName(a.type); }).join(", ") + ")"));
+  if (op.description) doc.appendChild(el("p", "hint", op.description));
+  var dl = el("dl");
+  function add(k, v) { dl.appendChild(el("dt", null, k)); dl.appendChild(el("dd", null, v)); }
+  add("kind", op.kind);
+  add("returns", typeName(op.returns));
+  add("cost", costOf(op));
+  add("policies", policiesOf(op));
+  if (op.throws && op.throws.length) add("throws", op.throws.join(" | "));
+  if (op.emits && op.emits.length) add("emits", op.emits.join(" "));
+  if (annotationsOf(op, "simulate").length) add("dry run", "allowed: tick it and nothing is written");
+  doc.appendChild(dl);
+
+  var request = { ops: [{ id: 1, op: op.name, args: argSkeleton(op) }] };
+  var shape = defaultShape(op.returns);
+  if (shape) request.ops[0].shape = shape;
+  if (op.kind === "command") request.ops[0].key = "explorer-" + Math.random().toString(36).slice(2).padEnd(16, "0").slice(0, 16);
+  $("#req").value = JSON.stringify(request, null, 2);
+  $("#simulate").disabled = op.kind !== "command";
+  $("#live").disabled = op.kind !== "query";
+}
+function render(frames, ms) {
+  var out = document.getElementById("out");
+  out.innerHTML = "";
+  frames.forEach(function (f) {
+    var kind = "error" in f ? "error" : "ok" in f ? "ok" : "at" in f ? "at" : "patch" in f ? "patch" : "item" in f ? "item" : "data" in f ? "data" : "fin";
+    var box = el("div", "frame " + kind);
+    var cost = f.meta && f.meta.cost !== undefined ? "  cost " + f.meta.cost : "";
+    box.appendChild(el("span", "tag", kind + (f.id !== undefined ? " · op " + f.id : "") + cost));
+    box.appendChild(el("pre", null, JSON.stringify(f, null, 2)));
+    out.appendChild(box);
+  });
+  $("#status").textContent = frames.length + (frames.length === 1 ? " frame" : " frames") + " in " + ms + " ms";
+}
+async function send() {
+  var button = $("#send");
+  button.disabled = true;
+  $("#status").textContent = "sending…";
+  var started = Date.now();
+  try {
+    var body = JSON.parse($("#req").value);
+    if (current && current.kind === "command" && $("#simulate").checked) body.ops.forEach(function (o) { o.simulate = true; });
+    if (current && current.kind === "query" && $("#live").checked) body.ops.forEach(function (o) { o.live = true; });
+    var headers = { "content-type": "application/rayfold+json" };
+    if ($("#token").value) headers.authorization = "Bearer " + $("#token").value;
+    var res = await fetch(CONFIG.endpoint, { method: "POST", headers: headers, body: JSON.stringify(body) });
+    var frames = [];
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buffered = "";
+    for (;;) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffered += decoder.decode(chunk.value, { stream: true });
+      var cut;
+      while ((cut = buffered.indexOf(String.fromCharCode(10))) >= 0) {
+        var line = buffered.slice(0, cut);
+        buffered = buffered.slice(cut + 1);
+        if (line.trim()) frames.push(JSON.parse(line));
+        render(frames, Date.now() - started);
+      }
+    }
+    if (buffered.trim()) frames.push(JSON.parse(buffered));
+    render(frames, Date.now() - started);
+  } catch (e) {
+    $("#out").innerHTML = "";
+    var box = el("div", "frame error");
+    box.appendChild(el("span", "tag", "explorer"));
+    box.appendChild(el("pre", null, String(e && e.message ? e.message : e)));
+    $("#out").appendChild(box);
+    $("#status").textContent = "";
+  } finally {
+    button.disabled = false;
+  }
+}
+async function start() {
+  try {
+    manifest = await (await fetch(CONFIG.endpoint + "/manifest")).json();
+  } catch (e) {
+    text(document.getElementById("about"), "no manifest at " + CONFIG.endpoint + "/manifest");
+    return;
+  }
+  text(document.getElementById("about"), "rayfold " + manifest.rayfold + " · schema " + String(manifest.schemaHash).slice(0, 12) + " · extensions " + (manifest.extensions || []).join(", "));
+  var ops = Object.keys(manifest.schema.ops).map(function (n) { return manifest.schema.ops[n]; });
+  var aside = document.getElementById("ops");
+  ["query", "command", "stream"].forEach(function (kind) {
+    var mine = ops.filter(function (o) { return o.kind === kind; }).sort(function (a, b) { return a.name < b.name ? -1 : 1; });
+    if (!mine.length) return;
+    aside.appendChild(el("h2", null, kind === "query" ? "queries" : kind === "command" ? "commands" : "streams"));
+    mine.forEach(function (op) {
+      var b = el("button", "op");
+      b.dataset.op = op.name;
+      b.appendChild(document.createTextNode(op.name));
+      b.appendChild(el("span", "kind", typeName(op.returns)));
+      b.onclick = function () { show(op); };
+      aside.appendChild(b);
+    });
+  });
+  if (ops.length) show(ops.filter(function (o) { return o.kind === "query"; })[0] || ops[0]);
+}
+$("#send").onclick = send;
+$("#req").addEventListener("keydown", function (e) { if (e.ctrlKey && e.key === "Enter") send(); });
+start();
+</script>
+</body>
+</html>

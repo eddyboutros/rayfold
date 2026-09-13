@@ -87,6 +87,13 @@ describe("validation", () => {
     expect(errorsOf(`object O { x: Int } query q: O`)).toEqual([]);
   });
 
+  it("checks type conditions at an interface position", () => {
+    const base = `object Named @interface { id: ID name: String } entity Person implements Named { id: ID name: String email: String } entity Bot { id: ID name: String } entity Note { id: ID author: Named } query note(id: ID): Note?`;
+    expect(errorsOf(`${base} view Note.card = { author { ...on Bot { name } } }`)).toContain("bad-type-condition");
+    // guard: an implementor is accepted, so the rule is not a blanket refusal of ...on at an interface position
+    expect(errorsOf(`${base} view Note.card = { author { ...on Person { email } } }`)).toEqual([]);
+  });
+
   it("enforces annotation rules", () => {
     expect(errorsOf(`entity A { id: ID x: Int @partial }`)).toContain("partial-non-null");
     expect(errorsOf(`entity A { id: ID x: Int? @partial }`)).toEqual([]);

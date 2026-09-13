@@ -1,0 +1,28 @@
+{
+  "name": "@rayfold/lsp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A language server for .rayfold schemas: diagnostics, completion, hover, go to definition and an outline, over stdio.",
+  "keywords": [
+    "rayfold",
+    "api",
+    "protocol",
+    "lsp",
+    "language-server",
+    "editor"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@rayfold/schema": "*"
+  }
+}
