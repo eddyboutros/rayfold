@@ -13,7 +13,7 @@ dependencies {
     // the tests run against a real database; the adapter itself needs nothing but JDBC from the JDK
     testImplementation("com.h2database:h2:2.3.232")
     testImplementation(kotlin("test"))
-    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
