@@ -14,7 +14,7 @@ java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaV
 
 dependencies {
     api(project(":rayfold-core"))
-    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
