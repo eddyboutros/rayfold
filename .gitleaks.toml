@@ -9,6 +9,6 @@ regexes = [
   '''"key"\s*:\s*"[A-Za-z0-9_-]{16,128}"''',
   '''\bkey:\s*"[A-Za-z0-9_-]{16,128}"''',
   '''\b(const|val)\s+KEY2?\s*=\s*"[A-Za-z0-9_-]{16,128}"''',
-  '''"Sec-WebSocket-Key"\s*:\s*"[A-Za-z0-9+/=]{16,32}"''',
+  '''(?i)"Sec-WebSocket-Key"\s*:\s*"[A-Za-z0-9+/=]{16,32}"''',
   '''(?i)authorization: Bearer (customer|staff)\b''',
 ]
