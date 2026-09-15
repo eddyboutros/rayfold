@@ -47,7 +47,8 @@ afterEach(async () => {
   await db.close();
 });
 
-function bookstore(sql: Queryable): { server: RayfoldServer; store: PgStore } {
+/** `screen: true` wires the Postgres guide's setup: list resolvers hand `ctx.shape` to `screen`, and no field loaders. */
+function bookstore(sql: Queryable, opts: { screen?: boolean } = {}): { server: RayfoldServer; store: PgStore } {
   const { ir } = loadSchema(SCHEMA);
   const store = createPgStore(sql, {
     ir,
@@ -58,6 +59,18 @@ function bookstore(sql: Queryable): { server: RayfoldServer; store: PgStore } {
       Order: { table: "order" },
     },
   });
+  if (opts.screen) {
+    const server = createRayfoldServer({
+      schema: SCHEMA,
+      resolvers: {
+        Query: {
+          books: (a: { page: PageRequest }, ctx) => store.screen("Book", ctx.shape!, a.page, {}, ctx),
+          ordersPage: (a: { page: PageRequest }, ctx) => store.screen("Order", ctx.shape!, a.page, {}, ctx),
+        },
+      },
+    });
+    return { server, store };
+  }
   const server = createRayfoldServer({
     schema: SCHEMA,
     resolvers: {
@@ -115,6 +128,47 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
     });
     // the same screen the per-level loaders serve in three statements, in one
     expect(log).toHaveLength(1);
+  });
+
+  it("a resolver that hands the op's shape to screen serves the whole request in one statement, through the runtime", async () => {
+    const { server } = bookstore(counted, { screen: true });
+    const shape = "{ total hasMore cursor items { id heading: title author { name byline: name books(page: { first: 1 }) { total items { id } } } } }";
+    const frames = await server.collect({ ops: [{ id: 1, op: "books", args: { page: { first: 2 } }, shape }] });
+    expect(frames).toEqual([
+      {
+        id: 1,
+        data: {
+          total: 7,
+          hasMore: true,
+          cursor: "b2",
+          items: [
+            { $type: "Book", id: "b1", heading: "The Dispossessed", author: { $type: "Author", name: "Ursula K. Le Guin", byline: "Ursula K. Le Guin", books: { total: 3, items: [{ $type: "Book", id: "b1" }] } } },
+            { $type: "Book", id: "b2", heading: "Kindred", author: { $type: "Author", name: "Octavia E. Butler", byline: "Octavia E. Butler", books: { total: 2, items: [{ $type: "Book", id: "b2" }] } } },
+          ],
+        },
+        meta: { cost: 12 },
+        fin: true,
+      },
+    ]);
+    expect(log).toHaveLength(1);
+  });
+
+  it("guard: screen refuses one field selected twice in different ways, since both aliases would get one value", async () => {
+    const { store } = bookstore(counted);
+    const twice = parseShapeText("{ id author { few: books(page: { first: 1 }) { items { id } } more: books(page: { first: 2 }) { items { id } } } }");
+    await expect(store.screen("Book", twice, { first: 1 })).rejects.toThrow("@rayfold/postgres: a screen selects Author.books twice with different arguments or fields");
+    expect(log).toEqual([]);
+  });
+  it("through the runtime, screen pushes the caller's read policy into its statement; an admin gets every row", async () => {
+    const { server } = bookstore(counted, { screen: true });
+    const shape = "{ total items { id customerId } }";
+    const [mine] = await server.collect({ ops: [{ id: 1, op: "ordersPage", shape }] }, { viewer: { id: "u1", role: "customer" } });
+    expect(mine).toMatchObject({ data: { total: 2, items: [{ id: "o1", customerId: "u1" }, { id: "o3", customerId: "u1" }] } });
+    expect([log.length, fetched()]).toEqual([1, 2]);
+    log.length = 0;
+    const [all] = await server.collect({ ops: [{ id: 1, op: "ordersPage", shape }] }, { viewer: { id: "u9", role: "admin" } });
+    expect((all as { data: { items: Array<{ id: string }> } }).data.items.map((o) => o.id)).toEqual(["o1", "o2", "o3", "o4"]);
+    expect([log.length, fetched()]).toEqual([1, 4]);
   });
 
   it("pushes each level's read policy into the one statement, and keeps paging from a cursor", async () => {

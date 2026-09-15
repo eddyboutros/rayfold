@@ -54,7 +54,12 @@ const resolvers = {
 `kind: "one"` names the field on *this* type holding the other row's key; `kind: "page"` names the field on the *other*
 type holding this row's key. Nested pages are first pages, which is what a screen shows; the root page still takes a
 cursor. A field the shape selects must be a mapped column or a declared relation, so a shape that reaches past the
-mapping is refused rather than quietly served wrong.
+mapping is refused rather than quietly served wrong. For the same reason a field selected twice under two aliases must
+be selected the same way both times.
+
+A relation that takes arguments, such as `Author.books(page:)`, needs no loader here: the runtime serves the page
+`screen` already gathered. `checkWiring` cannot see that from the resolvers alone and still reports it as
+`missing-loader`, so filter that finding for the fields your screens gather.
 
 ## Why pass `ctx`
 

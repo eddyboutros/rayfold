@@ -2,7 +2,8 @@
  * Do the resolvers cover the schema?
  *
  * The runtime answers that one call at a time: an operation with no resolver fails with `unimplemented` when someone
- * calls it, and a field that takes arguments fails the same way when a shape asks for it. Both are found in
+ * calls it, and a field that takes arguments fails the same way when a shape asks for it and its parent does not
+ * already carry it. Both are found in
  * production, by a user. This finds them at build time instead, and also finds the opposite - a resolver the schema
  * has no place for, which is what a rename leaves behind and what nothing reports at all.
  *
@@ -35,7 +36,7 @@ export function checkWiring(ir: RayfoldSchemaIR, resolvers: Resolvers): Diagnost
       // a field with no arguments is read off the parent when there is no loader, which is a resolver shape of its own
       if (!field.args.length) continue;
       if (!entries[type.name]?.[field.name]) {
-        err("missing-loader", `${type.name}.${field.name}`, `The field takes arguments, so it needs a loader: any shape asking for it fails with unimplemented`);
+        err("missing-loader", `${type.name}.${field.name}`, `The field takes arguments, so it needs a loader: a shape asking for it fails with unimplemented unless the op's resolver already returns it`);
       }
     }
   }

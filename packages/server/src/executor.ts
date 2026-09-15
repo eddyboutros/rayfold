@@ -489,7 +489,9 @@ export class Executor {
   private async loadField(def: TypeDef, field: FieldDef, targets: Slot[], args: Record<string, unknown>, ctx: RayfoldContext): Promise<unknown[]> {
     const resolver = this.resolvers[def.name]?.[field.name];
     if (!resolver) {
-      if (field.args.length) throw new RayfoldError("unimplemented", `No loader for ${def.name}.${field.name}`);
+      // A field with arguments needs a loader, unless the parent already carries its value: a resolver that planned the
+      // whole shape from ctx.shape, such as @rayfold/postgres screen(), returns nested pages with their rows.
+      if (field.args.length && !targets.every((s) => Object.hasOwn(s.value, field.name))) throw new RayfoldError("unimplemented", `No loader for ${def.name}.${field.name}`);
       return targets.map((s) => s.value[field.name]);
     }
     // the loader gets the read policy of what it loads, so it can filter at the source (spec 06 section 4)

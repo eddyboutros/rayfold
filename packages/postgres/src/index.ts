@@ -221,10 +221,19 @@ export class PgStore {
     if (depth > 8) throw new Error("@rayfold/postgres: a screen nested deeper than 8 levels");
     const relations = this.opts.tables[t.def.name]?.relations ?? {};
     const parts: string[] = [];
+    // Values are keyed by field name, where the runtime reads a resolver's result before it applies the shape's aliases,
+    // so two aliases of one field share a value and must select it the same way.
+    const selections = new Map<string, string>();
     for (const item of shape.items) {
       if (item.kind !== "field") continue; // views and type conditions are expanded before a shape reaches the store
       const name = item.name;
-      const out = item.alias ?? name;
+      const selection = JSON.stringify([item.args ?? null, item.shape ?? null]);
+      const earlier = selections.get(name);
+      if (earlier !== undefined) {
+        if (earlier !== selection) throw new Error(`@rayfold/postgres: a screen selects ${t.def.name}.${name} twice with different arguments or fields`);
+        continue;
+      }
+      selections.set(name, selection);
       const def = t.def.fields.find((f) => f.name === name);
       if (!def) throw new Error(`@rayfold/postgres: ${t.def.name} has no field ${name}`);
       const rel = relations[name];
@@ -232,7 +241,7 @@ export class PgStore {
         const col = t.column(name);
         if (!col) throw new Error(`@rayfold/postgres: ${t.def.name}.${name} has no column and no relation`);
         const scalar = def.type.kind === "named" ? this.scalarOf(def.type.name) : "";
-        parts.push(`'${out}', ${alias}.${col}${AS_TEXT.has(scalar) ? "::text" : ""}`);
+        parts.push(`'${name}', ${alias}.${col}${AS_TEXT.has(scalar) ? "::text" : ""}`);
         continue;
       }
       const child = this.table(rel.type);
@@ -245,7 +254,7 @@ export class PgStore {
         const parentCol = t.column(rel.key);
         if (!parentCol) throw new Error(`@rayfold/postgres: ${t.def.name} has no field ${rel.key}`);
         const conds = [`${ca}.${child.id} = ${alias}.${parentCol}`, ...childPolicy];
-        parts.push(`'${out}', (SELECT ${childProjection} FROM ${child.name} AS ${ca} WHERE ${conds.join(" AND ")} LIMIT 1)`);
+        parts.push(`'${name}', (SELECT ${childProjection} FROM ${child.name} AS ${ca} WHERE ${conds.join(" AND ")} LIMIT 1)`);
         continue;
       }
       const childCol = child.column(rel.key);
@@ -256,7 +265,7 @@ export class PgStore {
         `SELECT ${childProjection} AS "__row", ${ca}.${child.id}::text AS "__key", count(*) OVER () AS "__total" ` +
         `FROM ${child.name} AS ${ca} WHERE ${conds.join(" AND ")} ORDER BY ${ca}.${child.id}::text LIMIT $${params.length}`;
       parts.push(
-        `'${out}', (SELECT json_build_object(` +
+        `'${name}', (SELECT json_build_object(` +
           `'items', coalesce(json_agg("__p"."__row" ORDER BY "__p"."__key"), '[]'::json), ` +
           `'total', coalesce(max("__p"."__total"), 0)::int, ` +
           `'hasMore', coalesce(count(*) < max("__p"."__total"), false), ` +

@@ -899,3 +899,20 @@ describe("read policies handed to loaders (spec 06 section 4)", () => {
     expect(seen["notes"]).toBeUndefined(); // guard: a deny cannot be pushed down
   });
 });
+
+describe("a field with arguments and no loader", () => {
+  const schema = `entity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> } entity Book { id: ID } query author(id: ID): Author?`;
+  const books = { items: [{ id: "b1" }], total: 3, hasMore: true, cursor: "b1" };
+
+  it("serves the value the op's resolver already put on the parent, under every alias", async () => {
+    const s = createRayfoldServer({ schema, resolvers: { Query: { author: () => ({ id: "a1", name: "Ursula", books }) } } });
+    const frames = await s.collect({ ops: [{ id: 1, op: "author", args: { id: "a1" }, shape: "{ name books(page: { first: 1 }) { total items { id } } shelf: books(page: { first: 1 }) { hasMore } }" }] });
+    expect(frames).toEqual([{ id: 1, data: { $type: "Author", name: "Ursula", books: { total: 3, items: [{ $type: "Book", id: "b1" }] }, shelf: { hasMore: true } }, meta: { cost: 6 }, fin: true }]);
+  });
+
+  it("guard: when the parent does not carry the value, the op fails as unimplemented instead of answering null", async () => {
+    const s = createRayfoldServer({ schema, resolvers: { Query: { author: () => ({ id: "a1", name: "Ursula" }) } } });
+    const frames = await s.collect({ ops: [{ id: 1, op: "author", args: { id: "a1" }, shape: "{ name books(page: { first: 1 }) { total } }" }] });
+    expect(frames).toEqual([{ id: 1, error: { code: "unimplemented", message: "No loader for Author.books", path: "books" }, fin: true }]);
+  });
+});

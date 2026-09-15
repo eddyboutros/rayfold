@@ -49,7 +49,7 @@ describe("do the resolvers cover the schema", () => {
         severity: "error",
         code: "missing-loader",
         at: `${type}.${field}`,
-        message: "The field takes arguments, so it needs a loader: any shape asking for it fails with unimplemented",
+        message: "The field takes arguments, so it needs a loader: a shape asking for it fails with unimplemented unless the op's resolver already returns it",
       },
     ]);
   });
