@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-13T10:30:31.189Z",
+  "generatedAt": "2026-09-15T19:35:00.799Z",
   "attacks": [
     {
       "area": "Requests a web page could make",
@@ -15,7 +15,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59302",
+            "host": "127.0.0.1:62578",
             "content-type": "text/plain",
             "origin": "https://evil.example",
             "authorization": "Bearer admin"
@@ -49,7 +49,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59324",
+            "host": "127.0.0.1:62588",
             "content-type": "application/rayfold+json",
             "origin": "https://evil.example",
             "authorization": "Bearer admin"
@@ -82,7 +82,7 @@
           "method": "POST",
           "target": "/orders/o1/pay",
           "headers": {
-            "host": "127.0.0.1:59358",
+            "host": "127.0.0.1:62607",
             "content-type": "application/x-www-form-urlencoded",
             "origin": "https://evil.example",
             "authorization": "Bearer u1"
@@ -115,7 +115,7 @@
           "method": "GET",
           "target": "/rayfold/manifest",
           "headers": {
-            "host": "evil.example:59364"
+            "host": "evil.example:62618"
           }
         },
         "response": {
@@ -125,7 +125,7 @@
             "content-type": "application/problem+json",
             "cache-control": "no-store"
           },
-          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Host evil.example:59364 is not allowed on a loopback server\",\"code\":\"permission_denied\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Host evil.example:62618 is not allowed on a loopback server\",\"code\":\"permission_denied\"}"
         }
       },
       "result": "refused"
@@ -144,7 +144,7 @@
           "method": "POST",
           "target": "/mcp",
           "headers": {
-            "host": "127.0.0.1:59386",
+            "host": "127.0.0.1:62644",
             "content-type": "application/json",
             "origin": "https://evil.example",
             "authorization": "Bearer admin"
@@ -177,7 +177,7 @@
           "method": "POST",
           "target": "/mcp",
           "headers": {
-            "host": "127.0.0.1:59391",
+            "host": "127.0.0.1:62648",
             "content-type": "text/plain"
           },
           "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}"
@@ -208,7 +208,7 @@
           "method": "GET",
           "target": "/rayfold/ws",
           "headers": {
-            "host": "127.0.0.1:59397",
+            "host": "127.0.0.1:62665",
             "upgrade": "websocket",
             "origin": "https://evil.example"
           }
@@ -235,7 +235,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59403",
+            "host": "127.0.0.1:62676",
             "content-type": "application/rayfold+json",
             "accept": "application/json"
           },
@@ -266,7 +266,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59424",
+            "host": "127.0.0.1:62685",
             "content-type": "application/rayfold+json",
             "accept": "application/json"
           },
@@ -297,7 +297,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59432",
+            "host": "127.0.0.1:62689",
             "content-type": "application/rayfold+json"
           },
           "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title author { name } } }\"},{\"id\":2,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title author { name } } }\"},{\"id\":3,\"op\":\"books\",\"args\":{\"page\":{\"first\":200}},\"shape\":\"{ items { id title author { name } } }\"},{\"id\":4,\"op\":\"books\",\"args\":{\"page\":{\"first\":-100000}}}]}"
@@ -328,7 +328,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59435",
+            "host": "127.0.0.1:62691",
             "content-type": "application/rayfold+json"
           },
           "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\",\"pad\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... (1,500,058 characters in all)"
@@ -383,7 +383,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59501",
+            "host": "127.0.0.1:62707",
             "content-type": "application/rayfold+json"
           },
           "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id format price stock alias29: title }\"}]}"
@@ -414,7 +414,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59523",
+            "host": "127.0.0.1:62730",
             "content-type": "application/rayfold+json"
           },
           "body": "{\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b1\",\"qty\":1},\"key\":\"attack-key-0000000001-29\"}]}"
@@ -445,7 +445,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59554",
+            "host": "127.0.0.1:62758",
             "content-type": "application/rayfold+json",
             "accept": "application/json"
           },
@@ -476,7 +476,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59560",
+            "host": "127.0.0.1:62768",
             "content-type": "application/rayfold+json",
             "authorization": "Bearer u1"
           },
@@ -508,7 +508,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59568",
+            "host": "127.0.0.1:62775",
             "content-type": "application/rayfold+json",
             "authorization": "Bearer u1"
           },
@@ -551,7 +551,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59579",
+            "host": "127.0.0.1:62787",
             "content-type": "application/rayfold+json",
             "authorization": "Bearer u2"
           },
@@ -583,7 +583,7 @@
           "method": "GET",
           "target": "/rayfold/manifest",
           "headers": {
-            "host": "127.0.0.1:59584"
+            "host": "127.0.0.1:62792"
           }
         },
         "response": {
@@ -592,7 +592,7 @@
             "x-content-type-options": "nosniff",
             "content-type": "application/json; charset=utf-8"
           },
-          "body": "(schema without policy expressions, 18,562 characters)"
+          "body": "(schema without policy expressions, 18,568 characters)"
         }
       },
       "result": "refused"
@@ -610,10 +610,10 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59586",
+            "host": "127.0.0.1:62796",
             "content-type": "application/rayfold+json"
           },
-          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id }\"},{\"id\":2,\"op\":\"book\",\"args\":{\"id\":{\"$ref\":\"1.constructor\"}}}]}"
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ id }\"},{\"id\":2,\"op\":\"book\",\"args\":{\"id\":{\"$ref\":\"1.constructor\"}},\"shape\":\"{ title }\"}]}"
         },
         "response": {
           "status": 200,
@@ -623,6 +623,36 @@
             "cache-control": "no-store"
           },
           "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"id\":\"b1\"},\"meta\":{\"cost\":1},\"fin\":true}\n{\"id\":2,\"error\":{\"code\":\"invalid_argument\",\"message\":\"ops.2.args.id: $ref 1.constructor resolved to nothing\"},\"fin\":true}\n"
+        }
+      },
+      "result": "refused"
+    },
+    {
+      "area": "Data exposure and trust",
+      "attack": "A request carries a \"__proto__\" or \"constructor\" key in its arguments, beside a $ref or in a REST-style body, so the server's copy of the arguments would take attacker data as its prototype and pass on values validation never saw.",
+      "defence": "Arguments are copied key by key as plain data, the way JSON.parse reads them, so the key fails validation as an unknown argument and nothing reaches Object.prototype.",
+      "guard": "The same requests without the extra key are served, with the filter and page size they really carry.",
+      "runtimes": [
+        "TypeScript"
+      ],
+      "exchange": {
+        "request": {
+          "method": "POST",
+          "target": "/rayfold",
+          "headers": {
+            "host": "127.0.0.1:62805",
+            "content-type": "application/rayfold+json"
+          },
+          "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ format }\"},{\"id\":2,\"op\":\"books\",\"args\":{\"filter\":{\"format\":{\"$ref\":\"1.format\"}},\"__proto__\":{\"page\":{\"first\":1},\"polluted\":\"yes\"}},\"shape\":\"{ total }\"}]}"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "x-content-type-options": "nosniff",
+            "content-type": "application/rayfold-frames+json",
+            "cache-control": "no-store"
+          },
+          "body": "{\"id\":1,\"data\":{\"$type\":\"Book\",\"format\":\"PAPERBACK\"},\"meta\":{\"cost\":1},\"fin\":true}\n{\"id\":2,\"error\":{\"code\":\"invalid_argument\",\"message\":\"books().__proto__: unknown argument\"},\"fin\":true}\n"
         }
       },
       "result": "refused"
@@ -640,7 +670,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59597",
+            "host": "127.0.0.1:62810",
             "content-type": "application/rayfold",
             "accept": "application/rayfold+json"
           },
@@ -693,7 +723,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59612",
+            "host": "127.0.0.1:62825",
             "content-type": "application/rayfold+json",
             "accept": "application/json"
           },
@@ -724,7 +754,7 @@
           "method": "POST",
           "target": "/rayfold",
           "headers": {
-            "host": "127.0.0.1:59615",
+            "host": "127.0.0.1:62831",
             "content-type": "text/plain"
           },
           "body": "{}"

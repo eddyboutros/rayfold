@@ -38,6 +38,7 @@ export const demosHtml = `<section id="demos">
 #demos .controls { display: flex; gap: 6px; justify-content: flex-end; max-width: 1000px; margin-top: 10px; }
 #demos .controls button { font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--rayfold-ink); background: none; border: 1px solid var(--rule); border-radius: 999px; padding: 7px 13px; cursor: pointer; }
 #demos .controls button:hover { background: var(--soft); }
+#demos .controls .more { margin-right: auto; align-self: center; font-size: 13px; color: var(--rayfold-ink); }
 
 #demos pre.code { grid-column: 1; grid-row: 1; margin: 0; font: 11.5px/1.65 "IBM Plex Mono", ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft); border-radius: 8px; padding: 12px 13px; align-self: center; min-height: 112px; }
 #demos pre.code .caret { border-right: 2px solid var(--rayfold); margin-left: 1px; animation: demo-blink 1s steps(1) infinite; }
@@ -140,6 +141,7 @@ export const demosHtml = `<section id="demos">
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
         data-title="Your screens update themselves"
+        data-more="https://rayfold.dev/learn/live"
         data-why="Add live: true to a normal read. When someone else changes the data, the server sends just the part that changed."
         data-caption="Someone else moved a card. Your app received the one row that changed, not the whole board.">
         <pre class="code">{ "ops": [ { "id": 1, "op": "issues",
@@ -169,30 +171,31 @@ export const demosHtml = `<section id="demos">
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
         data-title="One request per screen"
-        data-why="A product page needs a book, the author who wrote it, and its reviews. That is one request, not three."
+        data-more="#t-speed"
+        data-why="A product page needs a book, the author who wrote it, and its reviews. That is one request, not three: it names a view of the book the server defines."
         data-caption="Measured on the same page with the same data. Every trip saved is time a phone spends waiting.">
         <pre class="code">{ "ops": [ { "id": 1, "op": "book", "args": { "id": "b1" },
-             "shape": "{ title author { name }
-                         reviews { rating } }" } ] }</pre>
+             "shape": "{ ...Book.card }", "compact": true } ] }</pre>
         <div class="stage">
           <span class="stage-label">What goes over the network</span>
           <div class="reqs">
             <span class="u1">GET /books/b1</span>
             <span class="u1">GET /authors/a1</span>
             <span class="u1">GET /reviews?bookId=b1&amp;limit=3</span>
-            <span class="rf s2">POST /api &nbsp;- the whole page, once</span>
+            <span class="rf s2">POST /rayfold &nbsp;- the whole page, once, in binary</span>
           </div>
-          <div class="count s2"><span class="big">177</span><span class="unit">bytes, against 466 over REST</span></div>
+          <div class="count s2"><span class="big">177</span><span class="unit">bytes in binary (328 as JSON), against 466 over REST</span></div>
         </div>
         <div class="verdict s3">
           <div class="v-cell"><span class="v-who v-rest">REST</span><span>3 requests in 2 waves, 466 bytes</span></div>
-          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>1 request, 332 bytes</span></div>
-          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>1 request, 177 bytes</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>1 request, 332 bytes as JSON</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>1 request, 177 bytes in binary, 328 as JSON</span></div>
         </div>
       </section>
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
         data-title="Two steps, one trip"
+        data-more="https://rayfold.dev/learn/batches#use-an-earlier-result"
         data-why="Place an order, then pay for it. The second step uses an id the first step has not sent back yet."
         data-caption="The server runs them in order and answers both together. Your app never waits in the middle.">
         <pre class="code">{ "ops": [
@@ -217,6 +220,7 @@ export const demosHtml = `<section id="demos">
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
         data-title="Only the fields you need"
+        data-more="https://rayfold.dev/learn/queries#ask-for-fields"
         data-why="A shape names what comes back. Send no shape and you get a sensible default, so a plain curl call still works."
         data-caption="Twenty books, only the id and the title wanted. About a quarter of REST's bytes cross the network.">
         <pre class="code">{ "ops": [ { "id": 1, "op": "books",
@@ -243,6 +247,7 @@ export const demosHtml = `<section id="demos">
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
         data-title="One database lookup, not twenty"
+        data-more="https://rayfold.dev/learn/queries#related-data-without-n1"
         data-why="A field that loads related data is handed the whole list at once. There is no other way to write it here."
         data-caption="This is the N+1 problem, the one that quietly costs companies their database. Here the fast version is the only version.">
         <pre class="code">fields: {
@@ -262,6 +267,7 @@ export const demosHtml = `<section id="demos">
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
         data-title="One write fixes every open screen"
+        data-more="https://rayfold.dev/learn/commands#what-comes-back"
         data-why="A write answers with patches: short statements of what changed. Every screen already showing that row corrects itself."
         data-caption="No refetch, and no cache-invalidation code to write or maintain.">
         <pre class="code">{ "ops": [ { "id": 1, "op": "restock",
@@ -285,6 +291,7 @@ export const demosHtml = `<section id="demos">
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
         data-title="A retry cannot charge twice"
+        data-more="https://rayfold.dev/learn/commands#safe-to-retry"
         data-why="Every write carries a key. If the connection drops and your app sends it again, the server returns the first answer instead of doing the work twice."
         data-caption="Measured by actually retrying the call, not by reading the documentation.">
         <pre class="code">POST /api  { "op": "placeOrder", "key": "idem-7f3a" }
@@ -303,6 +310,7 @@ POST /api  { "op": "placeOrder", "key": "idem-7f3a" }</pre>
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
         data-title="Bad input never reaches your data"
+        data-more="https://rayfold.dev/learn/commands#errors-the-schema-declares"
         data-why="Types and limits are written in the schema, so a wrong value is refused before any of your code runs. And the failures have names."
         data-caption="A client can handle OutOfStock. It cannot handle a 409 whose body shape nobody wrote down.">
         <pre class="code">command placeOrder(qty: Int @range(min: 1)): Order
@@ -323,6 +331,7 @@ POST /api  { "op": "placeOrder", "key": "idem-7f3a" }</pre>
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
         data-title="Permissions live in the schema"
+        data-more="https://rayfold.dev/learn/auth#rules-in-the-schema"
         data-why="Who may read a field is written on the field, once. The same rule holds however the caller arrives."
         data-caption="A caller who may not read it gets an explicit refusal, not a silent null to misread.">
         <pre class="code">entity Book {
@@ -352,6 +361,7 @@ POST /api  { "op": "placeOrder", "key": "idem-7f3a" }</pre>
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
         data-title="An abusive query is refused before it runs"
+        data-more="https://rayfold.dev/learn/queries#what-a-query-costs"
         data-why="The cost of a call is worked out from the schema before anything executes, and checked against a budget you set."
         data-caption="Your limit is a number in the schema, not a plugin you hope someone configured.">
         <pre class="code">query search(page: PageArgs) @cost(base: 5, perItem: 1)
@@ -371,6 +381,7 @@ POST /api  { "op": "placeOrder", "key": "idem-7f3a" }</pre>
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
         data-title="Your API is already an AI tool"
+        data-more="https://rayfold.dev/spec/10-mcp-bridge"
         data-why="Every server is also an MCP server. Assistants get typed tools with no adapter, and can try a write without doing it."
         data-caption="A dry run is part of the protocol: simulate reports what would happen and writes nothing.">
         <pre class="code">POST /mcp   { "method": "tools/list" }
@@ -390,6 +401,7 @@ each with JSON Schema in and out, and its typed errors</div>
 
       <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
         data-title="Remove a field without breaking anyone"
+        data-more="https://rayfold.dev/learn/evolution#retire-a-field"
         data-why="The schema records when a field is going away. The server records which clients still ask for it. Your build decides with both."
         data-caption="Evidence before you delete something, instead of a guess and an incident.">
         <pre class="code">costPrice: Decimal? @deprecated(sunset: "2026-12-01",
@@ -411,16 +423,17 @@ each with JSON Schema in and out, and its typed errors</div>
 
       <section class="scene closing wide" data-steps="3" data-delay="1200" data-hold="4400"
         data-title="The alternative to REST and GraphQL"
+        data-more="#examples"
         data-why="One protocol for reads, writes, live updates and AI tools, with the rules in the contract instead of in every handler."
         data-caption="Every number in this film is reproducible: npm run e2e, npm run bench.">
         <div class="stage">
           <p class="big-claim">One protocol.<br>Fewer requests, fewer bugs,<br>fewer things to remember.</p>
           <div class="facts s1">
-            <span>Ahead on 15 of 15 measured tasks</span>
+            <span>Ahead on 15 of 15 bookstore tasks</span>
             <span>TypeScript and Kotlin, same frames</span>
             <span>Open source, Apache-2.0</span>
           </div>
-          <span class="soon s2">Launching soon</span>
+          <span class="soon s2">0.1 on npm and Maven Central</span>
         </div>
       </section>
 
@@ -432,6 +445,7 @@ each with JSON Schema in and out, and its typed errors</div>
   </div>
 
   <div class="controls">
+    <a class="more" href="#examples">How this works</a>
     <button class="toggle" type="button">Play</button>
     <button class="restart" type="button">Restart</button>
   </div>
@@ -453,6 +467,7 @@ each with JSON Schema in and out, and its typed errors</div>
   var controls = document.querySelector("#demos .controls");
   var toggle = controls && controls.querySelector(".toggle");
   var restart = controls && controls.querySelector(".restart");
+  var more = controls && controls.querySelector(".more");
   var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   var timers = [];
@@ -508,6 +523,7 @@ each with JSON Schema in and out, and its typed errors</div>
     if (titleEl) titleEl.textContent = scene.getAttribute("data-title") || "";
     if (whyEl) whyEl.textContent = scene.getAttribute("data-why") || "";
     if (captionEl) captionEl.textContent = scene.getAttribute("data-caption") || "";
+    if (more) more.setAttribute("href", scene.getAttribute("data-more") || "#examples");
     chapters.forEach(function (c, i) { c.classList.toggle("on", i === n); });
     scenes.forEach(function (s, i) { s.classList.toggle("on", i === n); });
   }

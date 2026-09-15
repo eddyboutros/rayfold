@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-13T10:30:32.716Z",
+  "generatedAt": "2026-09-15T19:35:00.955Z",
   "dataset": {
     "orgs": 2,
     "users": 18,
@@ -1173,7 +1173,7 @@
                 "authorization": "Bearer u01",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"moveIssue\",\"args\":{\"id\":\"i078\",\"to\":\"IN_PROGRESS\"},\"key\":\"9fdc333ae215493bb8a090f66f327ea8\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"moveIssue\",\"args\":{\"id\":\"i078\",\"to\":\"IN_PROGRESS\"},\"key\":\"3d2e36f77ec84a42b9944a062ffbc424\"}]}"
             },
             "response": {
               "status": 200,
@@ -1660,6 +1660,25 @@
                 "content-type": "application/rayfold-frames+json"
               },
               "body": "{\"error\":{\"code\":\"resource_exhausted\",\"message\":\"Batch cost 81006 exceeds budget 1000\",\"data\":{\"cost\":81006,\"budget\":1000}},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "authorization": "Bearer u01",
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"issues\",\"args\":{\"filter\":{\"projectId\":\"p1\"},\"page\":{\"first\":10}},\"shape\":\"{ items { key comments(page: { first: 5 }) { items { body author { user { name } } } } children(page: { first: 5 }) { items { key } } } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"items\":[{\"$type\":\"Issue\",\"key\":\"ING-100\",\"comments\":{\"items\":[{\"$type\":\"Comment\",\"body\":\"Reproduced on the staging cluster.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Anita Borg\"}}},{\"$type\":\"Comment\",\"body\":\"This is the same root cause as the retry storm last month.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Ada Lovelace\"}}},{\"$type\":\"Comment\",\"body\":\"Shipped behind a flag; watching the error rate.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Edsger Dijkstra\"}}}]},\"children\":{\"items\":[]}},{\"$type\":\"Issue\",\"key\":\"ING-99\",\"comments\":{\"items\":[]},\"children\":{\"items\":[]}},{\"$type\":\"Issue\",\"key\":\"ING-98\",\"comments\":{\"items\":[{\"$type\":\"Comment\",\"body\":\"Reproduced on the staging cluster.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Alan Turing\"}}},{\"$type\":\"Comment\",\"body\":\"This is the same root cause as the retry storm last month.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Leslie Lamport\"}}},{\"$type\":\"Comment\",\"body\":\"Shipped behind a flag; watching the error rate.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Grace Hopper\"}}}]},\"children\":{\"items\":[{\"$type\":\"Issue\",\"key\":\"ING-100\"}]}},{\"$type\":\"Issue\",\"key\":\"ING-97\",\"comments\":{\"items\":[]},\"children\":{\"items\":[]}},{\"$type\":\"Issue\",\"key\":\"ING-96\",\"comments\":{\"items\":[{\"$type\":\"Comment\",\"body\":\"Reproduced on the staging cluster.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Alan Turing\"}}},{\"$type\":\"Comment\",\"body\":\"This is the same root cause as the retry storm last month.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Leslie Lamport\"}}},{\"$type\":\"Comment\",\"body\":\"Shipped behind a flag; watching the error rate.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Katherine Johnson\"}}}]},\"children\":{\"items\":[]}},{\"$type\":\"Issue\",\"key\":\"ING-95\",\"comments\":{\"items\":[]},\"children\":{\"items\":[]}},{\"$type\":\"Issue\",\"key\":\"ING-94\",\"comments\":{\"items\":[{\"$type\":\"Comment\",\"body\":\"Reproduced on the staging cluster.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Grace Hopper\"}}},{\"$type\":\"Comment\",\"body\":\"This is the same root cause as the retry storm last month.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Alan Turing\"}}},{\"$type\":\"Comment\",\"body\":\"Shipped behind a flag; watching the error rate.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Margaret Hamilton\"}}}]},\"children\":{\"items\":[]}},{\"$type\":\"Issue\",\"key\":\"ING-93\",\"comments\":{\"items\":[]},\"children\":{\"items\":[{\"$type\":\"Issue\",\"key\":\"ING-94\"}]}},{\"$type\":\"Issue\",\"key\":\"ING-92\",\"comments\":{\"items\":[{\"$type\":\"Comment\",\"body\":\"Reproduced on the staging cluster.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Alan Turing\"}}},{\"$type\":\"Comment\",\"body\":\"This is the same root cause as the retry storm last month.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Tim Berners-Lee\"}}},{\"$type\":\"Comment\",\"body\":\"Shipped behind a flag; watching the error rate.\",\"author\":{\"$type\":\"Member\",\"user\":{\"$type\":\"User\",\"name\":\"Tim Berners-Lee\"}}}]},\"children\":{\"items\":[]}},{\"$type\":\"Issue\",\"key\":\"ING-91\",\"comments\":{\"items\":[]},\"children\":{\"items\":[]}}]},\"meta\":{\"cost\":256},\"fin\":true}\n"
             }
           }
         ]

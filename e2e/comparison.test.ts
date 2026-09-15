@@ -84,19 +84,27 @@ describe("1. Product page: book + author + reviews", () => {
     const gBytes = g.bytes.up + g.bytes.down;
 
     // Rayfold: the server-defined view Book.card names exactly these fields; RB is Rayfold's standard binary wire
-    const rbBody = rbCodec.encode({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ ...Book.card }", compact: true }] });
+    const ops = [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ ...Book.card }", compact: true }];
+    const rbBody = rbCodec.encode({ ops });
     const res = await fetch(`${rayfold.base}/rayfold`, { method: "POST", headers: { "content-type": "application/rayfold", accept: "application/rayfold" }, body: rbBody as BodyInit });
     const rbResp = new Uint8Array(await res.arrayBuffer());
     const frames = rbCodec.decodeFrames(rbResp) as Array<{ data: { author: { name: string }; reviews: { items: unknown[] } } }>;
     expect(frames[0]!.data.author.name).toBe("Ursula K. Le Guin");
     expect(frames[0]!.data.reviews.items).toHaveLength(2);
-    const rayfoldBytes = "/rayfold".length + rbBody.length + rbResp.length;
+    const rbUp = "/rayfold".length + rbBody.length;
+    const rayfoldBytes = rbUp + rbResp.length;
 
     expect(restReqs).toBe(3);
     expect(gql.counters.originRequests).toBe(1);
     expect(rayfold.counters.originRequests).toBe(1);
     expect(rayfoldBytes).toBeLessThan(gBytes);
-    report.add({ aspect: "Product page (book + author + 3 reviews)", values: { REST: restBytes, GraphQL: gBytes, Rayfold: rayfoldBytes }, unit: "bytes on the wire (request + response)", better: "lower", metric: "requests and bytes for the page", REST: `3 requests in 2 waves, ${restBytes} B`, GraphQL: `1 request, ${gBytes} B`, Rayfold: `1 request, ${rayfoldBytes} B (named view + RB)`, note: "GraphQL matches Rayfold on round trips; Rayfold moves fewer bytes because the shape names a server view and RB encodes the frames" });
+
+    // the same request again as JSON, after the page is counted, so the report can say how much of the difference is the binary format
+    const asJson = await rayfoldCall(ops);
+    expect(asJson.frames).toEqual(frames);
+    const jsonUp = "/rayfold".length + Buffer.byteLength(JSON.stringify({ ops }));
+    const jsonBytes = jsonUp + asJson.bytes;
+    report.add({ aspect: "Product page (book + author + 3 reviews)", values: { REST: restBytes, GraphQL: gBytes, Rayfold: rayfoldBytes }, unit: "bytes on the wire (request + response)", better: "lower", metric: "requests and bytes for the page", REST: `3 requests in 2 waves, ${restBytes} B`, GraphQL: `1 request, ${gBytes} B as JSON`, Rayfold: `1 request, ${rayfoldBytes} B in binary, ${jsonBytes} B as JSON`, note: `The same data on all three; each count is the URL path plus the request and the response. GraphQL sends ${g.bytes.up} B and gets ${g.bytes.down} B back, as JSON. Rayfold in its binary format sends ${rbUp} B and gets ${rbResp.length} B back; as JSON it would be ${jsonUp} B and ${asJson.bytes} B, ${jsonBytes <= gBytes ? "no more than" : "a little more than"} GraphQL. Most of the saving is the binary format; the request is also shorter because it names a view the server defines (Book.card) instead of listing every field.` });
   });
 });
 

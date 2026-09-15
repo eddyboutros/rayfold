@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-13T10:30:31.257Z",
+  "generatedAt": "2026-09-15T19:35:00.274Z",
   "rows": [
     {
       "aspect": "Product page (book + author + 3 reviews)",
@@ -12,9 +12,9 @@
       "better": "lower",
       "metric": "requests and bytes for the page",
       "REST": "3 requests in 2 waves, 466 B",
-      "GraphQL": "1 request, 332 B",
-      "Rayfold": "1 request, 177 B (named view + RB)",
-      "note": "GraphQL matches Rayfold on round trips; Rayfold moves fewer bytes because the shape names a server view and RB encodes the frames",
+      "GraphQL": "1 request, 332 B as JSON",
+      "Rayfold": "1 request, 177 B in binary, 328 B as JSON",
+      "note": "The same data on all three; each count is the URL path plus the request and the response. GraphQL sends 123 B and gets 209 B back, as JSON. Rayfold in its binary format sends 60 B and gets 117 B back; as JSON it would be 99 B and 229 B, no more than GraphQL. Most of the saving is the binary format; the request is also shorter because it names a view the server defines (Book.card) instead of listing every field.",
       "verdict": "lead",
       "examples": {
         "REST": [
@@ -105,6 +105,24 @@
                 "content-type": "application/rayfold"
               },
               "body": "RB, 117 bytes on the wire, shown decoded:\n{\"id\":1,\"data\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}},\"fin\":true}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ ...Book.card }\",\"compact\":true}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}},\"fin\":true}\n"
             }
           }
         ]
@@ -1486,7 +1504,7 @@
                 "authorization": "Bearer u1",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"8a92f44b5cde4a55b58d5c5cc31c1171\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"d17674b8d9294596b3f29ff7ed6951c5\"}]}"
             },
             "response": {
               "status": 200,
@@ -1620,7 +1638,7 @@
                 "authorization": "Bearer admin",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"ff59a4d28113459c9db0bc93c45e60d9\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"634329b81c5941188ab92f7aeb229b06\"}]}"
             },
             "response": {
               "status": 200,
@@ -1647,7 +1665,7 @@
       "REST": "no field-level contract to diff: every removal ships, announced or not",
       "GraphQL": "graphql-js findBreakingChanges flags every removal; @deprecated has no date, so a finished deprecation is flagged too",
       "Rayfold": "`rayfold check` blocks unannounced and early removals and allows them after @deprecated(sunset:)",
-      "note": "Removing Review.body. rayfold check: breaking:field-removed / breaking:field-removed / compatible:field-removed-after-sunset. graphql-js: \"Review.body was removed.\" in all three cases.",
+      "note": "Removing Review.body. rayfold check: breaking:field-removed / breaking:field-removed / compatible:field-removed-after-sunset. graphql-js: \"Field Review.body was removed.\" in all three cases.",
       "verdict": "lead",
       "examples": {
         "REST": [
@@ -1746,6 +1764,60 @@
                 "content-type": "application/rayfold-frames+json"
               },
               "body": "{\"error\":{\"code\":\"resource_exhausted\",\"message\":\"Batch cost 8160806 exceeds budget 1000\",\"data\":{\"cost\":8160806,\"budget\":1000}},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":2}},\"shape\":\"{ items { id author { books(page: { first: 2 }) { items { id author { books(page: { first: 2 }) { items { id } } } } } } } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\"},{\"$type\":\"Book\",\"id\":\"b26\"}]}}},{\"$type\":\"Book\",\"id\":\"b26\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\"},{\"$type\":\"Book\",\"id\":\"b26\"}]}}}]}}},{\"$type\":\"Book\",\"id\":\"b10\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b10\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b10\"},{\"$type\":\"Book\",\"id\":\"b34\"}]}}},{\"$type\":\"Book\",\"id\":\"b34\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b10\"},{\"$type\":\"Book\",\"id\":\"b34\"}]}}}]}}}]},\"meta\":{\"cost\":38},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":1}},\"shape\":\"{ items { id author { books(page: { first: 1 }) { items { id author { books(page: { first: 1 }) { items { id author { books(page: { first: 1 }) { items { id } } } } } } } } } } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"error\":{\"code\":\"resource_exhausted\",\"message\":\"Shape depth 11 exceeds 8\"},\"fin\":true}\n"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "target": "/rayfold",
+              "headers": {
+                "content-type": "application/rayfold+json"
+              },
+              "body": "{\"ops\":[{\"id\":1,\"op\":\"books\",\"args\":{\"page\":{\"first\":1}},\"shape\":\"{ items { id author { books(page: { first: 1 }) { items { id author { books(page: { first: 1 }) { items { id } } } } } } } }\"}]}"
+            },
+            "response": {
+              "status": 200,
+              "headers": {
+                "cache-control": "no-store",
+                "content-type": "application/rayfold-frames+json"
+              },
+              "body": "{\"id\":1,\"data\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\",\"author\":{\"$type\":\"Author\",\"books\":{\"items\":[{\"$type\":\"Book\",\"id\":\"b1\"}]}}}]}}}]},\"meta\":{\"cost\":15},\"fin\":true}\n"
             }
           }
         ]

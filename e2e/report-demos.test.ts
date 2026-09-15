@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { demosHtml } from "./report-demos.ts";
@@ -72,6 +74,7 @@ function page(opts: { observer?: boolean } = {}) {
     scenes,
     toggle: button("toggle"),
     restart: button("restart"),
+    more: () => doc.querySelector("#demos .controls .more")?.getAttribute("href") ?? null,
     chapter: (i: number) => doc.querySelectorAll("#reel .chapters .chapter")[i]!,
     click: (el: Element) => el.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })),
     /** The scene on screen, the counter above it, and its step while it animates (null when it stands finished). */
@@ -208,6 +211,50 @@ describe("the reel on the report page", () => {
     p.click(p.toggle);
     p.scrolledIntoView();
     expect([p.toggle.textContent, p.timers.size]).toEqual(["Play", 0]);
+  });
+
+  it("the link under the reel follows the scene to where that scene is explained", () => {
+    const p = page();
+    const targets = p.scenes.map((s) => s.getAttribute("data-more"));
+    expect(targets.filter((t) => !t)).toEqual([]);
+    expect(p.more()).toBe(targets[0]);
+    for (let i = p.scenes.length - 1; i >= 0; i--) {
+      p.click(p.chapter(i));
+      expect(p.more()).toBe(targets[i]);
+    }
+    // guard: the scenes do not all point at one place
+    expect(new Set(targets).size).toBeGreaterThan(10);
+  });
+
+  it("every scene's link leads to a docs heading or a section of the report page that exists", () => {
+    const reportSource = readFileSync(new URL("./report-html.ts", import.meta.url), "utf8");
+    const sectionIds = new Set([...reportSource.matchAll(/id="([a-z0-9-]+)"/g), ...[...reportSource.matchAll(/\{ id: "([a-z]+)", title:/g)].map((m) => ["", `t-${m[1]}`])].map((m) => m[1]!));
+    const slug = (heading: string) => heading.trim().toLowerCase().replace(/[^a-z0-9 _-]/g, "").replace(/ /g, "-");
+    for (const scene of markup.window.document.querySelectorAll("#reel .scene")) {
+      const target = scene.getAttribute("data-more") ?? "";
+      const where = `${scene.getAttribute("data-title")}: ${target}`;
+      if (target.startsWith("#")) {
+        expect(sectionIds, where).toContain(target.slice(1));
+        continue;
+      }
+      const m = /^https:\/\/rayfold\.dev\/([a-z0-9/-]+?)(?:#([a-z0-9-]+))?$/.exec(target);
+      expect(m, where).not.toBeNull();
+      const file = fileURLToPath(new URL(`../${m![1]!.startsWith("spec/") ? "" : "docs/"}${m![1]}.md`, import.meta.url));
+      expect(existsSync(file), where).toBe(true);
+      const headings = readFileSync(file, "utf8").split("\n").filter((l) => /^#{2,3} /.test(l)).map((l) => slug(l.replace(/^#+ /, "")));
+      if (m![2]) expect(headings, where).toContain(m![2]);
+    }
+  });
+
+  it("the product page scene says the bytes the comparison test measured, in which format", () => {
+    const results = JSON.parse(readFileSync(new URL("./results.json", import.meta.url), "utf8")) as { rows: Array<{ aspect: string; values: Record<string, number>; Rayfold: string }> };
+    const row = results.rows.find((r) => r.aspect.startsWith("Product page"))!;
+    const asJson = /(\d+) B as JSON/.exec(row.Rayfold)?.[1];
+    expect(asJson).toBeDefined();
+    const scene = markup.window.document.querySelectorAll("#reel .scene")[1]!.textContent!.replace(/\s+/g, " ");
+    expect(scene).toContain(`3 requests in 2 waves, ${row.values["REST"]} bytes`);
+    expect(scene).toContain(`1 request, ${row.values["GraphQL"]} bytes as JSON`);
+    expect(scene).toContain(`1 request, ${row.values["Rayfold"]} bytes in binary, ${asJson} as JSON`);
   });
 
   it("guard: left alone, the reel starts playing when it scrolls into view", () => {
