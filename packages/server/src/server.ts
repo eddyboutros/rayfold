@@ -42,6 +42,8 @@ export class RayfoldServer {
   readonly usage: UsageSink | undefined;
   readonly shapes: ShapeRegistry;
   readonly options: BatchOptions;
+  /** Extensions served by endpoints mounted beside this server, such as `mcp` by createMcpHandler; the manifest lists them. */
+  readonly mounted = new Set<string>();
   private readonly rt: BatchRuntime;
 
   constructor(opts: RayfoldServerOptions) {
@@ -100,6 +102,7 @@ export class RayfoldServer {
     const { now: _now, ...limits } = this.options;
     const extensions = ["live", "rb"];
     if (Object.values(this.ir.ops).some((o) => o.annotations.some((a) => a.name === "http"))) extensions.push("http");
+    if (this.mounted.has("mcp")) extensions.push("mcp");
     return { rayfold: "0.1", schemaHash: this.hash, extensions, limits };
   }
 }

@@ -380,4 +380,25 @@ class McpTest {
         assertEquals(404, lookAlike.statusCode())
         assertEquals("nosniff", lookAlike.headers().firstValue("x-content-type-options").orElse(null))
     }
+
+    @Test
+    fun `the manifest lists mcp once an MCP endpoint is mounted beside the server, and not before`() {
+        val bs = Bookstore()
+        val http = RayfoldHttp(bs.server).start(0)
+        started.add(http)
+        val before = manifestExtensions(http.address.port)
+        assertTrue("mcp" !in before, "no MCP endpoint yet: $before")
+        RayfoldMcp(bs.server).mount(http)
+        assertEquals(before + "mcp", manifestExtensions(http.address.port))
+        // guard: another server over the same schema serves no MCP endpoint, so its manifest does not claim one
+        val other = RayfoldHttp(Bookstore().server).start(0)
+        started.add(other)
+        assertEquals(before, manifestExtensions(other.address.port))
+    }
+
+    private fun manifestExtensions(port: Int): List<String> {
+        val res = client.send(HttpRequest.newBuilder(URI("http://127.0.0.1:$port/rayfold/manifest")).timeout(Duration.ofSeconds(5)).GET().build(), HttpResponse.BodyHandlers.ofString())
+        assertEquals(200, res.statusCode(), res.body())
+        return ((res.json() as JsonObject)["extensions"] as JsonArray).map { (it as JsonPrimitive).content }
+    }
 }

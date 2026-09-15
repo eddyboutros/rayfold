@@ -277,6 +277,7 @@ export interface McpHttpOptions extends OriginOptions {
 /** Streamable HTTP endpoint: POST JSON-RPC, JSON reply. */
 export function createMcpHandler(server: RayfoldServer, opts: McpHttpOptions = {}): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
   const path = opts.path ?? "/mcp";
+  server.mounted.add("mcp");
   return async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname !== path) return false;

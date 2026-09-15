@@ -173,7 +173,7 @@ describe("rayfold check --against", { timeout: 60_000 }, () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toBe("");
     expect(run.stdout).toBe(
-      "warning   book(): a policy was added where none existed; some callers may now be denied [policy-added]\n\nFAILED: breaking changes against old.rayfold\n",
+      "warning   book(): a policy was added where none existed; some callers may now be denied [policy-added]\n\nFAILED: warnings against old.rayfold (--strict)\n",
     );
   });
 

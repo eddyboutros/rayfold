@@ -234,6 +234,8 @@ class RayfoldMcp(
 ) {
     constructor(server: RayfoldServer, viewer: (HttpExchange) -> JsonElement) : this(server, McpOptions(), viewer)
 
+    init { server.mounted.add("mcp") }
+
     fun mount(http: HttpServer): HttpContext = http.createContext(options.path) { ex ->
         if (!handle(ex)) Guard.refuse(ex, 404, Code.NOT_FOUND, "No route for ${ex.requestMethod} ${ex.requestURI.rawPath}")
     }

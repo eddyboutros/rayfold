@@ -204,8 +204,9 @@ async function main(argv: string[]): Promise<number> {
         const changes = diffSchemas(loadOld(against), loaded.ir);
         printChanges(changes);
         const strict = rest.includes("--strict");
-        if (isBreaking(changes) || (strict && changes.some((c) => c.level === "warning"))) {
-          console.log(`\n${loaded.ir ? "" : ""}FAILED: breaking changes against ${against}`);
+        const breaking = isBreaking(changes);
+        if (breaking || (strict && changes.some((c) => c.level === "warning"))) {
+          console.log(`\nFAILED: ${breaking ? `breaking changes against ${against}` : `warnings against ${against} (--strict)`}`);
           return 1;
         }
         console.log(`\nOK: compatible with ${against} (${changes.length} change${changes.length === 1 ? "" : "s"})`);

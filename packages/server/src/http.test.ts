@@ -5,6 +5,7 @@ import { base64url } from "@rayfold/schema";
 import { RbCodec } from "@rayfold/rb";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { listen, publicIR, type HttpOptions } from "./http.ts";
+import { createMcpHandler } from "./mcp.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 
@@ -254,6 +255,16 @@ describe("discovery", () => {
     expect(JSON.stringify(full.schema)).toContain("$expr");
     const off = await fetch(`${await serve(bs.server, { viewer: viewerOf, manifest: "off" })}/rayfold/manifest`);
     expect(off.status).toBe(404);
+  });
+
+  it("the manifest lists mcp once an MCP endpoint is mounted beside the server, and not before", async () => {
+    const extensions = async () => ((await (await fetch(`${base}/rayfold/manifest`)).json()) as { extensions: string[] }).extensions;
+    expect(await extensions()).toEqual(["live", "rb", "http"]);
+    createMcpHandler(bs.server);
+    expect(await extensions()).toEqual(["live", "rb", "http", "mcp"]);
+    // guard: another server over the same schema serves no MCP endpoint, so its manifest does not claim one
+    const other = createBookstore();
+    expect(other.server.manifest().extensions).toEqual(["live", "rb", "http"]);
   });
 });
 

@@ -125,7 +125,10 @@ class RayfoldHttp(
     private val rb by lazy { RbCodec(server.ir) }
 
     /** `http` is listed when the schema binds REST-style routes. */
-    private val extensions = listOf("live", "rb") + (if (server.ir.ops.values.any { o -> o.annotations.any { it.name == "http" } }) listOf("http") else emptyList())
+    private val routes = server.ir.ops.values.any { o -> o.annotations.any { it.name == "http" } }
+
+    /** Read on every request: an MCP endpoint may be mounted after this one. */
+    private fun extensions() = listOf("live", "rb") + (if (routes) listOf("http") else emptyList()) + (if ("mcp" in server.mounted) listOf("mcp") else emptyList())
 
     /** An HTTP-level refusal whose status or problem type has no protocol code of its own (415, 413). */
     private class HttpProblem(val status: Int, val code: Code, val detail: String, val type: String = code.wire) : RuntimeException(detail)
@@ -278,7 +281,7 @@ class RayfoldHttp(
             ManifestMode.FULL -> server.ir
         }
         json(call, 200, buildJsonObject {
-            put("rayfold", "0.1"); put("extensions", JsonArray(extensions.map { JsonPrimitive(it) }))
+            put("rayfold", "0.1"); put("extensions", JsonArray(extensions().map { JsonPrimitive(it) }))
             put("schema", RayfoldSchemaIR.json.encodeToJsonElement(RayfoldSchemaIR.serializer(), ir))
         })
     }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Entry point: schema IR + resolvers -> batch execution producing frames. Construction fails with
@@ -26,6 +27,9 @@ class RayfoldServer(
 
     /** Entity and op change notifications driving live queries (spec 08 section 3); committed commands publish their patches here. */
     val changes = ChangeBus()
+
+    /** Extensions served by endpoints mounted beside this server, such as `mcp` by [RayfoldMcp]; the manifest lists them. */
+    val mounted: MutableSet<String> = ConcurrentHashMap.newKeySet()
     val views = Views(ir, options.maxInlineShapes)
     private val executor = Executor(ir, resolvers, views, instrumentation, usage)
     private val cost = Cost(ir, views)

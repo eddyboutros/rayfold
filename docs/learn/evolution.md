@@ -139,7 +139,7 @@ OK: compatible with rayfold.lock.json (3 changes)
 
 Anonymous callers of `books` are now refused, and a client that handles each error type of `restock` by name has
 one more to handle. With `--strict`, as in `npx rayfold check src/bookshop.rayfold --strict`, warnings fail the check
-too: the same three lines print, then `FAILED: breaking changes against rayfold.lock.json`, and the exit status is 1.
+too: the same three lines print, then `FAILED: warnings against rayfold.lock.json (--strict)`, and the exit status is 1.
 
 ## Retire a field
 
