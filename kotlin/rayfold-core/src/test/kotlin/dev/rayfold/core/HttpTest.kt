@@ -11,6 +11,11 @@ import kotlinx.serialization.json.put
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.InetAddress
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -18,9 +23,15 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.Base64
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.logging.Handler
+import java.util.logging.Level
+import java.util.logging.LogRecord
+import java.util.logging.Logger
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -36,8 +47,24 @@ class HttpTest {
     private lateinit var store: FixtureStore
     private var port = 0
 
+    // RayfoldHttp logs through System.Logger, which the JDK hands to the java.util.logging logger of the same name
+    private val httpLog: Logger = Logger.getLogger(RayfoldHttp::class.java.name)
+    private val logged = CopyOnWriteArrayList<LogRecord>()
+    private val capture = object : Handler() {
+        override fun publish(record: LogRecord) {
+            logged.add(record)
+        }
+        override fun flush() = Unit
+        override fun close() = Unit
+    }
+    private var levelBefore: Level? = null
+
     @BeforeEach
     fun start() {
+        levelBefore = httpLog.level
+        httpLog.level = Level.ALL
+        httpLog.useParentHandlers = false
+        httpLog.addHandler(capture)
         store = FixtureStore(Fixtures.data(fixture))
         port = serve(RayfoldServer(ir, FixtureResolvers.build(fixture, store)))
     }
@@ -46,6 +73,9 @@ class HttpTest {
     fun stop() {
         started.forEach { it.stop(0) }
         client.shutdownNow()
+        httpLog.removeHandler(capture)
+        httpLog.level = levelBefore
+        httpLog.useParentHandlers = true
     }
 
     private fun serve(server: RayfoldServer): Int {
@@ -233,7 +263,7 @@ class HttpTest {
         assertEquals(400, bad.statusCode())
         assertEquals("application/problem+json", header(bad, "Content-Type"))
         assertEquals(
-            obj("""{"type":"https://rayfold.dev/errors/invalid_argument","title":"invalid argument","status":400,"detail":"Body is not valid JSON","code":"invalid_argument"}"""),
+            obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/invalid_argument","title":"invalid argument","status":400,"detail":"Body is not valid JSON","code":"invalid_argument"}"""),
             obj(bad.body()),
         )
         problem(get("/rayfold/book?a=${url("!!!")}"), 400, "invalid_argument", "Query parameter a is not base64url JSON")
@@ -269,6 +299,74 @@ class HttpTest {
         assertEquals(JsonArray(listOf(JsonPrimitive("live"), JsonPrimitive("rb"))), body["extensions"], "this schema binds no REST routes")
         assertEquals(ir.withoutPolicies(), RayfoldSchemaIR.json.decodeFromJsonElement(RayfoldSchemaIR.serializer(), body["schema"] ?: error("manifest has no schema")))
     }
+
+    /** A batch POST through [RayfoldHttp.serve], as a server of its own hands it over; the body stream throws [failure] on the first write. */
+    private class Exchange(private val failure: Throwable?) : HttpCall {
+        val statuses = mutableListOf<Int>()
+        var aborted = false
+        val written = ByteArrayOutputStream()
+        override val method = "POST"
+        override val path = "/rayfold"
+        override val rawQuery: String? = null
+        override val body: InputStream = """{"ops":[{"id":1,"op":"book","args":{"id":"b1"}}]}""".byteInputStream()
+        override val secure = false
+        override val localAddress: InetAddress? = null
+        override fun header(name: String): String? = mapOf("host" to "localhost", "content-type" to "application/rayfold+json")[name.lowercase()]
+        override fun setHeader(name: String, value: String) = Unit
+        override fun respond(status: Int, length: Long): OutputStream {
+            statuses.add(status)
+            return object : OutputStream() {
+                override fun write(b: Int) = write(byteArrayOf(b.toByte()), 0, 1)
+                override fun write(b: ByteArray, off: Int, len: Int) {
+                    failure?.let { throw it }
+                    written.write(b, off, len)
+                }
+            }
+        }
+        override fun abort() {
+            aborted = true
+        }
+    }
+
+    private fun serveExchange(exchange: Exchange) = RayfoldHttp(RayfoldServer(ir, FixtureResolvers.build(fixture, store))).serve(exchange, "/rayfold") { JsonNull }
+
+    @Test
+    fun `a failure after the response started is logged as an error with its exception, and the exchange is aborted`() {
+        val broken = IllegalStateException("the response stream broke")
+        val exchange = Exchange(broken)
+        serveExchange(exchange)
+        assertEquals(listOf(200), exchange.statuses, "the stream had begun, so no problem response follows")
+        assertTrue(exchange.aborted)
+        val record = logged.single()
+        assertEquals(Level.SEVERE, record.level)
+        assertTrue(record.thrown.carries(broken), "the log holds the failure: ${record.thrown}")
+    }
+
+    // coroutines' stack trace recovery may rethrow a copy that holds the original as its cause
+    private fun Throwable?.carries(original: Throwable): Boolean = generateSequence(this) { it.cause }.any { it === original }
+
+    @Test
+    fun `a client that went away mid-stream is logged at debug level, not as an error`() {
+        val gone = IOException("Broken pipe")
+        val exchange = Exchange(gone)
+        serveExchange(exchange)
+        assertTrue(exchange.aborted)
+        val record = logged.single()
+        assertEquals(Level.FINE, record.level, "System.Logger's DEBUG")
+        assertTrue(record.thrown.carries(gone), "the log holds the failure: ${record.thrown}")
+    }
+
+    @Test
+    fun `guard - a stream that completes logs nothing and is not aborted`() {
+        val exchange = Exchange(null)
+        serveExchange(exchange)
+        assertEquals(listOf(200), exchange.statuses)
+        assertFalse(exchange.aborted)
+        assertEquals(obj(bookB1), frames(exchange.written.toString(Charsets.UTF_8)).single()["data"])
+        assertEquals(emptyList(), logged.toList())
+    }
+
+    private fun frames(body: String): List<JsonObject> = body.trim().split("\n").map { obj(it) }
 
     private fun sendBytes(method: String, body: ByteArray, vararg headers: String): HttpResponse<ByteArray> {
         val b = HttpRequest.newBuilder(URI("http://127.0.0.1:$port/rayfold")).timeout(Duration.ofSeconds(5))

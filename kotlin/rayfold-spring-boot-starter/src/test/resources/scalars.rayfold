@@ -1,0 +1,3 @@
+object Reading { amount: Decimal big: Long small: Long at: Instant zoned: Instant day: Date raw: Bytes ratio: Float }
+
+query reading: Reading

@@ -29,6 +29,7 @@ class RayfoldExplorer(
     val html: String by lazy { page(endpoint, title) }
 
     /** Serves the page at [path] on a JDK server, by default `{endpoint}/explorer`. */
+    @JvmOverloads
     fun mount(http: HttpServer, path: String = "$endpoint/explorer"): HttpContext =
         http.createContext(path) { ex ->
             ex.use {

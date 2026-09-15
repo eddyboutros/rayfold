@@ -11,19 +11,26 @@ import java.math.BigDecimal
 import java.math.BigInteger
 import java.net.URI
 import java.net.URL
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZonedDateTime
 import java.time.temporal.TemporalAccessor
+import java.util.Base64
 import java.util.Optional
 import java.util.UUID
 
 /** Conversions between Java values and the JSON model the runtime works in. */
 internal object JavaJson {
     private const val MAX_DEPTH = 64
+    private const val MAX_SAFE_INTEGER = 9007199254740991L
 
     /**
      * JSON for a Java value: null, strings, booleans, numbers, enums by name, maps, iterables, arrays, streams,
      * Optional, records by component, java.time values, UUIDs and URIs as text, Duration as milliseconds, and the
-     * public getters (getX, isX) of any other object. BigDecimal and BigInteger become exact text, which is how
-     * Decimal and large Long values travel. A JsonElement passes through.
+     * public getters (getX, isX) of any other object. The schema's scalar encodings (spec/01 section 2.4) decide the
+     * rest: BigDecimal, BigInteger and a Long past 2^53 become exact text (Decimal, Long); byte arrays base64url text
+     * (Bytes); OffsetDateTime, ZonedDateTime and java.util.Date their instant in UTC (Instant). A JsonElement passes
+     * through.
      */
     fun toJson(value: Any?): JsonElement = toJson(value, 0)
 
@@ -38,13 +45,19 @@ internal object JavaJson {
             is BigDecimal -> JsonPrimitive(v.toPlainString())
             is BigInteger -> JsonPrimitive(v.toString())
             is Double, is Float -> JsonPrimitive((v as Number).toDouble())
-            is Number -> JsonPrimitive(v.toLong())
+            // past 2^53 a JSON number is no longer exact in JavaScript
+            is Number -> v.toLong().let { n -> if (n in -MAX_SAFE_INTEGER..MAX_SAFE_INTEGER) JsonPrimitive(n) else JsonPrimitive(n.toString()) }
+            is ByteArray -> JsonPrimitive(Base64.getUrlEncoder().withoutPadding().encodeToString(v))
             is Enum<*> -> JsonPrimitive(v.name)
             is Optional<*> -> toJson(v.orElse(null), depth + 1)
             is Map<*, *> -> JsonObject(v.entries.associate { (k, x) -> k.toString() to toJson(x, depth + 1) })
             is Iterable<*> -> JsonArray(v.map { toJson(it, depth + 1) })
             is java.util.stream.BaseStream<*, *> -> v.use { s -> JsonArray(s.iterator().asSequence().map { toJson(it, depth + 1) }.toList()) }
             is java.time.Duration -> JsonPrimitive(v.toMillis())
+            // their own text keeps the offset or appends the zone id ("[Europe/Paris]"), which is not an Instant
+            is OffsetDateTime -> JsonPrimitive(v.toInstant().toString())
+            is ZonedDateTime -> JsonPrimitive(v.toInstant().toString())
+            is java.util.Date -> JsonPrimitive(Instant.ofEpochMilli(v.time).toString())
             is TemporalAccessor, is UUID, is URI, is URL -> JsonPrimitive(v.toString())
             is java.lang.Record -> JsonObject(v.javaClass.recordComponents.associate { c ->
                 c.name to toJson(c.accessor.also { it.trySetAccessible() }.invoke(v), depth + 1)

@@ -9,7 +9,10 @@ import dev.rayfold.core.RayfoldServer
 import dev.rayfold.core.RayfoldWebSocket
 import dev.rayfold.core.Resolvers
 import dev.rayfold.core.SchemaText
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -36,13 +40,22 @@ import kotlinx.serialization.json.put
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -247,6 +260,107 @@ class ClientTest {
         val client = RayfoldClient(HttpTransport("$url/nope"))
         val e = assertFailsWith<RayfoldClientException> { client.query("book", args("id" to "b1")) }
         assertEquals("not_found", e.code)
+    }
+
+    @Test
+    fun `cancelling a live query over HTTP ends it at once, not at the server's next keep-alive`() = runBlocking {
+        val client = RayfoldClient(http("alice"))
+        val stock = Channel<Int>(Channel.UNLIMITED)
+        // a scope of its own: a collection that does not end fails the bounded join below instead of holding runBlocking
+        val scope = CoroutineScope(Dispatchers.IO)
+        try {
+            val job = scope.launch { client.live("book", args("id" to "b1"), "{ id stock }").collect { stock.send(it.stock()) } }
+            assertEquals(3, withTimeout(5_000) { stock.receive() })
+            assertEquals(1, server.changes.size, "guard: the live query is open on the server")
+            job.cancel()
+            assertNotNull(withTimeoutOrNull(5_000) { job.join() }, "the collection ended within 5 s, while the server's keep-alive is 15 s away")
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `cancelling a response the server keeps open closes its connection`() = runBlocking {
+        SilentStream(ITEM).use { silent ->
+            val frames = Channel<JsonObject>(Channel.UNLIMITED)
+            val scope = CoroutineScope(Dispatchers.IO)
+            try {
+                val job = scope.launch { HttpTransport(silent.url).send(NO_OPS, false).collect { frames.send(it) } }
+                assertEquals(Json.parseToJsonElement(ITEM), withTimeout(5_000) { frames.receive() })
+                assertEquals(1L, silent.closed.count, "guard: collecting the response keeps its connection open")
+                job.cancel()
+                assertTrue(silent.closed.await(5, TimeUnit.SECONDS), "the cancel closed the connection")
+                assertNotNull(withTimeoutOrNull(5_000) { job.join() }, "and the collection ended")
+            } finally {
+                scope.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun `a read timeout fails a response that goes quiet, and drops its connection`() = runBlocking {
+        SilentStream(ITEM).use { silent ->
+            val failure = withTimeout(5_000) {
+                runCatching { HttpTransport(silent.url, { emptyMap() }, 10_000, 100).send(NO_OPS, false).collect {} }.exceptionOrNull()
+            }
+            assertIs<SocketTimeoutException>(failure)
+            assertTrue(silent.closed.await(5, TimeUnit.SECONDS), "the connection was dropped")
+        }
+    }
+
+    @Test
+    fun `the HttpURLConnection path, the one Android takes, answers queries, streams and problems`() = bounded {
+        fun transport(to: String) = HttpTransport(to, { mapOf("X-User" to "alice") }, 10_000, 0, jdkClient = false)
+        val client = RayfoldClient(transport(url))
+        assertEquals("The Dispossessed", client.query("book", args("id" to "b1"), "{ title }").jsonObject["title"]?.jsonPrimitive?.content)
+        assertEquals((0..2).map { JsonPrimitive(it) }, client.stream("ticks", args("n" to 3)).toList())
+        val e = assertFailsWith<RayfoldClientException> { RayfoldClient(transport("$url/nope")).query("book", args("id" to "b1")) }
+        assertEquals("not_found", e.code)
+    }
+
+    /**
+     * Answers one POST with a streaming response that holds [frame] and then stays silent, as a live query does between
+     * changes. [closed] counts down once the client closes the connection.
+     */
+    private class SilentStream(frame: String) : AutoCloseable {
+        private val listener = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+        @Volatile
+        private var socket: Socket? = null
+        val closed = CountDownLatch(1)
+        val url = "http://127.0.0.1:${listener.localPort}/rayfold"
+
+        init {
+            thread(isDaemon = true, name = "silent-stream") {
+                runCatching {
+                    listener.accept().use { s ->
+                        socket = s
+                        val input = s.getInputStream()
+                        val head = StringBuilder()
+                        while (!head.endsWith("\r\n\r\n")) head.append(input.read().takeIf { it >= 0 }?.toChar() ?: return@use)
+                        input.readNBytes(Regex("(?i)content-length: *(\\d+)").find(head)?.groupValues?.get(1)?.toInt() ?: 0)
+                        val chunk = "$frame\n".toByteArray()
+                        s.getOutputStream().apply {
+                            write("HTTP/1.1 200 OK\r\nContent-Type: application/rayfold-frames+json\r\nTransfer-Encoding: chunked\r\n\r\n".toByteArray())
+                            write("${Integer.toHexString(chunk.size)}\r\n".toByteArray() + chunk + "\r\n".toByteArray())
+                            flush()
+                        }
+                        // nothing more is written, so only the client closing the connection ends this read
+                        runCatching { input.read() }
+                        closed.countDown()
+                    }
+                }
+            }
+        }
+
+        override fun close() {
+            listener.close()
+            socket?.close()
+        }
+    }
+
+    private companion object {
+        const val ITEM = """{"id":1,"item":1}"""
+        val NO_OPS = buildJsonObject { put("ops", JsonArray(emptyList())) }
     }
 
     @Test

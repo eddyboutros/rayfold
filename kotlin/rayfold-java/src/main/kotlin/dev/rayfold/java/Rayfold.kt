@@ -28,6 +28,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.IOException
 import java.util.concurrent.CompletionStage
 import java.util.function.Function
 import dev.rayfold.core.FieldLoader as CoreFieldLoader
@@ -238,7 +239,15 @@ class HttpBuilder internal constructor(private val server: RayfoldServer) {
     /** Turns a request into the viewer the schema's policies see (a map or a record), or null when anonymous. */
     fun viewer(resolve: Function<HttpExchange, Any?>): HttpBuilder = apply { viewer = { ex -> JavaJson.toJson(resolve.apply(ex)) } }
 
-    /** Starts listening on loopback; pass host "0.0.0.0" to listen on every interface. */
+    /**
+     * Serves the explorer at `{path}/explorer`, with [title] in its header. Off unless called: the page reads whatever
+     * the viewer's token allows (see [HttpOptions.explorer]).
+     */
     @JvmOverloads
+    fun explorer(title: String? = null): HttpBuilder = apply { options = options.copy(explorer = true, explorerTitle = title) }
+
+    /** Starts listening on loopback; pass host "0.0.0.0" to listen on every interface. Throws when the port cannot be bound. */
+    @JvmOverloads
+    @Throws(IOException::class)
     fun start(port: Int, path: String = "/rayfold", host: String = "127.0.0.1"): HttpServer = RayfoldHttp(server, options, viewer).start(port, path, host)
 }

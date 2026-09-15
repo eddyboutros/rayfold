@@ -1,12 +1,16 @@
 package dev.rayfold.client
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -20,13 +24,19 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.net.http.WebSocket
+import java.time.Duration
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.Flow as JdkFlow
 
 /**
  * Delivers one batch envelope and yields its frames (spec 04). The flow ends after the last frame; cancelling its
@@ -42,20 +52,57 @@ private fun batchError(code: String, message: String): JsonObject = buildJsonObj
     put("fin", true)
 }
 
+private const val FRAMES_TYPE = "application/rayfold-frames+json"
+
+/** java.net.http exists on the JVM but not on Android. */
+private val JDK_HTTP_CLIENT: Boolean = runCatching { Class.forName("java.net.http.HttpClient") }.isSuccess
+
+/** A problem response (RFC 9457) as the batch error frame the client reads. */
+private fun problemFrame(status: Int, text: String): JsonObject {
+    val problem = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull()
+    val code = (problem?.get("code") as? JsonPrimitive)?.contentOrNull ?: "unavailable"
+    val detail = (problem?.get("detail") as? JsonPrimitive)?.contentOrNull ?: "HTTP $status"
+    return batchError(code, detail)
+}
+
 /**
- * HTTP transport: POST {url} with the batch, NDJSON frames back as they arrive. Built on HttpURLConnection, which
- * exists on the JVM and on Android. [headers] runs per request, for tokens that expire.
+ * HTTP transport: POST {url} with the batch, NDJSON frames back as they arrive. [headers] runs per request, for tokens
+ * that expire. On the JVM it sends with java.net.http; on Android, which lacks it, with HttpURLConnection.
  */
-class HttpTransport @JvmOverloads constructor(
+class HttpTransport internal constructor(
     private val url: String,
-    private val headers: suspend () -> Map<String, String> = { emptyMap() },
-    private val connectTimeoutMs: Int = 10_000,
-    /** 0 waits forever, which live queries and streams need. */
-    private val readTimeoutMs: Int = 0,
+    private val headers: suspend () -> Map<String, String>,
+    private val connectTimeoutMs: Int,
+    private val readTimeoutMs: Int,
+    /** False takes the HttpURLConnection path on the JVM as well, so tests cover what Android runs. */
+    private val jdkClient: Boolean,
 ) : Transport {
+    @JvmOverloads
+    constructor(
+        url: String,
+        headers: suspend () -> Map<String, String> = { emptyMap() },
+        connectTimeoutMs: Int = 10_000,
+        /** 0 waits forever, which live queries and streams need. */
+        readTimeoutMs: Int = 0,
+    ) : this(url, headers, connectTimeoutMs, readTimeoutMs, JDK_HTTP_CLIENT)
+
+    private val jdk by lazy { JdkHttp(connectTimeoutMs) }
+
     override fun send(envelope: JsonObject, safe: Boolean): Flow<JsonObject> = callbackFlow {
-        val extra = headers()
+        val request = linkedMapOf("Content-Type" to "application/rayfold+json", "Accept" to FRAMES_TYPE)
+        if (safe) request["Rayfold-Safe"] = "true"
+        request.putAll(headers())
         val body = envelope.toString().toByteArray(Charsets.UTF_8)
+        val drop = if (jdkClient) jdk.post(url, request, body, readTimeoutMs, this) else viaUrlConnection(request, body)
+        // cancelling the collection lands here: dropping the connection ends the batch on the server
+        awaitClose(drop)
+    }
+
+    /**
+     * HttpURLConnection, for Android. Only there does disconnect() close the socket at once: the JDK's waits for a read
+     * blocked on the connection to return, which on a live query is the server's next keep-alive.
+     */
+    private fun ProducerScope<JsonObject>.viaUrlConnection(request: Map<String, String>, body: ByteArray): () -> Unit {
         val conn = URI(url).toURL().openConnection() as HttpURLConnection
         launch(Dispatchers.IO) {
             try {
@@ -64,19 +111,11 @@ class HttpTransport @JvmOverloads constructor(
                 conn.readTimeout = readTimeoutMs
                 conn.doOutput = true
                 conn.setFixedLengthStreamingMode(body.size)
-                conn.setRequestProperty("Content-Type", "application/rayfold+json")
-                conn.setRequestProperty("Accept", "application/rayfold-frames+json")
-                if (safe) conn.setRequestProperty("Rayfold-Safe", "true")
-                for ((k, v) in extra) conn.setRequestProperty(k, v)
+                for ((k, v) in request) conn.setRequestProperty(k, v)
                 conn.outputStream.use { it.write(body) }
                 val status = conn.responseCode
-                val type = conn.contentType ?: ""
-                if (status !in 200..299 && !type.startsWith("application/rayfold-frames+json")) {
-                    val text = (conn.errorStream ?: conn.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-                    val problem = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull()
-                    val code = (problem?.get("code") as? JsonPrimitive)?.contentOrNull ?: "unavailable"
-                    val detail = (problem?.get("detail") as? JsonPrimitive)?.contentOrNull ?: "HTTP $status"
-                    send(batchError(code, detail))
+                if (status !in 200..299 && !(conn.contentType ?: "").startsWith(FRAMES_TYPE)) {
+                    send(problemFrame(status, (conn.errorStream ?: conn.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""))
                 } else {
                     (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader(Charsets.UTF_8).use { reader ->
                         while (true) {
@@ -90,8 +129,72 @@ class HttpTransport @JvmOverloads constructor(
                 channel.close(e)
             }
         }
-        // cancelling the collection lands here: dropping the connection unblocks the reader and ends the batch
-        awaitClose { conn.disconnect() }
+        return conn::disconnect
+    }
+}
+
+/** [HttpTransport] on the JDK's java.net.http client, where cancelling the body subscription closes the connection at once. */
+private class JdkHttp(connectTimeoutMs: Int) {
+    private val client: HttpClient = HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_1_1)
+        .apply { if (connectTimeoutMs > 0) connectTimeout(Duration.ofMillis(connectTimeoutMs.toLong())) }
+        .build()
+
+    /** Sends the request; its frames, its end or its failure go to [out]. Returns what drops the request. */
+    fun post(url: String, headers: Map<String, String>, body: ByteArray, readTimeoutMs: Int, out: ProducerScope<JsonObject>): () -> Unit {
+        val request = HttpRequest.newBuilder(URI(url)).POST(HttpRequest.BodyPublishers.ofByteArray(body))
+        for ((k, v) in headers) request.header(k, v)
+        val lines = Lines(out)
+        val response = client.sendAsync(request.build()) { info ->
+            val status = info.statusCode()
+            if (status !in 200..299 && !info.headers().firstValue("Content-Type").orElse("").startsWith(FRAMES_TYPE)) {
+                HttpResponse.BodySubscribers.mapping(HttpResponse.BodySubscribers.ofString(Charsets.UTF_8)) { text -> out.trySend(problemFrame(status, text)); Unit }
+            } else {
+                HttpResponse.BodySubscribers.fromLineSubscriber(lines, { }, Charsets.UTF_8, null)
+            }
+        }
+        response.whenComplete { _, e -> if (e == null) out.channel.close() else out.channel.close((e as? CompletionException)?.cause ?: e) }
+        // HttpURLConnection's read timeout: this long without a line fails the request
+        val watchdog = if (readTimeoutMs <= 0) null else out.launch {
+            while (true) withTimeoutOrNull(readTimeoutMs.toLong()) { lines.activity.receive() } ?: break
+            out.channel.close(SocketTimeoutException("Read timed out after $readTimeoutMs ms"))
+        }
+        return {
+            watchdog?.cancel()
+            lines.cancel()
+            response.cancel(true)
+        }
+    }
+
+    /** Hands each NDJSON line to [out] as a frame, and asks for the next line only once [out] has taken it. */
+    private class Lines(private val out: ProducerScope<JsonObject>) : JdkFlow.Subscriber<String> {
+        val activity = Channel<Unit>(Channel.CONFLATED)
+        private val subscription = CompletableFuture<JdkFlow.Subscription>()
+
+        override fun onSubscribe(s: JdkFlow.Subscription) {
+            subscription.complete(s)
+            s.request(1)
+        }
+
+        override fun onNext(line: String) {
+            activity.trySend(Unit)
+            val taken = line.isBlank() || try {
+                out.channel.trySendBlocking(Json.parseToJsonElement(line).jsonObject).isSuccess
+            } catch (e: Exception) {
+                out.channel.close(e)
+                false
+            }
+            subscription.thenAccept { if (taken) it.request(1) else it.cancel() }
+        }
+
+        // the response future completes with the error, or completes, and that closes [out]
+        override fun onError(e: Throwable) = Unit
+
+        override fun onComplete() = Unit
+
+        fun cancel() {
+            subscription.thenAccept { it.cancel() }
+        }
     }
 }
 

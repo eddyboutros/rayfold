@@ -2,21 +2,30 @@ package dev.rayfold.java;
 
 import com.sun.net.httpserver.HttpServer;
 import dev.rayfold.core.Code;
+import dev.rayfold.core.RayfoldExplorer;
 import dev.rayfold.core.RayfoldServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.BindException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,11 +58,15 @@ class JavaApiTest {
         query books(filter: Filter?): [Book]
         query slowBook(id: ID): Book?
         query echo(i: Int, l: Long, f: Float, d: Decimal, b: Boolean, s: String, list: [Int], nested: Filter?): String
+        object Reading { big: Long raw: Bytes at: Instant }
+        query reading: Reading
         command buy(id: ID, qty: Int): Book throws OutOfStock emits Sold
         stream countdown(from: Int): Int
         """;
 
     record Author(String id, String name, Instant born) {}
+
+    record Reading(long big, byte[] raw, ZonedDateTime at) {}
 
     record Book(String id, String title, BigDecimal price, int stock, String authorId, Format format, List<String> tags) {
         Book withStock(int s) { return new Book(id, title, price, s, authorId, format, tags); }
@@ -84,7 +98,7 @@ class JavaApiTest {
     String url;
 
     @BeforeEach
-    void start() {
+    void start() throws IOException {
         books.put("b1", new Book("b1", "The Dispossessed", new BigDecimal("12.50"), 3, "a1", Format.HARDCOVER, List.of("sf", "utopia")));
         books.put("b2", new Book("b2", "Dune", new BigDecimal("9.99"), 0, "a2", Format.EBOOK, List.of()));
         server = Rayfold.server(SCHEMA)
@@ -125,6 +139,8 @@ class JavaApiTest {
                 return Rayfold.result(next).emit("Sold", Map.of("bookId", b.id(), "qty", qty));
             })
             .stream("countdown", (args, ctx) -> Stream.iterate(args.getInt("from"), i -> i >= 0, i -> i - 1))
+            .query("reading", (args, ctx) -> new Reading(9007199254740993L, new byte[] {(byte) 0xfb, (byte) 0xff},
+                ZonedDateTime.of(2026, 9, 15, 10, 30, 0, 0, ZoneId.of("Europe/Paris"))))
             .build();
         server.getEvents().on("Sold", payload -> { events.add(Rayfold.fromJson(payload)); return kotlin.Unit.INSTANCE; });
         http = Rayfold.http(server)
@@ -282,6 +298,81 @@ class JavaApiTest {
         assertEquals(id.toString(), at(json, "id"));
         assertEquals("1000", at(json, "money"));
         assertEquals(List.of(1L, "two", 3.5), at(json, "list"));
+    }
+
+    @Test
+    void aLongPast2To53BytesAndAZonedTimeTravelInTheSchemasEncodings() throws Exception {
+        var frames = post(null, """
+            {"rayfold":"0.1","ops":[{"id":1,"op":"reading","shape":"{ big raw at }"}]}""");
+        assertEquals("9007199254740993", at(frames.get(0), "data", "big"));
+        assertEquals("-_8", at(frames.get(0), "data", "raw"));
+        assertEquals("2026-09-15T08:30:00Z", at(frames.get(0), "data", "at"));
+    }
+
+    @Test
+    void scalarsTheSchemaCarriesAsTextConvertToThatText() {
+        Object text = Rayfold.fromJson(Rayfold.toJson(Map.of(
+            "big", 9007199254740993L,
+            "negative", -9007199254740993L,
+            "bytes", new byte[] {(byte) 0xfb, (byte) 0xff},
+            "offset", OffsetDateTime.of(2026, 9, 15, 10, 30, 0, 0, ZoneOffset.ofHours(2)),
+            "date", Date.from(Instant.parse("2026-09-15T08:30:00.123Z")))));
+        assertEquals("9007199254740993", at(text, "big"));
+        assertEquals("-9007199254740993", at(text, "negative"));
+        assertEquals("-_8", at(text, "bytes"), "base64url without padding, not \"+/8=\"");
+        assertEquals("2026-09-15T08:30:00Z", at(text, "offset"));
+        assertEquals("2026-09-15T08:30:00.123Z", at(text, "date"));
+        // guard: a Long within 2^53 stays a number, other arrays stay arrays, and Instant and LocalDate keep their text
+        Object plain = Rayfold.fromJson(Rayfold.toJson(Map.of(
+            "safe", 9007199254740991L,
+            "ints", new int[] {1, 2},
+            "instant", Instant.parse("2026-09-15T08:30:00Z"),
+            "day", LocalDate.of(2026, 9, 15))));
+        assertEquals(9007199254740991L, (Long) at(plain, "safe"));
+        assertEquals(List.of(1L, 2L), at(plain, "ints"));
+        assertEquals("2026-09-15T08:30:00Z", at(plain, "instant"));
+        assertEquals("2026-09-15", at(plain, "day"));
+    }
+
+    HttpResponse<String> get(String uri) throws Exception {
+        return client.send(HttpRequest.newBuilder(URI.create(uri)).timeout(Duration.ofSeconds(5)).GET().build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void theBuilderServesTheExplorerWhenAskedTo() throws Exception {
+        HttpServer withExplorer = Rayfold.http(server).explorer("Bookshop").start(0);
+        try {
+            var page = get("http://127.0.0.1:" + withExplorer.getAddress().getPort() + "/rayfold/explorer");
+            assertEquals(200, page.statusCode(), page.body());
+            assertTrue(page.body().contains("\"title\":\"Bookshop\""), "the page carries its title");
+        } finally {
+            withExplorer.stop(0);
+        }
+        // guard: the server built without explorer() serves none
+        assertEquals(404, get(url + "/explorer").statusCode());
+    }
+
+    @Test
+    void theExplorerMountsFromJavaAtItsDefaultPath() throws Exception {
+        new RayfoldExplorer("/rayfold", "Mounted by hand").mount(http);
+        var page = get(url + "/explorer");
+        assertEquals(200, page.statusCode(), page.body());
+        assertTrue(page.body().contains("\"title\":\"Mounted by hand\""), "the page carries its title");
+    }
+
+    @Test
+    void startingOnATakenPortThrowsAnIOExceptionJavaCanCatch() throws Exception {
+        int taken = http.getAddress().getPort();
+        IOException failure = null;
+        // this catch compiles only because start declares IOException
+        try {
+            Rayfold.http(server).start(taken).stop(0);
+        } catch (IOException e) {
+            failure = e;
+        }
+        assertInstanceOf(BindException.class, failure);
+        // guard: a free port starts
+        Rayfold.http(server).start(0).stop(0);
     }
 
     @Test

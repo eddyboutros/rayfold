@@ -4,30 +4,51 @@ import dev.rayfold.core.RayfoldContext
 import dev.rayfold.core.RayfoldSchemaIR
 import dev.rayfold.java.CommandOutcome
 import dev.rayfold.java.Context
+import dev.rayfold.java.Rayfold
 import dev.rayfold.java.ServerBuilder
 import dev.rayfold.java.Values
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import org.springframework.aop.support.AopUtils
 import org.springframework.context.ApplicationContext
 import org.springframework.core.annotation.AnnotatedElementUtils
 import org.springframework.util.ClassUtils
 import org.springframework.util.ReflectionUtils
+import tools.jackson.core.JsonGenerator
 import tools.jackson.databind.JavaType
 import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.SerializationContext
+import tools.jackson.databind.cfg.MapperBuilder
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.module.SimpleModule
+import tools.jackson.databind.ser.std.StdSerializer
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
+import java.math.BigDecimal
+import java.math.BigInteger
+import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZonedDateTime
 import java.util.concurrent.CompletionStage
 import java.util.stream.Stream
 
 /**
  * Finds `@RayfoldQuery`, `@RayfoldCommand`, `@RayfoldStream` and `@RayfoldField` methods on the application's beans
  * and binds them to a [ServerBuilder]. Arguments and results go through the application's Jackson mapper, so records,
- * java.time types and Jackson annotations work as they do in Spring MVC. Every mistake that can be caught at startup
- * (an operation or argument the schema does not have, a parameter nothing can fill) fails the startup with its reason.
+ * java.time types and Jackson annotations work as they do in Spring MVC; results keep the schema's scalar encodings
+ * whatever that mapper is set to ([SchemaScalars]). Every mistake that can be caught at startup (an operation or
+ * argument the schema does not have, a parameter nothing can fill) fails the startup with its reason.
  */
 internal class AnnotatedResolvers(private val context: ApplicationContext, private val mapper: ObjectMapper, private val ir: RayfoldSchemaIR) {
+    private val results: ObjectMapper = run {
+        // rebuild() keeps the application's modules and settings; its type arguments are erased, so any mapper works
+        val builder: MapperBuilder<*, *> = mapper.rebuild<JsonMapper, JsonMapper.Builder>()
+        builder.addModule(SchemaScalars.module()).build()
+    }
+
     private sealed interface Param
     private class ArgParam(val name: String, val type: JavaType) : Param
     private class ParentsParam(val element: JavaType) : Param
@@ -139,8 +160,30 @@ internal class AnnotatedResolvers(private val context: ApplicationContext, priva
     private fun json(v: Any?): JsonElement = when (v) {
         null -> JsonNull
         is JsonElement -> v
-        else -> Json.parseToJsonElement(mapper.writeValueAsString(v))
+        else -> Json.parseToJsonElement(results.writeValueAsString(v))
     }
 
     private fun result(v: Any?): Any? = v as? CommandOutcome ?: json(v)
+}
+
+/**
+ * The scalars the schema encodes its own way (spec/01 section 2.4): Decimal and a Long past 2^53 as exact text, Instant
+ * as RFC 3339 in UTC, Date as YYYY-MM-DD, Bytes as base64url. Jackson writes these types as the application configured
+ * it (BigDecimal as a number, dates as timestamps, bytes as base64 with padding), so they are written exactly as
+ * rayfold-java writes them instead, and a record returned directly agrees with one inside `Rayfold.result`.
+ */
+internal object SchemaScalars {
+    private val types: List<Class<*>> = listOf(
+        BigDecimal::class.java, BigInteger::class.java, Long::class.javaObjectType, java.lang.Long.TYPE, ByteArray::class.java,
+        Instant::class.java, OffsetDateTime::class.java, ZonedDateTime::class.java, java.util.Date::class.java, LocalDate::class.java,
+    )
+
+    fun module(): SimpleModule = SimpleModule("rayfold-schema-scalars").apply { for (t in types) addSerializer(t, AsRayfoldJava) }
+
+    private object AsRayfoldJava : StdSerializer<Any>(Any::class.java) {
+        override fun serialize(value: Any, gen: JsonGenerator, ctxt: SerializationContext) {
+            val json = Rayfold.toJson(value) as? JsonPrimitive ?: error("${value.javaClass.name} did not convert to a JSON scalar")
+            if (json.isString) gen.writeString(json.content) else gen.writeNumber(json.content)
+        }
+    }
 }

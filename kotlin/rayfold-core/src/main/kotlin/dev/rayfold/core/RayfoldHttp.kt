@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -222,7 +223,13 @@ class RayfoldHttp(
             streaming = true
             out.use { stream(it, batch, opts, wantsRb) }
         } catch (e: Throwable) {
-            if (streaming) { call.abort(); return } // the status line is gone; the client sees the stream end early
+            if (streaming) {
+                // the status line is gone, so the client only sees the stream end early: the log is the one place this
+                // shows. A client that went away fails the next write, which is routine, not an error.
+                log.log(if (e is IOException) System.Logger.Level.DEBUG else System.Logger.Level.ERROR, "Rayfold response to ${call.method} ${call.path} failed after it started", e)
+                call.abort()
+                return
+            }
             problem(call, e)
         }
     }
@@ -292,7 +299,7 @@ class RayfoldHttp(
             else -> RayfoldException.of(e).let { re -> HttpProblem(STATUS[re.code] ?: 500, re.code, re.message) }
         }
         val body = buildJsonObject {
-            put("type", "https://rayfold.dev/errors/${p.type}"); put("title", p.type.replace('_', ' '))
+            put("type", Guard.PROBLEM_TYPE_BASE + p.type); put("title", p.type.replace('_', ' '))
             put("status", p.status); put("detail", p.detail); put("code", p.code.wire)
         }
         val bytes = body.toString().toByteArray()
@@ -410,6 +417,7 @@ class RayfoldHttp(
     }
 
     private companion object {
+        val log: System.Logger = System.getLogger(RayfoldHttp::class.java.name)
         const val MAX_REQ_TIME = "sun.net.httpserver.maxReqTime"
         const val FRAMES_TYPE = "application/rayfold-frames+json"
         val BODY_TYPES = setOf("application/rayfold+json", "application/json", RbCodec.CONTENT_TYPE)

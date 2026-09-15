@@ -8,10 +8,12 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
 dependencies {
     // JsonElement, JsonObject and Flow are part of the public API
-    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    // The lowest supported version, the one Spring Boot 4.1 manages. Do not raise it past what Boot manages: code compiled
+    // against 1.11 calls BuildersKt.runBlockingK, which 1.10 lacks, so every HTTP batch failed under Boot.
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     testImplementation(kotlin("test"))
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

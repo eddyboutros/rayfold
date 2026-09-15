@@ -11,8 +11,9 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 
 dependencies {
-    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    // the same lowest supported version as rayfold-core (see there)
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     // `check` fails when the client calls an API that Android 8.0 (API level 26) lacks
     signature("net.sf.androidscents.signature:android-api-level-26:8.0.0_r2@signature")
     // the tests run the client against the real Kotlin server
@@ -30,8 +31,9 @@ configurations.named("testRuntimeClasspath") { attributes { attribute(TargetJvmV
 
 animalsniffer {
     sourceSets = listOf(project.sourceSets["main"])
-    // JdkWebSocketTransport is the one JVM-only class; Android apps use rayfold-client-okhttp instead
-    ignore("java.net.http.*")
+    // JVM-only: JdkWebSocketTransport (Android apps use rayfold-client-okhttp instead) and HttpTransport's java.net.http
+    // path, which a runtime check keeps off Android, where HttpTransport takes HttpURLConnection
+    ignore("java.net.http.*", "java.util.concurrent.Flow*")
 }
 
 tasks.test {
