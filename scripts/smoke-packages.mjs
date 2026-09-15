@@ -22,7 +22,9 @@ import { PACKAGES } from "./packages.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fromRoot = createRequire(join(ROOT, "package.json"));
-const tsc = fromRoot.resolve("typescript/bin/tsc");
+// through package.json: TypeScript 7 no longer exports bin/tsc as a subpath, and every version exports package.json
+const tsPackage = fromRoot.resolve("typescript/package.json");
+const tsc = join(dirname(tsPackage), JSON.parse(readFileSync(tsPackage, "utf8")).bin.tsc);
 const esbuild = fromRoot("esbuild");
 const work = mkdtempSync(join(tmpdir(), "rayfold-smoke-"));
 const app = join(work, "app");

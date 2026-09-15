@@ -200,11 +200,11 @@ function valueOf(node: ValueNode | undefined, notes: string[]): JsonValue | unde
   }
 }
 
-function deprecations(node: { directives?: readonly { name: { value: string } }[] }): Array<{ name: string; args: Record<string, never> }> {
+function deprecations(node: { directives?: readonly { name: { value: string } }[] | undefined }): Array<{ name: string; args: Record<string, never> }> {
   return (node.directives ?? []).some((d) => d.name.value === "deprecated") ? [{ name: "deprecated", args: {} }] : [];
 }
 
-function describe(node: { description?: { value: string } }): { description?: string } {
+function describe(node: { description?: { value: string } | undefined }): { description?: string } {
   const text = node.description?.value?.trim();
   return text ? { description: text } : {};
 }

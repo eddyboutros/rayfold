@@ -15,8 +15,10 @@ import { fileURLToPath } from "node:url";
 import { PACKAGES } from "./packages.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
+// through package.json: TypeScript 7 no longer exports bin/tsc as a subpath, and every version exports package.json
+const tsPackage = createRequire(import.meta.url).resolve("typescript/package.json");
+const tsc = join(dirname(tsPackage), readJson(tsPackage).bin.tsc);
 
 function* files(dir) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {

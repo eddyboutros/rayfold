@@ -366,7 +366,7 @@ describe("10. Evolution and safety tooling", () => {
     // GraphQL: graphql-js ships findBreakingChanges; @deprecated carries a reason but no date.
     const gqlWithout = GRAPHQL_SDL.replace("rating: Int! body: String! reviewerId", "rating: Int! reviewerId");
     const gqlBefore = (reason?: string) => (reason ? GRAPHQL_SDL.replace("body: String! reviewerId", `body: String! @deprecated(reason: "${reason}") reviewerId`) : GRAPHQL_SDL);
-    const gqlCheck = (before: string) => findBreakingChanges(buildSchema(before), buildSchema(gqlWithout)).filter((c) => c.type === BreakingChangeType.FIELD_REMOVED && c.description.startsWith("Review.body"));
+    const gqlCheck = (before: string) => findBreakingChanges(buildSchema(before), buildSchema(gqlWithout)).filter((c) => c.type === BreakingChangeType.FIELD_REMOVED && /\bReview\.body\b/.test(c.description));
     const gql3 = [gqlCheck(gqlBefore()), gqlCheck(gqlBefore("sunset 2027-01-01")), gqlCheck(gqlBefore("sunset 2026-01-01"))];
     expect(gql3.map((cs) => cs.length)).toEqual([1, 1, 1]);
     recorder.label("what a client or a tool can learn about Review.body");
