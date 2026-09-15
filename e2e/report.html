@@ -171,7 +171,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
   <span class="eyebrow">A measured comparison of Rayfold, REST and GraphQL</span>
   <h1>Should you use Rayfold?</h1>
   <p class="answer"><strong>Rayfold is a way for an app to talk to its server</strong> - the job REST and GraphQL do today. The same online bookstore was built all three ways and tested for real. Rayfold was ahead on <strong>15 of 15</strong> everyday tasks, and on <strong>6 of 6</strong> HTTP methods. On the full Project Gutenberg catalogue (78,086 real books) Rayfold was ahead on 7 of 7 tasks, and behind on none; all are shown below. A second, much larger example, a multi-tenant issue tracker with 630 issues, was built the same three ways: Rayfold was ahead on 10 of 17 scenarios, level on 7 and behind on none. Use it if your screens combine related data, you need live updates, or AI assistants will call your API. Be aware that Rayfold is new: the specification is a first version and no one runs it in production yet. New to any of this? <a href="#start">Start with the plain-language section</a>, which explains what is being compared before any numbers appear.</p>
-  <div class="hero-compare" role="table" aria-label="One product page on three APIs"><div class="hc s-rest-col" role="row"><span class="hc-name" role="cell">REST</span><span class="hc-num" role="cell">3<small> requests</small></span><span class="hc-num" role="cell">466<small> bytes on the wire</small></span><code role="cell">GET /books/b1<br>GET /authors/a1<br>GET /reviews?bookId=b1&amp;limit=3</code></div><div class="hc s-gql-col" role="row"><span class="hc-name" role="cell">GraphQL</span><span class="hc-num" role="cell">1<small> request</small></span><span class="hc-num" role="cell">332<small> bytes on the wire</small></span><code role="cell">POST /graphql</code></div><div class="hc s-rayfold-col" role="row"><span class="hc-name" role="cell">Rayfold</span><span class="hc-num" role="cell">2<small> requests</small></span><span class="hc-num" role="cell">177<small> bytes on the wire</small></span><code role="cell">POST /rayfold<br>POST /rayfold</code></div></div>
+  <div class="hero-compare" role="table" aria-label="One product page on three APIs"><div class="hc s-rest-col" role="row"><span class="hc-name" role="cell">REST</span><span class="hc-num" role="cell">3<small> requests</small></span><span class="hc-num" role="cell">466<small> bytes on the wire</small></span><code role="cell">GET /books/b1<br>GET /authors/a1<br>GET /reviews?bookId=b1&amp;limit=3</code></div><div class="hc s-gql-col" role="row"><span class="hc-name" role="cell">GraphQL</span><span class="hc-num" role="cell">1<small> request</small></span><span class="hc-num" role="cell">332<small> bytes on the wire</small></span><code role="cell">POST /graphql</code></div><div class="hc s-rayfold-col" role="row"><span class="hc-name" role="cell">Rayfold</span><span class="hc-num" role="cell">1<small> request</small></span><span class="hc-num" role="cell">177<small> bytes on the wire</small></span><code role="cell">POST /rayfold</code></div></div>
   <p class="caption">One product page (a book, its author and three reviews), loaded from each API. The code lines are the actual requests. Measured: requests and bytes for the page.</p>
   <div class="legend"><span class="l-rest">REST: resources and URLs, with ETags, Idempotency-Key and SSE</span><span class="l-gql">GraphQL: one query language, with DataLoader batching and subscriptions</span><span class="l-rayfold">Rayfold</span></div>
 </header>
@@ -1009,7 +1009,7 @@ each with JSON Schema in and out, and its typed errors</div>
     <dl class="cells"><div><dt class="s-rest-ink">REST</dt><dd>3 requests in 2 waves, 466 B</dd></div><div><dt class="s-gql-ink">GraphQL</dt><dd>1 request, 332 B as JSON</dd></div><div><dt class="s-rayfold-ink">Rayfold</dt><dd>1 request, 177 B in binary, 328 B as JSON</dd></div></dl>
   </div>
   <p class="note">The same data on all three; each count is the URL path plus the request and the response. GraphQL sends 123 B and gets 209 B back, as JSON. Rayfold in its binary format sends 60 B and gets 117 B back; as JSON it would be 99 B and 229 B, no more than GraphQL. Most of the saving is the binary format; the request is also shorter because it names a view the server defines (Book.card) instead of listing every field.</p>
-  <details class="examples"><summary>See the real requests and responses (6)</summary><div class="stack-cols"><section class="stack-col s-rest-col"><h4>REST <span class="muted">3 requests</span></h4><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /books/b1</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+  <details class="examples"><summary>See the real requests and responses (5)</summary><div class="stack-cols"><section class="stack-col s-rest-col"><h4>REST <span class="muted">3 requests</span></h4><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /books/b1</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> public, max-age=60
 <span class="hk">content-type:</span> application/json
 <span class="hk">etag:</span> &quot;448f56b82184d34f&quot;
@@ -1120,7 +1120,7 @@ each with JSON Schema in and out, and its typed errors</div>
       ]
     }
   }
-}</pre></details></div></section><section class="stack-col s-rayfold-col"><h4>Rayfold <span class="muted">2 requests</span></h4><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
+}</pre></details></div></section><section class="stack-col s-rayfold-col"><h4>Rayfold <span class="muted">1 request</span></h4><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
 <span class="hk">accept:</span> application/rayfold
 <span class="hk">content-type:</span> application/rayfold
 
@@ -1130,68 +1130,7 @@ RB request, 52 bytes on the wire, shown decoded:
 <span class="hk">content-type:</span> application/rayfold
 
 RB, 117 bytes on the wire, shown decoded:
-{&quot;id&quot;:1,&quot;data&quot;:{&quot;id&quot;:&quot;b1&quot;,&quot;title&quot;:&quot;The Dispossessed&quot;,&quot;format&quot;:&quot;PAPERBACK&quot;,&quot;price&quot;:&quot;12.99&quot;,&quot;stock&quot;:5,&quot;author&quot;:{&quot;id&quot;:&quot;a1&quot;,&quot;name&quot;:&quot;Ursula K. Le Guin&quot;},&quot;reviews&quot;:{&quot;items&quot;:[{&quot;id&quot;:&quot;r1&quot;,&quot;rating&quot;:5},{&quot;id&quot;:&quot;r4&quot;,&quot;rating&quot;:3}]}},&quot;fin&quot;:true}</pre></div><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">content-type:</span> application/rayfold+json
-
-{
-  &quot;ops&quot;: [
-    {
-      &quot;id&quot;: 1,
-      &quot;op&quot;: &quot;book&quot;,
-      &quot;args&quot;: {
-        &quot;id&quot;: &quot;b1&quot;
-      },
-      &quot;shape&quot;: &quot;{ ...Book.card }&quot;,
-      &quot;compact&quot;: true
-    }
-  ]
-}</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
-<span class="hk">cache-control:</span> no-store
-<span class="hk">content-type:</span> application/rayfold-frames+json
-
-{
-  &quot;id&quot;: 1,
-  &quot;data&quot;: {
-    &quot;id&quot;: &quot;b1&quot;,
-    &quot;title&quot;: &quot;The Dispossessed&quot;,
-    &quot;format&quot;: &quot;PAPERBACK&quot;,
-    &quot;price&quot;: &quot;12.99&quot;,
-    &quot;stock&quot;: 5,
-    &quot;author&quot;: {
-      &quot;id&quot;: &quot;a1&quot;,
-      &quot;name&quot;: &quot;Ursula K. Le Guin&quot;
-    },
-    &quot;reviews&quot;: {
-      &quot;items&quot;: [
-        {
-          &quot;id&quot;: &quot;r1&quot;,
-... 11 more lines</pre><details><summary>Full response body</summary><pre>{
-  &quot;id&quot;: 1,
-  &quot;data&quot;: {
-    &quot;id&quot;: &quot;b1&quot;,
-    &quot;title&quot;: &quot;The Dispossessed&quot;,
-    &quot;format&quot;: &quot;PAPERBACK&quot;,
-    &quot;price&quot;: &quot;12.99&quot;,
-    &quot;stock&quot;: 5,
-    &quot;author&quot;: {
-      &quot;id&quot;: &quot;a1&quot;,
-      &quot;name&quot;: &quot;Ursula K. Le Guin&quot;
-    },
-    &quot;reviews&quot;: {
-      &quot;items&quot;: [
-        {
-          &quot;id&quot;: &quot;r1&quot;,
-          &quot;rating&quot;: 5
-        },
-        {
-          &quot;id&quot;: &quot;r4&quot;,
-          &quot;rating&quot;: 3
-        }
-      ]
-    }
-  },
-  &quot;fin&quot;: true
-}</pre></details></div></section></div></details>
+{&quot;id&quot;:1,&quot;data&quot;:{&quot;id&quot;:&quot;b1&quot;,&quot;title&quot;:&quot;The Dispossessed&quot;,&quot;format&quot;:&quot;PAPERBACK&quot;,&quot;price&quot;:&quot;12.99&quot;,&quot;stock&quot;:5,&quot;author&quot;:{&quot;id&quot;:&quot;a1&quot;,&quot;name&quot;:&quot;Ursula K. Le Guin&quot;},&quot;reviews&quot;:{&quot;items&quot;:[{&quot;id&quot;:&quot;r1&quot;,&quot;rating&quot;:5},{&quot;id&quot;:&quot;r4&quot;,&quot;rating&quot;:3}]}},&quot;fin&quot;:true}</pre></div></section></div></details>
 </article>
 <article class="case lead">
   <div class="case-head"><h4>List 20 books with each author's name.</h4><span class="chip chip-rayfold">Rayfold ahead</span></div>
@@ -4839,7 +4778,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;shape&quot;: &quot;{ id status total }&quot;,
-      &quot;key&quot;: &quot;d17674b8d9294596b3f29ff7ed6951c5&quot;
+      &quot;key&quot;: &quot;178ec82ade7946a9b55792c7793e5f16&quot;
     }
   ]
 }</pre></details><details><summary>Full response body</summary><pre>{
@@ -4977,7 +4916,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         &quot;bookId&quot;: &quot;b2&quot;,
         &quot;qty&quot;: 1
       },
-      &quot;key&quot;: &quot;634329b81c5941188ab92f7aeb229b06&quot;
+      &quot;key&quot;: &quot;f8af882525954dc19fded720df98513d&quot;
     }
   ]
 }</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
@@ -12736,7 +12675,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         }
       },
       &quot;shape&quot;: &quot;{ id price }&quot;,
-      &quot;key&quot;: &quot;a51a83f9a16f4db492b08e922ff0d7f8&quot;
+      &quot;key&quot;: &quot;d3252dfad3c8424fad6cd6122cbb9019&quot;
     }
   ]
 ... 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
@@ -12772,7 +12711,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         }
       },
       &quot;shape&quot;: &quot;{ id price }&quot;,
-      &quot;key&quot;: &quot;a51a83f9a16f4db492b08e922ff0d7f8&quot;
+      &quot;key&quot;: &quot;d3252dfad3c8424fad6cd6122cbb9019&quot;
     }
   ]
 }</pre></details><details><summary>Full response body</summary><pre>{
@@ -45870,7 +45809,7 @@ data: {&quot;data&quot;:{&quot;projectFeed&quot;:{&quot;issueId&quot;:&quot;i078
         &quot;id&quot;: &quot;i078&quot;,
         &quot;to&quot;: &quot;IN_PROGRESS&quot;
       },
-      &quot;key&quot;: &quot;3d2e36f77ec84a42b9944a062ffbc424&quot;
+      &quot;key&quot;: &quot;7ad824515fbd473caabbf3f2190ecce3&quot;
     }
   ]
 }</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
@@ -80435,7 +80374,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A web page posts a command as text/plain, the one body type browsers send to other sites without a preflight check.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62578
+<span class="hk">host:</span> 127.0.0.1:50729
 <span class="hk">content-type:</span> text/plain
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer admin
@@ -80465,7 +80404,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Content-Type text/plain is not accepted; send application/rayfold+json&quot;,
   &quot;code&quot;: &quot;invalid_argument&quot;
 }</pre></div></details></td><td>Bodies must be application/rayfold+json, application/json or application/rayfold; anything else gets 415 before parsing.</td><td>The same command sent as application/rayfold+json runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page on another site sends a JSON command with the user's credentials.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62588
+<span class="hk">host:</span> 127.0.0.1:50741
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer admin
@@ -80494,7 +80433,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Origin https://evil.example is not allowed&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>Requests that change data and carry an Origin must come from the server's own origin or an allowed one; others get 403.</td><td>The same request from the server's own origin runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An HTML form on another site posts to POST /orders/{id}/pay, a route with no body.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /orders/o1/pay
-<span class="hk">host:</span> 127.0.0.1:62607
+<span class="hk">host:</span> 127.0.0.1:50747
 <span class="hk">content-type:</span> application/x-www-form-urlencoded
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer u1
@@ -80511,7 +80450,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Origin https://evil.example is not allowed&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>The Origin check covers the REST-style routes too, and POST routes also require an Idempotency-Key header, which a form cannot set.</td><td>The same POST from an app, with its Idempotency-Key, pays the order.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page renames its own domain to 127.0.0.1 (DNS rebinding) to talk to a server on the user's machine as if it were the same site.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /rayfold/manifest
-<span class="hk">host:</span> evil.example:62618</pre><pre class="res" aria-label="response"><span class="st-warn">403 Forbidden</span>
+<span class="hk">host:</span> evil.example:50750</pre><pre class="res" aria-label="response"><span class="st-warn">403 Forbidden</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/problem+json
 <span class="hk">cache-control:</span> no-store
@@ -80520,10 +80459,10 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;type&quot;: &quot;https://eddyboutros.github.io/rayfold/errors/permission_denied&quot;,
   &quot;title&quot;: &quot;permission denied&quot;,
   &quot;status&quot;: 403,
-  &quot;detail&quot;: &quot;Host evil.example:62618 is not allowed on a loopback server&quot;,
+  &quot;detail&quot;: &quot;Host evil.example:50750 is not allowed on a loopback server&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>A server reached on a loopback address answers only loopback host names (localhost, 127.0.0.1, [::1]); other Host headers get 403.</td><td>The same request with Host 127.0.0.1 is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A web page sends tools/call to the MCP endpoint of a Rayfold server on the user's machine or intranet.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /mcp
-<span class="hk">host:</span> 127.0.0.1:62644
+<span class="hk">host:</span> 127.0.0.1:50762
 <span class="hk">content-type:</span> application/json
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer admin
@@ -80551,7 +80490,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Origin https://evil.example is not allowed&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>MCP requests with a foreign Origin get 403, as the MCP specification requires, and loopback servers check the Host header.</td><td>An AI client (no browser Origin) lists and calls tools.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page sends MCP JSON-RPC as text/plain to avoid the browser's preflight check.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /mcp
-<span class="hk">host:</span> 127.0.0.1:62648
+<span class="hk">host:</span> 127.0.0.1:50765
 <span class="hk">content-type:</span> text/plain
 
 {
@@ -80570,7 +80509,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Content-Type text/plain is not accepted; send application/json&quot;,
   &quot;code&quot;: &quot;invalid_argument&quot;
 }</pre></div></details></td><td>The MCP endpoint accepts only application/json (415 otherwise).</td><td>tools/list as application/json is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page on another site opens a WebSocket to Rayfold; the browser attaches the user's cookies to the handshake.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /rayfold/ws
-<span class="hk">host:</span> 127.0.0.1:62665
+<span class="hk">host:</span> 127.0.0.1:50777
 <span class="hk">upgrade:</span> websocket
 <span class="hk">origin:</span> https://evil.example</pre><pre class="res" aria-label="response"><span class="st-warn">403 Forbidden</span>
 
@@ -80579,7 +80518,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A request nests its arguments 10,000 levels deep to exhaust the server's stack.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62676
+<span class="hk">host:</span> 127.0.0.1:50792
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
@@ -80594,7 +80533,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>Arguments and variables deeper than 64 levels fail the batch with invalid_argument, checked without recursion.</td><td>A normal request is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A shape nested 5,000 levels deep, to make the parser recurse until it crashes.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62685
+<span class="hk">host:</span> 127.0.0.1:50798
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
@@ -80610,7 +80549,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
   &quot;fin&quot;: true,
   &quot;id&quot;: 1
 }</pre></div></details></td><td>The shape parser stops at 64 levels of nesting and answers invalid_argument; execution depth is capped separately (8 by default).</td><td>A shape nested a few levels runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>Three expensive list queries plus a fourth with a page size of -100,000, hoping the negative size cancels out their cost.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62689
+<span class="hk">host:</span> 127.0.0.1:50804
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -80687,7 +80626,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
     }
   ]
 }</pre></details></div></details></td><td>An op with invalid arguments never runs and costs 0; untrusted page sizes count as the largest page; every op costs at least 1.</td><td>One of the expensive queries alone fits the budget and runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A 1.5 MB request body, to make the server buffer and parse huge input.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62691
+<span class="hk">host:</span> 127.0.0.1:50814
 <span class="hk">content-type:</span> application/rayfold+json
 
 {&quot;ops&quot;:[{&quot;id&quot;:1,&quot;op&quot;:&quot;book&quot;,&quot;args&quot;:{&quot;id&quot;:&quot;b1&quot;,&quot;pad&quot;:&quot;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... (1,500,058 characters in all)</pre><pre class="res" aria-label="response"><span class="st-warn">413 Content Too Large</span>
@@ -80706,7 +80645,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
 text frame announcing 2,097,152 bytes, then 1.2 MB of data</pre><pre class="res" aria-label="response"><span class="st-ok">101 </span>
 
 close frame, code 1009 (message too big)</pre></div></details></td><td>Frames and assembled messages over 1 MiB close the connection with code 1009 (message too big).</td><td>A normal message on a new socket is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends thousands of distinct inline shapes; each one used to be remembered forever.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62707
+<span class="hk">host:</span> 127.0.0.1:50843
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -80740,7 +80679,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>Shapes learned from requests are kept up to a limit (10,000 by default; 10 in this test), least recently used first out; rejected shapes are never kept.</td><td>Shapes registered by the server itself stay, and every request is still answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends thousands of commands with new idempotency keys; the records used to be kept until someone read them again.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62730
+<span class="hk">host:</span> 127.0.0.1:50873
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -80820,7 +80759,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></details></div></details></td><td>Records expire (24 hours by default), expired ones are swept on every write, and past a size limit (100,000 by default; 10 here) the oldest go first.</td><td>The most recent key still replays its result.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends a negative or enormous deadline.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62758
+<span class="hk">host:</span> 127.0.0.1:50895
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
@@ -80852,7 +80791,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A client reuses the key of a paid order's payOrder call on cancelOrder, so the cancel is answered with the stored payment result and never runs.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62768
+<span class="hk">host:</span> 127.0.0.1:50903
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">authorization:</span> Bearer u1
 
@@ -80880,7 +80819,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>A key is bound to its operation and arguments; reusing it for anything else is already_exists, and the write policy is checked before any replay.</td><td>Retrying payOrder with its own key replays the payment.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An app on a flaky network sends the same order twice at the same moment; both copies used to run.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62775
+<span class="hk">host:</span> 127.0.0.1:50913
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">authorization:</span> Bearer u1
 
@@ -81002,7 +80941,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A customer asks for other customers' order ids with an explicit shape, to learn which orders exist.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62787
+<span class="hk">host:</span> 127.0.0.1:50932
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">authorization:</span> Bearer u2
 
@@ -81030,12 +80969,12 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>A denied entity at a nullable position reads as null even with an explicit shape, so forbidden and missing look the same.</td><td>The owner gets the order.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An anonymous caller downloads the manifest to read every permission rule, such as who may see costPrice.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /rayfold/manifest
-<span class="hk">host:</span> 127.0.0.1:62792</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+<span class="hk">host:</span> 127.0.0.1:50948</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/json; charset=utf-8
 
 (schema without policy expressions, 18,568 characters)</pre></div></details></td><td>The manifest keeps names and types but removes policy expressions; the full schema is opt-in, and the manifest can be switched off.</td><td>Clients still get every type and operation they need.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A batch points $ref at &quot;1.constructor&quot; or &quot;1.__proto__&quot; to pull built-in objects into the arguments.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62796
+<span class="hk">host:</span> 127.0.0.1:50954
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -81082,7 +81021,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     }
   ]
 }</pre></details></div></details></td><td>$ref paths read only the earlier result's own data; anything else resolves to nothing.</td><td>$ref to &quot;1.id&quot; passes the book's id along.</td><td>TypeScript</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A request carries a &quot;__proto__&quot; or &quot;constructor&quot; key in its arguments, beside a $ref or in a REST-style body, so the server's copy of the arguments would take attacker data as its prototype and pass on values validation never saw.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62805
+<span class="hk">host:</span> 127.0.0.1:50958
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -81137,7 +81076,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     }
   ]
 }</pre></details></div></details></td><td>Arguments are copied key by key as plain data, the way JSON.parse reads them, so the key fails validation as an unknown argument and nothing reaches Object.prototype.</td><td>The same requests without the extra key are served, with the filter and page size they really carry.</td><td>TypeScript</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A binary (RB) request carries an argument object whose key is &quot;__proto__&quot;, so decoding it would swap the object's prototype and smuggle in arguments.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62810
+<span class="hk">host:</span> 127.0.0.1:50966
 <span class="hk">content-type:</span> application/rayfold
 <span class="hk">accept:</span> application/rayfold+json
 
@@ -81154,7 +81093,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>The decoder stores every key as plain data, so the request fails validation as an unknown argument.</td><td>A normal binary request is answered.</td><td>TypeScript</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An AI agent asks for a dry run of a command whose code forgets to check ctx.simulate, so the &quot;dry run&quot; would really write.</td><td>Only commands that declare @simulate accept dry runs, and only they get a .simulate tool in MCP; others answer failed_precondition.</td><td>Declared commands, such as placeOrder, still offer a dry run that writes nothing.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A rule denies payments over 1000, but Decimal amounts travel as text, and text compared with a number used to count as &quot;not greater&quot;.</td><td>Numbers and numeric text compare exactly by value (also beyond 2^53), and a rule that cannot be evaluated fails closed.</td><td>An amount of 999.99 is allowed.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends the id 9007199254740993 as a JSON number, which JavaScript silently rounds to a different id.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62825
+<span class="hk">host:</span> 127.0.0.1:50985
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
@@ -81180,7 +81119,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   &quot;fin&quot;: true,
   &quot;id&quot;: 1
 }</pre></div></details></td><td>Integers beyond 2^53 and Decimals written in exponent form are refused; send them as text.</td><td>The same id as text is accepted.</td><td>TypeScript</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A browser second-guesses a response's type (MIME sniffing) and runs data as a script, or a shared cache keeps an error page.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:62831
+<span class="hk">host:</span> 127.0.0.1:50993
 <span class="hk">content-type:</span> text/plain
 
 {}</pre><pre class="res" aria-label="response"><span class="st-warn">415 Unsupported Media Type</span>
@@ -81247,7 +81186,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
 </section>
 
 <footer>
-  <div class="meta"><span>Tests run 2026-09-15 19:35 UTC</span><span>Benchmark run 2026-09-13 00:31 UTC</span><span>v24.8.0, local network</span><span>Security tests run 2026-09-15 19:35 UTC</span></div>
+  <div class="meta"><span>Tests run 2026-09-15 19:55 UTC</span><span>Benchmark run 2026-09-13 00:31 UTC</span><span>v24.8.0, local network</span><span>Security tests run 2026-09-15 19:55 UTC</span></div>
   <p style="margin-top:8px">Reproduce: <code>npm run e2e</code>, <code>npm run bench</code>, then <code>npx tsx e2e/report-html.ts</code>.</p>
 </footer>
 </main>

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-15T19:35:00.274Z",
+  "generatedAt": "2026-09-15T19:55:32.930Z",
   "rows": [
     {
       "aspect": "Product page (book + author + 3 reviews)",
@@ -105,24 +105,6 @@
                 "content-type": "application/rayfold"
               },
               "body": "RB, 117 bytes on the wire, shown decoded:\n{\"id\":1,\"data\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}},\"fin\":true}"
-            }
-          },
-          {
-            "request": {
-              "method": "POST",
-              "target": "/rayfold",
-              "headers": {
-                "content-type": "application/rayfold+json"
-              },
-              "body": "{\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b1\"},\"shape\":\"{ ...Book.card }\",\"compact\":true}]}"
-            },
-            "response": {
-              "status": 200,
-              "headers": {
-                "cache-control": "no-store",
-                "content-type": "application/rayfold-frames+json"
-              },
-              "body": "{\"id\":1,\"data\":{\"id\":\"b1\",\"title\":\"The Dispossessed\",\"format\":\"PAPERBACK\",\"price\":\"12.99\",\"stock\":5,\"author\":{\"id\":\"a1\",\"name\":\"Ursula K. Le Guin\"},\"reviews\":{\"items\":[{\"id\":\"r1\",\"rating\":5},{\"id\":\"r4\",\"rating\":3}]}},\"fin\":true}\n"
             }
           }
         ]
@@ -1504,7 +1486,7 @@
                 "authorization": "Bearer u1",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"d17674b8d9294596b3f29ff7ed6951c5\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"178ec82ade7946a9b55792c7793e5f16\"}]}"
             },
             "response": {
               "status": 200,
@@ -1638,7 +1620,7 @@
                 "authorization": "Bearer admin",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"634329b81c5941188ab92f7aeb229b06\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"f8af882525954dc19fded720df98513d\"}]}"
             },
             "response": {
               "status": 200,

@@ -99,8 +99,18 @@ describe("1. Product page: book + author + reviews", () => {
     expect(rayfold.counters.originRequests).toBe(1);
     expect(rayfoldBytes).toBeLessThan(gBytes);
 
-    // the same request again as JSON, after the page is counted, so the report can say how much of the difference is the binary format
-    const asJson = await rayfoldCall(ops);
+    // The same request again as JSON, so the report can say how much of the difference is the binary format. It goes to
+    // a server the recorder does not track: the page itself takes one request, and the report counts the recorded ones.
+    const measureAsJson = async () => {
+      const side = await startRayfold(freshStore());
+      try {
+        const text = await (await fetch(`${side.base}/rayfold`, { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify({ ops }) })).text();
+        return { frames: text.trim().split("\n").map((l) => JSON.parse(l) as unknown), bytes: Buffer.byteLength(text) };
+      } finally {
+        await side.close();
+      }
+    };
+    const asJson = await measureAsJson();
     expect(asJson.frames).toEqual(frames);
     const jsonUp = "/rayfold".length + Buffer.byteLength(JSON.stringify({ ops }));
     const jsonBytes = jsonUp + asJson.bytes;

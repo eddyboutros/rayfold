@@ -257,6 +257,15 @@ describe("the reel on the report page", () => {
     expect(scene).toContain(`1 request, ${row.values["Rayfold"]} bytes in binary, ${asJson} as JSON`);
   });
 
+  it("the requests recorded for the product page are the ones the page takes, which is what the report counts", () => {
+    const results = JSON.parse(readFileSync(new URL("./results.json", import.meta.url), "utf8")) as { rows: Array<{ aspect: string; REST: string; GraphQL: string; Rayfold: string; examples: Record<string, unknown[]> }> };
+    const row = results.rows.find((r) => r.aspect.startsWith("Product page"))!;
+    const claimed = (cell: string) => Number(/^(\d+) requests?\b/.exec(cell)?.[1]);
+    expect([claimed(row.REST), claimed(row.GraphQL), claimed(row.Rayfold)]).toEqual([3, 1, 1]);
+    // the report's request counts come from these lists, so a measurement made on the side must not land in them
+    expect([row.examples["REST"]!.length, row.examples["GraphQL"]!.length, row.examples["Rayfold"]!.length]).toEqual([3, 1, 1]);
+  });
+
   it("guard: left alone, the reel starts playing when it scrolls into view", () => {
     const p = page({ observer: true });
     p.scrolledIntoView();
