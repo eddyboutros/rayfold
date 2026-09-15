@@ -21,6 +21,13 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Spring Boot applications get the coroutines version Boot manages; code built against a newer one calls
+      # functions that version does not have, so the runtime stays on the one Boot ships
+      - dependency-name: "org.jetbrains.kotlinx:kotlinx-coroutines-*"
+        versions: [">= 1.11.0"]
+      # the published modules support Kotlin 2.2; kotlinx-serialization 1.10 and later need Kotlin 2.3
+      - dependency-name: "org.jetbrains.kotlinx:kotlinx-serialization-*"
+        versions: [">= 1.10.0"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
