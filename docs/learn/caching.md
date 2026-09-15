@@ -186,9 +186,8 @@ client.markQueries("book", "books")
 
 A TypeScript client given `schema` (the IR from `GET /rayfold/manifest`) knows its queries without being told, and
 `createFetchTransport({ url, useQueryMethod: true })` sends `QUERY` instead of `POST` with `Rayfold-Safe`. A client
-given `schema` also asks for compact frames, which leave out `$type`. The server reads an entity's `@cache` from
-`$type`, so today a compact read only gets the `maxAge` of its queries: `book` came back `public, max-age=0,
-no-cache`, and `books` with `@cache(maxAge: 10s)` came back `public, max-age=10`.
+given `schema` also asks for compact frames, which leave out `$type`. The server finds the entity types in a result
+from the schema rather than from `$type`, so a compact read gets the same `Cache-Control` as a full one.
 
 ## Next
 

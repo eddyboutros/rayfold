@@ -1,6 +1,6 @@
 /** HTTP transport for Node. Spec: spec/04-frames-and-transport.md §4. */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { canonicalJson, fromBase64url, sha256Hex, annotation, type RayfoldSchemaIR } from "@rayfold/schema";
+import { canonicalJson, fieldsOf, fromBase64url, sha256Hex, annotation, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 import type { RayfoldServer } from "./server.ts";
 import { HTTP_STATUS, RayfoldError, type ErrorCode, type Frame, type RequestEnvelope, type WireError } from "./protocol.ts";
 import { referencesViewer, type Expr } from "@rayfold/schema";
@@ -240,28 +240,53 @@ export function applyCacheHeaders(server: RayfoldServer, envelope: RequestEnvelo
     const op = o && typeof o === "object" ? server.ir.ops[o.op] : undefined;
     if (op) consider(op.annotations);
   }
-  // Only types and fields actually present in the response count (spec 07 s1: "touches such a field").
+  // Only types and fields actually present in the response count (spec 07 s1: "touches such a field"). A compact frame
+  // leaves out `$type` wherever the schema fixes it, so the walk follows each op's return type, and reads `$type` only
+  // where it is still there, as on a union member.
   const seen = new Set<string>();
-  const walk = (v: unknown): void => {
+  const walk = (v: unknown, t: TypeRef | undefined): void => {
     if (!v || typeof v !== "object") return;
-    if (Array.isArray(v)) return v.forEach(walk);
+    if (Array.isArray(v)) {
+      for (const x of v) walk(x, t?.kind === "list" ? t.of : undefined);
+      return;
+    }
     const o = v as Record<string, unknown>;
     const tn = o["$type"];
-    if (typeof tn === "string") {
-      const def = server.ir.types[tn];
-      if (def && !seen.has(tn)) {
-        seen.add(tn);
-        consider(def.annotations);
-      }
-      if (def && "fields" in def) {
-        for (const fd of def.fields) {
-          if (fd.name in o && (annotation(fd, "allow") || annotation(fd, "deny"))) consider(fd.annotations);
-        }
-      }
+    const ref: TypeRef | undefined = typeof tn === "string" ? { kind: "named", name: tn, nullable: false } : t?.kind === "named" ? t : undefined;
+    const def = ref ? server.ir.types[ref.name] : undefined;
+    if (def && !seen.has(def.name)) {
+      seen.add(def.name);
+      consider(def.annotations);
     }
-    Object.values(o).forEach(walk);
+    const fields = ref ? (fieldsOf(server.ir, ref) ?? []) : [];
+    for (const [k, x] of Object.entries(o)) {
+      if (k === "$type") continue;
+      const fd = fields.find((field) => field.name === k);
+      if (fd && (annotation(fd, "allow") || annotation(fd, "deny"))) consider(fd.annotations);
+      walk(x, fd?.type);
+    }
   };
-  for (const f of frames) walk("data" in f ? f.data : undefined);
+  // the static type at a deferred frame's path, such as "items.0.author"
+  const typeAt = (root: TypeRef | undefined, path: string): TypeRef | undefined => {
+    let t = root;
+    for (const seg of path === "" ? [] : path.split(".")) {
+      if (!t) return undefined;
+      if (/^\d+$/.test(seg)) {
+        if (t.kind === "list") t = t.of;
+        continue;
+      }
+      while (t.kind === "list") t = t.of;
+      t = (fieldsOf(server.ir, t) ?? []).find((field) => field.name === seg)?.type;
+    }
+    return t;
+  };
+  const opNames = new Map<unknown, string>();
+  for (const o of Array.isArray(envelope.ops) ? envelope.ops : []) if (o && typeof o === "object") opNames.set(o.id, o.op);
+  for (const f of frames) {
+    if (!("data" in f)) continue;
+    const returns = server.ir.ops[opNames.get(f.id) ?? ""]?.returns;
+    walk(f.data, "at" in f ? typeAt(returns, f.at) : returns);
+  }
   if (viewer !== null && viewer !== undefined) scope = "private";
   if (!Number.isFinite(maxAge)) maxAge = 0;
   const directives = [scope, `max-age=${Math.floor(maxAge)}`];

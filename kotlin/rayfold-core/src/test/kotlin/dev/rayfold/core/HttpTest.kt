@@ -140,6 +140,22 @@ class HttpTest {
     }
 
     @Test
+    fun `a compact read gets the cache headers of the types in its result, found from the schema rather than type tags`() {
+        fun query(body: String) = send("QUERY", "/rayfold", body, "Content-Type", "application/rayfold+json")
+        val compact = query("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","compact":true}]}""")
+        assertEquals(200, compact.statusCode(), compact.body())
+        assertFalse("\$type" in compact.body(), "the frame really is compact")
+        assertEquals("public, max-age=60", header(compact, "Cache-Control"))
+
+        val page = query("""{"ops":[{"id":1,"op":"books","args":{"page":{"first":2}},"shape":"{ items { id } }","compact":true}]}""")
+        assertEquals("public, max-age=60", header(page, "Cache-Control"))
+
+        // guard: Author declares no @cache, so a compact author read stays uncacheable; the walk is not a blanket max-age
+        val author = query("""{"ops":[{"id":1,"op":"author","args":{"id":"a1"},"shape":"{ id name }","compact":true}]}""")
+        assertEquals("public, max-age=0, no-cache", header(author, "Cache-Control"))
+    }
+
+    @Test
     fun `QUERY carrying a command is refused before anything runs`() {
         val res = send("QUERY", "/rayfold", """{"ops":[$buyB1]}""", "Content-Type", "application/rayfold+json", "Authorization", "Bearer u1")
         problem(res, 400, "invalid_argument", "Safe requests (GET/QUERY) may only contain queries")

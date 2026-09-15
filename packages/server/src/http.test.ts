@@ -165,6 +165,22 @@ describe("safe requests: GET, QUERY and Rayfold-Safe POST", () => {
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
     expect(await frames(res)).toEqual([{ id: 1, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true }]);
   });
+
+  it("a compact read gets the cache headers of the types in its result, found from the schema rather than $type", async () => {
+    const shape = "{ id title author { id name } }";
+    const full = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape }] }, {}, "QUERY");
+    const compact = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape, compact: true }] }, {}, "QUERY");
+    expect(JSON.stringify(await frames(compact))).not.toContain("$type");
+    expect(compact.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(compact.headers.get("cache-control")).toBe(full.headers.get("cache-control"));
+
+    const page = await post({ ops: [{ id: 1, op: "books", args: { page: { first: 2 } }, shape: "{ items { id title } }", compact: true }] }, {}, "QUERY");
+    expect(page.headers.get("cache-control")).toBe("public, max-age=60");
+
+    // guard: a result whose types declare no @cache is still not cacheable, so the walk is not a blanket max-age
+    const review = await post({ ops: [{ id: 1, op: "review", args: { id: "r1" }, shape: "{ id rating }", compact: true }] }, {}, "QUERY");
+    expect(review.headers.get("cache-control")).toBe("public, max-age=0, no-cache");
+  });
 });
 
 describe("headers into the batch", () => {

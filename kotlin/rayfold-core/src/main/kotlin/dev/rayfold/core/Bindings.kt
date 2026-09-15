@@ -81,26 +81,45 @@ object CacheHeaders {
             }
         }
         for (o in ops) ir.ops[o.op]?.let { consider(it.annotations) }
-        // only types and fields present in the response count (spec 07 section 1: "touches such a field")
+        // Only types and fields present in the response count (spec 07 section 1: "touches such a field"). A compact frame
+        // leaves out `$type` wherever the schema fixes it, so the walk follows each op's return type, and reads `$type`
+        // only where it is still there, as on a union member.
         val seen = mutableSetOf<String>()
-        fun walk(v: JsonElement?) {
+        fun walk(v: JsonElement?, t: TypeRef?) {
             when (v) {
-                is JsonArray -> v.forEach { walk(it) }
+                is JsonArray -> v.forEach { walk(it, t?.takeIf { it.isList }?.element) }
                 is JsonObject -> {
                     val tn = (v["\$type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-                    val def = tn?.let { ir.types[it] }
-                    if (tn != null && def != null) {
-                        if (seen.add(tn)) consider(def.annotations)
-                        for (fd in def.fields) {
-                            if (fd.name in v && (fd.annotations.find("allow") != null || fd.annotations.find("deny") != null)) consider(fd.annotations)
-                        }
+                    val ref = if (tn != null) TypeRef("named", tn) else t?.takeIf { it.kind == "named" }
+                    val def = ref?.name?.let { ir.types[it] }
+                    if (def != null && seen.add(def.name)) consider(def.annotations)
+                    val fields = ref?.let { ir.fieldsOf(it) }.orEmpty()
+                    for ((k, x) in v) {
+                        if (k == "\$type") continue
+                        val fd = fields.firstOrNull { it.name == k }
+                        if (fd != null && (fd.annotations.find("allow") != null || fd.annotations.find("deny") != null)) consider(fd.annotations)
+                        walk(x, fd?.type)
                     }
-                    v.values.forEach { walk(it) }
                 }
                 else -> {}
             }
         }
-        for (f in frames) walk(f["data"])
+        // the static type at a deferred frame's path, such as "items.0.author"
+        fun typeAt(root: TypeRef?, path: String): TypeRef? {
+            var t = root
+            for (seg in if (path.isEmpty()) emptyList() else path.split('.')) {
+                val cur = t ?: return null
+                t = if (seg.all { it.isDigit() }) (if (cur.isList) cur.element else cur) else ir.fieldsOf(cur)?.firstOrNull { it.name == seg }?.type
+            }
+            return t
+        }
+        val opNames = ops.associate { it.id to it.op }
+        for (f in frames) {
+            if ("data" !in f) continue
+            val returns = (f["id"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { opNames[it] }?.let { ir.ops[it]?.returns }
+            val at = (f["at"] as? JsonPrimitive)?.content
+            walk(f["data"], if (at != null) typeAt(returns, at) else returns)
+        }
         if (viewer !is JsonNull) private = true
         if (maxAge.isInfinite()) maxAge = 0.0
         val directives = mutableListOf(if (private) "private" else "public", "max-age=${maxAge.toLong()}")
