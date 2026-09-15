@@ -432,7 +432,7 @@ each with JSON Schema in and out, and its typed errors</div>
   </div>
 
   <div class="controls">
-    <button class="toggle" type="button">Pause</button>
+    <button class="toggle" type="button">Play</button>
     <button class="restart" type="button">Restart</button>
   </div>
 
@@ -449,8 +449,10 @@ each with JSON Schema in and out, and its typed errors</div>
   var whyEl = reel.querySelector(".reel-head .why");
   var captionEl = reel.querySelector(".caption");
   var chapterBox = reel.querySelector(".chapters");
-  var toggle = reel.querySelector(".toggle");
-  var restart = reel.querySelector(".restart");
+  // the buttons sit below the reel, outside the frame a recording keeps
+  var controls = document.querySelector("#demos .controls");
+  var toggle = controls && controls.querySelector(".toggle");
+  var restart = controls && controls.querySelector(".restart");
   var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   var timers = [];
@@ -584,8 +586,9 @@ each with JSON Schema in and out, and its typed errors</div>
     }
   });
 
-  if (toggle) toggle.addEventListener("click", function () { if (playing) pause(); else play(); });
-  if (restart) restart.addEventListener("click", function () { playing = true; if (toggle) toggle.textContent = "Pause"; run(0); });
+  // a choice made with the buttons outlasts the reel's first scroll into view, which would otherwise start it again
+  if (toggle) toggle.addEventListener("click", function () { started = true; if (playing) pause(); else play(); });
+  if (restart) restart.addEventListener("click", function () { started = true; playing = true; if (toggle) toggle.textContent = "Pause"; run(0); });
 
   dress(scenes[0], 0);
   if (still) { finish(scenes[0]); if (toggle) toggle.textContent = "Play"; return; }
