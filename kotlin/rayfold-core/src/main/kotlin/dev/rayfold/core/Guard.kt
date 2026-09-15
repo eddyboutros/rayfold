@@ -3,6 +3,7 @@ package dev.rayfold.core
 import com.sun.net.httpserver.HttpExchange
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.InputStream
 import java.net.InetAddress
 import java.net.URI
 
@@ -95,17 +96,27 @@ object Guard {
         val input = ex.requestBody
         val declared = ex.requestHeaders.getFirst("Content-Length")?.toLongOrNull()
         if (declared != null && declared > max) {
-            if (declared <= max.toLong() + DRAIN_LIMIT) input.skipNBytes(declared)
+            if (declared <= max.toLong() + DRAIN_LIMIT) drain(input, declared)
             throw BodyTooLarge(max)
         }
         val bytes = input.readNBytes(max + 1)
         if (bytes.size > max) {
-            var drained = 0L
-            val sink = ByteArray(16 * 1024)
-            while (drained < DRAIN_LIMIT) { val n = input.read(sink); if (n < 0) break; drained += n }
+            drain(input, DRAIN_LIMIT.toLong())
             throw BodyTooLarge(max)
         }
         return bytes
+    }
+
+    // Read, never skip: the JDK's fixed-length body stream counts only the bytes that pass through read(). skip() goes
+    // straight to the socket, so the stream still expects bytes that are gone and the exchange is left out of step.
+    private fun drain(input: InputStream, limit: Long) {
+        val sink = ByteArray(16 * 1024)
+        var drained = 0L
+        while (drained < limit) {
+            val n = input.read(sink, 0, minOf(sink.size.toLong(), limit - drained).toInt())
+            if (n < 0) break
+            drained += n
+        }
     }
 
     /** An RFC 9457 refusal written before any operation ran. */
