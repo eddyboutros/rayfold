@@ -3,7 +3,16 @@
 Every change a user will notice, newest first. Versions follow [docs/versioning.md](docs/versioning.md); the npm
 packages and the Maven artifacts share one version number.
 
-## Unreleased
+## 0.1.0 (2026-09-15)
+
+The first release: the specification (Core 0.1 and the `live`, `rb`, `mcp` and `http` extensions), and
+
+- npm: `@rayfold/schema`, `rb`, `builder`, `server`, `client`, `react`, `explorer`, `lsp`, `postgres`, `otel`, `cli`
+  and `conformance`;
+- Maven Central: `dev.rayfold:rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`,
+  `rayfold-client-okhttp`, `rayfold-jdbc` and `rayfold-opentelemetry`.
+
+What it holds, newest first:
 
 - **A documentation website with a playground:** https://eddyboutros.github.io/rayfold/. Get started in TypeScript,
   React, Kotlin, Java or Spring Boot, then learn the protocol from the basics to schema evolution. Every code sample
@@ -174,10 +183,3 @@ packages and the Maven artifacts share one version number.
   seeded corpus from TypeScript; the web demo in Chromium, Firefox and WebKit (`npm run test:browsers`); the demo behind
   a real nginx proxy and cache (`npm run check:proxy`); a load test (`npm run bench:load`); dependency and secret
   scanning in CI; CycloneDX SBOMs on GitHub releases.
-
-## 0.1.0 (not yet released)
-
-The first release: the specification (Core 0.1 and the `live`, `rb`, `mcp` and `http` extensions), and
-
-- npm: `@rayfold/schema`, `rb`, `builder`, `server`, `client`, `react`, `cli` and `conformance`;
-- Maven Central: `dev.rayfold:rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter` and `rayfold-client`.

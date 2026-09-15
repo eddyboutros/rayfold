@@ -38,9 +38,7 @@ that runs Rayfold in your browser.
 | A Java server | `dev.rayfold:rayfold-java` | [Java](docs/guide/java-spring.md) |
 | A Spring Boot app | `dev.rayfold:rayfold-spring-boot-starter` | [Spring Boot](docs/guide/java-spring.md#spring-boot) |
 
-> The packages are ready to publish but are not on npm or Maven Central yet. Until they are, build them here:
-> `npm run build` puts the npm packages in `packages/*/dist`, and `cd kotlin && ./gradlew publishToMavenLocal` puts
-> the JVM artifacts in your local Maven repository. [docs/publishing.md](docs/publishing.md) has the release steps.
+Version 0.1.0 is on npm and Maven Central; the [changelog](CHANGELOG.md) lists what it holds.
 
 ## Sixty-second tour
 
