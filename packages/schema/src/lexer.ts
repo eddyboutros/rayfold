@@ -49,6 +49,11 @@ export function tokenize(src: string): Token[] {
     if (num !== undefined) t.num = num;
     out.push(t);
   };
+  // 1e999 reads as Infinity, which JSON cannot carry: refuse it here so it never reaches the IR
+  const finite = (num: number, text: string, start: number): number => {
+    if (!Number.isFinite(num)) throw new RayfoldSyntaxError(`Number out of range: ${text}`, line, start - lineStart + 1);
+    return num;
+  };
 
   while (i < n) {
     const c = src[i]!;
@@ -157,10 +162,10 @@ export function tokenize(src: string): Token[] {
       if (m && !isFloat) {
         const unit = m[1]!;
         i += unit.length;
-        push("duration", text + unit, start, Number(text) * DURATION_UNITS[unit]!);
+        push("duration", text + unit, start, finite(Number(text) * DURATION_UNITS[unit]!, text + unit, start));
         continue;
       }
-      push(isFloat ? "float" : "int", text, start, Number(text));
+      push(isFloat ? "float" : "int", text, start, finite(Number(text), text, start));
       continue;
     }
     if (isNameStart(c)) {

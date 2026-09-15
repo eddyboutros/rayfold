@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { loadSchema } from "./load.ts";
 import { parseSchemaText } from "./parser.ts";
 import { validateIR } from "./validate.ts";
-import { tokenize } from "./lexer.ts";
+import { RayfoldSyntaxError, tokenize } from "./lexer.ts";
 import { evalExpr, parseExprText, isPushable, referencesViewer } from "./expr.ts";
 import { canonicalShape, parseShapeText, shapeIdOf } from "./shape.ts";
 import { typeRefToString } from "./ir.ts";
@@ -21,6 +21,15 @@ describe("lexer", () => {
     expect(toks[1]!.num).toBe(60_000);
     expect(toks[2]!.num).toBe(250);
     expect(toks[4]!.num).toBe(-3);
+  });
+
+  it("refuses a number that overflows to Infinity with its own syntax error, and still reads the largest finite one", () => {
+    expect(() => tokenize(`1e999`)).toThrow(RayfoldSyntaxError);
+    // through the whole reader: before, this got as far as hashing and failed there with a plain Error
+    expect(() => loadSchema(`query q(a: Float = 1e999): Float`)).toThrow(/^Number out of range: 1e999 \(1:20\)$/);
+    expect(() => loadSchema(`entity A { id: ID } query a: A @cost(base: -1e999)`)).toThrow(RayfoldSyntaxError);
+    expect(() => loadSchema(`entity A @cache(maxAge: ${"9".repeat(310)}d) { id: ID }`)).toThrow(/Number out of range/);
+    expect(tokenize(`1e308 -1e308 ${"9".repeat(300)}`).map((t) => t.num)).toEqual([1e308, -1e308, Number("9".repeat(300)), undefined]);
   });
 });
 

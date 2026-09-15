@@ -158,6 +158,11 @@ internal object Lexer {
         fun push(kind: TokenKind, value: String, start: Int, num: Double = 0.0) {
             out.add(Token(kind, value, line, start - lineStart + 1, num))
         }
+        // 1e999 reads as Infinity, which JSON cannot carry: refuse it here so it never reaches the IR
+        fun finite(num: Double, text: String, start: Int): Double {
+            if (!num.isFinite()) throw RayfoldSyntaxException("Number out of range: $text", line, start - lineStart + 1)
+            return num
+        }
 
         while (i < n) {
             val c = src[i]
@@ -251,10 +256,10 @@ internal object Lexer {
                 val unit = if (isFloat) null else durationUnit(src.substring(i, minOf(i + 3, n)))
                 if (unit != null) {
                     i += unit.length
-                    push(TokenKind.DURATION, text + unit, start, text.toDouble() * DURATION_UNITS.getValue(unit))
+                    push(TokenKind.DURATION, text + unit, start, finite(text.toDouble() * DURATION_UNITS.getValue(unit), text + unit, start))
                     continue
                 }
-                push(if (isFloat) TokenKind.FLOAT else TokenKind.INT, text, start, text.toDouble())
+                push(if (isFloat) TokenKind.FLOAT else TokenKind.INT, text, start, finite(text.toDouble(), text, start))
                 continue
             }
             if (isNameStart(c)) {

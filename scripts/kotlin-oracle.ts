@@ -216,6 +216,8 @@ command editDoc(id: ID, input: DocInput): Doc @http(method: "patch", path: "/doc
   "error: unexpected token in literal": "input I { x: Int = ) }",
   "error: not a literal": 'input I { x: String = """doc""" }',
   "error: unterminated shape": "entity A { id: ID } view A.v = { id",
+  "error: number out of range": "query q(a: Float = 1e999): Float",
+  "error: duration out of range": `entity A @cache(maxAge: ${"9".repeat(310)}d) { id: ID }`,
 
   // ---- validation findings
   "findings: types": `
