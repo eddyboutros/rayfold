@@ -6,6 +6,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { CATALOGUE_SIZE } from "../examples/bookstore-ts/src/catalogue.ts";
+import { demosHtml } from "./report-demos.ts";
 
 type Verdict = "lead" | "tie" | "behind";
 type Values = { REST: number | null; GraphQL: number | null; Rayfold: number | null };
@@ -39,13 +40,13 @@ interface Plain { theme: string; task: string; why: string }
 /** Plain words for each measured aspect, matched by the start of the aspect name the test reports. */
 const PLAIN: Array<[string, Plain]> = [
   ["Product page", { theme: "speed", task: "Show one product page: a book, its author and its reviews.", why: "Every extra request adds a network wait. On a phone far from the server, those waits are most of the loading time." }],
-  ["List of 20 books", { theme: "speed", task: "List 20 books with each author's name.", why: "When related data is loaded one item at a time (the “N+1” problem), a list of 20 costs 21 trips to the database or the network." }],
+  ["List of 20 books", { theme: "speed", task: "List 20 books with each author's name.", why: "When related data is loaded one item at a time (the 'N+1' problem), a list of 20 costs 21 trips to the database or the network." }],
   ["Payload for 20 books", { theme: "speed", task: "Load only the two fields the screen shows: id and title.", why: "Bytes the screen never shows still cost mobile data, battery and time." }],
   ["Deferring a slow field", { theme: "speed", task: "One field (the author's biography) is slow. Show the rest of the page first.", why: "People see content sooner when a slow part does not hold back the fast parts." }],
   ["Place an order", { theme: "writes", task: "Place an order, then pay for it. Paying needs the new order's id.", why: "Each step that must wait for the previous answer adds one more network wait." }],
   ["Retrying a create", { theme: "writes", task: "The connection drops after the customer taps Buy, so the app sends the order again.", why: "Without a guard that the server enforces, a retry can create a second order and charge twice." }],
   ["Domain error", { theme: "errors", task: "An order fails because a book is out of stock.", why: "The app needs to know what went wrong, with details, to show a helpful message." }],
-  ["Invalid input", { theme: "errors", task: "A client sends a wrong quantity: first the text “two”, then 0.", why: "Bad input that reaches your business code can create wrong orders." }],
+  ["Invalid input", { theme: "errors", task: "A client sends a wrong quantity: first the text 'two', then 0.", why: "Bad input that reaches your business code can create wrong orders." }],
   ["Field-level authorization", { theme: "access", task: "Only a book's owner may see its cost price.", why: "Permission checks written by hand in every handler are easy to forget in one place." }],
   ["Abusive query", { theme: "access", task: "A client asks for 200 books, each with 200 books, each with 200 books.", why: "One expensive request can slow the service down for everyone." }],
   ["Shared HTTP caching", { theme: "live", task: "Serve a popular product page from a shared cache, such as a CDN.", why: "An answer from a cache near the user is fast and costs your servers nothing." }],
@@ -71,11 +72,11 @@ const GLOSSARY: Array<[string, string]> = [
   ["Default view", "The fields a Rayfold operation returns when the client does not send a shape. Plain calls with curl work."],
   ["Batch", "Several operations in one Rayfold request. A later operation can use an earlier one's result with $ref."],
   ["Idempotency key", "A unique label on a write. If the same write arrives twice, the server returns the first answer instead of doing the work again."],
-  ["Patch", "A small description of what changed, such as “Book b1 now has stock 3”. Rayfold sends patches with every write so client caches stay correct."],
+  ["Patch", "A small description of what changed, such as 'Book b1 now has stock 3'. Rayfold sends patches with every write so client caches stay correct."],
   ["Live query", "A normal query with live: true. The server keeps it open and sends patches when the data changes."],
   ["ETag and 304", "An ETag is a fingerprint of an answer. A client that already has the same fingerprint gets 304 Not Modified and no body."],
   ["N+1", "Loading a list, then one more request or database call for every item in it."],
-  ["Policy", "A permission rule written in the schema, such as “only the owner may read costPrice”. Rayfold enforces it on every path."],
+  ["Policy", "A permission rule written in the schema, such as 'only the owner may read costPrice'. Rayfold enforces it on every path."],
   ["RB", "Rayfold Binary, an optional compact encoding of the same messages. JSON always works too."],
   ["MCP", "Model Context Protocol, the common way AI assistants discover and call tools. Every Rayfold server is also an MCP server."],
 ];
@@ -157,7 +158,7 @@ function benchChart(measure: "roundTrips" | "bytesDown", title: string, unit: st
       svg += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="3" class="bar ${implCls[impl]}"><title>${esc(flow)} / ${esc(impl)}: ${fmt(v, measure)} ${esc(unit)}</title></rect>`;
       if (impl === "Rayfold (RB)" || impl === "REST") svg += `<text x="${x + barW / 2}" y="${y - 4}" text-anchor="middle" class="val">${fmt(v, measure)}</text>`;
     });
-    svg += `<text x="${gx + (impls.length * (barW + 2)) / 2}" y="${H - B + 18}" text-anchor="middle" class="ax">${esc(flow.replace(/^\d+\.\s*/, "").slice(0, 28))}${flow.length > 32 ? "…" : ""}</text>`;
+    svg += `<text x="${gx + (impls.length * (barW + 2)) / 2}" y="${H - B + 18}" text-anchor="middle" class="ax">${esc(flow.replace(/^\d+\.\s*/, "").slice(0, 28))}${flow.length > 32 ? "..." : ""}</text>`;
   });
   return `<figure class="bench"><figcaption><strong>${esc(title)}</strong> <span class="muted">${esc(unit)}, fewer is better</span></figcaption><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(title)} per flow and implementation">${svg}</svg></figure>`;
 }
@@ -181,7 +182,7 @@ function pretty(body: string): { head: string; full: string; cut: boolean } {
   }
   const lines = text.split("\n");
   const cut = lines.length > MAX_LINES;
-  return { head: cut ? `${lines.slice(0, MAX_LINES).join("\n")}\n… ${lines.length - MAX_LINES} more lines` : text, full: text, cut };
+  return { head: cut ? `${lines.slice(0, MAX_LINES).join("\n")}\n... ${lines.length - MAX_LINES} more lines` : text, full: text, cut };
 }
 
 const headerLines = (h: Record<string, string>) => Object.entries(h).map(([k, v]) => `\n<span class="hk">${esc(k)}:</span> ${esc(v)}`).join("");
@@ -213,7 +214,7 @@ const payEx = placePay?.examples?.Rayfold[0];
 const heroCompare = productPage?.examples
   ? `<div class="hero-compare" role="table" aria-label="One product page on three APIs">${STACKS.map((s) => {
       const list = productPage.examples![s];
-      return `<div class="hc ${cls[s]}-col" role="row"><span class="hc-name" role="cell">${s}</span><span class="hc-num" role="cell">${list.length}<small>${list.length === 1 ? " request" : " requests"}</small></span><span class="hc-num" role="cell">${valueText(productPage, s)}<small> ${esc((productPage.unit ?? "").replace(/\s*\(.*\)$/, ""))}</small></span><code role="cell">${list.map((e) => `${esc(e.request.method)} ${esc(e.request.target.length > 34 ? e.request.target.slice(0, 33) + "…" : e.request.target)}`).join("<br>")}</code></div>`;
+      return `<div class="hc ${cls[s]}-col" role="row"><span class="hc-name" role="cell">${s}</span><span class="hc-num" role="cell">${list.length}<small>${list.length === 1 ? " request" : " requests"}</small></span><span class="hc-num" role="cell">${valueText(productPage, s)}<small> ${esc((productPage.unit ?? "").replace(/\s*\(.*\)$/, ""))}</small></span><code role="cell">${list.map((e) => `${esc(e.request.method)} ${esc(e.request.target.length > 34 ? e.request.target.slice(0, 33) + "..." : e.request.target)}`).join("<br>")}</code></div>`;
     }).join("")}</div>`
   : "";
 
@@ -515,7 +516,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
   <div class="legend"><span class="l-rest">REST: resources and URLs, with ETags, Idempotency-Key and SSE</span><span class="l-gql">GraphQL: one query language, with DataLoader batching and subscriptions</span><span class="l-rayfold">Rayfold</span></div>
 </header>
 
-<nav class="toc" aria-label="Sections"><a href="#start">Start here</a><a href="#one-minute">What Rayfold is</a><a href="#why">Why it comes out ahead</a><a href="#decide">Choosing</a><a href="#examples">Examples</a><a href="#methods">HTTP methods</a>${realdata ? `<a href="#realdata">Real data</a>` : ""}${workspace ? `<a href="#workspace">Issue tracker</a>` : ""}${browserRun ? `<a href="#browser">Real browser</a>` : ""}${security ? `<a href="#security">Security</a>` : ""}<a href="#numbers">All numbers</a><a href="#how">How it was measured</a><a href="#glossary">Glossary</a></nav>
+<nav class="toc" aria-label="Sections"><a href="#start">Start here</a><a href="#one-minute">What Rayfold is</a><a href="#why">Why it comes out ahead</a><a href="#demos">See it work</a><a href="#decide">Choosing</a><a href="#examples">Examples</a><a href="#methods">HTTP methods</a>${realdata ? `<a href="#realdata">Real data</a>` : ""}${workspace ? `<a href="#workspace">Issue tracker</a>` : ""}${browserRun ? `<a href="#browser">Real browser</a>` : ""}${security ? `<a href="#security">Security</a>` : ""}<a href="#numbers">All numbers</a><a href="#how">How it was measured</a><a href="#glossary">Glossary</a></nav>
 
 <section aria-label="Summary">
   <div class="tiles">
@@ -611,6 +612,8 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
       GraphQL's bytes, while JSON always works from curl. Nothing here requires a new network stack.</span></li>
   </ul>
 </section>
+
+${demosHtml}
 
 <section id="decide">
   <span class="eyebrow">Choosing</span>

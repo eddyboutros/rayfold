@@ -173,7 +173,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
   <div class="legend"><span class="l-rest">REST: resources and URLs, with ETags, Idempotency-Key and SSE</span><span class="l-gql">GraphQL: one query language, with DataLoader batching and subscriptions</span><span class="l-rayfold">Rayfold</span></div>
 </header>
 
-<nav class="toc" aria-label="Sections"><a href="#start">Start here</a><a href="#one-minute">What Rayfold is</a><a href="#why">Why it comes out ahead</a><a href="#decide">Choosing</a><a href="#examples">Examples</a><a href="#methods">HTTP methods</a><a href="#realdata">Real data</a><a href="#workspace">Issue tracker</a><a href="#browser">Real browser</a><a href="#security">Security</a><a href="#numbers">All numbers</a><a href="#how">How it was measured</a><a href="#glossary">Glossary</a></nav>
+<nav class="toc" aria-label="Sections"><a href="#start">Start here</a><a href="#one-minute">What Rayfold is</a><a href="#why">Why it comes out ahead</a><a href="#demos">See it work</a><a href="#decide">Choosing</a><a href="#examples">Examples</a><a href="#methods">HTTP methods</a><a href="#realdata">Real data</a><a href="#workspace">Issue tracker</a><a href="#browser">Real browser</a><a href="#security">Security</a><a href="#numbers">All numbers</a><a href="#how">How it was measured</a><a href="#glossary">Glossary</a></nav>
 
 <section aria-label="Summary">
   <div class="tiles">
@@ -258,7 +258,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
         }
       },
       &quot;key&quot;: &quot;e2e-place-pay-0001&quot;,
-… 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -324,6 +324,598 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
       GraphQL's bytes, while JSON always works from curl. Nothing here requires a new network stack.</span></li>
   </ul>
 </section>
+
+<section id="demos">
+<style>
+#demos .reel { position: relative; max-width: 1000px; background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; margin-top: 20px; }
+#demos .reel-bar { height: 3px; background: var(--soft); }
+#demos .reel-bar i { display: block; height: 100%; width: 0; background: var(--rayfold); }
+#demos .reel-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 15px 20px 0; }
+#demos .reel-head .n { grid-column: 1; font: 500 11px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .1em; color: var(--muted); }
+#demos .reel-head h3 { grid-column: 1; margin: 0; font-size: 23px; }
+#demos .reel-head .why { grid-column: 1; margin: 0; font-size: 14px; color: var(--muted); max-width: 74ch; min-height: 40px; }
+#demos .chapters { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 4px; align-items: flex-start; flex-wrap: wrap; justify-content: flex-end; max-width: 232px; }
+#demos .chapter { width: 22px; height: 22px; padding: 0; font: 500 10px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); background: none; border: 1px solid var(--rule); border-radius: 50%; cursor: pointer; }
+#demos .chapter.on { background: var(--rayfold); border-color: var(--rayfold); color: var(--on-accent); }
+#demos .reel-stage { position: relative; min-height: 336px; margin: 12px 20px 0; }
+@media (max-width: 880px) { #demos .reel-stage { min-height: 660px; } }
+#demos .scene { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr); grid-template-rows: auto auto; gap: 12px 18px; align-content: center; transition: opacity .5s ease, transform .5s ease; }
+@media (max-width: 880px) { #demos .scene { grid-template-columns: minmax(0, 1fr); } }
+#demos .scene + .scene { opacity: 0; }
+#demos .reel[data-js] .scene { opacity: 0; transform: translateY(10px); pointer-events: none; }
+#demos .reel[data-js] .scene.on { opacity: 1; transform: none; pointer-events: auto; }
+#demos .reel-foot { display: flex; align-items: center; gap: 10px; padding: 14px 20px 16px; }
+#demos .caption { margin: 0; font-size: 13.5px; color: var(--muted); }
+#demos .controls { display: flex; gap: 6px; justify-content: flex-end; max-width: 1000px; margin-top: 10px; }
+#demos .controls button { font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--rayfold-ink); background: none; border: 1px solid var(--rule); border-radius: 999px; padding: 7px 13px; cursor: pointer; }
+#demos .controls button:hover { background: var(--soft); }
+
+#demos pre.code { grid-column: 1; grid-row: 1; margin: 0; font: 11.5px/1.65 "IBM Plex Mono", ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft); border-radius: 8px; padding: 12px 13px; align-self: center; min-height: 112px; }
+#demos pre.code .caret { border-right: 2px solid var(--rayfold); margin-left: 1px; animation: demo-blink 1s steps(1) infinite; }
+@keyframes demo-blink { 50% { opacity: 0; } }
+#demos .stage { grid-column: 2; grid-row: 1; display: grid; gap: 9px; align-content: center; }
+@media (max-width: 880px) { #demos .stage { grid-column: 1; grid-row: auto; } }
+#demos .scene.wide .stage { grid-column: 1 / -1; }
+#demos .stage-label { font: 500 11px/1.4 "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+#demos .frame { font: 11px/1.5 "IBM Plex Mono", ui-monospace, monospace; background: var(--ground); border: 1px solid var(--rule); border-left: 3px solid var(--rayfold); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+#demos .frame.bad { border-left-color: var(--warn); }
+
+/* the three-way comparison every scene ends on */
+#demos .verdict { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 880px) { #demos .verdict { grid-template-columns: minmax(0, 1fr); } }
+#demos .v-cell { background: var(--ground); border: 1px solid var(--rule); border-radius: 8px; padding: 9px 11px; display: grid; gap: 3px; align-content: start; font-size: 12.5px; }
+#demos .v-cell.win { background: var(--lead-bg); border-color: var(--rayfold); }
+#demos .v-who { font: 600 10.5px/1 "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
+#demos .v-rest { color: var(--rest); } #demos .v-gql { color: var(--gql); } #demos .v-rf { color: var(--rayfold-ink); }
+
+/* sN appears at step N, uN hides from step 2 on, and with no step at all everything is finished */
+#demos .scene[data-step="0"] .s1, #demos .scene[data-step="0"] .s2, #demos .scene[data-step="0"] .s3,
+#demos .scene[data-step="1"] .s2, #demos .scene[data-step="1"] .s3,
+#demos .scene[data-step="2"] .s3 { opacity: 0; transform: translateY(6px); }
+#demos .s1, #demos .s2, #demos .s3 { transition: opacity .4s ease .16s, transform .4s ease .16s; }
+#demos .u1 { opacity: 0; transition: opacity .22s ease; }
+#demos .u1.collapse { max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; transition: opacity .22s ease, max-height .3s ease, padding .3s ease; }
+#demos .scene[data-step="0"] .u1, #demos .scene[data-step="1"] .u1 { opacity: 1; }
+#demos .scene[data-step="0"] .u1.collapse, #demos .scene[data-step="1"] .u1.collapse { max-height: 44px; padding-top: 7px; padding-bottom: 7px; }
+#demos .swap { display: inline-grid; }
+#demos .swap > * { grid-area: 1 / 1; }
+#demos .framestack { display: grid; }
+#demos .framestack > * { grid-area: 1 / 1; }
+
+/* small parts the scenes are built from */
+#demos .board { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+#demos .col { background: var(--ground); border: 1px solid var(--rule); border-radius: 8px; padding: 8px; display: grid; gap: 6px; align-content: start; min-height: 104px; }
+#demos .col-h { font: 500 10.5px/1 "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; justify-content: space-between; }
+#demos .ticket { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+#demos .ticket.lit { border-color: var(--rayfold); box-shadow: 0 0 0 2px var(--lead-bg); }
+#demos .elsewhere { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+#demos .elsewhere::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gql); flex: none; }
+#demos .reqs { display: grid; gap: 5px; font: 11px/1.5 "IBM Plex Mono", ui-monospace, monospace; }
+#demos .reqs span { background: var(--ground); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 8px; }
+#demos .reqs span.rf { border-color: var(--rayfold); background: var(--lead-bg); }
+#demos .trips { display: grid; gap: 9px; }
+#demos .trip { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 9px; align-items: center; }
+#demos .trip .who { font: 500 11.5px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); }
+#demos .hops { display: flex; gap: 5px; }
+#demos .hop { height: 15px; border-radius: 4px; flex: 1; }
+#demos .hop.rest { background: var(--rest); } #demos .hop.rf { background: var(--rayfold); }
+#demos .fields { display: grid; gap: 4px; font: 12px/1.5 "IBM Plex Mono", ui-monospace, monospace; }
+#demos .fields .f { padding: 3px 8px; border-radius: 5px; background: var(--ground); }
+#demos .fields .f.keep { background: var(--lead-bg); }
+#demos .fields .f.drop { transition: opacity .4s ease, max-height .4s ease, padding .4s ease; max-height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; overflow: hidden; }
+#demos .scene[data-step="0"] .fields .f.drop, #demos .scene[data-step="1"] .fields .f.drop { max-height: 28px; padding-top: 3px; padding-bottom: 3px; opacity: 1; }
+#demos .screens { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+#demos .screen { background: var(--ground); border: 1px solid var(--rule); border-radius: 8px; padding: 10px; display: grid; gap: 4px; transition: border-color .3s ease .16s; }
+#demos .screen .t { font: 500 10.5px/1 "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+#demos .screen .v { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+#demos .scene:not([data-step]) .screen, #demos .scene[data-step="2"] .screen, #demos .scene[data-step="3"] .screen { border-color: var(--rayfold); }
+#demos .count { display: flex; align-items: baseline; gap: 9px; }
+#demos .count .big { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+#demos .count .unit { font-size: 13px; color: var(--muted); }
+#demos .chips { display: flex; flex-wrap: wrap; gap: 3px; }
+#demos .chips i { width: 13px; height: 17px; border-radius: 2px; background: var(--rule); display: block; }
+#demos .viewer { display: inline-grid; justify-self: start; border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; font: 500 11.5px/1 "IBM Plex Mono", ui-monospace, monospace; }
+#demos .viewer > span { grid-area: 1 / 1; padding: 7px 11px; text-align: center; background: var(--rayfold); color: var(--on-accent); }
+#demos .ways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+#demos .way { display: flex; align-items: center; gap: 7px; font-size: 12px; background: var(--ground); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 9px; }
+#demos .way b { color: var(--good); font-weight: 700; }
+#demos .lines { display: grid; gap: 5px; font: 11.5px/1.5 "IBM Plex Mono", ui-monospace, monospace; }
+#demos .lines span { display: flex; gap: 8px; }
+#demos .lines b { color: var(--good); font-weight: 700; }
+#demos .lines em { color: var(--warn-ink); font-style: normal; font-weight: 700; }
+
+/* the closing card */
+#demos .scene.closing { grid-template-columns: minmax(0, 1fr); align-content: center; justify-items: center; text-align: center; gap: 14px; }
+#demos .closing .big-claim { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-size: clamp(34px, 5vw, 52px); font-weight: 700; line-height: 1; margin: 0; }
+#demos .closing .soon { font: 600 12px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--on-accent); background: var(--rayfold); border-radius: 999px; padding: 9px 16px; }
+#demos .closing .facts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-size: 12.5px; color: var(--muted); }
+#demos .closing .facts span { background: var(--ground); border: 1px solid var(--rule); border-radius: 999px; padding: 7px 13px; }
+@media (prefers-reduced-motion: reduce) { #demos .scene, #demos .s1, #demos .s2, #demos .s3, #demos .u1, #demos .fields .f.drop, #demos .screen { transition: none; } }
+</style>
+
+  <span class="eyebrow">See it work</span>
+  <h2>Twelve things REST and GraphQL make you do, that this protocol does for you</h2>
+  <p class="lede">One frame, on a loop. Each scene shows a real request, what comes back, and how the same job goes on
+  REST and on GraphQL. Every comparison here is a row from the measured tables further down this page.</p>
+
+  <div class="reel" id="reel">
+    <div class="reel-bar"><i></i></div>
+    <div class="reel-head">
+      <span class="n">1 / 13</span>
+      <h3>Your screens update themselves</h3>
+      <p class="why">Add live: true to a normal read. When someone else changes the data, the server sends just the part that changed.</p>
+      <div class="chapters"></div>
+    </div>
+
+    <div class="reel-stage">
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
+        data-title="Your screens update themselves"
+        data-why="Add live: true to a normal read. When someone else changes the data, the server sends just the part that changed."
+        data-caption="Someone else moved a card. Your app received the one row that changed, not the whole board.">
+        <pre class="code">{ "ops": [ { "id": 1, "op": "issues",
+             "shape": "{ items { id title state } }",
+             "live": true } ] }</pre>
+        <div class="stage">
+          <span class="stage-label">Your board, open</span>
+          <div class="board">
+            <div class="col"><span class="col-h">Todo <span class="swap"><b class="u1">2</b><b class="s2">1</b></span></span>
+              <div class="ticket">Retry on 429</div>
+              <div class="ticket u1 collapse">Cursor resumes after reconnect</div>
+            </div>
+            <div class="col"><span class="col-h">In review <span class="swap"><b class="u1">1</b><b class="s2">2</b></span></span>
+              <div class="ticket">Batch loader for labels</div>
+              <div class="ticket lit s2">Cursor resumes after reconnect</div>
+            </div>
+          </div>
+          <span class="elsewhere s1">Someone else moves that card, on another machine</span>
+          <div class="frame s2">{"id":1,"patch":[{"set":"Issue:i7","value":{"state":"IN_REVIEW"}}]}</div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>An events endpoint, then fetch the whole board again</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>A subscription, a resolver, and merge code you write</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>One changed row arrives. No client code at all</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
+        data-title="One request per screen"
+        data-why="A product page needs a book, the author who wrote it, and its reviews. That is one request, not three."
+        data-caption="Measured on the same page with the same data. Every trip saved is time a phone spends waiting.">
+        <pre class="code">{ "ops": [ { "id": 1, "op": "book", "args": { "id": "b1" },
+             "shape": "{ title author { name }
+                         reviews { rating } }" } ] }</pre>
+        <div class="stage">
+          <span class="stage-label">What goes over the network</span>
+          <div class="reqs">
+            <span class="u1">GET /books/b1</span>
+            <span class="u1">GET /authors/a1</span>
+            <span class="u1">GET /reviews?bookId=b1&amp;limit=3</span>
+            <span class="rf s2">POST /api &nbsp;- the whole page, once</span>
+          </div>
+          <div class="count s2"><span class="big">177</span><span class="unit">bytes, against 466 over REST</span></div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>3 requests in 2 waves, 466 bytes</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>1 request, 332 bytes</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>1 request, 177 bytes</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
+        data-title="Two steps, one trip"
+        data-why="Place an order, then pay for it. The second step uses an id the first step has not sent back yet."
+        data-caption="The server runs them in order and answers both together. Your app never waits in the middle.">
+        <pre class="code">{ "ops": [
+  { "id": 1, "op": "placeOrder", "args": { ... }, "key": "idem-7f3a" },
+  { "id": 2, "op": "payOrder",
+    "args": { "id": { "$ref": "1.id" } } } ] }</pre>
+        <div class="stage">
+          <span class="stage-label">Network waits, for the same work</span>
+          <div class="trips">
+            <div class="trip"><span class="who">REST</span><div class="hops"><i class="hop rest"></i><i class="hop rest s1"></i></div></div>
+            <div class="trip"><span class="who">New</span><div class="hops"><i class="hop rf"></i></div></div>
+          </div>
+          <div class="frame s2">{"id":1,"ok":{"$type":"Order","id":"o1"}}
+{"id":2,"ok":{"$type":"Order","id":"o1","status":"PAID"}}</div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>2 trips: the second needs the first one's id</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>2 trips: a mutation cannot feed another</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>1 trip</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
+        data-title="Only the fields you need"
+        data-why="A shape names what comes back. Send no shape and you get a sensible default, so a plain curl call still works."
+        data-caption="Twenty books, only the id and the title wanted. About a quarter of REST's bytes cross the network.">
+        <pre class="code">{ "ops": [ { "id": 1, "op": "books",
+             "shape": "{ items { id title } }" } ] }</pre>
+        <div class="stage">
+          <span class="stage-label">What comes back, per book</span>
+          <div class="fields">
+            <span class="f keep">id: "b1"</span>
+            <span class="f keep">title: "The Dispossessed"</span>
+            <span class="f drop">format: "PAPERBACK"</span>
+            <span class="f drop">price: "12.99"</span>
+            <span class="f drop">stock: 5</span>
+            <span class="f drop">authorId: "a1"</span>
+            <span class="f drop">ownerId: "u1"</span>
+          </div>
+          <span class="elsewhere s2">Five fields the screen never showed did not cross the network</span>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>2,375 bytes: whole records, every time</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>821 bytes</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>635 bytes on the binary wire</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
+        data-title="One database lookup, not twenty"
+        data-why="A field that loads related data is handed the whole list at once. There is no other way to write it here."
+        data-caption="This is the N+1 problem, the one that quietly costs companies their database. Here the fast version is the only version.">
+        <pre class="code">fields: {
+  Book: { author: (books) => authorsOf(books) }
+}</pre>
+        <div class="stage">
+          <span class="stage-label">20 books, each with its author's name</span>
+          <div class="chips"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="count"><span class="big swap"><b class="u1">20</b><b class="s2">1</b></span><span class="unit">lookups for the authors</span></div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>9 extra requests, made by the client</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>20, unless someone hand-writes a loader</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>1, always</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
+        data-title="One write fixes every open screen"
+        data-why="A write answers with patches: short statements of what changed. Every screen already showing that row corrects itself."
+        data-caption="No refetch, and no cache-invalidation code to write or maintain.">
+        <pre class="code">{ "ops": [ { "id": 1, "op": "restock",
+             "args": { "bookId": "b1", "qty": 3 },
+             "key": "restock-91c2" } ] }</pre>
+        <div class="stage">
+          <span class="stage-label">Two screens, both already open</span>
+          <div class="screens">
+            <div class="screen"><span class="t">Product page</span><span class="v">stock <span class="swap"><b class="u1">5</b><b class="s2">8</b></span></span></div>
+            <div class="screen"><span class="t">Stock list</span><span class="v">stock <span class="swap"><b class="u1">5</b><b class="s2">8</b></span></span></div>
+          </div>
+          <div class="frame s1">{"id":1,"ok":{"$type":"Book","id":"b1","stock":8},
+ "patch":[{"set":"Book:b1","value":{"stock":8}}]}</div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>Fetch the list again, or show something stale</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>Fetch again, or write your own cache updates</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>0 extra requests: the change came with the write</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3600"
+        data-title="A retry cannot charge twice"
+        data-why="Every write carries a key. If the connection drops and your app sends it again, the server returns the first answer instead of doing the work twice."
+        data-caption="Measured by actually retrying the call, not by reading the documentation.">
+        <pre class="code">POST /api  { "op": "placeOrder", "key": "idem-7f3a" }
+POST /api  { "op": "placeOrder", "key": "idem-7f3a" }</pre>
+        <div class="stage">
+          <span class="stage-label">The same order, sent twice</span>
+          <div class="frame s1">{"id":1,"ok":{"$type":"Order","id":"o1"},"meta":{"replay":true}}</div>
+          <div class="count s2"><span class="big">1</span><span class="unit">order created, not 2</span></div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>A duplicate, unless every client remembers the header</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>A duplicate: there is no idempotency concept</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>The key is required, so the retry is free</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
+        data-title="Bad input never reaches your data"
+        data-why="Types and limits are written in the schema, so a wrong value is refused before any of your code runs. And the failures have names."
+        data-caption="A client can handle OutOfStock. It cannot handle a 409 whose body shape nobody wrote down.">
+        <pre class="code">command placeOrder(qty: Int @range(min: 1)): Order
+  throws OutOfStock { bookId: ID, available: Int }</pre>
+        <div class="stage">
+          <span class="stage-label">Someone sends qty: 0</span>
+          <div class="frame bad s1">{"id":1,"error":{"code":"invalid_argument",
+  "message":"qty must be at least 1","path":"qty"}}</div>
+          <div class="frame s2">{"id":2,"error":{"code":"domain","type":"OutOfStock",
+  "data":{"bookId":"b4","available":0}}}</div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>Both bad orders were created. Error shape by convention</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>Type error only. qty 0 got through</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>Both refused, nothing written, errors typed</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
+        data-title="Permissions live in the schema"
+        data-why="Who may read a field is written on the field, once. The same rule holds however the caller arrives."
+        data-caption="A caller who may not read it gets an explicit refusal, not a silent null to misread.">
+        <pre class="code">entity Book {
+  price: Decimal
+  costPrice: Decimal? @allow(read: viewer.role == "admin")
+}</pre>
+        <div class="stage">
+          <span class="stage-label">The same query, two callers</span>
+          <div class="viewer"><span class="u1">viewer: admin</span><span class="s2">viewer: customer</span></div>
+          <div class="framestack">
+            <div class="frame u1">{"data":{"id":"b1","price":"12.99","costPrice":"7.10"}}</div>
+            <div class="frame s2">{"data":{"id":"b1","price":"12.99"}}</div>
+          </div>
+          <div class="ways s3">
+            <span class="way"><b>ok</b> batches</span>
+            <span class="way"><b>ok</b> REST routes</span>
+            <span class="way"><b>ok</b> live updates</span>
+            <span class="way"><b>ok</b> AI tools</span>
+          </div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>Repeated in every handler that touches the field</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>Repeated in every resolver, and null when denied</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>Written once, enforced on every way in</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
+        data-title="An abusive query is refused before it runs"
+        data-why="The cost of a call is worked out from the schema before anything executes, and checked against a budget you set."
+        data-caption="Your limit is a number in the schema, not a plugin you hope someone configured.">
+        <pre class="code">query search(page: PageArgs) @cost(base: 5, perItem: 1)
+# a caller asks for 200 x 200 x 200 nested items</pre>
+        <div class="stage">
+          <span class="stage-label">What the server does with it</span>
+          <div class="frame bad s1">{"id":1,"error":{"code":"resource_exhausted",
+  "message":"cost 8,120,000 over the budget of 1,000"}}</div>
+          <div class="count s2"><span class="big">0</span><span class="unit">database queries were run</span></div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>No query language, so no query to abuse</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>It runs, unless a cost plugin was added</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>Refused before execution, from the schema</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
+        data-title="Your API is already an AI tool"
+        data-why="Every server is also an MCP server. Assistants get typed tools with no adapter, and can try a write without doing it."
+        data-caption="A dry run is part of the protocol: simulate reports what would happen and writes nothing.">
+        <pre class="code">POST /mcp   { "method": "tools/list" }
+POST /api  { "op": "placeOrder", "simulate": true }</pre>
+        <div class="stage">
+          <span class="stage-label">What the assistant sees</span>
+          <div class="frame s1">tools: book, books, placeOrder, payOrder, restock
+each with JSON Schema in and out, and its typed errors</div>
+          <div class="frame s2">{"id":1,"ok":{"simulated":true,"wouldCharge":"12.99"}}</div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>Hand-written OpenAPI plus an adapter. No dry run</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>Introspection plus custom glue. No dry run</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>Nothing to write. Dry runs built in</span></div>
+        </div>
+      </section>
+
+      <section class="scene" data-steps="3" data-delay="1500" data-hold="3800"
+        data-title="Remove a field without breaking anyone"
+        data-why="The schema records when a field is going away. The server records which clients still ask for it. Your build decides with both."
+        data-caption="Evidence before you delete something, instead of a guess and an incident.">
+        <pre class="code">costPrice: Decimal? @deprecated(sunset: "2026-12-01",
+                               replacement: "margin")</pre>
+        <div class="stage">
+          <span class="stage-label">the schema check, in your pipeline</span>
+          <div class="lines">
+            <span class="s1"><em>blocked</em> removed with no notice and no sunset date</span>
+            <span class="s2"><em>blocked</em> still asked for by checkout/2.1, 4 days ago</span>
+            <span class="s3"><b>allowed</b> sunset passed, no client asked in 30 days</span>
+          </div>
+        </div>
+        <div class="verdict s3">
+          <div class="v-cell"><span class="v-who v-rest">REST</span><span>No field-level contract: every removal just ships</span></div>
+          <div class="v-cell"><span class="v-who v-gql">GraphQL</span><span>Flags every removal, and knows nothing about sunsets</span></div>
+          <div class="v-cell win"><span class="v-who v-rf">New protocol</span><span>Blocked early, allowed once it is provably safe</span></div>
+        </div>
+      </section>
+
+      <section class="scene closing wide" data-steps="3" data-delay="1200" data-hold="4400"
+        data-title="The alternative to REST and GraphQL"
+        data-why="One protocol for reads, writes, live updates and AI tools, with the rules in the contract instead of in every handler."
+        data-caption="Every number in this film is reproducible: npm run e2e, npm run bench.">
+        <div class="stage">
+          <p class="big-claim">One protocol.<br>Fewer requests, fewer bugs,<br>fewer things to remember.</p>
+          <div class="facts s1">
+            <span>Ahead on 15 of 15 measured tasks</span>
+            <span>TypeScript and Kotlin, same frames</span>
+            <span>Open source, Apache-2.0</span>
+          </div>
+          <span class="soon s2">Launching soon</span>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="reel-foot">
+      <p class="caption">Someone else moved a card. Your app received the one row that changed, not the whole board.</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="toggle" type="button">Pause</button>
+    <button class="restart" type="button">Restart</button>
+  </div>
+
+<script>
+(function () {
+  var reel = document.getElementById("reel");
+  if (!reel) return;
+  var scenes = Array.prototype.slice.call(reel.querySelectorAll(".scene"));
+  if (!scenes.length) return;
+
+  var bar = reel.querySelector(".reel-bar i");
+  var numEl = reel.querySelector(".reel-head .n");
+  var titleEl = reel.querySelector(".reel-head h3");
+  var whyEl = reel.querySelector(".reel-head .why");
+  var captionEl = reel.querySelector(".caption");
+  var chapterBox = reel.querySelector(".chapters");
+  var toggle = reel.querySelector(".toggle");
+  var restart = reel.querySelector(".restart");
+  var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var timers = [];
+  var raf = null;
+  var at = 0;
+  var playing = false;
+  reel.setAttribute("data-js", "");
+
+  // one dot per scene, so the frame stays the same size however many scenes there are
+  var chapters = scenes.map(function (scene, i) {
+    var dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "chapter" + (i === 0 ? " on" : "");
+    dot.textContent = String(i + 1);
+    dot.title = scene.getAttribute("data-title") || "";
+    dot.addEventListener("click", function () { at = i; run(i); });
+    if (chapterBox) chapterBox.appendChild(dot);
+    return dot;
+  });
+
+  function clear() {
+    timers.forEach(clearTimeout);
+    timers = [];
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+  }
+
+  function sourceOf(pre) {
+    if (pre.rayfoldSource === undefined) pre.rayfoldSource = pre.textContent;
+    return pre.rayfoldSource;
+  }
+
+  function progress(ms) {
+    if (!bar) return;
+    bar.style.transition = "none";
+    bar.style.width = "0%";
+    void bar.offsetWidth;
+    if (!ms) return;
+    bar.style.transition = "width " + ms + "ms linear";
+    bar.style.width = "100%";
+  }
+
+  // the title, the sentence and the caption belong to the scene, so the frame reads as one thing on a recording
+  function dress(scene, n) {
+    if (numEl) numEl.textContent = (n + 1) + " / " + scenes.length;
+    if (titleEl) titleEl.textContent = scene.getAttribute("data-title") || "";
+    if (whyEl) whyEl.textContent = scene.getAttribute("data-why") || "";
+    if (captionEl) captionEl.textContent = scene.getAttribute("data-caption") || "";
+    chapters.forEach(function (c, i) { c.classList.toggle("on", i === n); });
+    scenes.forEach(function (s, i) { s.classList.toggle("on", i === n); });
+  }
+
+  function typeInto(pre, text, ms) {
+    if (!pre) return;
+    pre.textContent = "";
+    var body = document.createTextNode("");
+    var caret = document.createElement("i");
+    caret.className = "caret";
+    pre.appendChild(body);
+    pre.appendChild(caret);
+    var started = 0;
+    function step(now) {
+      if (!started) started = now;
+      var share = Math.min(1, (now - started) / ms);
+      body.nodeValue = text.slice(0, Math.ceil(share * text.length));
+      if (share < 1) { raf = requestAnimationFrame(step); return; }
+      raf = null;
+      if (caret.parentNode) caret.parentNode.removeChild(caret);
+    }
+    raf = requestAnimationFrame(step);
+  }
+
+  function finish(scene) {
+    scene.removeAttribute("data-step");
+    var pre = scene.querySelector("pre.code");
+    if (pre) pre.textContent = sourceOf(pre);
+  }
+
+  function run(n) {
+    clear();
+    at = ((n % scenes.length) + scenes.length) % scenes.length;
+    scenes.forEach(function (s, i) { if (i !== at) finish(s); });
+    var scene = scenes[at];
+    dress(scene, at);
+
+    if (!playing || still) { finish(scene); progress(0); return; }
+
+    var pre = scene.querySelector("pre.code");
+    var text = pre ? sourceOf(pre) : "";
+    var steps = Number(scene.getAttribute("data-steps") || 3);
+    var delay = Number(scene.getAttribute("data-delay") || 1000);
+    var hold = Number(scene.getAttribute("data-hold") || 1700);
+    var typing = text ? Math.max(650, Math.min(1600, text.length * 8)) : 250;
+
+    scene.setAttribute("data-step", "0");
+    if (pre) pre.textContent = "";
+    progress(typing + steps * delay + hold);
+
+    // the clock drives the scene and the paint follows it: a hidden tab pauses animation frames, never the timers
+    typeInto(pre, text, typing);
+    if (pre) timers.push(setTimeout(function () { pre.textContent = text; }, typing + 40));
+    for (var i = 1; i <= steps; i++) {
+      (function (k) {
+        timers.push(setTimeout(function () {
+          if (k === steps) scene.removeAttribute("data-step");
+          else scene.setAttribute("data-step", String(k));
+        }, typing + k * delay));
+      })(i);
+    }
+    timers.push(setTimeout(function () { run(at + 1); }, typing + steps * delay + hold));
+  }
+
+  function play() { playing = true; if (toggle) toggle.textContent = "Pause"; run(at); }
+
+  function pause() {
+    playing = false;
+    clear();
+    if (toggle) toggle.textContent = "Play";
+    finish(scenes[at]);
+    progress(0);
+  }
+
+  var resumeWhenVisible = false;
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      if (!playing) return;
+      resumeWhenVisible = true;
+      pause();
+    } else if (resumeWhenVisible) {
+      resumeWhenVisible = false;
+      play();
+    }
+  });
+
+  if (toggle) toggle.addEventListener("click", function () { if (playing) pause(); else play(); });
+  if (restart) restart.addEventListener("click", function () { playing = true; if (toggle) toggle.textContent = "Pause"; run(0); });
+
+  dress(scenes[0], 0);
+  if (still) { finish(scenes[0]); if (toggle) toggle.textContent = "Play"; return; }
+
+  if (!("IntersectionObserver" in window)) { play(); return; }
+  var started = false;
+  var watcher = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting || started) return;
+      started = true;
+      watcher.disconnect();
+      play();
+    });
+  }, { threshold: 0.4 });
+  watcher.observe(reel);
+})();
+</script>
+</section>
+
 
 <section id="decide">
   <span class="eyebrow">Choosing</span>
@@ -416,7 +1008,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
       &quot;body&quot;: &quot;Slow start.&quot;,
       &quot;bookId&quot;: &quot;b1&quot;,
       &quot;reviewerId&quot;: &quot;u3&quot;,
-… 4 more lines</pre><details><summary>Full response body</summary><pre>{
+... 4 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;r1&quot;,
@@ -460,7 +1052,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
         {
           &quot;id&quot;: &quot;r1&quot;,
           &quot;rating&quot;: 5
-… 9 more lines</pre><details><summary>Full response body</summary><pre>{
+... 9 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;book&quot;: {
       &quot;id&quot;: &quot;b1&quot;,
@@ -498,7 +1090,7 @@ RB, 117 bytes on the wire, shown decoded:
 </article>
 <article class="case lead">
   <div class="case-head"><h4>List 20 books with each author's name.</h4><span class="chip chip-rayfold">Rayfold ahead</span></div>
-  <p class="why">When related data is loaded one item at a time (the “N+1” problem), a list of 20 costs 21 trips to the database or the network.</p>
+  <p class="why">When related data is loaded one item at a time (the 'N+1' problem), a list of 20 costs 21 trips to the database or the network.</p>
   <div class="case-body">
     <div class="measure"><p class="metric">Measured: author lookups at the backend <span class="muted">(author lookups with straightforward code, lower is better)</span></p><svg class="mini" viewBox="0 0 280 70" width="280" height="70" role="img" aria-label="List of 20 books with author names: REST 9, GraphQL 20, Rayfold 1 author lookups with straightforward code"><text x="56" y="16" text-anchor="end" class="ax">REST</text><rect x="64" y="4" width="66" height="15" rx="3" class="bar s-rest"><title>REST: 9 author lookups with straightforward code</title></rect><text x="136" y="16" class="val">9</text><text x="56" y="37" text-anchor="end" class="ax">GraphQL</text><rect x="64" y="25" width="146" height="15" rx="3" class="bar s-gql"><title>GraphQL: 20 author lookups with straightforward code</title></rect><text x="216" y="37" class="val">20</text><text x="56" y="58" text-anchor="end" class="ax">Rayfold</text><rect x="64" y="46" width="7" height="15" rx="3" class="bar s-rayfold"><title>Rayfold: 1 author lookups with straightforward code</title></rect><text x="77" y="58" class="val">1</text></svg></div>
     <dl class="cells"><div><dt class="s-rest-ink">REST</dt><dd>9 extra requests from the client (N+1 at the edge)</dd></div><div><dt class="s-gql-ink">GraphQL</dt><dd>20 with the obvious resolver; 1 only with a hand-written DataLoader (both measured)</dd></div><div><dt class="s-rayfold-ink">Rayfold</dt><dd>1: a batch loader is the only resolver shape</dd></div></dl>
@@ -525,7 +1117,7 @@ RB, 117 bytes on the wire, shown decoded:
       &quot;title&quot;: &quot;Americanah&quot;,
       &quot;format&quot;: &quot;HARDCOVER&quot;,
       &quot;price&quot;: &quot;27.00&quot;,
-… 169 more lines</pre><details><summary>Full response body</summary><pre>{
+... 169 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;b1&quot;,
@@ -816,7 +1408,7 @@ RB, 117 bytes on the wire, shown decoded:
           &quot;title&quot;: &quot;Americanah&quot;,
           &quot;author&quot;: {
             &quot;name&quot;: &quot;Chimamanda Ngozi Adichie&quot;
-… 132 more lines</pre><details><summary>Full response body</summary><pre>{
+... 132 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -988,7 +1580,7 @@ RB, 117 bytes on the wire, shown decoded:
           &quot;title&quot;: &quot;Americanah&quot;,
           &quot;author&quot;: {
             &quot;name&quot;: &quot;Chimamanda Ngozi Adichie&quot;
-… 132 more lines</pre><details><summary>Full response body</summary><pre>{
+... 132 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -1171,7 +1763,7 @@ RB, 117 bytes on the wire, shown decoded:
       {
         &quot;$type&quot;: &quot;Book&quot;,
         &quot;id&quot;: &quot;b10&quot;,
-… 175 more lines</pre><details><summary>Full response body</summary><pre>{
+... 175 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;items&quot;: [
@@ -1392,7 +1984,7 @@ RB, 117 bytes on the wire, shown decoded:
       &quot;title&quot;: &quot;Americanah&quot;,
       &quot;format&quot;: &quot;HARDCOVER&quot;,
       &quot;price&quot;: &quot;27.00&quot;,
-… 169 more lines</pre><details><summary>Full response body</summary><pre>{
+... 169 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;b1&quot;,
@@ -1601,7 +2193,7 @@ RB, 117 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;b11&quot;,
           &quot;title&quot;: &quot;The Remains of the Day&quot;
         },
-… 72 more lines</pre><details><summary>Full response body</summary><pre>{
+... 72 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -1725,7 +2317,7 @@ RB, 117 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;b11&quot;,
         &quot;title&quot;: &quot;The Remains of the Day&quot;
       },
-… 72 more lines</pre><details><summary>Full response body</summary><pre>{
+... 72 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;items&quot;: [
@@ -2019,7 +2611,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;key&quot;: &quot;e2e-place-pay-0001&quot;,
-… 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -2228,7 +2820,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;key&quot;: &quot;e2e-retry-000000001&quot;
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -2248,7 +2840,7 @@ RB, 635 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;b3&quot;,
           &quot;title&quot;: &quot;Kindred&quot;
         }
-… 42 more lines</pre><details><summary>Full request body</summary><pre>{
+... 42 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -2343,7 +2935,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;key&quot;: &quot;e2e-retry-000000001&quot;
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -2363,7 +2955,7 @@ RB, 635 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;b3&quot;,
           &quot;title&quot;: &quot;Kindred&quot;
         }
-… 43 more lines</pre><details><summary>Full request body</summary><pre>{
+... 43 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -2459,7 +3051,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       }
     }
-… 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -2542,7 +3134,7 @@ RB, 635 bytes on the wire, shown decoded:
       &quot;extensions&quot;: {
         &quot;code&quot;: &quot;OUT_OF_STOCK&quot;,
         &quot;bookId&quot;: &quot;b4&quot;,
-… 6 more lines</pre><details><summary>Full response body</summary><pre>{
+... 6 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;errors&quot;: [
     {
       &quot;message&quot;: &quot;Only 0 of A Wizard of Earthsea left&quot;,
@@ -2583,7 +3175,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;key&quot;: &quot;e2e-oos-0000000001&quot;
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -2620,7 +3212,7 @@ RB, 635 bytes on the wire, shown decoded:
 }</pre></details></div></section></div></details>
 </article>
 <article class="case lead">
-  <div class="case-head"><h4>A client sends a wrong quantity: first the text “two”, then 0.</h4><span class="chip chip-rayfold">Rayfold ahead</span></div>
+  <div class="case-head"><h4>A client sends a wrong quantity: first the text 'two', then 0.</h4><span class="chip chip-rayfold">Rayfold ahead</span></div>
   <p class="why">Bad input that reaches your business code can create wrong orders.</p>
   <div class="case-body">
     <div class="measure"><p class="metric">Measured: rejected before side effects? <span class="muted">(of 2 bad requests rejected before side effects, higher is better)</span></p><svg class="mini" viewBox="0 0 280 70" width="280" height="70" role="img" aria-label="Invalid input (qty: &quot;two&quot;, then qty: 0): REST 0, GraphQL 1, Rayfold 2 of 2 bad requests rejected before side effects"><text x="56" y="16" text-anchor="end" class="ax">REST</text><rect x="64" y="4" width="0" height="15" rx="3" class="bar s-rest"><title>REST: 0 of 2 bad requests rejected before side effects</title></rect><text x="70" y="16" class="val">0</text><text x="56" y="37" text-anchor="end" class="ax">GraphQL</text><rect x="64" y="25" width="73" height="15" rx="3" class="bar s-gql"><title>GraphQL: 1 of 2 bad requests rejected before side effects</title></rect><text x="143" y="37" class="val">1</text><text x="56" y="58" text-anchor="end" class="ax">Rayfold</text><rect x="64" y="46" width="146" height="15" rx="3" class="bar s-rayfold"><title>Rayfold: 2 of 2 bad requests rejected before side effects</title></rect><text x="216" y="58" class="val">2</text></svg></div>
@@ -2741,7 +3333,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;key&quot;: &quot;e2e-bad-00000000001&quot;
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -2790,7 +3382,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;key&quot;: &quot;e2e-bad-00000000002&quot;
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -3006,7 +3598,7 @@ RB, 635 bytes on the wire, shown decoded:
     }
   },
   &quot;meta&quot;: {
-… 4 more lines</pre><details><summary>Full response body</summary><pre>{
+... 4 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;$type&quot;: &quot;Book&quot;,
@@ -3061,7 +3653,7 @@ RB, 635 bytes on the wire, shown decoded:
             &quot;name&quot;: &quot;Chimamanda Ngozi Adichie&quot;
           }
         },
-… 208 more lines</pre><details><summary>Full response body</summary><pre>{
+... 208 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -3367,7 +3959,7 @@ RB, 635 bytes on the wire, shown decoded:
       &quot;body&quot;: &quot;Slow start.&quot;,
       &quot;bookId&quot;: &quot;b1&quot;,
       &quot;reviewerId&quot;: &quot;u3&quot;,
-… 4 more lines</pre><details><summary>Full response body</summary><pre>{
+... 4 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;r1&quot;,
@@ -3420,7 +4012,7 @@ RB, 635 bytes on the wire, shown decoded:
         {
           &quot;id&quot;: &quot;r4&quot;,
           &quot;rating&quot;: 3
-… 5 more lines</pre><details><summary>Full response body</summary><pre>{
+... 5 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;book&quot;: {
       &quot;id&quot;: &quot;b1&quot;,
@@ -3465,7 +4057,7 @@ RB, 635 bytes on the wire, shown decoded:
         {
           &quot;id&quot;: &quot;r4&quot;,
           &quot;rating&quot;: 3
-… 5 more lines</pre><details><summary>Full response body</summary><pre>{
+... 5 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;book&quot;: {
       &quot;id&quot;: &quot;b1&quot;,
@@ -3521,7 +4113,7 @@ RB, 635 bytes on the wire, shown decoded:
           &quot;$type&quot;: &quot;Review&quot;,
           &quot;id&quot;: &quot;r1&quot;,
           &quot;rating&quot;: 5
-… 14 more lines</pre><details><summary>Full response body</summary><pre>{
+... 14 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;$type&quot;: &quot;Book&quot;,
@@ -3612,7 +4204,7 @@ RB, 635 bytes on the wire, shown decoded:
       &quot;title&quot;: &quot;Americanah&quot;,
       &quot;format&quot;: &quot;HARDCOVER&quot;,
       &quot;price&quot;: &quot;27.00&quot;,
-… 34 more lines</pre><details><summary>Full response body</summary><pre>{
+... 34 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;b1&quot;,
@@ -3715,7 +4307,7 @@ RB, 635 bytes on the wire, shown decoded:
         },
         {
           &quot;__typename&quot;: &quot;Book&quot;,
-… 17 more lines</pre><details><summary>Full response body</summary><pre>{
+... 17 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -3806,7 +4398,7 @@ RB, 635 bytes on the wire, shown decoded:
       },
       {
         &quot;$type&quot;: &quot;Book&quot;,
-… 20 more lines</pre><details><summary>Full response body</summary><pre>{
+... 20 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;items&quot;: [
@@ -3862,7 +4454,7 @@ RB, 635 bytes on the wire, shown decoded:
           ]
         }
       },
-… 5 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 5 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -3882,7 +4474,7 @@ RB, 635 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;o1&quot;,
         &quot;status&quot;: &quot;PLACED&quot;,
         &quot;total&quot;: &quot;12.99&quot;
-… 14 more lines</pre><details><summary>Full request body</summary><pre>{
+... 14 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;rayfold&quot;: &quot;0.1&quot;,
   &quot;ops&quot;: [
     {
@@ -3899,7 +4491,7 @@ RB, 635 bytes on the wire, shown decoded:
         }
       },
       &quot;shape&quot;: &quot;{ id status total }&quot;,
-      &quot;key&quot;: &quot;8a92f44b5cde4a55b58d5c5cc31c1171&quot;
+      &quot;key&quot;: &quot;a4f8be7697244e089da72c1b5617d9dd&quot;
     }
   ]
 }</pre></details><details><summary>Full response body</summary><pre>{
@@ -4037,7 +4629,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         &quot;bookId&quot;: &quot;b2&quot;,
         &quot;qty&quot;: 1
       },
-      &quot;key&quot;: &quot;ff59a4d28113459c9db0bc93c45e60d9&quot;
+      &quot;key&quot;: &quot;1eb99d6c24b44643b224b7a2cf18aa20&quot;
     }
   ]
 }</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
@@ -4060,7 +4652,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
     }
   },
   &quot;patch&quot;: [
-… 28 more lines</pre><details><summary>Full response body</summary><pre>{
+... 28 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;ok&quot;: {
     &quot;$type&quot;: &quot;Book&quot;,
@@ -4112,7 +4704,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
     <div class="measure"><p class="metric">Measured: what the tooling decides <span class="muted">(removals decided right, of 3 (unannounced, before sunset, after sunset), higher is better)</span></p><svg class="mini" viewBox="0 0 280 70" width="280" height="70" role="img" aria-label="Removing a field: REST 1, GraphQL 2, Rayfold 3 removals decided right, of 3 (unannounced, before sunset, after sunset)"><text x="56" y="16" text-anchor="end" class="ax">REST</text><rect x="64" y="4" width="49" height="15" rx="3" class="bar s-rest"><title>REST: 1 removals decided right, of 3 (unannounced, before sunset, after sunset)</title></rect><text x="119" y="16" class="val">1</text><text x="56" y="37" text-anchor="end" class="ax">GraphQL</text><rect x="64" y="25" width="97" height="15" rx="3" class="bar s-gql"><title>GraphQL: 2 removals decided right, of 3 (unannounced, before sunset, after sunset)</title></rect><text x="167" y="37" class="val">2</text><text x="56" y="58" text-anchor="end" class="ax">Rayfold</text><rect x="64" y="46" width="146" height="15" rx="3" class="bar s-rayfold"><title>Rayfold: 3 removals decided right, of 3 (unannounced, before sunset, after sunset)</title></rect><text x="216" y="58" class="val">3</text></svg></div>
     <dl class="cells"><div><dt class="s-rest-ink">REST</dt><dd>no field-level contract to diff: every removal ships, announced or not</dd></div><div><dt class="s-gql-ink">GraphQL</dt><dd>graphql-js findBreakingChanges flags every removal; @deprecated has no date, so a finished deprecation is flagged too</dd></div><div><dt class="s-rayfold-ink">Rayfold</dt><dd>`rayfold check` blocks unannounced and early removals and allows them after @deprecated(sunset:)</dd></div></dl>
   </div>
-  <p class="note">Removing Review.body. rayfold check: breaking:field-removed / breaking:field-removed / compatible:field-removed-after-sunset. graphql-js: &quot;Review.body was removed.&quot; in all three cases.</p>
+  <p class="note">Removing Review.body. rayfold check: breaking:field-removed / breaking:field-removed / compatible:field-removed-after-sunset. graphql-js: &quot;Field Review.body was removed.&quot; in all three cases.</p>
   <details class="examples"><summary>See the real requests and responses (2)</summary><div class="stack-cols"><section class="stack-col s-rest-col"><h4>REST <span class="muted">1 request</span></h4><div class="ex"><p class="ex-label">the published contract a diff tool would compare</p><pre class="req" aria-label="request"><span class="verb">GET</span> /openapi.json</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> public, max-age=60
 <span class="hk">content-type:</span> application/json
@@ -4154,7 +4746,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         },
         {
           &quot;name&quot;: &quot;body&quot;,
-… 12 more lines</pre><details><summary>Full response body</summary><pre>{
+... 12 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;__type&quot;: {
       &quot;fields&quot;: [
@@ -4232,7 +4824,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
           },
           {
             &quot;name&quot;: &quot;editReview&quot;
-… 12 more lines</pre><details><summary>Full response body</summary><pre>{
+... 12 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;__schema&quot;: {
       &quot;mutationType&quot;: {
@@ -4285,7 +4877,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
                 {
                   &quot;$ref&quot;: &quot;#/$defs/BookFilter&quot;
                 },
-… 6517 more lines</pre><details><summary>Full response body</summary><pre>{
+... 6517 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;jsonrpc&quot;: &quot;2.0&quot;,
   &quot;id&quot;: 1,
   &quot;result&quot;: {
@@ -10837,7 +11429,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         ]
       }
     }
-… 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">content-type:</span> application/json
 
 {
@@ -10856,7 +11448,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         &quot;id&quot;: &quot;o1&quot;,
         &quot;status&quot;: &quot;PLACED&quot;,
         &quot;total&quot;: &quot;8.00&quot;,
-… 50 more lines</pre><details><summary>Full request body</summary><pre>{
+... 50 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;jsonrpc&quot;: &quot;2.0&quot;,
   &quot;id&quot;: 2,
   &quot;method&quot;: &quot;tools/call&quot;,
@@ -11040,7 +11632,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
     &quot;cost&quot;: 2
   },
   &quot;fin&quot;: true
-… 1 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;$type&quot;: &quot;Book&quot;,
@@ -11228,7 +11820,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         }
       },
       &quot;key&quot;: &quot;k-post-rayfold-000001&quot;,
-… 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -11283,7 +11875,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         }
       },
       &quot;key&quot;: &quot;k-post-rayfold-000001&quot;,
-… 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 15 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -11351,7 +11943,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       }
     }
   ]
-… 1 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;$type&quot;: &quot;Order&quot;,
   &quot;id&quot;: &quot;o2&quot;,
   &quot;status&quot;: &quot;PLACED&quot;,
@@ -11557,7 +12149,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;rating&quot;: 5,
       &quot;body&quot;: &quot;Reread it: better than I remembered.&quot;,
       &quot;reviewerId&quot;: &quot;u1&quot;,
-… 4 more lines</pre><details><summary>Full response body</summary><pre>{
+... 4 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;type&quot;: &quot;https://rayfold.dev/errors/VersionConflict&quot;,
   &quot;title&quot;: &quot;VersionConflict&quot;,
   &quot;status&quot;: 412,
@@ -11616,7 +12208,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;ifVersion&quot;: 1
     }
   ]
-… 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -11636,7 +12228,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         &quot;rating&quot;: 2,
         &quot;body&quot;: &quot;Too slow for me.&quot;,
         &quot;reviewerId&quot;: &quot;u1&quot;,
-… 6 more lines</pre><details><summary>Full request body</summary><pre>{
+... 6 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -11760,7 +12352,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;extensions&quot;: {
         &quot;code&quot;: &quot;BAD_USER_INPUT&quot;
       }
-… 4 more lines</pre><details><summary>Full response body</summary><pre>{
+... 4 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;errors&quot;: [
     {
       &quot;message&quot;: &quot;price must be &gt;= 0&quot;,
@@ -11796,10 +12388,10 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         }
       },
       &quot;shape&quot;: &quot;{ id price }&quot;,
-      &quot;key&quot;: &quot;cc5bd515ec054bde886210743f61000b&quot;
+      &quot;key&quot;: &quot;321c2e2fa3b9465b957db3c6fe8b3bbc&quot;
     }
   ]
-… 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -11819,7 +12411,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         &quot;price&quot;: &quot;10.75&quot;
       }
     }
-… 6 more lines</pre><details><summary>Full request body</summary><pre>{
+... 6 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;rayfold&quot;: &quot;0.1&quot;,
   &quot;ops&quot;: [
     {
@@ -11832,7 +12424,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
         }
       },
       &quot;shape&quot;: &quot;{ id price }&quot;,
-      &quot;key&quot;: &quot;cc5bd515ec054bde886210743f61000b&quot;
+      &quot;key&quot;: &quot;321c2e2fa3b9465b957db3c6fe8b3bbc&quot;
     }
   ]
 }</pre></details><details><summary>Full response body</summary><pre>{
@@ -11970,7 +12562,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;extensions&quot;: {
         &quot;code&quot;: &quot;NOT_FOUND&quot;
       }
-… 4 more lines</pre><details><summary>Full response body</summary><pre>{
+... 4 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;errors&quot;: [
     {
       &quot;message&quot;: &quot;Review not found&quot;,
@@ -12026,7 +12618,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
     },
     {
       &quot;del&quot;: &quot;Review:r2&quot;
-… 7 more lines</pre><details><summary>Full response body</summary><pre>{
+... 7 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;ok&quot;: {
     &quot;$type&quot;: &quot;Review&quot;,
@@ -12085,7 +12677,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
     },
     {
       &quot;del&quot;: &quot;Review:r2&quot;
-… 8 more lines</pre><details><summary>Full response body</summary><pre>{
+... 8 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;ok&quot;: {
     &quot;$type&quot;: &quot;Review&quot;,
@@ -12178,7 +12770,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;title&quot;: &quot;Ficciones&quot;,
       &quot;format&quot;: &quot;PAPERBACK&quot;,
       &quot;price&quot;: &quot;9.00&quot;,
-… 88 more lines</pre><details><summary>Full response body</summary><pre>{
+... 88 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;b11&quot;,
@@ -12402,7 +12994,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
           &quot;id&quot;: &quot;b14&quot;,
           &quot;title&quot;: &quot;Ficciones&quot;,
           &quot;price&quot;: &quot;9.00&quot;,
-… 81 more lines</pre><details><summary>Full response body</summary><pre>{
+... 81 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -12517,7 +13109,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       },
       &quot;shape&quot;: &quot;{ items { id title price author { name } } total }&quot;
     }
-… 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> public, max-age=60
 <span class="hk">content-type:</span> application/rayfold-frames+json
 <span class="hk">etag:</span> &quot;sha256-333c30cf42c67f6f663e6e885312103612b5d53bd4a2a835861a6725e2112fb1&quot;
@@ -12538,7 +13130,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       },
       {
         &quot;$type&quot;: &quot;Book&quot;,
-… 106 more lines</pre><details><summary>Full request body</summary><pre>{
+... 106 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -12705,7 +13297,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       }
     },
     {
-… 134 more lines</pre><details><summary>Full response body</summary><pre>{
+... 134 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;$type&quot;: &quot;Book&quot;,
@@ -12893,7 +13485,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;title&quot;: &quot;Frankenstein; Or, The Modern Prometheus&quot;,
       &quot;format&quot;: &quot;EBOOK&quot;,
       &quot;price&quot;: &quot;0.00&quot;,
-… 45 more lines</pre><details><summary>Full response body</summary><pre>{
+... 45 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;g41445&quot;,
@@ -12982,7 +13574,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;title&quot;: &quot;The Velvet Glove&quot;,
       &quot;format&quot;: &quot;EBOOK&quot;,
       &quot;price&quot;: &quot;0.00&quot;,
-… 171 more lines</pre><details><summary>Full response body</summary><pre>{
+... 171 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;g10102&quot;,
@@ -13194,7 +13786,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
           &quot;id&quot;: &quot;g62404&quot;,
           &quot;title&quot;: &quot;Frankenstein, ou le Prométhée moderne Volume 1 (of 3)&quot;
         },
-… 106 more lines</pre><details><summary>Full response body</summary><pre>{
+... 106 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;f&quot;: {
       &quot;items&quot;: [
@@ -13334,7 +13926,7 @@ data: {&quot;data&quot;:{&quot;stockChanged&quot;:{&quot;bookId&quot;:&quot;b2&q
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
     },
-… 16 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 16 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -13506,7 +14098,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g1086&quot;,
           &quot;title&quot;: &quot;A Horse's Tale&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -13745,7 +14337,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g3200&quot;,
           &quot;title&quot;: &quot;The Entire Project Gutenberg Works of Mark Twain&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -13984,7 +14576,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g5841&quot;,
           &quot;title&quot;: &quot;Sketches New and Old, Part 6.&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -14223,7 +14815,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g7200&quot;,
           &quot;title&quot;: &quot;The Adventures of Tom Sawyer, Part 8.&quot;
         },
-… 179 more lines</pre><details><summary>Full response body</summary><pre>{
+... 179 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -14446,7 +15038,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g1045&quot;,
           &quot;title&quot;: &quot;Venus and Adonis&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -14685,7 +15277,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g1506&quot;,
           &quot;title&quot;: &quot;The Two Noble Kinsmen&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -14924,7 +15516,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g15942&quot;,
           &quot;title&quot;: &quot;Antoine et Cléopâtre&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -15163,7 +15755,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g18179&quot;,
           &quot;title&quot;: &quot;Othello&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -15402,7 +15994,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g2268&quot;,
           &quot;title&quot;: &quot;Antony and Cleopatra&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -15641,7 +16233,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g39636&quot;,
           &quot;title&quot;: &quot;Kuningas Henrik Neljäs II&quot;
         },
-… 195 more lines</pre><details><summary>Full response body</summary><pre>{
+... 195 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -15880,7 +16472,7 @@ RB, 1704 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;g6924&quot;,
           &quot;title&quot;: &quot;Richard III&quot;
         },
-… 115 more lines</pre><details><summary>Full response body</summary><pre>{
+... 115 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;books&quot;: {
       &quot;items&quot;: [
@@ -16029,7 +16621,7 @@ RB, 1704 bytes on the wire, shown decoded:
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
     }
-… 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -16049,7 +16641,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g1086&quot;,
         &quot;title&quot;: &quot;A Horse's Tale&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -16295,7 +16887,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -16315,7 +16907,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g3200&quot;,
         &quot;title&quot;: &quot;The Entire Project Gutenberg Works of Mark Twain&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -16562,7 +17154,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -16582,7 +17174,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g5841&quot;,
         &quot;title&quot;: &quot;Sketches New and Old, Part 6.&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -16829,7 +17421,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -16849,7 +17441,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g7200&quot;,
         &quot;title&quot;: &quot;The Adventures of Tom Sawyer, Part 8.&quot;
       },
-… 179 more lines</pre><details><summary>Full request body</summary><pre>{
+... 179 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -17080,7 +17672,7 @@ RB, 1704 bytes on the wire, shown decoded:
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
     }
-… 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 2 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -17100,7 +17692,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g1045&quot;,
         &quot;title&quot;: &quot;Venus and Adonis&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -17346,7 +17938,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -17366,7 +17958,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g1506&quot;,
         &quot;title&quot;: &quot;The Two Noble Kinsmen&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -17613,7 +18205,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -17633,7 +18225,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g15942&quot;,
         &quot;title&quot;: &quot;Antoine et Cléopâtre&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -17880,7 +18472,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -17900,7 +18492,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g18179&quot;,
         &quot;title&quot;: &quot;Othello&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -18147,7 +18739,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -18167,7 +18759,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g2268&quot;,
         &quot;title&quot;: &quot;Antony and Cleopatra&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -18414,7 +19006,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -18434,7 +19026,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g39636&quot;,
         &quot;title&quot;: &quot;Kuningas Henrik Neljäs II&quot;
       },
-… 195 more lines</pre><details><summary>Full request body</summary><pre>{
+... 195 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -18681,7 +19273,7 @@ RB, 1704 bytes on the wire, shown decoded:
       },
       &quot;shape&quot;: &quot;{ items { id title } total hasMore cursor }&quot;,
       &quot;compact&quot;: true
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -18701,7 +19293,7 @@ RB, 1704 bytes on the wire, shown decoded:
         &quot;id&quot;: &quot;g6924&quot;,
         &quot;title&quot;: &quot;Richard III&quot;
       },
-… 115 more lines</pre><details><summary>Full request body</summary><pre>{
+... 115 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -20404,7 +20996,7 @@ RB, 1308 bytes on the wire, shown decoded:
       &quot;title&quot;: &quot;Northanger Abbey&quot;,
       &quot;format&quot;: &quot;EBOOK&quot;,
       &quot;price&quot;: &quot;0.00&quot;,
-… 45 more lines</pre><details><summary>Full response body</summary><pre>{
+... 45 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;g105&quot;,
@@ -20490,7 +21082,7 @@ RB, 1308 bytes on the wire, shown decoded:
               &quot;title&quot;: &quot;Persuasion&quot;
             },
             {
-… 26 more lines</pre><details><summary>Full response body</summary><pre>{
+... 26 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;book&quot;: {
       &quot;id&quot;: &quot;g1342&quot;,
@@ -20898,7 +21490,7 @@ RB, 262 bytes on the wire, shown decoded:
     {
       &quot;id&quot;: 2,
       &quot;op&quot;: &quot;books&quot;,
-… 41 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 41 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -20978,7 +21570,7 @@ RB, 262 bytes on the wire, shown decoded:
     },
     {
       &quot;id&quot;: 2,
-… 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -21059,7 +21651,7 @@ RB, 262 bytes on the wire, shown decoded:
     },
     {
       &quot;id&quot;: 2,
-… 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -21140,7 +21732,7 @@ RB, 262 bytes on the wire, shown decoded:
     },
     {
       &quot;id&quot;: 2,
-… 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -21221,7 +21813,7 @@ RB, 262 bytes on the wire, shown decoded:
     },
     {
       &quot;id&quot;: 2,
-… 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -21302,7 +21894,7 @@ RB, 262 bytes on the wire, shown decoded:
     },
     {
       &quot;id&quot;: 2,
-… 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 42 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -21483,7 +22075,7 @@ RB, 12853 bytes on the wire, shown decoded:
       &quot;id&quot;: 2,
       &quot;op&quot;: &quot;books&quot;,
       &quot;args&quot;: {
-… 38 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 38 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -21655,7 +22247,7 @@ RB, 12853 bytes on the wire, shown decoded:
     &quot;total&quot;: 78090,
     &quot;hasMore&quot;: true,
     &quot;cursor&quot;: &quot;g14710&quot;
-… 3 more lines</pre><details><summary>Full response body</summary><pre>{
+... 3 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;items&quot;: [
@@ -22171,7 +22763,7 @@ RB, 12853 bytes on the wire, shown decoded:
         &quot;name&quot;: &quot;Walter Scott&quot;
       }
     },
-… 135 more lines</pre><details><summary>Full response body</summary><pre>{
+... 135 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;b0&quot;: {
       &quot;id&quot;: &quot;g1&quot;,
@@ -22340,7 +22932,7 @@ RB, 12853 bytes on the wire, shown decoded:
       &quot;op&quot;: &quot;book&quot;,
       &quot;args&quot;: {
         &quot;id&quot;: &quot;g4010&quot;
-… 177 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 177 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -22360,7 +22952,7 @@ RB, 12853 bytes on the wire, shown decoded:
 {&quot;id&quot;:14,&quot;data&quot;:{&quot;id&quot;:&quot;g52022&quot;,&quot;title&quot;:&quot;The Cricket Field: Or, the History and Science of the Game of Cricket&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;James Pycroft&quot;}},&quot;fin&quot;:true}
 {&quot;id&quot;:15,&quot;data&quot;:{&quot;id&quot;:&quot;g55925&quot;,&quot;title&quot;:&quot;Kant's gesammelte Schriften. Band V. Kritik der Urtheilskraft.&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;Immanuel Kant&quot;}},&quot;fin&quot;:true}
 {&quot;id&quot;:16,&quot;data&quot;:{&quot;id&quot;:&quot;g59830&quot;,&quot;title&quot;:&quot;History of the Conquest of Mexico; vol. 3/4&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;William Hickling Prescott&quot;}},&quot;fin&quot;:true}
-… 5 more lines</pre><details><summary>Full request body</summary><pre>{
+... 5 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -22597,7 +23189,7 @@ RB, 2148 bytes on the wire, shown decoded:
 {&quot;id&quot;:13,&quot;data&quot;:{&quot;id&quot;:&quot;g48117&quot;,&quot;title&quot;:&quot;The Heir to Grand-Pré&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;John Frederic Herbin&quot;}},&quot;fin&quot;:true}
 {&quot;id&quot;:14,&quot;data&quot;:{&quot;id&quot;:&quot;g52022&quot;,&quot;title&quot;:&quot;The Cricket Field: Or, the History and Science of the Game of Cricket&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;James Pycroft&quot;}},&quot;fin&quot;:true}
 {&quot;id&quot;:15,&quot;data&quot;:{&quot;id&quot;:&quot;g55925&quot;,&quot;title&quot;:&quot;Kant's gesammelte Schriften. Band V. Kritik der Urtheilskraft.&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;Immanuel Kant&quot;}},&quot;fin&quot;:true}
-… 6 more lines</pre><details><summary>Full response body</summary><pre>RB, 2148 bytes on the wire, shown decoded:
+... 6 more lines</pre><details><summary>Full response body</summary><pre>RB, 2148 bytes on the wire, shown decoded:
 {&quot;id&quot;:1,&quot;data&quot;:{&quot;id&quot;:&quot;g1&quot;,&quot;title&quot;:&quot;The Declaration of Independence of the United States of America&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;Thomas Jefferson&quot;}},&quot;fin&quot;:true}
 {&quot;id&quot;:2,&quot;data&quot;:{&quot;id&quot;:&quot;g4010&quot;,&quot;title&quot;:&quot;Marmion: A Tale Of Flodden Field&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;Walter Scott&quot;}},&quot;fin&quot;:true}
 {&quot;id&quot;:3,&quot;data&quot;:{&quot;id&quot;:&quot;g7971&quot;,&quot;title&quot;:&quot;The fugitive&quot;,&quot;author&quot;:{&quot;name&quot;:&quot;Rabindranath Tagore&quot;}},&quot;fin&quot;:true}
@@ -22676,7 +23268,7 @@ RB, 2148 bytes on the wire, shown decoded:
       &quot;id&quot;: 2,
       &quot;op&quot;: &quot;books&quot;,
       &quot;args&quot;: {
-… 18 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 18 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -22785,7 +23377,7 @@ RB, 2148 bytes on the wire, shown decoded:
       &quot;state&quot;: &quot;TRIAGE&quot;,
       &quot;count&quot;: 20,
       &quot;issues&quot;: [
-… 2613 more lines</pre><details><summary>Full response body</summary><pre>{
+... 2613 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;project&quot;: {
     &quot;id&quot;: &quot;p1&quot;,
     &quot;key&quot;: &quot;ING&quot;,
@@ -25439,7 +26031,7 @@ RB, 2148 bytes on the wire, shown decoded:
               {
                 &quot;id&quot;: &quot;i093&quot;,
                 &quot;key&quot;: &quot;ING-93&quot;,
-… 1650 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1650 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;board&quot;: {
       &quot;project&quot;: {
@@ -27139,7 +27731,7 @@ RB, 2148 bytes on the wire, shown decoded:
           &quot;items&quot;: [
             {
               &quot;$type&quot;: &quot;Issue&quot;,
-… 1925 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1925 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;project&quot;: {
@@ -29125,7 +29717,7 @@ RB, 9297 bytes on the wire, shown decoded:
               {
                 &quot;id&quot;: &quot;i093&quot;,
                 &quot;key&quot;: &quot;ING-93&quot;,
-… 1650 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1650 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;board&quot;: {
       &quot;project&quot;: {
@@ -30816,7 +31408,7 @@ RB, 9297 bytes on the wire, shown decoded:
               {
                 &quot;id&quot;: &quot;i093&quot;,
                 &quot;key&quot;: &quot;ING-93&quot;,
-… 1650 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1650 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;board&quot;: {
       &quot;project&quot;: {
@@ -32516,7 +33108,7 @@ RB, 9297 bytes on the wire, shown decoded:
           &quot;items&quot;: [
             {
               &quot;$type&quot;: &quot;Issue&quot;,
-… 1925 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1925 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;project&quot;: {
@@ -34487,7 +35079,7 @@ RB, 9297 bytes on the wire, shown decoded:
   &quot;reporterId&quot;: &quot;m12&quot;,
   &quot;assigneeId&quot;: &quot;m08&quot;,
   &quot;labelIds&quot;: [
-… 35 more lines</pre><details><summary>Full response body</summary><pre>{
+... 35 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i002&quot;,
   &quot;key&quot;: &quot;ING-2&quot;,
   &quot;title&quot;: &quot;Document the batch planner on reconnect&quot;,
@@ -34559,7 +35151,7 @@ RB, 9297 bytes on the wire, shown decoded:
           &quot;id&quot;: &quot;u06&quot;,
           &quot;name&quot;: &quot;Edsger Dijkstra&quot;,
           &quot;avatarUrl&quot;: &quot;https://avatars.example.com/u06.png&quot;,
-… 45 more lines</pre><details><summary>Full response body</summary><pre>{
+... 45 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;c0001&quot;,
@@ -34667,7 +35259,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;id&quot;: &quot;m12&quot;,
       &quot;role&quot;: &quot;GUEST&quot;,
       &quot;user&quot;: {
-… 8 more lines</pre><details><summary>Full response body</summary><pre>{
+... 8 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;m08&quot;,
@@ -34716,7 +35308,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;sprint&quot;: {
         &quot;name&quot;: &quot;ING Sprint 2&quot;,
         &quot;state&quot;: &quot;ACTIVE&quot;
-… 65 more lines</pre><details><summary>Full response body</summary><pre>{
+... 65 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;issue&quot;: {
       &quot;key&quot;: &quot;ING-2&quot;,
@@ -34831,7 +35423,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;role&quot;: &quot;MEMBER&quot;,
       &quot;user&quot;: {
         &quot;$type&quot;: &quot;User&quot;,
-… 116 more lines</pre><details><summary>Full response body</summary><pre>{
+... 116 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;$type&quot;: &quot;Issue&quot;,
@@ -34993,7 +35585,7 @@ RB, 9297 bytes on the wire, shown decoded:
           &quot;email&quot;: &quot;ada.lovelace@acme.example&quot;
         }
       },
-… 409 more lines</pre><details><summary>Full response body</summary><pre>{
+... 409 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;a0192&quot;,
@@ -35443,7 +36035,7 @@ RB, 9297 bytes on the wire, shown decoded:
           },
           &quot;sprint&quot;: {
             &quot;name&quot;: &quot;ING Sprint 1&quot;
-… 272 more lines</pre><details><summary>Full response body</summary><pre>{
+... 272 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;activity&quot;: {
       &quot;total&quot;: 192,
@@ -35768,7 +36360,7 @@ RB, 9297 bytes on the wire, shown decoded:
           &quot;user&quot;: {
             &quot;$type&quot;: &quot;User&quot;,
             &quot;id&quot;: &quot;u01&quot;,
-… 415 more lines</pre><details><summary>Full response body</summary><pre>{
+... 415 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;total&quot;: 192,
@@ -36229,7 +36821,7 @@ RB, 9297 bytes on the wire, shown decoded:
         &quot;updatedAt&quot;: &quot;2026-01-01T04:00:00.000Z&quot;,
         &quot;version&quot;: 1,
         &quot;projectId&quot;: &quot;p6&quot;,
-… 485 more lines</pre><details><summary>Full response body</summary><pre>{
+... 485 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;type&quot;: &quot;Issue&quot;,
@@ -36755,7 +37347,7 @@ RB, 9297 bytes on the wire, shown decoded:
           &quot;title&quot;: &quot;Cache policy pushdown in the Kotlin runtime&quot;
         },
         {
-… 43 more lines</pre><details><summary>Full response body</summary><pre>{
+... 43 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;search&quot;: {
       &quot;total&quot;: 59,
@@ -36851,7 +37443,7 @@ RB, 9297 bytes on the wire, shown decoded:
         &quot;title&quot;: &quot;Cache policy pushdown in the Kotlin runtime&quot;
       },
       {
-… 46 more lines</pre><details><summary>Full response body</summary><pre>{
+... 46 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;total&quot;: 59,
@@ -36949,7 +37541,7 @@ RB, 9297 bytes on the wire, shown decoded:
   &quot;reporterId&quot;: &quot;m01&quot;,
   &quot;assigneeId&quot;: null,
   &quot;labelIds&quot;: [],
-… 6 more lines</pre><details><summary>Full response body</summary><pre>{
+... 6 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i1000&quot;,
   &quot;key&quot;: &quot;ING-101&quot;,
   &quot;title&quot;: &quot;Ship the migration&quot;,
@@ -36992,7 +37584,7 @@ RB, 9297 bytes on the wire, shown decoded:
   &quot;reporterId&quot;: &quot;m01&quot;,
   &quot;assigneeId&quot;: null,
   &quot;labelIds&quot;: [],
-… 6 more lines</pre><details><summary>Full response body</summary><pre>{
+... 6 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i1000&quot;,
   &quot;key&quot;: &quot;ING-101&quot;,
   &quot;title&quot;: &quot;Ship the migration&quot;,
@@ -37075,7 +37667,7 @@ RB, 9297 bytes on the wire, shown decoded:
     },
     {
       &quot;id&quot;: 2,
-… 10 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 10 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -37142,7 +37734,7 @@ RB, 9297 bytes on the wire, shown decoded:
   &quot;reporterId&quot;: &quot;m01&quot;,
   &quot;assigneeId&quot;: null,
   &quot;labelIds&quot;: [],
-… 6 more lines</pre><details><summary>Full response body</summary><pre>{
+... 6 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i1000&quot;,
   &quot;key&quot;: &quot;ING-101&quot;,
   &quot;title&quot;: &quot;Batched&quot;,
@@ -37185,7 +37777,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;state&quot;: &quot;TRIAGE&quot;,
       &quot;count&quot;: 21,
       &quot;issues&quot;: [
-… 2584 more lines</pre><details><summary>Full response body</summary><pre>{
+... 2584 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;project&quot;: {
     &quot;id&quot;: &quot;p1&quot;,
     &quot;key&quot;: &quot;ING&quot;,
@@ -39806,7 +40398,7 @@ RB, 9297 bytes on the wire, shown decoded:
           &quot;email&quot;: &quot;ada.lovelace@acme.example&quot;
         }
       },
-… 409 more lines</pre><details><summary>Full response body</summary><pre>{
+... 409 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;a0192&quot;,
@@ -40273,7 +40865,7 @@ RB, 9297 bytes on the wire, shown decoded:
           &quot;state&quot;: &quot;TODO&quot;,
           &quot;count&quot;: 9
         },
-… 200 more lines</pre><details><summary>Full response body</summary><pre>{
+... 200 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;board&quot;: {
       &quot;columns&quot;: [
@@ -40508,7 +41100,7 @@ RB, 9297 bytes on the wire, shown decoded:
     },
     {
       &quot;id&quot;: 2,
-… 19 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 19 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -40584,7 +41176,7 @@ RB, 9297 bytes on the wire, shown decoded:
   &quot;reporterId&quot;: &quot;m03&quot;,
   &quot;assigneeId&quot;: &quot;m01&quot;,
   &quot;labelIds&quot;: [
-… 29 more lines</pre><details><summary>Full response body</summary><pre>{
+... 29 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i003&quot;,
   &quot;key&quot;: &quot;ING-3&quot;,
   &quot;title&quot;: &quot;Renamed by the first writer&quot;,
@@ -40654,7 +41246,7 @@ RB, 9297 bytes on the wire, shown decoded:
     &quot;createdAt&quot;: &quot;2025-12-07T08:00:00.000Z&quot;,
     &quot;updatedAt&quot;: &quot;2026-02-01T12:00:00.000Z&quot;,
     &quot;version&quot;: 2,
-… 35 more lines</pre><details><summary>Full response body</summary><pre>{
+... 35 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;type&quot;: &quot;https://example.com/errors/precondition_failed&quot;,
   &quot;title&quot;: &quot;precondition_failed&quot;,
   &quot;status&quot;: 412,
@@ -40746,7 +41338,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;extensions&quot;: {
         &quot;code&quot;: &quot;CONFLICT&quot;,
         &quot;actual&quot;: 2
-… 5 more lines</pre><details><summary>Full response body</summary><pre>{
+... 5 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;errors&quot;: [
     {
       &quot;message&quot;: &quot;Issue i003 is at version 2&quot;,
@@ -40786,7 +41378,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;shape&quot;: &quot;{ version }&quot;
     }
   ]
-… 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -40837,7 +41429,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;shape&quot;: &quot;{ key title version }&quot;
     }
   ]
-… 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -40857,7 +41449,7 @@ RB, 9297 bytes on the wire, shown decoded:
         &quot;title&quot;: &quot;Renamed by the first writer&quot;,
         &quot;version&quot;: 2
       }
-… 4 more lines</pre><details><summary>Full request body</summary><pre>{
+... 4 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -40923,7 +41515,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;projectId&quot;: &quot;p1&quot;,
       &quot;sprintId&quot;: &quot;s02&quot;,
       &quot;reporterId&quot;: &quot;m10&quot;,
-… 897 more lines</pre><details><summary>Full response body</summary><pre>{
+... 897 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;items&quot;: [
     {
       &quot;id&quot;: &quot;i097&quot;,
@@ -41910,7 +42502,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;set&quot;: &quot;Sprint:s02&quot;,
       &quot;value&quot;: {
         &quot;$type&quot;: &quot;Sprint&quot;,
-… 111 more lines</pre><details><summary>Full response body</summary><pre>{
+... 111 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;ok&quot;: {
     &quot;sprint&quot;: {
@@ -42067,7 +42659,7 @@ RB, 9297 bytes on the wire, shown decoded:
       &quot;state&quot;: &quot;TRIAGE&quot;,
       &quot;count&quot;: 20,
       &quot;issues&quot;: [
-… 2613 more lines</pre><details><summary>Full response body</summary><pre>{
+... 2613 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;project&quot;: {
     &quot;id&quot;: &quot;p1&quot;,
     &quot;key&quot;: &quot;ING&quot;,
@@ -44730,7 +45322,7 @@ data: {&quot;event&quot;:&quot;IssueMoved&quot;,&quot;issueId&quot;:&quot;i078&q
   &quot;reporterId&quot;: &quot;m12&quot;,
   &quot;assigneeId&quot;: &quot;m02&quot;,
   &quot;labelIds&quot;: [
-… 29 more lines</pre><details><summary>Full response body</summary><pre>{
+... 29 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i078&quot;,
   &quot;key&quot;: &quot;ING-78&quot;,
   &quot;title&quot;: &quot;Refactor the WebSocket transport on reconnect&quot;,
@@ -44796,7 +45388,7 @@ data: {&quot;event&quot;:&quot;IssueMoved&quot;,&quot;issueId&quot;:&quot;i078&q
   &quot;reporterId&quot;: &quot;m12&quot;,
   &quot;assigneeId&quot;: &quot;m02&quot;,
   &quot;labelIds&quot;: [
-… 29 more lines</pre><details><summary>Full response body</summary><pre>{
+... 29 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i078&quot;,
   &quot;key&quot;: &quot;ING-78&quot;,
   &quot;title&quot;: &quot;Refactor the WebSocket transport on reconnect&quot;,
@@ -44930,7 +45522,7 @@ data: {&quot;data&quot;:{&quot;projectFeed&quot;:{&quot;issueId&quot;:&quot;i078
         &quot;id&quot;: &quot;i078&quot;,
         &quot;to&quot;: &quot;IN_PROGRESS&quot;
       },
-      &quot;key&quot;: &quot;9fdc333ae215493bb8a090f66f327ea8&quot;
+      &quot;key&quot;: &quot;82f2289940da41baa1480ed460dc44de&quot;
     }
   ]
 }</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
@@ -44953,7 +45545,7 @@ data: {&quot;data&quot;:{&quot;projectFeed&quot;:{&quot;issueId&quot;:&quot;i078
       &quot;set&quot;: &quot;Issue:i078&quot;,
       &quot;value&quot;: {
         &quot;$type&quot;: &quot;Issue&quot;,
-… 27 more lines</pre><details><summary>Full response body</summary><pre>{
+... 27 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;ok&quot;: {
     &quot;$type&quot;: &quot;Issue&quot;,
@@ -45026,7 +45618,7 @@ data: {&quot;data&quot;:{&quot;projectFeed&quot;:{&quot;issueId&quot;:&quot;i078
       &quot;state&quot;: &quot;TRIAGE&quot;,
       &quot;count&quot;: 20,
       &quot;issues&quot;: [
-… 2613 more lines</pre><details><summary>Full response body</summary><pre>{
+... 2613 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;project&quot;: {
     &quot;id&quot;: &quot;p1&quot;,
     &quot;key&quot;: &quot;ING&quot;,
@@ -47689,7 +48281,7 @@ data: {&quot;event&quot;:&quot;IssueMoved&quot;,&quot;issueId&quot;:&quot;i078&q
   &quot;reporterId&quot;: &quot;m12&quot;,
   &quot;assigneeId&quot;: &quot;m02&quot;,
   &quot;labelIds&quot;: [
-… 29 more lines</pre><details><summary>Full response body</summary><pre>{
+... 29 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i078&quot;,
   &quot;key&quot;: &quot;ING-78&quot;,
   &quot;title&quot;: &quot;Refactor the WebSocket transport on reconnect&quot;,
@@ -47755,7 +48347,7 @@ data: {&quot;event&quot;:&quot;IssueMoved&quot;,&quot;issueId&quot;:&quot;i078&q
       &quot;state&quot;: &quot;TRIAGE&quot;,
       &quot;count&quot;: 20,
       &quot;issues&quot;: [
-… 2574 more lines</pre><details><summary>Full response body</summary><pre>{
+... 2574 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;project&quot;: {
     &quot;id&quot;: &quot;p1&quot;,
     &quot;key&quot;: &quot;ING&quot;,
@@ -50401,7 +50993,7 @@ data: {&quot;data&quot;:{&quot;projectFeed&quot;:{&quot;issueId&quot;:&quot;i078
               {
                 &quot;id&quot;: &quot;i093&quot;,
                 &quot;key&quot;: &quot;ING-93&quot;,
-… 1626 more lines</pre><details><summary>Full response body</summary><pre>{
+... 1626 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;board&quot;: {
       &quot;project&quot;: {
@@ -52102,7 +52694,7 @@ data: {&quot;data&quot;:{&quot;projectFeed&quot;:{&quot;issueId&quot;:&quot;i078
       }
     },
     {
-… 10 more lines</pre><details><summary>Full response body</summary><pre>{
+... 10 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;ok&quot;: {
     &quot;$type&quot;: &quot;Issue&quot;,
@@ -52395,7 +52987,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
                   }
                 }
               },
-… 3745 more lines</pre><details><summary>Full response body</summary><pre>{
+... 3745 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;data&quot;: {
     &quot;issues&quot;: {
       &quot;items&quot;: [
@@ -56302,7 +56894,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;reporterId&quot;: &quot;m09&quot;,
   &quot;assigneeId&quot;: &quot;m03&quot;,
   &quot;labelIds&quot;: [
-… 35 more lines</pre><details><summary>Full response body</summary><pre>{
+... 35 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i004&quot;,
   &quot;key&quot;: &quot;ING-4&quot;,
   &quot;title&quot;: &quot;Cache cold starts after a redeploy&quot;,
@@ -56378,7 +56970,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
       ],
       &quot;extensions&quot;: {
         &quot;code&quot;: &quot;UNAVAILABLE&quot;
-… 11 more lines</pre><details><summary>Full response body</summary><pre>{
+... 11 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;errors&quot;: [
     {
       &quot;message&quot;: &quot;The customer tracker is not answering&quot;,
@@ -56439,7 +57031,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
       &quot;code&quot;: &quot;unavailable&quot;,
       &quot;message&quot;: &quot;The customer's tracker is not answering&quot;,
       &quot;path&quot;: &quot;externalState&quot;
-… 4 more lines</pre><details><summary>Full response body</summary><pre>{
+... 4 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;$type&quot;: &quot;Issue&quot;,
@@ -56493,7 +57085,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
       &quot;message&quot;: &quot;The billing service is not answering&quot;,
       &quot;path&quot;: &quot;spend&quot;
     }
-… 3 more lines</pre><details><summary>Full response body</summary><pre>{
+... 3 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;data&quot;: {
     &quot;$type&quot;: &quot;Project&quot;,
@@ -56569,7 +57161,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;reporterId&quot;: &quot;m09&quot;,
   &quot;assigneeId&quot;: &quot;m03&quot;,
   &quot;labelIds&quot;: [
-… 29 more lines</pre><details><summary>Full response body</summary><pre>{
+... 29 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: &quot;i004&quot;,
   &quot;key&quot;: &quot;ING-4&quot;,
   &quot;title&quot;: &quot;Cache cold starts after a redeploy&quot;,
@@ -56688,7 +57280,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
             }
           },
           &quot;additionalProperties&quot;: false,
-… 22291 more lines</pre><details><summary>Full response body</summary><pre>{
+... 22291 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;jsonrpc&quot;: &quot;2.0&quot;,
   &quot;id&quot;: 1,
   &quot;result&quot;: {
@@ -79014,7 +79606,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
       &quot;shape&quot;: &quot;{ key state }&quot;
     }
   ]
-… 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -79034,7 +79626,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
       ]
     }
   ],
-… 5 more lines</pre><details><summary>Full request body</summary><pre>{
+... 5 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -79090,7 +79682,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
       &quot;shape&quot;: &quot;{ total }&quot;
     }
   ]
-… 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 1 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">cache-control:</span> no-store
 <span class="hk">content-type:</span> application/rayfold-frames+json
 
@@ -79149,7 +79741,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A web page posts a command as text/plain, the one body type browsers send to other sites without a preflight check.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59302
+<span class="hk">host:</span> 127.0.0.1:58782
 <span class="hk">content-type:</span> text/plain
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer admin
@@ -79179,7 +79771,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Content-Type text/plain is not accepted; send application/rayfold+json&quot;,
   &quot;code&quot;: &quot;invalid_argument&quot;
 }</pre></div></details></td><td>Bodies must be application/rayfold+json, application/json or application/rayfold; anything else gets 415 before parsing.</td><td>The same command sent as application/rayfold+json runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page on another site sends a JSON command with the user's credentials.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59324
+<span class="hk">host:</span> 127.0.0.1:58833
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer admin
@@ -79208,7 +79800,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Origin https://evil.example is not allowed&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>Requests that change data and carry an Origin must come from the server's own origin or an allowed one; others get 403.</td><td>The same request from the server's own origin runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An HTML form on another site posts to POST /orders/{id}/pay, a route with no body.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /orders/o1/pay
-<span class="hk">host:</span> 127.0.0.1:59358
+<span class="hk">host:</span> 127.0.0.1:58839
 <span class="hk">content-type:</span> application/x-www-form-urlencoded
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer u1
@@ -79225,7 +79817,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Origin https://evil.example is not allowed&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>The Origin check covers the REST-style routes too, and POST routes also require an Idempotency-Key header, which a form cannot set.</td><td>The same POST from an app, with its Idempotency-Key, pays the order.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page renames its own domain to 127.0.0.1 (DNS rebinding) to talk to a server on the user's machine as if it were the same site.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /rayfold/manifest
-<span class="hk">host:</span> evil.example:59364</pre><pre class="res" aria-label="response"><span class="st-warn">403 Forbidden</span>
+<span class="hk">host:</span> evil.example:58860</pre><pre class="res" aria-label="response"><span class="st-warn">403 Forbidden</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/problem+json
 <span class="hk">cache-control:</span> no-store
@@ -79234,10 +79826,10 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;type&quot;: &quot;https://rayfold.dev/errors/permission_denied&quot;,
   &quot;title&quot;: &quot;permission denied&quot;,
   &quot;status&quot;: 403,
-  &quot;detail&quot;: &quot;Host evil.example:59364 is not allowed on a loopback server&quot;,
+  &quot;detail&quot;: &quot;Host evil.example:58860 is not allowed on a loopback server&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>A server reached on a loopback address answers only loopback host names (localhost, 127.0.0.1, [::1]); other Host headers get 403.</td><td>The same request with Host 127.0.0.1 is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A web page sends tools/call to the MCP endpoint of a Rayfold server on the user's machine or intranet.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /mcp
-<span class="hk">host:</span> 127.0.0.1:59386
+<span class="hk">host:</span> 127.0.0.1:58883
 <span class="hk">content-type:</span> application/json
 <span class="hk">origin:</span> https://evil.example
 <span class="hk">authorization:</span> Bearer admin
@@ -79265,7 +79857,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Origin https://evil.example is not allowed&quot;,
   &quot;code&quot;: &quot;permission_denied&quot;
 }</pre></div></details></td><td>MCP requests with a foreign Origin get 403, as the MCP specification requires, and loopback servers check the Host header.</td><td>An AI client (no browser Origin) lists and calls tools.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page sends MCP JSON-RPC as text/plain to avoid the browser's preflight check.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /mcp
-<span class="hk">host:</span> 127.0.0.1:59391
+<span class="hk">host:</span> 127.0.0.1:58910
 <span class="hk">content-type:</span> text/plain
 
 {
@@ -79284,7 +79876,7 @@ null</pre></div><div class="ex"><pre class="req" aria-label="request"><span clas
   &quot;detail&quot;: &quot;Content-Type text/plain is not accepted; send application/json&quot;,
   &quot;code&quot;: &quot;invalid_argument&quot;
 }</pre></div></details></td><td>The MCP endpoint accepts only application/json (415 otherwise).</td><td>tools/list as application/json is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A page on another site opens a WebSocket to Rayfold; the browser attaches the user's cookies to the handshake.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /rayfold/ws
-<span class="hk">host:</span> 127.0.0.1:59397
+<span class="hk">host:</span> 127.0.0.1:58925
 <span class="hk">upgrade:</span> websocket
 <span class="hk">origin:</span> https://evil.example</pre><pre class="res" aria-label="response"><span class="st-warn">403 Forbidden</span>
 
@@ -79293,11 +79885,11 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A request nests its arguments 10,000 levels deep to exhaust the server's stack.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59403
+<span class="hk">host:</span> 127.0.0.1:58934
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
-{&quot;ops&quot;:[{&quot;id&quot;:1,&quot;op&quot;:&quot;book&quot;,&quot;args&quot;:{&quot;id&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;… (60,049 characters in all)</pre><pre class="res" aria-label="response"><span class="st-warn">400 Bad Request</span>
+{&quot;ops&quot;:[{&quot;id&quot;:1,&quot;op&quot;:&quot;book&quot;,&quot;args&quot;:{&quot;id&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;:{&quot;x&quot;... (60,049 characters in all)</pre><pre class="res" aria-label="response"><span class="st-warn">400 Bad Request</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/json; charset=utf-8
 
@@ -79308,11 +79900,11 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>Arguments and variables deeper than 64 levels fail the batch with invalid_argument, checked without recursion.</td><td>A normal request is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A shape nested 5,000 levels deep, to make the parser recurse until it crashes.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59424
+<span class="hk">host:</span> 127.0.0.1:58961
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
-{&quot;ops&quot;:[{&quot;id&quot;:1,&quot;op&quot;:&quot;book&quot;,&quot;args&quot;:{&quot;id&quot;:&quot;b1&quot;},&quot;shape&quot;:&quot;{ author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { … (52,766 characters in all)</pre><pre class="res" aria-label="response"><span class="st-warn">400 Bad Request</span>
+{&quot;ops&quot;:[{&quot;id&quot;:1,&quot;op&quot;:&quot;book&quot;,&quot;args&quot;:{&quot;id&quot;:&quot;b1&quot;},&quot;shape&quot;:&quot;{ author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { items { author { books { ... (52,766 characters in all)</pre><pre class="res" aria-label="response"><span class="st-warn">400 Bad Request</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/json; charset=utf-8
 
@@ -79324,7 +79916,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
   &quot;fin&quot;: true,
   &quot;id&quot;: 1
 }</pre></div></details></td><td>The shape parser stops at 64 levels of nesting and answers invalid_argument; execution depth is capped separately (8 by default).</td><td>A shape nested a few levels runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>Three expensive list queries plus a fourth with a page size of -100,000, hoping the negative size cancels out their cost.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59432
+<span class="hk">host:</span> 127.0.0.1:58986
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -79343,7 +79935,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
       &quot;id&quot;: 2,
       &quot;op&quot;: &quot;books&quot;,
       &quot;args&quot;: {
-… 27 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 27 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/rayfold-frames+json
 <span class="hk">cache-control:</span> no-store
@@ -79401,10 +79993,10 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
     }
   ]
 }</pre></details></div></details></td><td>An op with invalid arguments never runs and costs 0; untrusted page sizes count as the largest page; every op costs at least 1.</td><td>One of the expensive queries alone fits the budget and runs.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A 1.5 MB request body, to make the server buffer and parse huge input.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59435
+<span class="hk">host:</span> 127.0.0.1:59022
 <span class="hk">content-type:</span> application/rayfold+json
 
-{&quot;ops&quot;:[{&quot;id&quot;:1,&quot;op&quot;:&quot;book&quot;,&quot;args&quot;:{&quot;id&quot;:&quot;b1&quot;,&quot;pad&quot;:&quot;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx… (1,500,058 characters in all)</pre><pre class="res" aria-label="response"><span class="st-warn">413 Content Too Large</span>
+{&quot;ops&quot;:[{&quot;id&quot;:1,&quot;op&quot;:&quot;book&quot;,&quot;args&quot;:{&quot;id&quot;:&quot;b1&quot;,&quot;pad&quot;:&quot;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... (1,500,058 characters in all)</pre><pre class="res" aria-label="response"><span class="st-warn">413 Content Too Large</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/problem+json
 <span class="hk">cache-control:</span> no-store
@@ -79420,7 +80012,7 @@ Origin https://evil.example is not allowed</pre></div></details></td><td>The han
 text frame announcing 2,097,152 bytes, then 1.2 MB of data</pre><pre class="res" aria-label="response"><span class="st-ok">101 </span>
 
 close frame, code 1009 (message too big)</pre></div></details></td><td>Frames and assembled messages over 1 MiB close the connection with code 1009 (message too big).</td><td>A normal message on a new socket is answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends thousands of distinct inline shapes; each one used to be remembered forever.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59501
+<span class="hk">host:</span> 127.0.0.1:59050
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -79454,7 +80046,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>Shapes learned from requests are kept up to a limit (10,000 by default; 10 in this test), least recently used first out; rejected shapes are never kept.</td><td>Shapes registered by the server itself stay, and every request is still answered.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends thousands of commands with new idempotency keys; the records used to be kept until someone read them again.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59523
+<span class="hk">host:</span> 127.0.0.1:59073
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -79490,7 +80082,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     }
   },
   &quot;patch&quot;: [
-… 28 more lines</pre><details><summary>Full response body</summary><pre>{
+... 28 more lines</pre><details><summary>Full response body</summary><pre>{
   &quot;id&quot;: 1,
   &quot;ok&quot;: {
     &quot;$type&quot;: &quot;Book&quot;,
@@ -79534,7 +80126,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></details></div></details></td><td>Records expire (24 hours by default), expired ones are swept on every write, and past a size limit (100,000 by default; 10 here) the oldest go first.</td><td>The most recent key still replays its result.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends a negative or enormous deadline.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59554
+<span class="hk">host:</span> 127.0.0.1:59140
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
@@ -79566,7 +80158,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A client reuses the key of a paid order's payOrder call on cancelOrder, so the cancel is answered with the stored payment result and never runs.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59560
+<span class="hk">host:</span> 127.0.0.1:59147
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">authorization:</span> Bearer u1
 
@@ -79594,7 +80186,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>A key is bound to its operation and arguments; reusing it for anything else is already_exists, and the write policy is checked before any replay.</td><td>Retrying payOrder with its own key replays the payment.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An app on a flaky network sends the same order twice at the same moment; both copies used to run.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59568
+<span class="hk">host:</span> 127.0.0.1:59155
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">authorization:</span> Bearer u1
 
@@ -79614,7 +80206,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
         }
       },
       &quot;key&quot;: &quot;attack-key-0000000001&quot;
-… 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 3 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/rayfold-frames+json
 <span class="hk">cache-control:</span> no-store
@@ -79635,7 +80227,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
           &quot;id&quot;: &quot;b3&quot;,
           &quot;title&quot;: &quot;Kindred&quot;
         }
-… 43 more lines</pre><details><summary>Full request body</summary><pre>{
+... 43 more lines</pre><details><summary>Full request body</summary><pre>{
   &quot;ops&quot;: [
     {
       &quot;id&quot;: 1,
@@ -79716,7 +80308,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
     <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody><tr><td><span class="chip chip-ok">refused</span></td><td>A customer asks for other customers' order ids with an explicit shape, to learn which orders exist.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59579
+<span class="hk">host:</span> 127.0.0.1:59164
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">authorization:</span> Bearer u2
 
@@ -79744,12 +80336,12 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>A denied entity at a nullable position reads as null even with an explicit shape, so forbidden and missing look the same.</td><td>The owner gets the order.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An anonymous caller downloads the manifest to read every permission rule, such as who may see costPrice.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">GET</span> /rayfold/manifest
-<span class="hk">host:</span> 127.0.0.1:59584</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+<span class="hk">host:</span> 127.0.0.1:59181</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/json; charset=utf-8
 
 (schema without policy expressions, 18,562 characters)</pre></div></details></td><td>The manifest keeps names and types but removes policy expressions; the full schema is opt-in, and the manifest can be switched off.</td><td>Clients still get every type and operation they need.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A batch points $ref at &quot;1.constructor&quot; or &quot;1.__proto__&quot; to pull built-in objects into the arguments.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59586
+<span class="hk">host:</span> 127.0.0.1:59197
 <span class="hk">content-type:</span> application/rayfold+json
 
 {
@@ -79768,7 +80360,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
       &quot;args&quot;: {
         &quot;id&quot;: {
           &quot;$ref&quot;: &quot;1.constructor&quot;
-… 5 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
+... 5 more lines</pre><pre class="res" aria-label="response"><span class="st-ok">200 OK</span>
 <span class="hk">x-content-type-options:</span> nosniff
 <span class="hk">content-type:</span> application/rayfold-frames+json
 <span class="hk">cache-control:</span> no-store
@@ -79795,7 +80387,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
     }
   ]
 }</pre></details></div></details></td><td>$ref paths read only the earlier result's own data; anything else resolves to nothing.</td><td>$ref to &quot;1.id&quot; passes the book's id along.</td><td>TypeScript</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A binary (RB) request carries an argument object whose key is &quot;__proto__&quot;, so decoding it would swap the object's prototype and smuggle in arguments.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59597
+<span class="hk">host:</span> 127.0.0.1:59206
 <span class="hk">content-type:</span> application/rayfold
 <span class="hk">accept:</span> application/rayfold+json
 
@@ -79812,7 +80404,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   },
   &quot;fin&quot;: true
 }</pre></div></details></td><td>The decoder stores every key as plain data, so the request fails validation as an unknown argument.</td><td>A normal binary request is answered.</td><td>TypeScript</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>An AI agent asks for a dry run of a command whose code forgets to check ctx.simulate, so the &quot;dry run&quot; would really write.</td><td>Only commands that declare @simulate accept dry runs, and only they get a .simulate tool in MCP; others answer failed_precondition.</td><td>Declared commands, such as placeOrder, still offer a dry run that writes nothing.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A rule denies payments over 1000, but Decimal amounts travel as text, and text compared with a number used to count as &quot;not greater&quot;.</td><td>Numbers and numeric text compare exactly by value (also beyond 2^53), and a rule that cannot be evaluated fails closed.</td><td>An amount of 999.99 is allowed.</td><td>TypeScript, Kotlin</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A client sends the id 9007199254740993 as a JSON number, which JavaScript silently rounds to a different id.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59612
+<span class="hk">host:</span> 127.0.0.1:59225
 <span class="hk">content-type:</span> application/rayfold+json
 <span class="hk">accept:</span> application/json
 
@@ -79838,7 +80430,7 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   &quot;fin&quot;: true,
   &quot;id&quot;: 1
 }</pre></div></details></td><td>Integers beyond 2^53 and Decimals written in exponent form are refused; send them as text.</td><td>The same id as text is accepted.</td><td>TypeScript</td></tr><tr><td><span class="chip chip-ok">refused</span></td><td>A browser second-guesses a response's type (MIME sniffing) and runs data as a script, or a shared cache keeps an error page.<details class="sec-ex"><summary>request and response</summary><div class="ex"><pre class="req" aria-label="request"><span class="verb">POST</span> /rayfold
-<span class="hk">host:</span> 127.0.0.1:59615
+<span class="hk">host:</span> 127.0.0.1:59240
 <span class="hk">content-type:</span> text/plain
 
 {}</pre><pre class="res" aria-label="response"><span class="st-warn">415 Unsupported Media Type</span>
@@ -79861,12 +80453,12 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
   <span class="eyebrow">All numbers</span>
   <h2>Every measured result</h2>
   <div class="charts" style="margin:14px 0 18px">
-    <figure class="bench"><figcaption><strong>Round trips per flow</strong> <span class="muted">requests, fewer is better</span></figcaption><svg viewBox="0 0 640 210" width="100%" role="img" aria-label="Round trips per flow per flow and implementation"><line x1="46" x2="630" y1="160" y2="160" class="grid"/><text x="40" y="164" text-anchor="end" class="ax">0</text><line x1="46" x2="630" y1="125" y2="125" class="grid"/><text x="40" y="129" text-anchor="end" class="ax">1</text><line x1="46" x2="630" y1="90" y2="90" class="grid"/><text x="40" y="94" text-anchor="end" class="ax">2</text><line x1="46" x2="630" y1="55" y2="55" class="grid"/><text x="40" y="59" text-anchor="end" class="ax">2</text><line x1="46" x2="630" y1="20" y2="20" class="grid"/><text x="40" y="24" text-anchor="end" class="ax">3</text><rect x="58" y="66.66666666666667" width="28" height="93.33333333333333" rx="3" class="bar s-rest"><title>A. product page (book + author + 3 reviews) / REST: 2 requests</title></rect><text x="72" y="62.66666666666667" text-anchor="middle" class="val">2</text><rect x="88" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-gql"><title>A. product page (book + author + 3 reviews) / GraphQL: 1 requests</title></rect><rect x="118" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold-soft"><title>A. product page (book + author + 3 reviews) / Rayfold (JSON): 1 requests</title></rect><rect x="148" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold"><title>A. product page (book + author + 3 reviews) / Rayfold (RB): 1 requests</title></rect><text x="162" y="109.33333333333334" text-anchor="middle" class="val">1</text><text x="118" y="178" text-anchor="middle" class="ax">A. product page (book + auth…</text><rect x="252.66666666666666" y="66.66666666666667" width="28" height="93.33333333333333" rx="3" class="bar s-rest"><title>B. catalogue list (20 books with author names) / REST: 2 requests</title></rect><text x="266.66666666666663" y="62.66666666666667" text-anchor="middle" class="val">2</text><rect x="282.66666666666663" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-gql"><title>B. catalogue list (20 books with author names) / GraphQL: 1 requests</title></rect><rect x="312.66666666666663" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold-soft"><title>B. catalogue list (20 books with author names) / Rayfold (JSON): 1 requests</title></rect><rect x="342.66666666666663" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold"><title>B. catalogue list (20 books with author names) / Rayfold (RB): 1 requests</title></rect><text x="356.66666666666663" y="109.33333333333334" text-anchor="middle" class="val">1</text><text x="312.66666666666663" y="178" text-anchor="middle" class="ax">B. catalogue list (20 books …</text><rect x="447.3333333333333" y="20" width="28" height="140" rx="3" class="bar s-rest"><title>C. place order then read it back with book stock / REST: 3 requests</title></rect><text x="461.3333333333333" y="16" text-anchor="middle" class="val">3</text><rect x="477.3333333333333" y="66.66666666666667" width="28" height="93.33333333333333" rx="3" class="bar s-gql"><title>C. place order then read it back with book stock / GraphQL: 2 requests</title></rect><rect x="507.3333333333333" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold-soft"><title>C. place order then read it back with book stock / Rayfold (JSON): 1 requests</title></rect><rect x="537.3333333333333" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold"><title>C. place order then read it back with book stock / Rayfold (RB): 1 requests</title></rect><text x="551.3333333333333" y="109.33333333333334" text-anchor="middle" class="val">1</text><text x="507.3333333333333" y="178" text-anchor="middle" class="ax">C. place order then read it …</text></svg></figure>
-    <figure class="bench"><figcaption><strong>Bytes downloaded per flow</strong> <span class="muted">bytes, fewer is better</span></figcaption><svg viewBox="0 0 640 210" width="100%" role="img" aria-label="Bytes downloaded per flow per flow and implementation"><line x1="46" x2="630" y1="160" y2="160" class="grid"/><text x="40" y="164" text-anchor="end" class="ax">0</text><line x1="46" x2="630" y1="125" y2="125" class="grid"/><text x="40" y="129" text-anchor="end" class="ax">703</text><line x1="46" x2="630" y1="90" y2="90" class="grid"/><text x="40" y="94" text-anchor="end" class="ax">1.4k</text><line x1="46" x2="630" y1="55" y2="55" class="grid"/><text x="40" y="59" text-anchor="end" class="ax">2.1k</text><line x1="46" x2="630" y1="20" y2="20" class="grid"/><text x="40" y="24" text-anchor="end" class="ax">2.8k</text><rect x="58" y="139.8220640569395" width="28" height="20.177935943060497" rx="3" class="bar s-rest"><title>A. product page (book + author + 3 reviews) / REST: 405 bytes</title></rect><text x="72" y="135.8220640569395" text-anchor="middle" class="val">405</text><rect x="88" y="145.95017793594306" width="28" height="14.04982206405694" rx="3" class="bar s-gql"><title>A. product page (book + author + 3 reviews) / GraphQL: 282 bytes</title></rect><rect x="118" y="144.95373665480426" width="28" height="15.04626334519573" rx="3" class="bar s-rayfold-soft"><title>A. product page (book + author + 3 reviews) / Rayfold (JSON): 302 bytes</title></rect><rect x="148" y="151.1814946619217" width="28" height="8.818505338078293" rx="3" class="bar s-rayfold"><title>A. product page (book + author + 3 reviews) / Rayfold (RB): 177 bytes</title></rect><text x="162" y="147.1814946619217" text-anchor="middle" class="val">177</text><text x="118" y="178" text-anchor="middle" class="ax">A. product page (book + auth…</text><rect x="252.66666666666666" y="20" width="28" height="140" rx="3" class="bar s-rest"><title>B. catalogue list (20 books with author names) / REST: 2.8k bytes</title></rect><text x="266.66666666666663" y="16" text-anchor="middle" class="val">2.8k</text><rect x="282.66666666666663" y="56.669039145907476" width="28" height="103.33096085409252" rx="3" class="bar s-gql"><title>B. catalogue list (20 books with author names) / GraphQL: 2.1k bytes</title></rect><rect x="312.66666666666663" y="56.220640569395016" width="28" height="103.77935943060498" rx="3" class="bar s-rayfold-soft"><title>B. catalogue list (20 books with author names) / Rayfold (JSON): 2.1k bytes</title></rect><rect x="342.66666666666663" y="106.19217081850533" width="28" height="53.80782918149466" rx="3" class="bar s-rayfold"><title>B. catalogue list (20 books with author names) / Rayfold (RB): 1.1k bytes</title></rect><text x="356.66666666666663" y="102.19217081850533" text-anchor="middle" class="val">1.1k</text><text x="312.66666666666663" y="178" text-anchor="middle" class="ax">B. catalogue list (20 books …</text><rect x="447.3333333333333" y="143.7081850533808" width="28" height="16.291814946619215" rx="3" class="bar s-rest"><title>C. place order then read it back with book stock / REST: 327 bytes</title></rect><text x="461.3333333333333" y="139.7081850533808" text-anchor="middle" class="val">327</text><rect x="477.3333333333333" y="152.1779359430605" width="28" height="7.822064056939502" rx="3" class="bar s-gql"><title>C. place order then read it back with book stock / GraphQL: 157 bytes</title></rect><rect x="507.3333333333333" y="149.0391459074733" width="28" height="10.96085409252669" rx="3" class="bar s-rayfold-soft"><title>C. place order then read it back with book stock / Rayfold (JSON): 220 bytes</title></rect><rect x="537.3333333333333" y="154.96797153024912" width="28" height="5.032028469750889" rx="3" class="bar s-rayfold"><title>C. place order then read it back with book stock / Rayfold (RB): 101 bytes</title></rect><text x="551.3333333333333" y="150.96797153024912" text-anchor="middle" class="val">101</text><text x="507.3333333333333" y="178" text-anchor="middle" class="ax">C. place order then read it …</text></svg></figure>
+    <figure class="bench"><figcaption><strong>Round trips per flow</strong> <span class="muted">requests, fewer is better</span></figcaption><svg viewBox="0 0 640 210" width="100%" role="img" aria-label="Round trips per flow per flow and implementation"><line x1="46" x2="630" y1="160" y2="160" class="grid"/><text x="40" y="164" text-anchor="end" class="ax">0</text><line x1="46" x2="630" y1="125" y2="125" class="grid"/><text x="40" y="129" text-anchor="end" class="ax">1</text><line x1="46" x2="630" y1="90" y2="90" class="grid"/><text x="40" y="94" text-anchor="end" class="ax">2</text><line x1="46" x2="630" y1="55" y2="55" class="grid"/><text x="40" y="59" text-anchor="end" class="ax">2</text><line x1="46" x2="630" y1="20" y2="20" class="grid"/><text x="40" y="24" text-anchor="end" class="ax">3</text><rect x="58" y="66.66666666666667" width="28" height="93.33333333333333" rx="3" class="bar s-rest"><title>A. product page (book + author + 3 reviews) / REST: 2 requests</title></rect><text x="72" y="62.66666666666667" text-anchor="middle" class="val">2</text><rect x="88" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-gql"><title>A. product page (book + author + 3 reviews) / GraphQL: 1 requests</title></rect><rect x="118" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold-soft"><title>A. product page (book + author + 3 reviews) / Rayfold (JSON): 1 requests</title></rect><rect x="148" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold"><title>A. product page (book + author + 3 reviews) / Rayfold (RB): 1 requests</title></rect><text x="162" y="109.33333333333334" text-anchor="middle" class="val">1</text><text x="118" y="178" text-anchor="middle" class="ax">A. product page (book + auth...</text><rect x="252.66666666666666" y="66.66666666666667" width="28" height="93.33333333333333" rx="3" class="bar s-rest"><title>B. catalogue list (20 books with author names) / REST: 2 requests</title></rect><text x="266.66666666666663" y="62.66666666666667" text-anchor="middle" class="val">2</text><rect x="282.66666666666663" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-gql"><title>B. catalogue list (20 books with author names) / GraphQL: 1 requests</title></rect><rect x="312.66666666666663" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold-soft"><title>B. catalogue list (20 books with author names) / Rayfold (JSON): 1 requests</title></rect><rect x="342.66666666666663" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold"><title>B. catalogue list (20 books with author names) / Rayfold (RB): 1 requests</title></rect><text x="356.66666666666663" y="109.33333333333334" text-anchor="middle" class="val">1</text><text x="312.66666666666663" y="178" text-anchor="middle" class="ax">B. catalogue list (20 books ...</text><rect x="447.3333333333333" y="20" width="28" height="140" rx="3" class="bar s-rest"><title>C. place order then read it back with book stock / REST: 3 requests</title></rect><text x="461.3333333333333" y="16" text-anchor="middle" class="val">3</text><rect x="477.3333333333333" y="66.66666666666667" width="28" height="93.33333333333333" rx="3" class="bar s-gql"><title>C. place order then read it back with book stock / GraphQL: 2 requests</title></rect><rect x="507.3333333333333" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold-soft"><title>C. place order then read it back with book stock / Rayfold (JSON): 1 requests</title></rect><rect x="537.3333333333333" y="113.33333333333334" width="28" height="46.666666666666664" rx="3" class="bar s-rayfold"><title>C. place order then read it back with book stock / Rayfold (RB): 1 requests</title></rect><text x="551.3333333333333" y="109.33333333333334" text-anchor="middle" class="val">1</text><text x="507.3333333333333" y="178" text-anchor="middle" class="ax">C. place order then read it ...</text></svg></figure>
+    <figure class="bench"><figcaption><strong>Bytes downloaded per flow</strong> <span class="muted">bytes, fewer is better</span></figcaption><svg viewBox="0 0 640 210" width="100%" role="img" aria-label="Bytes downloaded per flow per flow and implementation"><line x1="46" x2="630" y1="160" y2="160" class="grid"/><text x="40" y="164" text-anchor="end" class="ax">0</text><line x1="46" x2="630" y1="125" y2="125" class="grid"/><text x="40" y="129" text-anchor="end" class="ax">703</text><line x1="46" x2="630" y1="90" y2="90" class="grid"/><text x="40" y="94" text-anchor="end" class="ax">1.4k</text><line x1="46" x2="630" y1="55" y2="55" class="grid"/><text x="40" y="59" text-anchor="end" class="ax">2.1k</text><line x1="46" x2="630" y1="20" y2="20" class="grid"/><text x="40" y="24" text-anchor="end" class="ax">2.8k</text><rect x="58" y="139.8220640569395" width="28" height="20.177935943060497" rx="3" class="bar s-rest"><title>A. product page (book + author + 3 reviews) / REST: 405 bytes</title></rect><text x="72" y="135.8220640569395" text-anchor="middle" class="val">405</text><rect x="88" y="145.95017793594306" width="28" height="14.04982206405694" rx="3" class="bar s-gql"><title>A. product page (book + author + 3 reviews) / GraphQL: 282 bytes</title></rect><rect x="118" y="144.95373665480426" width="28" height="15.04626334519573" rx="3" class="bar s-rayfold-soft"><title>A. product page (book + author + 3 reviews) / Rayfold (JSON): 302 bytes</title></rect><rect x="148" y="151.1814946619217" width="28" height="8.818505338078293" rx="3" class="bar s-rayfold"><title>A. product page (book + author + 3 reviews) / Rayfold (RB): 177 bytes</title></rect><text x="162" y="147.1814946619217" text-anchor="middle" class="val">177</text><text x="118" y="178" text-anchor="middle" class="ax">A. product page (book + auth...</text><rect x="252.66666666666666" y="20" width="28" height="140" rx="3" class="bar s-rest"><title>B. catalogue list (20 books with author names) / REST: 2.8k bytes</title></rect><text x="266.66666666666663" y="16" text-anchor="middle" class="val">2.8k</text><rect x="282.66666666666663" y="56.669039145907476" width="28" height="103.33096085409252" rx="3" class="bar s-gql"><title>B. catalogue list (20 books with author names) / GraphQL: 2.1k bytes</title></rect><rect x="312.66666666666663" y="56.220640569395016" width="28" height="103.77935943060498" rx="3" class="bar s-rayfold-soft"><title>B. catalogue list (20 books with author names) / Rayfold (JSON): 2.1k bytes</title></rect><rect x="342.66666666666663" y="106.19217081850533" width="28" height="53.80782918149466" rx="3" class="bar s-rayfold"><title>B. catalogue list (20 books with author names) / Rayfold (RB): 1.1k bytes</title></rect><text x="356.66666666666663" y="102.19217081850533" text-anchor="middle" class="val">1.1k</text><text x="312.66666666666663" y="178" text-anchor="middle" class="ax">B. catalogue list (20 books ...</text><rect x="447.3333333333333" y="143.7081850533808" width="28" height="16.291814946619215" rx="3" class="bar s-rest"><title>C. place order then read it back with book stock / REST: 327 bytes</title></rect><text x="461.3333333333333" y="139.7081850533808" text-anchor="middle" class="val">327</text><rect x="477.3333333333333" y="152.1779359430605" width="28" height="7.822064056939502" rx="3" class="bar s-gql"><title>C. place order then read it back with book stock / GraphQL: 157 bytes</title></rect><rect x="507.3333333333333" y="149.0391459074733" width="28" height="10.96085409252669" rx="3" class="bar s-rayfold-soft"><title>C. place order then read it back with book stock / Rayfold (JSON): 220 bytes</title></rect><rect x="537.3333333333333" y="154.96797153024912" width="28" height="5.032028469750889" rx="3" class="bar s-rayfold"><title>C. place order then read it back with book stock / Rayfold (RB): 101 bytes</title></rect><text x="551.3333333333333" y="150.96797153024912" text-anchor="middle" class="val">101</text><text x="507.3333333333333" y="178" text-anchor="middle" class="ax">C. place order then read it ...</text></svg></figure>
   </div>
   <div class="tablewrap"><table>
 <thead><tr><th scope="col">Task</th><th scope="col">Measured</th><th scope="col">REST</th><th scope="col">GraphQL</th><th scope="col">Rayfold</th><th scope="col">Result</th></tr></thead>
-<tbody><tr><td>Show one product page: a book, its author and its reviews.</td><td>requests and bytes for the page <span class="muted">(bytes on the wire (request + response))</span></td><td class="num-cell">466</td><td class="num-cell">332</td><td class="num-cell rayfold-cell">177</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>List 20 books with each author's name.</td><td>author lookups at the backend <span class="muted">(author lookups with straightforward code)</span></td><td class="num-cell">9</td><td class="num-cell">20</td><td class="num-cell rayfold-cell">1</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Load only the two fields the screen shows: id and title.</td><td>bytes on the wire <span class="muted">(bytes (Rayfold = RB))</span></td><td class="num-cell">2,375</td><td class="num-cell">821</td><td class="num-cell rayfold-cell">635</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Place an order, then pay for it. Paying needs the new order's id.</td><td>round trips for two dependent commands <span class="muted">(round trips)</span></td><td class="num-cell">2</td><td class="num-cell">2</td><td class="num-cell rayfold-cell">1</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>The connection drops after the customer taps Buy, so the app sends the order again.</td><td>duplicate orders after a retry <span class="muted">(duplicate orders (client forgot the key))</span></td><td class="num-cell">1</td><td class="num-cell">1</td><td class="num-cell rayfold-cell">0</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>An order fails because a book is out of stock.</td><td>how a client learns the error type <span class="muted">(declared in the contract (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>A client sends a wrong quantity: first the text “two”, then 0.</td><td>rejected before side effects? <span class="muted">(of 2 bad requests rejected before side effects)</span></td><td class="num-cell">0</td><td class="num-cell">1</td><td class="num-cell rayfold-cell">2</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Only a book's owner may see its cost price.</td><td>where the rule lives / what a denied caller sees <span class="muted">(rule in the contract, explicit denial (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Serve a popular product page from a shared cache, such as a CDN.</td><td>repeat view through a shared cache <span class="muted">(bytes on the repeat view (headers + body))</span></td><td class="num-cell">486</td><td class="num-cell">355</td><td class="num-cell rayfold-cell">344</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>After an order, the book list already on screen must show the new stock.</td><td>requests to make the earlier view correct <span class="muted">(extra requests to be correct)</span></td><td class="num-cell">1</td><td class="num-cell">1</td><td class="num-cell rayfold-cell">0</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Show stock changes live while the page is open.</td><td>what the developer writes <span class="muted">(pieces the developer writes)</span></td><td class="num-cell">3</td><td class="num-cell">4</td><td class="num-cell rayfold-cell">1</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Remove a field from the API without breaking the apps that still use it.</td><td>what the tooling decides <span class="muted">(removals decided right, of 3 (unannounced, before sunset, after sunset))</span></td><td class="num-cell">1</td><td class="num-cell">2</td><td class="num-cell rayfold-cell">3</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>A client asks for 200 books, each with 200 books, each with 200 books.</td><td>rejected before execution? <span class="muted">(rejected before execution (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Let an AI assistant find and call the API, and try an order as a dry run first.</td><td>extra work for tools with typed input/output <span class="muted">(extra components to build)</span></td><td class="num-cell">2</td><td class="num-cell">2</td><td class="num-cell rayfold-cell">0</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>One field (the author's biography) is slow. Show the rest of the page first.</td><td>mechanism <span class="muted">(slow field sent later in the same response (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr></tbody>
+<tbody><tr><td>Show one product page: a book, its author and its reviews.</td><td>requests and bytes for the page <span class="muted">(bytes on the wire (request + response))</span></td><td class="num-cell">466</td><td class="num-cell">332</td><td class="num-cell rayfold-cell">177</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>List 20 books with each author's name.</td><td>author lookups at the backend <span class="muted">(author lookups with straightforward code)</span></td><td class="num-cell">9</td><td class="num-cell">20</td><td class="num-cell rayfold-cell">1</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Load only the two fields the screen shows: id and title.</td><td>bytes on the wire <span class="muted">(bytes (Rayfold = RB))</span></td><td class="num-cell">2,375</td><td class="num-cell">821</td><td class="num-cell rayfold-cell">635</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Place an order, then pay for it. Paying needs the new order's id.</td><td>round trips for two dependent commands <span class="muted">(round trips)</span></td><td class="num-cell">2</td><td class="num-cell">2</td><td class="num-cell rayfold-cell">1</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>The connection drops after the customer taps Buy, so the app sends the order again.</td><td>duplicate orders after a retry <span class="muted">(duplicate orders (client forgot the key))</span></td><td class="num-cell">1</td><td class="num-cell">1</td><td class="num-cell rayfold-cell">0</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>An order fails because a book is out of stock.</td><td>how a client learns the error type <span class="muted">(declared in the contract (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>A client sends a wrong quantity: first the text 'two', then 0.</td><td>rejected before side effects? <span class="muted">(of 2 bad requests rejected before side effects)</span></td><td class="num-cell">0</td><td class="num-cell">1</td><td class="num-cell rayfold-cell">2</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Only a book's owner may see its cost price.</td><td>where the rule lives / what a denied caller sees <span class="muted">(rule in the contract, explicit denial (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Serve a popular product page from a shared cache, such as a CDN.</td><td>repeat view through a shared cache <span class="muted">(bytes on the repeat view (headers + body))</span></td><td class="num-cell">486</td><td class="num-cell">355</td><td class="num-cell rayfold-cell">344</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>After an order, the book list already on screen must show the new stock.</td><td>requests to make the earlier view correct <span class="muted">(extra requests to be correct)</span></td><td class="num-cell">1</td><td class="num-cell">1</td><td class="num-cell rayfold-cell">0</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Show stock changes live while the page is open.</td><td>what the developer writes <span class="muted">(pieces the developer writes)</span></td><td class="num-cell">3</td><td class="num-cell">4</td><td class="num-cell rayfold-cell">1</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Remove a field from the API without breaking the apps that still use it.</td><td>what the tooling decides <span class="muted">(removals decided right, of 3 (unannounced, before sunset, after sunset))</span></td><td class="num-cell">1</td><td class="num-cell">2</td><td class="num-cell rayfold-cell">3</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>A client asks for 200 books, each with 200 books, each with 200 books.</td><td>rejected before execution? <span class="muted">(rejected before execution (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>Let an AI assistant find and call the API, and try an order as a dry run first.</td><td>extra work for tools with typed input/output <span class="muted">(extra components to build)</span></td><td class="num-cell">2</td><td class="num-cell">2</td><td class="num-cell rayfold-cell">0</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr><tr><td>One field (the author's biography) is slow. Show the rest of the page first.</td><td>mechanism <span class="muted">(slow field sent later in the same response (1 = yes))</span></td><td class="num-cell">no</td><td class="num-cell">no</td><td class="num-cell rayfold-cell">yes</td><td><span class="chip chip-rayfold">Rayfold ahead</span></td></tr></tbody>
 </table></div>
   <details style="margin-top:12px"><summary>Benchmark table (12 cells, 300 runs each)</summary><div class="tablewrap" style="margin-top:10px"><table>
 <thead><tr><th scope="col">Flow</th><th scope="col">Implementation</th><th scope="col">Round trips</th><th scope="col">Bytes down</th><th scope="col">Bytes up</th><th scope="col">Median ms</th></tr></thead>
@@ -79901,11 +80493,11 @@ close frame, code 1009 (message too big)</pre></div></details></td><td>Frames an
 <section id="glossary">
   <span class="eyebrow">Glossary</span>
   <h2>Terms used on this page</h2>
-  <dl class="glossary"><div><dt>Round trip</dt><dd>One request sent and its answer received. Each round trip waits for the network.</dd></div><div><dt>Shape</dt><dd>The list of fields a client wants back, for example { title author { name } }. Rayfold returns exactly that.</dd></div><div><dt>Default view</dt><dd>The fields a Rayfold operation returns when the client does not send a shape. Plain calls with curl work.</dd></div><div><dt>Batch</dt><dd>Several operations in one Rayfold request. A later operation can use an earlier one's result with $ref.</dd></div><div><dt>Idempotency key</dt><dd>A unique label on a write. If the same write arrives twice, the server returns the first answer instead of doing the work again.</dd></div><div><dt>Patch</dt><dd>A small description of what changed, such as “Book b1 now has stock 3”. Rayfold sends patches with every write so client caches stay correct.</dd></div><div><dt>Live query</dt><dd>A normal query with live: true. The server keeps it open and sends patches when the data changes.</dd></div><div><dt>ETag and 304</dt><dd>An ETag is a fingerprint of an answer. A client that already has the same fingerprint gets 304 Not Modified and no body.</dd></div><div><dt>N+1</dt><dd>Loading a list, then one more request or database call for every item in it.</dd></div><div><dt>Policy</dt><dd>A permission rule written in the schema, such as “only the owner may read costPrice”. Rayfold enforces it on every path.</dd></div><div><dt>RB</dt><dd>Rayfold Binary, an optional compact encoding of the same messages. JSON always works too.</dd></div><div><dt>MCP</dt><dd>Model Context Protocol, the common way AI assistants discover and call tools. Every Rayfold server is also an MCP server.</dd></div></dl>
+  <dl class="glossary"><div><dt>Round trip</dt><dd>One request sent and its answer received. Each round trip waits for the network.</dd></div><div><dt>Shape</dt><dd>The list of fields a client wants back, for example { title author { name } }. Rayfold returns exactly that.</dd></div><div><dt>Default view</dt><dd>The fields a Rayfold operation returns when the client does not send a shape. Plain calls with curl work.</dd></div><div><dt>Batch</dt><dd>Several operations in one Rayfold request. A later operation can use an earlier one's result with $ref.</dd></div><div><dt>Idempotency key</dt><dd>A unique label on a write. If the same write arrives twice, the server returns the first answer instead of doing the work again.</dd></div><div><dt>Patch</dt><dd>A small description of what changed, such as 'Book b1 now has stock 3'. Rayfold sends patches with every write so client caches stay correct.</dd></div><div><dt>Live query</dt><dd>A normal query with live: true. The server keeps it open and sends patches when the data changes.</dd></div><div><dt>ETag and 304</dt><dd>An ETag is a fingerprint of an answer. A client that already has the same fingerprint gets 304 Not Modified and no body.</dd></div><div><dt>N+1</dt><dd>Loading a list, then one more request or database call for every item in it.</dd></div><div><dt>Policy</dt><dd>A permission rule written in the schema, such as 'only the owner may read costPrice'. Rayfold enforces it on every path.</dd></div><div><dt>RB</dt><dd>Rayfold Binary, an optional compact encoding of the same messages. JSON always works too.</dd></div><div><dt>MCP</dt><dd>Model Context Protocol, the common way AI assistants discover and call tools. Every Rayfold server is also an MCP server.</dd></div></dl>
 </section>
 
 <footer>
-  <div class="meta"><span>Tests run 2026-09-13 10:30 UTC</span><span>Benchmark run 2026-09-13 00:31 UTC</span><span>v24.8.0, local network</span><span>Security tests run 2026-09-13 10:30 UTC</span></div>
+  <div class="meta"><span>Tests run 2026-09-15 06:35 UTC</span><span>Benchmark run 2026-09-13 00:31 UTC</span><span>v24.8.0, local network</span><span>Security tests run 2026-09-15 06:30 UTC</span></div>
   <p style="margin-top:8px">Reproduce: <code>npm run e2e</code>, <code>npm run bench</code>, then <code>npx tsx e2e/report-html.ts</code>.</p>
 </footer>
 </main>
