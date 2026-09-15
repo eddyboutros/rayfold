@@ -1,0 +1,14 @@
+# gitleaks' default rules, minus example values that look like credentials and are not.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Idempotency keys in examples and tests (they grant nothing), the WebSocket handshake nonce in tests, and the two demo tokens the example servers accept"
+regexTarget = "line"
+regexes = [
+  '''"key"\s*:\s*"[A-Za-z0-9_-]{16,128}"''',
+  '''\bkey:\s*"[A-Za-z0-9_-]{16,128}"''',
+  '''\b(const|val)\s+KEY2?\s*=\s*"[A-Za-z0-9_-]{16,128}"''',
+  '''"Sec-WebSocket-Key"\s*:\s*"[A-Za-z0-9+/=]{16,32}"''',
+  '''(?i)authorization: Bearer (customer|staff)\b''',
+]
