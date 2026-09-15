@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { RbCodec } from "@rayfold/rb";
+import { loadSchema, schemaHash, type RayfoldSchemaIR } from "@rayfold/schema";
 import { listen, type Frame, type RequestEnvelope, type RequestOp } from "@rayfold/server";
 import { Signal, bounded } from "../../../e2e/wait.ts";
-import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
+import { bookstoreSchemaText, createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { RayfoldCache } from "./cache.ts";
 import { RayfoldClient, RayfoldClientError } from "./client.ts";
 import { createFetchTransport, createLocalTransport, type Transport } from "./transport.ts";
@@ -167,8 +169,16 @@ describe("client over HTTP", () => {
     expect(deferred.bio).toContain("speculative");
   });
 
-  it("speaks RB when given the schema: the same frames as JSON in fewer bytes", async () => {
-    const manifest = (await (await fetch(url + "/manifest")).json()) as { schema: import("@rayfold/schema").RayfoldSchemaIR };
+  const manifestOf = async () => (await (await fetch(url + "/manifest")).json()) as { schema: RayfoldSchemaIR; schemaHash: string };
+  const bookB1 = { ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ title stock author { name } }" }] };
+  const collect = async (t: Transport, env: RequestEnvelope) => {
+    const out: Frame[] = [];
+    for await (const f of t.send(env)) out.push(f);
+    return out;
+  };
+
+  it("speaks RB once the server's schema hash matches the manifest's: the same frames as JSON in fewer bytes", async () => {
+    const manifest = await manifestOf();
     const wire: Array<{ sent: string | null; got: string | null; bytes: number }> = [];
     const recording: typeof fetch = async (input, init) => {
       const res = await fetch(input, init);
@@ -176,25 +186,71 @@ describe("client over HTTP", () => {
       return res;
     };
     const auth = () => ({ authorization: "Bearer u1" });
-    const rbTransport = createFetchTransport({ url, binary: manifest.schema, fetch: recording, headers: auth });
+    const rbTransport = createFetchTransport({ url, binary: manifest, fetch: recording, headers: auth });
     const jsonTransport = createFetchTransport({ url, fetch: recording, headers: auth });
     const env = { ops: [{ id: 1, op: "books", args: { page: { first: 3 } }, shape: "{ items { id title author { id name } } }" }] };
-    const collect = async (t: Transport) => {
-      const out: Frame[] = [];
-      for await (const f of t.send(env)) out.push(f);
-      return out;
-    };
-    const viaRb = await collect(rbTransport);
-    const viaJson = await collect(jsonTransport);
+    const first = await collect(rbTransport, env); // the server's hash is not known yet, so this one is JSON
+    const viaRb = await collect(rbTransport, env);
+    const viaJson = await collect(jsonTransport, env);
+    expect(first).toEqual(viaJson);
     expect(viaRb).toEqual(viaJson);
     expect((viaRb[0] as { data: { items: Array<{ author: { name: string } }> } }).data.items[0]!.author.name).toBe("Ursula K. Le Guin");
-    expect(wire.map((w) => [w.sent, w.got])).toEqual([["application/rayfold", "application/rayfold"], ["application/rayfold+json", "application/rayfold-frames+json"]]);
-    expect(wire[0]!.bytes).toBeLessThan(wire[1]!.bytes);
+    expect(wire.map((w) => [w.sent, w.got])).toEqual([
+      ["application/rayfold+json", "application/rayfold-frames+json"],
+      ["application/rayfold", "application/rayfold"],
+      ["application/rayfold+json", "application/rayfold-frames+json"],
+    ]);
+    expect(wire[1]!.bytes).toBeLessThan(wire[2]!.bytes);
     // a command and its patches over RB land in the cache like JSON ones
     const c = new RayfoldClient({ transport: rbTransport });
     const order = await c.command<{ status: string }>("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] } });
     expect(order.status).toBe("PLACED");
+    expect(wire.at(-1)!.sent).toBe("application/rayfold");
     expect(c.cache.get("Book:b1")).toMatchObject({ stock: 4 });
+  });
+
+  it("stays on JSON when the client's schema is not the server's, so no field is read under another's name", async () => {
+    const manifest = await manifestOf();
+    const drifted = loadSchema(bookstoreSchemaText().replace("  name: String\n", "  name: String\n  nickname: String?\n")).ir;
+    const sent: Array<string | null> = [];
+    const recording: typeof fetch = (input, init) => {
+      sent.push(new Headers(init?.headers).get("content-type"));
+      return fetch(input, init);
+    };
+    const t = createFetchTransport({ url, binary: drifted, fetch: recording });
+    for (let i = 0; i < 3; i++) {
+      expect((await collect(t, bookB1))[0]).toMatchObject({ data: { title: "The Dispossessed", author: { name: "Ursula K. Le Guin" } } });
+    }
+    expect(sent).toEqual(["application/rayfold+json", "application/rayfold+json", "application/rayfold+json"]);
+
+    // guard: this drift is one that misreads fields when RB is used regardless of the hash
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/rayfold", accept: "application/rayfold", "rayfold-safe": "true" }, body: new RbCodec(manifest.schema).encode(bookB1) as BodyInit });
+    expect(JSON.stringify(new RbCodec(drifted).decodeFrames(new Uint8Array(await res.arrayBuffer())))).not.toContain('"title":"The Dispossessed"');
+    // and the manifest's schema on its own hashes differently from the server's, which is why the transport takes the manifest
+    expect(schemaHash(manifest.schema)).not.toBe(manifest.schemaHash);
+  });
+
+  it("refuses an RB answer that comes with another schema hash, and sends the next request as JSON", async () => {
+    const manifest = await manifestOf();
+    const sent: Array<string | null> = [];
+    let redeployed = false;
+    // stands in for a deploy between two requests: this one answer reports a schema the client does not hold
+    const deploying: typeof fetch = async (input, init) => {
+      sent.push(new Headers(init?.headers).get("content-type"));
+      const res = await fetch(input, init);
+      if (!redeployed) return res;
+      redeployed = false;
+      const headers = new Headers(res.headers);
+      headers.set("rayfold-schema", "0".repeat(64));
+      return new Response(res.body, { status: res.status, headers });
+    };
+    const t = createFetchTransport({ url, binary: manifest, fetch: deploying });
+    await collect(t, bookB1);
+    redeployed = true;
+    expect(await collect(t, bookB1)).toMatchObject([{ error: { code: "unavailable" }, fin: true }]);
+    expect((await collect(t, bookB1))[0]).toMatchObject({ data: { title: "The Dispossessed" } });
+    expect((await collect(t, bookB1))[0]).toMatchObject({ data: { title: "The Dispossessed" } });
+    expect(sent).toEqual(["application/rayfold+json", "application/rayfold", "application/rayfold+json", "application/rayfold"]);
   });
 
   it("a schema-aware client sends compact ops, restores $type, and moves fewer bytes than plain JSON", async () => {

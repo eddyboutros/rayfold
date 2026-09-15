@@ -71,29 +71,31 @@ it encodes exactly like the server's own copy.
 
 ## Turn it on in TypeScript
 
-Load the schema from the manifest, then give it to the transport:
+Load the manifest, then give it to the transport:
 
 ```ts
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
 
 const url = "http://localhost:4000/rayfold";
-const { schema } = await (await fetch(`${url}/manifest`)).json();
+const manifest = await (await fetch(`${url}/manifest`)).json();
 
 const client = new RayfoldClient({
-  transport: createFetchTransport({ url, binary: schema, headers: () => ({ authorization: "Bearer customer" }) }),
-  schema,
+  transport: createFetchTransport({ url, binary: manifest, headers: () => ({ authorization: "Bearer customer" }) }),
+  schema: manifest.schema,
 });
 
 const book = await client.query<Book>("book", { id: "b1" }, { shape: "{ title stock author { name } }" });
 ```
 
-- `binary: schema` on the transport sends and reads RB.
+- `binary: manifest` on the transport sends and reads RB. It takes the whole manifest, schema and `schemaHash`, so it
+  can check that the server still holds that schema before it trusts the key numbers (see
+  [Keep the schema in step](#keep-the-schema-in-step)).
 - `schema` on the client asks for compact frames: the server leaves out `$type` wherever the schema already fixes it,
   and the client puts it back. It works with JSON too, and the savings add up.
 
-Queries and commands return the same values as over JSON. A WebSocket transport takes the same option:
-`createWebSocketTransport({ url: "ws://localhost:4000/rayfold/ws", binary: schema })`. The bookshop example serves
-HTTP only; `attachWebSocket(http, server)` from `@rayfold/server` adds the socket.
+Queries and commands return the same values as over JSON. A WebSocket transport takes the schema too:
+`createWebSocketTransport({ url: "ws://localhost:4000/rayfold/ws", binary: manifest.schema })`. The bookshop example
+serves HTTP only; `attachWebSocket(http, server)` from `@rayfold/server` adds the socket.
 
 ## Kotlin
 
@@ -103,18 +105,22 @@ a TypeScript or browser client can use RB against it.
 
 ## Keep the schema in step
 
-The key numbers come from the schema, and adding one name moves the numbers of every name sorted after it. Client and
-server must therefore hold the same schema, and the TypeScript client does not check that they do. A client whose copy
-had one extra field on `Author` read `book` as:
+The key numbers come from the schema, and adding one name moves the numbers of every name sorted after it, so client
+and server must hold the same schema. Every response carries the server's schema hash in the `Rayfold-Schema` header,
+and the manifest has the same hash as `schemaHash`. The HTTP transport compares them:
 
-```json
-{"$type":"Book","stock":"A Wizard of Earthsea","restock":3,"author":{"$type":"Author","items":"Ursula K. Le Guin"}}
-```
+- It sends JSON until a response shows that the server's hash is the manifest's, then switches to RB. The first
+  request of a new transport always goes as JSON.
+- When a response reports another hash, as after a deploy, the requests after it go as JSON again. Load the manifest
+  again and create a new transport to use RB.
+- An RB answer that arrives with another hash is not decoded, because its key numbers would give fields the wrong
+  names. The request fails with [`unavailable`](/errors/unavailable), which is safe to retry, and the retry goes as
+  JSON.
 
-No error, just the wrong names. So load the schema from the server's manifest, not from your build. Every response
-carries the server's schema hash in the `Rayfold-Schema` header, and the manifest has it as `schemaHash`; when they
-differ, as after a deploy, load the manifest again before the next RB request. A `fetch` function passed to
-`createFetchTransport` sees each response's headers.
+A bare schema IR works in place of the manifest when it is the server's full schema. The manifest's `schema` alone
+does not: it leaves out how policies decide, so it hashes differently, and the transport would stay on JSON.
+
+Over WebSocket the transport cannot see the server's hash, so after a deploy, reconnect with a freshly loaded manifest.
 
 ## What it saves
 
