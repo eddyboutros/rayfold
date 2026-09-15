@@ -7,7 +7,7 @@ plugins {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) } }
 java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
 
-val openTelemetry = "1.65.0"
+val openTelemetry = "1.66.0"
 
 dependencies {
     api(project(":rayfold-core"))

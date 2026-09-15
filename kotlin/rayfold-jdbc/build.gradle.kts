@@ -11,7 +11,7 @@ java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaV
 dependencies {
     api(project(":rayfold-core"))
     // the tests run against a real database; the adapter itself needs nothing but JDBC from the JDK
-    testImplementation("com.h2database:h2:2.3.232")
+    testImplementation("com.h2database:h2:2.5.250")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")

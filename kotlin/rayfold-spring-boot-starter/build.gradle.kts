@@ -27,7 +27,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test:$springBoot")
     testImplementation("org.springframework.boot:spring-boot-starter-security:$springBoot")
     testImplementation("org.springframework.boot:spring-boot-starter-websocket:$springBoot")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.0.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 // the tests are Spring applications written in Java, as users write them; -parameters lets @Arg take the parameter name
