@@ -61,7 +61,7 @@ function send(url: string, method: string, body?: unknown, headers: Record<strin
 }
 
 function problemOf(code: string, status: number, detail: string): Record<string, unknown> {
-  return { type: `https://rayfold.dev/errors/${code}`, title: code.replace(/_/g, " "), status, detail, code };
+  return { type: `https://eddyboutros.github.io/rayfold/errors/${code}`, title: code.replace(/_/g, " "), status, detail, code };
 }
 
 const ITEMS_SCHEMA = `
@@ -418,7 +418,7 @@ describe("POST bindings", () => {
     expect(HTTP_STATUS.domain).toBe(422);
     expect(twice.status).toBe(HTTP_STATUS.domain);
     expect(twice.headers.get("content-type")).toBe("application/problem+json");
-    expect(await twice.json()).toEqual({ type: "https://rayfold.dev/errors/NotPayable", title: "NotPayable", status: 422, detail: "Order is PAID", code: "domain", data: { status: "PAID" } });
+    expect(await twice.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/NotPayable", title: "NotPayable", status: 422, detail: "Order is PAID", code: "domain", data: { status: "PAID" } });
     expect(bs.store.calls["Command.payOrder"]).toBe(2);
   });
 });
@@ -448,7 +448,7 @@ describe("PUT bindings", () => {
     expect(stale.status).toBe(412);
     expect(stale.headers.get("content-type")).toBe("application/problem+json");
     expect(await stale.json()).toEqual({
-      type: "https://rayfold.dev/errors/VersionConflict",
+      type: "https://eddyboutros.github.io/rayfold/errors/VersionConflict",
       title: "VersionConflict",
       status: 412,
       detail: "Review:r1 is at version 2, not 1",
@@ -603,7 +603,7 @@ describe("routing", () => {
     expect(post.status).toBe(405);
     expect(post.headers.get("allow")).toBe("GET, PATCH");
     expect(post.headers.get("content-type")).toBe("application/problem+json");
-    expect(await post.json()).toEqual({ type: "https://rayfold.dev/errors/unimplemented", title: "unimplemented", status: 405, detail: "POST is not bound on /books/b1", code: "unimplemented" });
+    expect(await post.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/unimplemented", title: "unimplemented", status: 405, detail: "POST is not bound on /books/b1", code: "unimplemented" });
 
     const allowOf = async (method: string, path: string) => {
       const res = await send(`${base}${path}`, method);
@@ -654,14 +654,14 @@ describe("routing", () => {
     const refused = await send(`${overBase}/books`, "QUERY", body);
     expect(refused.status).toBe(413); // Content Too Large, not 429: retrying the same body cannot help
     expect(refused.headers.get("content-type")).toBe("application/problem+json");
-    expect(await refused.json()).toEqual({ type: "https://rayfold.dev/errors/payload_too_large", title: "payload too large", status: 413, detail: `Body exceeds ${size - 1} bytes`, code: "resource_exhausted" });
+    expect(await refused.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/payload_too_large", title: "payload too large", status: 413, detail: `Body exceeds ${size - 1} bytes`, code: "resource_exhausted" });
     expect(over.store.calls["Query.books"]).toBeUndefined();
 
     // Far over the limit the body arrives in many chunks; the refusal must still arrive and the server keep serving.
     const huge = JSON.stringify({ filter: { titleContains: "x".repeat(256 * 1024) } });
     const flood = await send(`${overBase}/books`, "QUERY", huge);
     expect(flood.status).toBe(413);
-    expect(await flood.json()).toEqual({ type: "https://rayfold.dev/errors/payload_too_large", title: "payload too large", status: 413, detail: `Body exceeds ${size - 1} bytes`, code: "resource_exhausted" });
+    expect(await flood.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/payload_too_large", title: "payload too large", status: 413, detail: `Body exceeds ${size - 1} bytes`, code: "resource_exhausted" });
     expect(over.store.calls["Query.books"]).toBeUndefined();
     expect((await fetch(`${overBase}/books/b1`)).status).toBe(200);
 

@@ -304,7 +304,7 @@ class McpTest {
         val call = """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"placeOrder","arguments":${order("b1", 1)}}}"""
         val attack = rpc(port, call, mapOf("Authorization" to "Bearer u1", "Origin" to "https://evil.example"))
         assertEquals(403, attack.statusCode())
-        assertEquals(obj("""{"type":"https://rayfold.dev/errors/permission_denied","title":"permission denied","status":403,"detail":"Origin https://evil.example is not allowed","code":"permission_denied"}"""), attack.json())
+        assertEquals(obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/permission_denied","title":"permission denied","status":403,"detail":"Origin https://evil.example is not allowed","code":"permission_denied"}"""), attack.json())
         assertEquals("nosniff", attack.h("x-content-type-options"))
         assertEquals(5, bs.store.stock("b1"))
         assertNull(bs.store.calls["Command.placeOrder"])
@@ -343,7 +343,7 @@ class McpTest {
         for (ct in listOf("text/plain", "application/x-www-form-urlencoded")) {
             val res = rpc(port, call, mapOf("Content-Type" to ct, "Authorization" to "Bearer u1"))
             assertEquals(415, res.statusCode())
-            assertEquals(obj("""{"type":"https://rayfold.dev/errors/unsupported_media_type","title":"unsupported media type","status":415,"detail":"Content-Type $ct is not accepted; send application/json","code":"invalid_argument"}"""), res.json())
+            assertEquals(obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/unsupported_media_type","title":"unsupported media type","status":415,"detail":"Content-Type $ct is not accepted; send application/json","code":"invalid_argument"}"""), res.json())
         }
         assertNull(bs.store.calls["Command.placeOrder"])
         val ok = rpc(port, call, mapOf("Content-Type" to "application/json; charset=utf-8", "Authorization" to "Bearer u1"))

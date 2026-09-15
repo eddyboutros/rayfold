@@ -33,7 +33,7 @@ class HostGuardTest {
     private fun post(port: Int, host: String) = rawHttp(port, "POST /rayfold HTTP/1.1\r\nHost: $host\r\nContent-Type: application/rayfold+json\r\nContent-Length: ${query.length}\r\nConnection: close\r\n\r\n$query")
     private fun get(port: Int, path: String, host: String) = rawHttp(port, "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n")
     private fun refusal(detail: String) = buildJsonObject {
-        put("type", "https://rayfold.dev/errors/permission_denied"); put("title", "permission denied"); put("status", 403); put("detail", detail); put("code", "permission_denied")
+        put("type", "https://eddyboutros.github.io/rayfold/errors/permission_denied"); put("title", "permission denied"); put("status", 403); put("detail", detail); put("code", "permission_denied")
     }
 
     @Test

@@ -151,7 +151,7 @@ class SecurityTest {
         assertEquals("no-store", header(res, "Cache-Control"), "problems are never cached")
         assertEquals("nosniff", header(res, "X-Content-Type-Options"))
         assertEquals(buildJsonObject {
-            put("type", "https://rayfold.dev/errors/$type"); put("title", type.replace('_', ' '))
+            put("type", "https://eddyboutros.github.io/rayfold/errors/$type"); put("title", type.replace('_', ' '))
             put("status", status); put("detail", detail); put("code", code)
         }, obj(res.body()))
     }

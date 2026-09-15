@@ -95,7 +95,7 @@ class BindingsTest {
     private fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8).replace("+", "%20")
 
     private fun problemOf(code: String, status: Int, detail: String) = buildJsonObject {
-        put("type", "https://rayfold.dev/errors/$code"); put("title", code.replace('_', ' ')); put("status", status); put("detail", detail); put("code", code)
+        put("type", "https://eddyboutros.github.io/rayfold/errors/$code"); put("title", code.replace('_', ' ')); put("status", status); put("detail", detail); put("code", code)
     }
 
     private fun calls(bs: Bookstore) = bs.store.calls.toMap()
@@ -419,7 +419,7 @@ class BindingsTest {
         assertEquals(422, Guard.status(Code.DOMAIN))
         assertEquals(422, twice.statusCode())
         assertEquals("application/problem+json", twice.h("content-type"))
-        assertEquals(obj("""{"type":"https://rayfold.dev/errors/NotPayable","title":"NotPayable","status":422,"detail":"Order is PAID","code":"domain","data":{"status":"PAID"}}"""), twice.json())
+        assertEquals(obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/NotPayable","title":"NotPayable","status":422,"detail":"Order is PAID","code":"domain","data":{"status":"PAID"}}"""), twice.json())
         assertEquals(2, bs.store.calls["Command.payOrder"])
     }
 
@@ -450,7 +450,7 @@ class BindingsTest {
         assertEquals(412, stale.statusCode())
         assertEquals("application/problem+json", stale.h("content-type"))
         assertEquals(buildJsonObject {
-            put("type", "https://rayfold.dev/errors/VersionConflict"); put("title", "VersionConflict"); put("status", 412)
+            put("type", "https://eddyboutros.github.io/rayfold/errors/VersionConflict"); put("title", "VersionConflict"); put("status", 412)
             put("detail", "Review:r1 is at version 2, not 1"); put("code", "failed_precondition")
             put("data", buildJsonObject { put("key", "Review:r1"); put("expected", 1); put("actual", 2); put("current", EDITED) })
         }, stale.json())
@@ -668,7 +668,7 @@ class BindingsTest {
     fun `maxBody - a body one byte over the limit is a 413 payload_too_large problem that never reaches the resolver, and a body at the limit is served`() {
         val body = """{"filter":{"titleContains":"earthsea"}}"""
         val size = body.toByteArray().size
-        val tooLarge = obj("""{"type":"https://rayfold.dev/errors/payload_too_large","title":"payload too large","status":413,"detail":"Body exceeds ${size - 1} bytes","code":"resource_exhausted"}""")
+        val tooLarge = obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/payload_too_large","title":"payload too large","status":413,"detail":"Body exceeds ${size - 1} bytes","code":"resource_exhausted"}""")
 
         val over = Bookstore()
         val overBase = serve(over.server, BindingOptions(maxBodyBytes = size - 1))

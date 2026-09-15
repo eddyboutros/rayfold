@@ -645,7 +645,7 @@
                 "cache-control": "no-store",
                 "content-type": "application/problem+json"
               },
-              "body": "{\"type\":\"https://rayfold.dev/errors/VersionConflict\",\"title\":\"VersionConflict\",\"status\":412,\"detail\":\"Review:r2 is at version 2, not 1\",\"code\":\"failed_precondition\",\"data\":{\"key\":\"Review:r2\",\"expected\":1,\"actual\":2,\"current\":{\"$type\":\"Review\",\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\",\"reviewerId\":\"u1\",\"version\":2}}}"
+              "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/VersionConflict\",\"title\":\"VersionConflict\",\"status\":412,\"detail\":\"Review:r2 is at version 2, not 1\",\"code\":\"failed_precondition\",\"data\":{\"key\":\"Review:r2\",\"expected\":1,\"actual\":2,\"current\":{\"$type\":\"Review\",\"id\":\"r2\",\"rating\":5,\"body\":\"Reread it: better than I remembered.\",\"reviewerId\":\"u1\",\"version\":2}}}"
             },
             "label": "editor B, stale: 412 carries the current review"
           },
@@ -865,7 +865,7 @@
                 "cache-control": "no-store",
                 "content-type": "application/problem+json"
               },
-              "body": "{\"type\":\"https://rayfold.dev/errors/invalid_argument\",\"title\":\"invalid argument\",\"status\":400,\"detail\":\"updateBook().patch.price: must be >= 0\",\"code\":\"invalid_argument\"}"
+              "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/invalid_argument\",\"title\":\"invalid argument\",\"status\":400,\"detail\":\"updateBook().patch.price: must be >= 0\",\"code\":\"invalid_argument\"}"
             },
             "label": "negative price: rejected by @range(min: 0) from the schema"
           }

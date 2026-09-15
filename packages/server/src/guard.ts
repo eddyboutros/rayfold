@@ -68,9 +68,12 @@ export function refuseBody(res: ServerResponse, e: BodyTooLarge): void {
   refuse(res, 413, "resource_exhausted", e.message, "payload_too_large");
 }
 
+/** Where an RFC 9457 `type` points: the documentation site has a page for each problem type. */
+export const PROBLEM_TYPE_BASE = "https://eddyboutros.github.io/rayfold/errors/";
+
 /** An RFC 9457 refusal written before any operation ran. */
 export function refuse(res: ServerResponse, status: number, code: string, detail: string, problemType = code, headers: Record<string, string> = {}): void {
   res
     .writeHead(status, { "Content-Type": "application/problem+json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...headers })
-    .end(JSON.stringify({ type: `https://rayfold.dev/errors/${problemType}`, title: problemType.replace(/_/g, " "), status, detail, code }));
+    .end(JSON.stringify({ type: PROBLEM_TYPE_BASE + problemType, title: problemType.replace(/_/g, " "), status, detail, code }));
 }

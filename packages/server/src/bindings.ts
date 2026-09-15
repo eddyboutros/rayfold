@@ -14,7 +14,7 @@ import { annotation, type OpDef, type RayfoldSchemaIR } from "@rayfold/schema";
 import type { RayfoldServer } from "./server.ts";
 import { HTTP_STATUS, RayfoldError, type Frame, type RequestEnvelope, type RequestOp, type WireError } from "./protocol.ts";
 import { applyCacheHeaders } from "./http.ts";
-import { BodyTooLarge, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
+import { BodyTooLarge, PROBLEM_TYPE_BASE, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
 
 export const QUERY_METHODS = ["GET", "QUERY"] as const;
 export const COMMAND_METHODS = ["POST", "PUT", "PATCH", "DELETE"] as const;
@@ -283,7 +283,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 /** RFC 9457 problem; typed Rayfold errors keep their `type` and `data` so REST clients can branch on them. */
 function problem(res: ServerResponse, status: number, e: WireError): void {
   const body: Record<string, unknown> = {
-    type: `https://rayfold.dev/errors/${e.type ?? e.code}`,
+    type: PROBLEM_TYPE_BASE + (e.type ?? e.code),
     title: e.type ?? e.code.replace(/_/g, " "),
     status,
     detail: e.message,

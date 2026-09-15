@@ -77,6 +77,6 @@ too. Generated clients expose the union as a discriminated type on `error.type`.
 Batch-level failures over HTTP use RFC 9457:
 
 ```json
-{ "type": "https://rayfold.dev/errors/invalid_argument", "title": "Invalid argument", "status": 400,
+{ "type": "https://eddyboutros.github.io/rayfold/errors/invalid_argument", "title": "Invalid argument", "status": 400,
   "detail": "ops[1].args.input.qty: expected Int", "code": "invalid_argument" }
 ```

@@ -119,10 +119,13 @@ object Guard {
         }
     }
 
+    /** Where an RFC 9457 `type` points: the documentation site has a page for each problem type. */
+    const val PROBLEM_TYPE_BASE = "https://eddyboutros.github.io/rayfold/errors/"
+
     /** An RFC 9457 refusal written before any operation ran. */
     fun refuse(ex: HttpExchange, status: Int, code: Code, detail: String, problemType: String = code.wire, headers: Map<String, String> = emptyMap()) {
         val body = buildJsonObject {
-            put("type", "https://rayfold.dev/errors/$problemType"); put("title", problemType.replace('_', ' '))
+            put("type", PROBLEM_TYPE_BASE + problemType); put("title", problemType.replace('_', ' '))
             put("status", status); put("detail", detail); put("code", code.wire)
         }.toString().toByteArray()
         ex.responseHeaders.set("Content-Type", "application/problem+json")

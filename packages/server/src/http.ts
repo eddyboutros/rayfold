@@ -6,7 +6,7 @@ import { HTTP_STATUS, RayfoldError, type ErrorCode, type Frame, type RequestEnve
 import { referencesViewer, type Expr } from "@rayfold/schema";
 import { RbCodec, RB_CONTENT_TYPE } from "@rayfold/rb";
 import { openApiFor } from "./openapi.ts";
-import { BodyTooLarge, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
+import { BodyTooLarge, PROBLEM_TYPE_BASE, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
 
 export interface HttpOptions extends OriginOptions {
   /** What GET {path}/manifest serves: the schema without policy expressions (default), the full IR, or nothing. */
@@ -323,7 +323,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 function problem(res: ServerResponse, code: ErrorCode, detail: string, wire?: WireError): void {
   const status = HTTP_STATUS[code];
   const body = {
-    type: `https://rayfold.dev/errors/${code}`,
+    type: PROBLEM_TYPE_BASE + code,
     title: code.replace(/_/g, " "),
     status,
     detail,

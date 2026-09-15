@@ -281,7 +281,7 @@ class RayfoldBindings(
         val code = (e["code"] as? JsonPrimitive)?.content ?: Code.INTERNAL.wire
         val type = (e["type"] as? JsonPrimitive)?.content
         val body = buildJsonObject {
-            put("type", "https://rayfold.dev/errors/${type ?: code}")
+            put("type", Guard.PROBLEM_TYPE_BASE + (type ?: code))
             put("title", type ?: code.replace('_', ' '))
             put("status", status)
             put("detail", (e["message"] as? JsonPrimitive)?.content ?: "")

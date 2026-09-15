@@ -74,7 +74,7 @@ describe("POST /rayfold", () => {
     const res = await fetch(`${base}/rayfold`, { method: "POST", body: "{nope", headers: { "content-type": "application/rayfold+json" } });
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toBe("application/problem+json");
-    expect(await res.json()).toEqual({ type: "https://rayfold.dev/errors/invalid_argument", title: "invalid argument", status: 400, detail: "Body is not valid JSON", code: "invalid_argument" });
+    expect(await res.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/invalid_argument", title: "invalid argument", status: 400, detail: "Body is not valid JSON", code: "invalid_argument" });
     expect(bs.store.calls).toEqual({});
   });
 
@@ -104,7 +104,7 @@ describe("POST /rayfold", () => {
     const small = await serve(bs.server, { viewer: viewerOf, maxBody: 120 });
     const tooBig = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: `{ id ${"title ".repeat(40)}}` }] }, {}, "POST", `${small}/rayfold`);
     expect(tooBig.status).toBe(413);
-    expect(await tooBig.json()).toEqual({ type: "https://rayfold.dev/errors/payload_too_large", title: "payload too large", status: 413, detail: "Body exceeds 120 bytes", code: "resource_exhausted" });
+    expect(await tooBig.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/payload_too_large", title: "payload too large", status: 413, detail: "Body exceeds 120 bytes", code: "resource_exhausted" });
     expect(bs.store.calls).toEqual({});
     const fits = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, {}, "POST", `${small}/rayfold`);
     expect(fits.status).toBe(200);

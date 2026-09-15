@@ -30,7 +30,7 @@
             "cache-control": "no-store",
             "accept-post": "application/rayfold+json, application/json, application/rayfold"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/rayfold+json\",\"code\":\"invalid_argument\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/rayfold+json\",\"code\":\"invalid_argument\"}"
         }
       },
       "result": "refused"
@@ -63,7 +63,7 @@
             "content-type": "application/problem+json",
             "cache-control": "no-store"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
         }
       },
       "result": "refused"
@@ -96,7 +96,7 @@
             "content-type": "application/problem+json",
             "cache-control": "no-store"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
         }
       },
       "result": "refused"
@@ -125,7 +125,7 @@
             "content-type": "application/problem+json",
             "cache-control": "no-store"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Host evil.example:59364 is not allowed on a loopback server\",\"code\":\"permission_denied\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Host evil.example:59364 is not allowed on a loopback server\",\"code\":\"permission_denied\"}"
         }
       },
       "result": "refused"
@@ -158,7 +158,7 @@
             "cache-control": "no-store",
             "x-content-type-options": "nosniff"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/permission_denied\",\"title\":\"permission denied\",\"status\":403,\"detail\":\"Origin https://evil.example is not allowed\",\"code\":\"permission_denied\"}"
         }
       },
       "result": "refused"
@@ -189,7 +189,7 @@
             "cache-control": "no-store",
             "x-content-type-options": "nosniff"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/json\",\"code\":\"invalid_argument\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/json\",\"code\":\"invalid_argument\"}"
         }
       },
       "result": "refused"
@@ -340,7 +340,7 @@
             "content-type": "application/problem+json",
             "cache-control": "no-store"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/payload_too_large\",\"title\":\"payload too large\",\"status\":413,\"detail\":\"Body exceeds 1048576 bytes\",\"code\":\"resource_exhausted\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/payload_too_large\",\"title\":\"payload too large\",\"status\":413,\"detail\":\"Body exceeds 1048576 bytes\",\"code\":\"resource_exhausted\"}"
         }
       },
       "result": "refused"
@@ -737,7 +737,7 @@
             "cache-control": "no-store",
             "accept-post": "application/rayfold+json, application/json, application/rayfold"
           },
-          "body": "{\"type\":\"https://rayfold.dev/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/rayfold+json\",\"code\":\"invalid_argument\"}"
+          "body": "{\"type\":\"https://eddyboutros.github.io/rayfold/errors/unsupported_media_type\",\"title\":\"unsupported media type\",\"status\":415,\"detail\":\"Content-Type text/plain is not accepted; send application/rayfold+json\",\"code\":\"invalid_argument\"}"
         }
       },
       "result": "refused"
