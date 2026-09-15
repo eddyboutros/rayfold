@@ -4,7 +4,7 @@ Rayfold schemas have no version numbers. Compatibility is enforced by tooling on
 
 ## Compatible changes (allowed)
 * Adding a type, operation, field, enum value, error to a `throws` list, event to an `emits` list.
-* Making a required argument optional (adding a default) or a non-null result field nullable is NOT allowed for results; see below.
+* Making a required argument optional (giving it a default), or a nullable result field non-null.
 * Adding an annotation that does not restrict (`@cost`, `@example`, `@deprecated`).
 
 ## Breaking changes (rejected by `rayfold check`)

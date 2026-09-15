@@ -36,11 +36,12 @@ revalidation per resource and query-in-POST designs cannot use shared caches at 
 
 ## 3. Client normalized cache
 
-Clients MUST key entities by `$type:id` and merge fields on every `data`, `item`, `defer` and `patch` frame.
-Query results are stored as references (lists of keys plus scalar payload) so that a later patch to an entity
-is visible in every query that contained it. Each entity records `maxAge` from the schema (shipped in the
-manifest); a read of a stale entity triggers revalidation according to the client's policy (default:
-serve stale, refetch in background when `swr` allows, else block).
+A client is not required to keep a cache: a script or a service calling another can read frames and ignore
+`patch` operations. A client that does keep one MUST key entities by `$type:id` and merge fields on every
+`data`, `item`, `defer` and `patch` frame. Query results are stored as references (lists of keys plus scalar
+payload) so that a later patch to an entity is visible in every query that contained it. Each entity records
+`maxAge` from the schema (shipped in the manifest); how a read of a stale entity is revalidated is the client's
+choice (the reference clients serve stale, refetch in the background when `swr` allows, and otherwise block).
 
 Optimistic updates, offline queues and live invalidation are defined in [08](08-live-and-sync.md).
 

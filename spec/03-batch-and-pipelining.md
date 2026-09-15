@@ -68,7 +68,9 @@ callers would share one replay scope. Servers MUST retain keys for at least 24 h
 ([12 §3-4](12-security.md)).
 
 Commands without a `key` are rejected with `invalid_argument` unless the command is annotated
-`@idempotent(false)`, which opts it out of the guarantee (and out of automatic client retries).
+`@idempotent(false)`, which opts it out of the guarantee. Whether and when to repeat a failed request is the
+client's choice, guided by `retryable` ([05](05-errors.md)); a client that repeats keyed commands on its own
+SHOULD NOT repeat one annotated `@idempotent(false)`.
 
 ## 4a. Conditional commands
 

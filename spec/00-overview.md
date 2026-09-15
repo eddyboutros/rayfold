@@ -35,6 +35,20 @@ transport that can carry ordered chunks. Every **entity** has a global identity 
 patches, caches and ETags are keyed on. JSON and the binary RB format encode the same model; a server MUST
 support JSON.
 
+## Protocol, schema language, libraries
+
+Rayfold has three layers, and only the first two are normative.
+
+* **The protocol**: the batch envelope, frames, error codes with their `retryable` hint, idempotency keys and what
+  a server promises about a repeated key, and how `@cache` becomes HTTP caching headers. This is what any
+  implementation in any language must get right, and what the conformance fixtures check.
+* **The schema language**: types, operations and the rules written next to them (policies, cost, cache lifetimes,
+  declared errors, deprecation). Every implementation enforces the same rules for the same schema.
+* **The reference libraries**: `@rayfold/server`, `@rayfold/client`, `@rayfold/react` and the JVM modules. Their
+  designs, such as batch loaders, a normalized client cache, React hooks, optimistic updates and an offline queue,
+  are one way to build on the protocol. A client that sends a batch and reads the frames, a curl script included, is
+  as much a Rayfold client as they are.
+
 ## Why not just GraphQL / REST / gRPC
 
 See [`docs/comparison.md`](../docs/comparison.md) for the feature matrix and benchmark results and
