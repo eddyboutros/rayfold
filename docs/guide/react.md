@@ -37,7 +37,7 @@ interface Book { id: string; title: string; stock: number; author: { name: strin
 function BookPage({ id }: { id: string }) {
   const { data, error, loading, refetch } = useQuery<Book>("book", { id }, { shape: "{ id title stock author { name } }" });
   if (error) return <p>Could not load the book. <button onClick={() => refetch()}>Try again</button></p>;
-  if (loading && !data) return <p>Loading…</p>;
+  if (loading && !data) return <p>Loading...</p>;
   return <h1>{data?.title} by {data?.author.name}: {data?.stock} left</h1>;
 }
 ```
@@ -76,13 +76,13 @@ import { useLive } from "@rayfold/react";
 
 function StockBadge({ id }: { id: string }) {
   const { data } = useLive<{ stock: number }>("book", { id }, { shape: "{ id stock }" });
-  return <span>{data?.stock ?? "…"} in stock</span>;
+  return <span>{data?.stock ?? "..."} in stock</span>;
 }
 ```
 
 The server pushes every change to the result, whoever made it. The subscription ends when the component unmounts.
 Over HTTP the TypeScript server streams live queries on the request; to share one connection between many, give the
-client `createWebSocketTransport({ url: "wss://…/rayfold/ws" })`.
+client `createWebSocketTransport({ url: "wss://example.com/rayfold/ws" })`.
 
 ## Server rendering
 

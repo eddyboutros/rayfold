@@ -1,4 +1,4 @@
-# 07 — Caching
+# 07 - Caching
 
 Rayfold reads are cacheable at three layers with one set of declarations: shared HTTP caches (CDN, proxies),
 the client's normalized entity cache, and the server's own result cache. The declarations are the
@@ -24,7 +24,7 @@ present in the results; the scope is `public` only if all are public. The server
 
 ```
 Cache-Control: public, max-age=60, stale-while-revalidate=300
-ETag: "sha256-…"           (hash of the frame payload, excluding meta.ms)
+ETag: "sha256-..."         (hash of the frame payload, excluding meta.ms)
 Vary: Rayfold-Client, Accept
 ```
 
@@ -46,6 +46,6 @@ Optimistic updates, offline queues and live invalidation are defined in [08](08-
 
 ## 4. Server result cache
 
-A server MAY cache canonical (op, args, vars, shape, viewer-scope) → frames for `maxAge`. Cache hits report
+A server MAY cache canonical (op, args, vars, shape, viewer-scope) -> frames for `maxAge`. Cache hits report
 `meta.cache: "hit"`. Any command that emits a patch touching an entity MUST invalidate cached results that
 contain it; servers that cannot track containment MUST invalidate by op name (`invOp`).

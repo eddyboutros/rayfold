@@ -1,8 +1,8 @@
-# 01 — Schema
+# 01 - Schema
 
 A Rayfold schema is written in the `.rayfold` language or produced by a code-first builder. Both produce the same
-canonical **IR** (JSON, section 9). Everything else in Rayfold — execution, caching, auth, evolution checks,
-codegen, the MCP bridge — consumes the IR, never the source text.
+canonical **IR** (JSON, section 9). Everything else in Rayfold (execution, caching, auth, evolution checks,
+codegen, the MCP bridge) consumes the IR, never the source text.
 
 ## 1. Lexical structure
 

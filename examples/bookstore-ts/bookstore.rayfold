@@ -1,4 +1,4 @@
-// Bookstore — the reference domain used by the examples, benchmarks and conformance suite.
+// Bookstore: the reference domain used by the examples, benchmarks and conformance suite.
 
 entity Author @cache(maxAge: 5m, scope: public) {
   id: ID

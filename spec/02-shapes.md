@@ -1,4 +1,4 @@
-# 02 — Shapes
+# 02 - Shapes
 
 A **shape** says which fields of a result the caller wants. Shapes are what make Rayfold client-shaped without
 giving up HTTP caching: a shape is canonicalised, hashed and can be persisted, so a read becomes a
@@ -61,7 +61,7 @@ The canonical text of a shape is produced by:
 The **shape id** is `sha256:` + lowercase hex SHA-256 of the canonical UTF-8 text.
 
 An operation refers to its shape either inline (`"shape": "{ id title }"`) or by id
-(`"shape": "sha256:…"`). Servers MUST accept inline shapes in development mode and MAY refuse them in
+(`"shape": "sha256:..."`). Servers MUST accept inline shapes in development mode and MAY refuse them in
 production (**trusted shapes**): the allowlist is the set of shape ids registered by `rayfold shapes` at client
 build time and shipped alongside the schema.
 

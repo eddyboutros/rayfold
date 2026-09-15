@@ -1,4 +1,4 @@
-# 05 — Errors
+# 05 - Errors
 
 Rayfold separates **protocol errors** (a fixed code set, the same in every API) from **domain errors** (declared
 per operation in the schema, delivered as typed payloads). Clients get exhaustive unions; operators get

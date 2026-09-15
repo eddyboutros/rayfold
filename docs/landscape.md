@@ -1,4 +1,4 @@
-# Landscape refresh — 2026-09
+# Landscape refresh, 2026-09
 
 Verified state of the incumbents Rayfold draws from, with sources. Compiled 2026-09-09.
 
@@ -25,7 +25,7 @@ Verified state of the incumbents Rayfold draws from, with sources. Compiled 2026
 ## 4. Convex
 - Queries are deterministic functions whose **read sets** are tracked; writes matched against read sets re-run affected queries; all of a client's queries observe one timestamp. https://stack.convex.dev/how-convex-works
 - Mutations are serializable OCC transactions; client mutations are queued in order. https://docs.convex.dev/functions/mutation-functions
-- Sync protocol: one WebSocket with typed JSON envelopes (`Connect`, `ModifyQuerySet`, `Mutation` → `Transition` with start/end version + modifications). Defined in the open-source client. https://github.com/get-convex/convex-js/blob/main/src/browser/sync/protocol.ts
+- Sync protocol: one WebSocket with typed JSON envelopes (`Connect`, `ModifyQuerySet`, `Mutation` -> `Transition` with start/end version + modifications). Defined in the open-source client. https://github.com/get-convex/convex-js/blob/main/src/browser/sync/protocol.ts
 
 ## 5. Electric / Replicache / PowerSync
 - **Electric** (1.0 GA 2025-03): read-path sync via HTTP **shapes** (`table`, `where`, `columns`); shape log from `offset=-1`, then long-poll or SSE; control messages `up-to-date`, `must-refetch`; writes through your own API. https://electric.ax/docs/api/http

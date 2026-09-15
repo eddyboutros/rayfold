@@ -1,5 +1,5 @@
 /**
- * Rayfold schema IR — the canonical, JSON-serialisable form every other package consumes.
+ * Rayfold schema IR: the canonical, JSON-serialisable form every other package consumes.
  * Spec: spec/01-schema.md §9.
  */
 

@@ -1,4 +1,4 @@
-/** .rayfold text → IR. Spec: spec/01-schema.md. */
+/** .rayfold text -> IR. Spec: spec/01-schema.md. */
 import {
   builtinTypes,
   type AnnotValue,

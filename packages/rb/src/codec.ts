@@ -1,5 +1,5 @@
 /**
- * RB — Rayfold Binary (extension `rb`, spec/09). Same value model as JSON, compact on the wire:
+ * RB is Rayfold Binary (extension `rb`, spec/09). Same value model as JSON, compact on the wire:
  *  - schema-derived key dictionary: object keys that are field/frame names encode as small varints
  *  - per-message string table: repeated strings (type names, ids, enum values) encode once
  *  - zigzag varints, 8-byte doubles only when needed, tagged values otherwise

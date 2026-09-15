@@ -52,15 +52,15 @@ command placeOrder(input: OrderInput): Order throws OutOfStock | PaymentDeclined
 ```json
 POST /rayfold
 { "ops": [
-  { "id": 1, "op": "placeOrder", "args": { "input": { "lines": [{ "bookId": "b1", "qty": 2 }] } }, "key": "5c9c…" },
+  { "id": 1, "op": "placeOrder", "args": { "input": { "lines": [{ "bookId": "b1", "qty": 2 }] } }, "key": "5c9c..." },
   { "id": 2, "op": "order", "args": { "id": { "$ref": "1.id" } }, "shape": "{ id status items { qty book { id stock } } }", "live": true }
 ]}
 ```
 
 ```
-{"id":1,"ok":{"$type":"Order","id":"o1",…},"patch":[{"set":"Order:o1",…},{"set":"Book:b1","value":{"stock":3}}],"meta":{"cost":10},"fin":true}
-{"id":2,"data":{"$type":"Order","id":"o1","status":"PLACED",…},"meta":{"cost":9}}
-{"id":2,"patch":[{"set":"Order:o1","value":{"status":"CANCELLED"}}]}      ← later, because live:true
+{"id":1,"ok":{"$type":"Order","id":"o1",...},"patch":[{"set":"Order:o1",...},{"set":"Book:b1","value":{"stock":3}}],"meta":{"cost":10},"fin":true}
+{"id":2,"data":{"$type":"Order","id":"o1","status":"PLACED",...},"meta":{"cost":9}}
+{"id":2,"patch":[{"set":"Order:o1","value":{"status":"CANCELLED"}}]}      <- later, because live:true
 ```
 
 Read the [documentation](docs/index.md): guides, the [specification](spec/00-overview.md) and

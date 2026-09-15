@@ -1,4 +1,4 @@
-# 08 — Live queries and sync (extension `live`)
+# 08 - Live queries and sync (extension `live`)
 
 The query is the subscription. A client asks for a query with `"live": true`; the server answers the normal
 `data` frame **without** `fin`, then keeps the operation open and pushes updates until it is cancelled.
@@ -7,7 +7,7 @@ policies, the same cache patches.
 
 ## 1. Request
 
-`{ "id": 7, "op": "books", "args": {…}, "shape": "…", "live": true }`. Only queries may be live; a query
+`{ "id": 7, "op": "books", "args": {...}, "shape": "...", "live": true }`. Only queries may be live; a query
 annotated `@live(false)` refuses with `invalid_argument`. The manifest lists `"live"` in `extensions`.
 
 ## 2. Frames
@@ -18,7 +18,7 @@ annotated `@live(false)` refuses with `invalid_argument`. The manifest lists `"l
 | `{ id, patch }` | the change can be described: one `set` per entity whose fields changed, plus result-scoped `at` and `list` operations for plain objects and list membership (spec 04 section 2b) |
 | `{ id, at, data }` | deferred parts of the first result, as for any query |
 | `{ id, error: { code: "canceled" }, fin: true }` | the client cancelled (WebSocket `cancel`, HTTP connection closed, batch signal aborted) |
-| `{ id, error: …, fin: true }` | a re-execution failed (e.g. the viewer lost access) |
+| `{ id, error: ..., fin: true }` | a re-execution failed (e.g. the viewer lost access) |
 
 A re-execution that produces an identical result sends nothing.
 

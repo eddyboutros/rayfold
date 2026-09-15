@@ -1,4 +1,4 @@
-# 06 — Authorization
+# 06 - Authorization
 
 Authorization in Rayfold is declared in the schema and evaluated by the runtime before and during execution.
 There is no separate middleware layer to keep in sync with the types, and the same declarations drive cache
@@ -7,7 +7,7 @@ scope ([07](07-cache.md)), the manifest ([10](10-mcp-bridge.md)) and static anal
 ## 1. Principal
 
 The transport layer authenticates the caller and produces the **viewer**: an arbitrary JSON object supplied
-by the server (`{ id, role, scopes, tenant, … }`). Anonymous callers get `viewer = null`. How a token becomes a
+by the server (`{ id, role, scopes, tenant, ... }`). Anonymous callers get `viewer = null`. How a token becomes a
 viewer is out of scope for the protocol; Bearer/OAuth 2.1 is the conventional binding and MCP-facing servers
 follow the MCP authorization profile.
 
@@ -35,7 +35,7 @@ rules (`viewer.id == ownerId`) are natural.
 | Where the denial happens | Outcome |
 |---|---|
 | Operation | `permission_denied` (or `unauthenticated` when `viewer` is null and the policy references it), no execution. |
-| Field, explicitly selected | `permission_denied` with `path`, whole op fails (atomic), unless the field is `@partial` → `null` + partial error. |
+| Field, explicitly selected | `permission_denied` with `path`, whole op fails (atomic), unless the field is `@partial` -> `null` + partial error. |
 | Type, explicitly selected, at a nullable position | `null`, exactly as for an entity that does not exist, so a denial never reveals that the entity exists ([12 §5](12-security.md)). |
 | Type, explicitly selected, at a non-null position or as a list element | `permission_denied` with `path`, whole op fails (atomic). |
 | Type or field, field only in a default view | Field omitted silently. Default views never leak and never fail. |

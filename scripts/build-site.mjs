@@ -107,7 +107,7 @@ function nav(current) {
         .filter((p) => p.section === s)
         .map((p) => {
           const href = posix.relative(posix.dirname(current.out), p.out) || p.out.split("/").pop();
-          return `<li${p === current ? ' class="current"' : ""}><a href="${href}">${escapeHtml(p.title.replace(/^\d+\s+[—-]\s+/, ""))}</a></li>`;
+          return `<li${p === current ? ' class="current"' : ""}><a href="${href}">${escapeHtml(p.title.replace(/^\d+\s+-\s+/, ""))}</a></li>`;
         })
         .join("");
       return `${s ? `<h2>${escapeHtml(s)}</h2>` : ""}<ul>${items}</ul>`;

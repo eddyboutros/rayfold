@@ -46,7 +46,7 @@ afterEach(async () => {
   await Promise.all(extra.splice(0).map((s) => new Promise<void>((r) => { s.close(() => r()); s.closeAllConnections(); })));
 });
 
-const clip = (s: string) => (s.length > 900 ? `${s.slice(0, 900)}… (${s.length.toLocaleString("en-US")} characters in all)` : s);
+const clip = (s: string) => (s.length > 900 ? `${s.slice(0, 900)}... (${s.length.toLocaleString("en-US")} characters in all)` : s);
 const pick = (h: Record<string, string | string[] | undefined>, keys: string[]) =>
   Object.fromEntries(Object.entries(h).filter(([k, v]) => keys.includes(k.toLowerCase()) && typeof v === "string").map(([k, v]) => [k.toLowerCase(), v as string]));
 

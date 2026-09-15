@@ -113,7 +113,7 @@ code { font-family: ui-monospace, monospace; }
 <script type="application/json" id="config">__RAYFOLD_EXPLORER_CONFIG__</script>
 <header>
   <h1 id="title">Rayfold</h1>
-  <span class="meta" id="about">reading the manifest…</span>
+  <span class="meta" id="about">reading the manifest...</span>
 </header>
 <main>
   <aside id="ops"></aside>
@@ -231,7 +231,7 @@ function render(frames, ms) {
 async function send() {
   var button = $("#send");
   button.disabled = true;
-  $("#status").textContent = "sending…";
+  $("#status").textContent = "sending...";
   var started = Date.now();
   try {
     var body = JSON.parse($("#req").value);

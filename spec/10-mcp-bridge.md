@@ -1,4 +1,4 @@
-# 10 — MCP bridge (extension `mcp`)
+# 10 - MCP bridge (extension `mcp`)
 
 Any Rayfold server is a Model Context Protocol server. The bridge is a pure projection of the schema; there is
 no second definition of tools, no hand-written descriptions and no separate auth path: an agent calling a
@@ -8,7 +8,7 @@ Target revision: MCP **2026-07-28** (stateless; Streamable HTTP; JSON Schema 202
 
 ## 1. Endpoint
 
-`POST /mcp` with a JSON-RPC 2.0 request (or batch) → JSON-RPC response. The server sets
+`POST /mcp` with a JSON-RPC 2.0 request (or batch) -> JSON-RPC response. The server sets
 `MCP-Protocol-Version: 2026-07-28`. If the request carries `Mcp-Method`, it MUST equal the body's `method`,
 otherwise the server answers HTTP 400 with JSON-RPC error `-32020 HeaderMismatch`. Notifications answer
 HTTP 202 with no body. No session state is kept; `initialize` and `server/discover` both return the
@@ -40,15 +40,15 @@ commands that declare `@simulate`, and a tool call that uses an idempotency key 
 idempotency key derived from the argument hash, so a retried tool call with identical arguments replays
 instead of double-executing. Results:
 
-* success → `content: [{ type: "text", text: <pretty JSON of result> }]`, `structuredContent: { result, effects? }`
+* success -> `content: [{ type: "text", text: <pretty JSON of result> }]`, `structuredContent: { result, effects? }`
   where `effects` is the command's patch list, `resultType: "complete"`;
-* any Rayfold error → `isError: true`, a text line `code [Type]: message`, and `structuredContent.error` with the
+* any Rayfold error -> `isError: true`, a text line `code [Type]: message`, and `structuredContent.error` with the
   full error object (typed domain errors keep `type` and `data`).
 
 ## 3. Resources
 
-* `rayfold://schema` — the IR as JSON (`application/json`).
-* `rayfold://query/<name>[?arg=value…]` — every query whose arguments are all optional; reading it runs the
+* `rayfold://schema`: the IR as JSON (`application/json`).
+* `rayfold://query/<name>[?arg=value...]`: every query whose arguments are all optional; reading it runs the
   query with the default view. Listed with `ttlMs`/`cacheScope` like tools.
 
 ## 4. Authorization

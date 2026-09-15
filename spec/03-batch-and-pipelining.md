@@ -1,4 +1,4 @@
-# 03 — Batches and pipelining
+# 03 - Batches and pipelining
 
 Every Rayfold request is a **batch** of one or more operations. Operations in a batch may depend on each
 other's results, so a create-then-read flow is one round trip (promise pipelining, after Cap'n Proto).
@@ -9,8 +9,8 @@ other's results, so a create-then-read flow is one round trip (promise pipelinin
 {
   "rayfold": "0.1",
   "ops": [
-    { "id": 1, "op": "placeOrder", "args": { "input": { "bookId": "b1", "qty": 2 } }, "key": "5c9c…" },
-    { "id": 2, "op": "order",      "args": { "id": { "$ref": "1.id" } }, "shape": "sha256:…", "vars": { "n": 5 } }
+    { "id": 1, "op": "placeOrder", "args": { "input": { "bookId": "b1", "qty": 2 } }, "key": "5c9c..." },
+    { "id": 2, "op": "order",      "args": { "id": { "$ref": "1.id" } }, "shape": "sha256:...", "vars": { "n": 5 } }
   ],
   "meta": { "client": "web/3.4.1", "deadline": 5000 }
 }
@@ -23,7 +23,7 @@ other's results, so a create-then-read flow is one round trip (promise pipelinin
 | `args` | no | Object matching the operation's declared arguments. Missing args with defaults take the default. An absent argument or input field without a default stays **absent** in the resolver. An explicit `null` stays `null` and is never replaced by a default; on a non-null argument it is rejected with `invalid_argument`. Partial updates depend on the difference. |
 | `shape` | no | Inline shape text or `sha256:` id ([02](02-shapes.md)). Absent = default view. |
 | `vars` | no | Values for `$name` references inside the shape. |
-| `key` | commands | Idempotency key, 16–128 bytes, chosen by the client. |
+| `key` | commands | Idempotency key, 16-128 bytes, chosen by the client. |
 | `live` | no | `true` to keep a query subscribed (`live` extension). |
 | `deadline` | no | Milliseconds; overrides `meta.deadline` for this op. |
 | `simulate` | no | `true` runs a command without committing; result and patches describe what would happen. Only for commands that declare `@simulate` ([12 §6](12-security.md)). |
@@ -65,7 +65,7 @@ the stored result and patches with `"meta": { "replay": true }`, in the form (co
 A repeat with the same (K, V) but a different O or A is `already_exists`. The command's write policy is checked
 before a replay is served. A keyed command from a caller with no viewer is `unauthenticated`, because anonymous
 callers would share one replay scope. Servers MUST retain keys for at least 24 hours and MUST bound the store
-([12 §3–4](12-security.md)).
+([12 §3-4](12-security.md)).
 
 Commands without a `key` are rejected with `invalid_argument` unless the command is annotated
 `@idempotent(false)`, which opts it out of the guarantee (and out of automatic client retries).

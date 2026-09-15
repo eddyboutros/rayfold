@@ -1,4 +1,4 @@
-# 04 — Frames and transport
+# 04 - Frames and transport
 
 A response is an ordered sequence of **frames**. Every operation produces one or more frames; the last
 frame for an operation carries `"fin": true`. A unary query is therefore one frame; a stream is many; a
@@ -57,7 +57,7 @@ result of that operation ignores them.
 | Operation | Meaning |
 |---|---|
 | `at` | `{ "at": "columns.2", "value": { "count": 9 } }` merges these fields into the plain object at this path of the result. The path is dotted, array positions included; `""` is the result itself. |
-| `list` | `{ "list": "items", "del": [3], "ins": [{ "at": 0, "value": { … } }] }` removes those positions of the list at that path, then inserts those elements at those positions. `del` names positions in the list as the client currently holds it; `ins` positions are in the list after the removals, applied in order. |
+| `list` | `{ "list": "items", "del": [3], "ins": [{ "at": 0, "value": { ... } }] }` removes those positions of the list at that path, then inserts those elements at those positions. `del` names positions in the list as the client currently holds it; `ins` positions are in the list after the removals, applied in order. |
 
 An `ins` carries the projected element exactly as a `data` frame would carry it, so the client stores its
 entities and records which fields the result selected. A server MUST NOT also send those entities as `set`
@@ -83,7 +83,7 @@ dots and integer indices. Deferred frames arrive after the op's first `data` fra
 |---|---|---|
 | `POST /rayfold` | batch envelope | anything |
 | `QUERY /rayfold` | batch envelope | batches containing only queries ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)); cacheable by body |
-| `GET /rayfold/{op}?a=…&s=…&v=…` | none | one query; `a` = base64url canonical-JSON args, `s` = shape id, `v` = base64url vars |
+| `GET /rayfold/{op}?a=...&s=...&v=...` | none | one query; `a` = base64url canonical-JSON args, `s` = shape id, `v` = base64url vars |
 
 Request content type `application/rayfold+json`. Clients that cannot send `QUERY` (browsers today) send `POST`
 with header `Rayfold-Safe: true`; servers treat it as `QUERY` for caching purposes.
@@ -111,24 +111,24 @@ Headers:
 | `traceparent` / `tracestate` | request | W3C trace context, propagated to loaders |
 | `Rayfold-Schema` | response | schema hash; clients detect drift |
 | `ETag`, `Cache-Control`, `Vary` | response | per [07](07-cache.md), on `GET`/`QUERY` only |
-| `Server-Timing` | response | `rayfold;dur=…`, per-op timings in debug mode |
+| `Server-Timing` | response | `rayfold;dur=...`, per-op timings in debug mode |
 | `RateLimit`, `RateLimit-Policy` | response | per draft-ietf-httpapi-ratelimit-headers (provisional) |
 
 ## 5. WebSocket transport
 
 Path `/rayfold/ws`, subprotocol `rayfold.0.1`. Text messages are JSON; binary messages are RB.
 
-Client → server messages:
+Client-to-server messages:
 
 | Message | Meaning |
 |---|---|
 | batch envelope | as in HTTP; ids MUST be unique for the lifetime of the socket |
 | `{ "cancel": id }` | stop an op; the server answers `{ id, fin: true }` (or nothing more if already finished) |
-| `{ "id": id, "item": … }` | an item on a bidirectional stream |
+| `{ "id": id, "item": ... }` | an item on a bidirectional stream |
 | `{ "id": id, "fin": true }` | client side of a bidirectional stream is done |
 | `{ "credit": id, "n": N }` | flow control: allow N more items on stream `id` |
 
-Server → client messages are frames. Initial credit per stream is 32 items; a server MUST NOT exceed
+Server-to-client messages are frames. Initial credit per stream is 32 items; a server MUST NOT exceed
 outstanding credit.
 
 ## 6. Other transports
@@ -162,7 +162,7 @@ curl scripts, webhooks, gateways and teams that expect resources.
 * `If-Match: "<version>"` maps to `ifVersion`; a conflict answers `412` with the current entity in `data.current`.
   Responses to commands whose result has a `@version` field carry `ETag: "<version>"`.
 * Errors are RFC 9457 problems whose `title` is the Rayfold error type and whose `data` is the typed payload.
-  Status: `VersionConflict` → 412, `domain` → 422, others per [05 §3](05-errors.md).
+  Status: `VersionConflict` -> 412, `domain` -> 422, others per [05 §3](05-errors.md).
 * A path that matches with another method answers `405` with `Allow`.
 
 `GET /rayfold/openapi.json` returns an **OpenAPI 3.2** document generated from the IR and the bindings (3.2 is the

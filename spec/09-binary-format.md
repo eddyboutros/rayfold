@@ -1,4 +1,4 @@
-# 09 — Binary format RB (extension `rb`)
+# 09 - Binary format RB (extension `rb`)
 
 RB carries exactly the JSON model of spec 04 in fewer bytes. Nothing changes semantically: a server that
 accepts RB MUST produce the same frames it would produce in JSON, and a client MAY switch between the two
@@ -26,14 +26,14 @@ One tag byte, then payload:
 | `0x07` + varint count + values | list |
 | `0x08` + varint count + (key, value)* | object |
 | `0x09` + varint length + bytes | bytes (`Bytes` scalar) |
-| `0x80`–`0xFF` | small integer 0–127 inline |
+| `0x80`-`0xFF` | small integer 0-127 inline |
 
 Object keys are a varint `k`: even `k` is a **dictionary id** `k/2`; odd `k` is an inline UTF-8 key of
 length `(k-1)/2`. Undefined members are omitted, as in JSON.
 
 ## 3. Key dictionary
 
-Ids 0–37 are the protocol keys (`id`, `op`, `args`, `shape`, `vars`, `key`, `live`, `deadline`, `simulate`,
+Ids 0-37 are the protocol keys (`id`, `op`, `args`, `shape`, `vars`, `key`, `live`, `deadline`, `simulate`,
 `ops`, `meta`, `rayfold`, `data`, `ok`, `item`, `patch`, `at`, `error`, `fin`, `errors`, `code`, `type`,
 `message`, `path`, `retryable`, `set`, `value`, `del`, `inv`, `invOp`, `cost`, `cache`, `$type`, `$ref`,
 `client`, `replay`, `cursor`, `ms`), in that order. After them come every field name, argument name, enum
@@ -48,7 +48,7 @@ representable without a schema round trip.
 ## 4. Negotiation
 
 * HTTP request body: `Content-Type: application/rayfold` (the envelope as one RB value).
-* HTTP response: `Accept: application/rayfold` → `Content-Type: application/rayfold`, length-prefixed frames.
+* HTTP response: `Accept: application/rayfold` -> `Content-Type: application/rayfold`, length-prefixed frames.
 * WebSocket: binary messages are RB; text messages are JSON. A connection MAY mix both.
 
 ## 5. Compression

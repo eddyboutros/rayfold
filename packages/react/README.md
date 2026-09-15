@@ -28,7 +28,7 @@ function BookCard({ id }: { id: string }) {
   const [restock, restocking] = useCommand<Book>("restock");
 
   if (error) return <p>Could not load the book.</p>;
-  if (loading && !data) return <p>Loading…</p>;
+  if (loading && !data) return <p>Loading...</p>;
   return (
     <p>
       {data?.title}: {data?.stock} in stock
