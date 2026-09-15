@@ -11959,6 +11959,296 @@
   "hash": "428e4713ee9b74ccea71a347c060506d9b5fd8568a8cbffefebfa70bd5826e2a"
  },
  {
+  "name": "fixture 15-preloaded-fields.json",
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: ID): Author?\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Author": {
+     "kind": "entity",
+     "name": "Author",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "books",
+       "type": {
+        "kind": "named",
+        "name": "Page",
+        "nullable": false,
+        "args": [
+         {
+          "kind": "named",
+          "name": "Book",
+          "nullable": false
+         }
+        ]
+       },
+       "args": [
+        {
+         "name": "page",
+         "type": {
+          "kind": "named",
+          "name": "PageArgs",
+          "nullable": false
+         },
+         "annotations": [],
+         "default": {
+          "first": 10
+         }
+        }
+       ],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": []
+    },
+    "Book": {
+     "kind": "entity",
+     "name": "Book",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "author": {
+     "kind": "query",
+     "name": "author",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Author",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [],
+  "hash": "208d3f197626831f4f89cabcaf26e58ea50c98077b3d4cb31df5f69bf89d544d"
+ },
+ {
   "name": "bookstore",
   "text": "// Bookstore: the reference domain used by the examples, benchmarks and conformance suite.\n\nentity Author @cache(maxAge: 5m, scope: public) {\n  id: ID\n  name: String\n  bio: String? @lazy\n  books(page: PageArgs = { first: 10 }): Page<Book>\n}\n\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  format: Format\n  \"\"\"Unit price in the store currency.\"\"\"\n  price: Decimal @unit(\"USD\")\n  stock: Int\n  author: Author\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  \"\"\"Only the owner (or an admin) can see the cost price.\"\"\"\n  costPrice: Decimal? @allow(read: viewer.role == \"admin\" || viewer.id == ownerId)\n  ownerId: ID\n}\n\nentity Review {\n  id: ID\n  rating: Int @range(min: 1, max: 5)\n  body: String\n  book: Book\n  reviewerId: ID\n  \"\"\"Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates.\"\"\"\n  version: Int @version\n}\n\nentity Order @cache(maxAge: 0s, scope: private) @allow(read: viewer.id == customerId || viewer.role == \"admin\") {\n  id: ID\n  status: OrderStatus\n  customerId: ID\n  items: [OrderItem]\n  total: Decimal\n}\n\nobject OrderItem {\n  book: Book\n  qty: Int\n  unitPrice: Decimal\n}\n\nenum Format { HARDCOVER PAPERBACK EBOOK }\nenum OrderStatus { PLACED PAID SHIPPED CANCELLED }\n\ninput BookFilter {\n  titleContains: String?\n  format: Format?\n  authorId: ID?\n  maxPrice: Decimal?\n}\n\ninput OrderLine { bookId: ID, qty: Int = 1 @range(min: 1, max: 100) }\ninput OrderInput { lines: [OrderLine] }\ninput ReviewInput { bookId: ID, rating: Int @range(min: 1, max: 5), body: String @range(min: 1, max: 2000) }\ninput ReviewEdit { rating: Int @range(min: 1, max: 5), body: String @range(min: 1, max: 2000) }\n\"\"\"Partial update: absent fields are left unchanged.\"\"\"\ninput BookPatch { title: String? @range(min: 1, max: 200), price: Decimal? @range(min: 0), stock: Int? @range(min: 0) }\n\nerror OutOfStock { bookId: ID, available: Int }\nerror PaymentDeclined { reason: String }\n\nevent OrderPlaced { orderId: ID, customerId: ID }\nevent StockChanged { bookId: ID, stock: Int }\n\nview Book.default = { id title format price stock author { id name } }\nview Book.card    = { ...Book.default reviews(page: { first: 3 }) { items { id rating } } }\nview Author.default = { id name }\nview Order.default = { id status total items { qty unitPrice book { id title } } }\n\n\"\"\"List books, newest first.\"\"\"\nquery books(filter: BookFilter?, page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1) @http(method: QUERY, path: \"/books\", body: \"*\")\nquery book(id: ID): Book? @http(method: GET, path: \"/books/{id}\")\nquery author(id: ID): Author?\nquery review(id: ID): Review? @http(method: GET, path: \"/reviews/{id}\")\nquery order(id: ID): Order? @allow(read: viewer != null) @http(method: GET, path: \"/orders/{id}\")\nquery myOrders(page: PageArgs = { first: 20 }): Page<Order> @allow(read: viewer != null) @cache(maxAge: 0s, scope: private)\n\n\"\"\"Place an order. Fails atomically if any line is out of stock.\"\"\"\ncommand placeOrder(input: OrderInput): Order\n  throws OutOfStock | PaymentDeclined\n  emits OrderPlaced StockChanged\n  @allow(write: viewer != null) @simulate\n  @http(method: POST, path: \"/orders\", body: input, location: \"/orders/{id}\")\n\n\"\"\"Pay for a placed order.\"\"\"\ncommand payOrder(id: ID): Order\n  throws PaymentDeclined | NotPayable { status: OrderStatus }\n  @allow(write: viewer != null) @simulate\n  @http(method: POST, path: \"/orders/{id}/pay\")\n\ncommand cancelOrder(id: ID): Order\n  throws NotCancellable { status: OrderStatus }\n  @allow(write: viewer != null) @simulate\n\ncommand addReview(input: ReviewInput): Review @allow(write: viewer != null) @simulate\n\n\"\"\"Replace a review's rating and text. Only its author (or an admin) may edit it.\"\"\"\ncommand editReview(id: ID, input: ReviewEdit): Review @allow(write: viewer != null) @simulate @http(method: PUT, path: \"/reviews/{id}\", body: input)\n\n\"\"\"Change some fields of a book; fields not sent are left as they are.\"\"\"\ncommand updateBook(id: ID, patch: BookPatch): Book @allow(write: viewer.role == \"admin\") @simulate @http(method: PATCH, path: \"/books/{id}\", body: patch)\n\n\"\"\"Delete a review. Only its author (or an admin) may delete it.\"\"\"\ncommand deleteReview(id: ID): Review @allow(write: viewer != null) @simulate @http(method: DELETE, path: \"/reviews/{id}\")\n\ncommand restock(bookId: ID, qty: Int): Book emits StockChanged @allow(write: viewer.role == \"admin\") @simulate\n\nstream stockUpdates(bookIds: [ID]): StockChanged\n",
   "ir": {
@@ -23207,8 +23497,8 @@
  },
  {
   "name": "fuzz 1",
-  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named:[]\n",
-  "error": "Expected name but found \"]\" (7:14)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orde[ }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected \":\" but found \"[\" (24:20)"
  },
  {
   "name": "fuzz 2",
@@ -23222,8 +23512,8 @@
  },
  {
   "name": "fuzz 4",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  autviewr: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: In(Id: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: I\\ Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"\\\\\" (21:22)"
+  "text": "\nentity Author viewid: ID name: String }\ne(Book { id: ID title: String author: Aut\\uery book(id: ID): Book?\n",
+  "error": "Unexpected character \"\\\\\" (3:42)"
  },
  {
   "name": "fuzz 5",
@@ -23257,13 +23547,13 @@
  },
  {
   "name": "fuzz 11",
-  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String view: Author }\nquery book(id: Icommand B$ok?\n",
-  "error": "Expected \":\" but found \"$\" (4:26)"
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }\nview Book { id: ID }\nquery author(id: Icommand Au$hor?\n",
+  "error": "Expected \".\" but found \"{\" (3:11)"
  },
  {
   "name": "fuzz 12",
-  "text": "\nobject Named @inter { id: ID name: Stré}\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Né",
-  "error": "Unexpected character \"é\" (2:39)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxA 0s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Authé secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstréks(n: Int): Tick\n",
+  "error": "Unexpected character \"é\" (7:15)"
  },
  {
   "name": "fuzz 13",
@@ -23272,8 +23562,8 @@
  },
  {
   "name": "fuzz 14",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(\\: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(pag{geArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @\\imulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"\\\\\" (3:20)"
+  "text": "\nentity \\ id: ID title: String }\nentity Author { id: ID name: Stri{union Hit = Book | Author\nque\\y search: [Hit]\n",
+  "error": "Unexpected character \"\\\\\" (2:8)"
  },
  {
   "name": "fuzz 15",
@@ -23317,8 +23607,8 @@
  },
  {
   "name": "fuzz 23",
-  "text": "\nentity Author { id: ID name: String bio: S,ng? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: Strin//g? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected \":\" but found \"?\" (2:46)"
+  "text": "\nent, Book { id: ID title: String }\nent//ity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"ent\" (2:1)"
  },
  {
   "name": "fuzz 24",
@@ -23337,23 +23627,23 @@
  },
  {
   "name": "fuzz 27",
-  "text": "\nentity Author { id: ID name: String bioentityg? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } e?Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected \":\" but found \"?\" (2:47)"
+  "text": "\nententityhor { id: ID name: String }\nentity Book { id: ID title: String author: Author }\nquery?(id: ID): Book?\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"ententityhor\" (2:1)"
  },
  {
   "name": "fuzz 28",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { viewt: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId1e999D }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: In@ick\n",
-  "error": "Expected \":\" but found \"}\" (13:49)"
+  "text": "\nentity Book { id: ID titleviewring }\nentity A1e999or { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]@",
+  "error": "Expected \":\" but found \"}\" (2:36)"
  },
  {
   "name": "fuzz 29",
-  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\n:y Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Nam1e999",
-  "error": "Expected a definition keyword (entity, query, ...) but found \":\" (4:1)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id ==:omerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ti{: Int): 1e999",
+  "error": "Number out of range: 1e999 (25:19)"
  },
  {
   "name": "fuzz 30",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secqueryt: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs]irst: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order?:@allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"]\" (18:27)"
+  "text": "\nentity Author { id: ID name: String }queryntity Book { id: ID title: ] author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"queryntity\" (2:38)"
  },
  {
   "name": "fuzz 31",
@@ -24370,23 +24660,23 @@
  },
  {
   "name": "fuzz 51",
-  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String auth): Author }\nquery book( d: ID): Book,",
-  "error": "Expected \":\" but found \")\" (3:40)"
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }\nentity)ook { id: ID }\nquery author id: ID): Autho,",
+  "error": "Expected name but found \")\" (3:7)"
  },
  {
   "name": "fuzz 52",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @v-n\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\n1e999entity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewe: customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"-\" (10:18)"
+  "text": "\nentity Author { id: ID name: S- }\nent1e999ity Bo:: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Unexpected character \"-\" (2:31)"
  },
  {
   "name": "fuzz 53",
-  "text": "\nentity Author { id: ID name: S:\nentity Bo)ok { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
-  "error": "Expected name but found \":\" (2:31)"
+  "text": "\nentity Author { id: ID name: String b:ge: PageArgs )= { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: ID): Author?\n",
+  "error": "Expected name but found \":\" (2:41)"
  },
  {
   "name": "fuzz 54",
-  "text": "\nobject Named ]ace { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot im=ements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
-  "error": "Expected \"{\" but found \"]\" (2:14)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }] Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bo=Id: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"]\" (2:57)"
  },
  {
   "name": "fuzz 55",
@@ -24405,13 +24695,13 @@
  },
  {
   "name": "fuzz 58",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: Page... = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int \n= 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"...\" (9:21)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Pers...mplements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID bod\ny: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected \"{\" but found \"...\" (3:12)"
  },
  {
   "name": "fuzz 59",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stoé: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.d[ = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available} emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"é\" (12:37)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { ié ID name: String email: String }\nentity Bot implements Na[id: ID name: String model: String }\nentity Note { id: ID body: String author: Na}uery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Unexpected character \"é\" (3:35)"
  },
  {
   "name": "fuzz 60",
@@ -24420,8 +24710,8 @@
  },
  {
   "name": "fuzz 61",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID book/*qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Boo=ery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated block comment (14:80)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bo/*ments Named { id: ID = String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Unterminated block comment (4:10)"
  },
  {
   "name": "fuzz 62",
@@ -24445,7 +24735,7 @@
  },
  {
   "name": "fuzz 66",
-  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: commandID): Book?\n",
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: commandID): Author?\n",
   "ir": {
    "rayfold": "0.1",
    "types": {
@@ -24648,6 +24938,37 @@
        "args": [],
        "annotations": [],
        "ordinal": 2
+      },
+      {
+       "name": "books",
+       "type": {
+        "kind": "named",
+        "name": "Page",
+        "nullable": false,
+        "args": [
+         {
+          "kind": "named",
+          "name": "Book",
+          "nullable": false
+         }
+        ]
+       },
+       "args": [
+        {
+         "name": "page",
+         "type": {
+          "kind": "named",
+          "name": "PageArgs",
+          "nullable": false
+         },
+         "annotations": [],
+         "default": {
+          "first": 10
+         }
+        }
+       ],
+       "annotations": [],
+       "ordinal": 3
       }
      ],
      "implements": []
@@ -24667,37 +24988,15 @@
        "args": [],
        "annotations": [],
        "ordinal": 1
-      },
-      {
-       "name": "title",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      },
-      {
-       "name": "author",
-       "type": {
-        "kind": "named",
-        "name": "Author",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 3
       }
      ],
      "implements": []
     }
    },
    "ops": {
-    "book": {
+    "author": {
      "kind": "query",
-     "name": "book",
+     "name": "author",
      "args": [
       {
        "name": "id",
@@ -24711,7 +25010,7 @@
      ],
      "returns": {
       "kind": "named",
-      "name": "Book",
+      "name": "Author",
       "nullable": true
      },
      "throws": [],
@@ -24725,12 +25024,12 @@
    {
     "severity": "error",
     "code": "unknown-type",
-    "at": "book().id",
+    "at": "author().id",
     "message": "Unknown type commandID"
    }
   ],
-  "hash": "107f3103ed93bd88d560fd166554fe4e4c2031eca39503857811b3635c5f20cc",
-  "loadError": "Invalid schema:\n  book().id: Unknown type commandID [unknown-type]"
+  "hash": "6a2317affa0827540a2c3342b9f972771a760ec25b5db970b837d45ba372fc33",
+  "loadError": "Invalid schema:\n  author().id: Unknown type commandID [unknown-type]"
  },
  {
   "name": "fuzz 67",
@@ -24744,8 +25043,8 @@
  },
  {
   "name": "fuzz 69",
-  "text": "\nentity Author { id: ID name: String :tring? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommandcommand(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \":\" (2:37)"
+  "text": "\nent:ok { id: ID title: String }\nentity Author { id: ID name: String }\nunion Hit = Bcommand| Author\nquery search: [Hit]\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"ent\" (2:1)"
  },
  {
   "name": "fuzz 70",
@@ -24754,13 +25053,13 @@
  },
  {
   "name": "fuzz 71",
-  "text": "\nenti]Author { id: ID name: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"enti\" (2:1)"
+  "text": "\nentit]uthor { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: ID): Author?\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"entit\" (2:1)"
  },
  {
   "name": "fuzz 72",
-  "text": "\no(t Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String (hor: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"o\" (2:1)"
+  "text": "\nentity Au( { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order thr( OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected \"{\" but found \"(\" (2:10)"
  },
  {
   "name": "fuzz 73",
@@ -24789,18 +25088,18 @@
  },
  {
   "name": "fuzz 78",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAqueryge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nen=ity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId:1e999y: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Number out of range: 1e999 (21:20)"
+  "text": "\nentity queryAuthor { id: ID name: String =\nentity Book { id: ID title: String author: Aut1e999uery book(id: ID): Book?\n",
+  "error": "Defaults are only allowed on input fields and arguments (2:29)"
  },
  {
   "name": "fuzz 79",
-  "text": "\nentity Book { id: ID title://tring }\nentity Author { id: ID name: String }\nunion Hit = Book | Autho)query search: [Hit]\n",
-  "error": "Expected \":\" but found \"{\" (3:15)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 1//}): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } em)s Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected name but found \"@\" (10:16)"
  },
  {
   "name": "fuzz 80",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: ... stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @siquerycommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"...\" (12:26)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { ...name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery noqueryID): Note?\nquery named: [Named]\n",
+  "error": "Expected name but found \"...\" (3:34)"
  },
  {
   "name": "fuzz 81",
@@ -24824,18 +25123,18 @@
  },
  {
   "name": "fuzz 85",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  aviewAuthor\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: (query author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write-wer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"-\" (20:144)"
+  "text": "\nobject Named @interface { id: ID namviewng }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: (ing }\nentity Note { id: ID body: String author: Named }\nqu-ote(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Unexpected character \"-\" (6:3)"
  },
  {
   "name": "fuzz 86",
-  "text": "\nobviewect Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID n\\tring model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Nquery\nquery named: [Named]\n",
-  "error": "Unexpected character \"\\\\\" (4:39)"
+  "text": "\nentity Author view id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nqu\\oks(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncoqueryd patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Unexpected character \"\\\\\" (18:3)"
  },
  {
   "name": "fuzz 87",
-  "text": "\nentity Author { id: ID name: String }\ne?nt)y Book { id: ID title: String author: Author }\nquery book(id: ID): Book?@",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"e\" (3:1)"
+  "text": "\nentity Author { id: ID name: String books(page:? Pa)Args = { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: ID): Author?@",
+  "error": "Expected name but found \"?\" (2:48)"
  },
  {
   "name": "fuzz 88",
@@ -24849,13 +25148,13 @@
  },
  {
   "name": "fuzz 90",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Iersion\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: St{? }\nentity Review { id: ID rat=ng: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"{\" (12:71)"
+  "text": "\nentity Author { id: ID name: g }\nent{B=ok { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"ent\" (3:1)"
  },
  {
   "name": "fuzz 91",
-  "text": "\nentity Author { id: ID name: String }\nentity Booé: ID title: Strin=or: Author }\nquer: book(id: ID): Book?\n",
-  "error": "Unexpected character \"é\" (3:11)"
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = ét: 10 }): Page<Book> =ty Book { id: ID }\nque:y author(id: ID): Author?\n",
+  "error": "Unexpected character \"é\" (2:60)"
  },
  {
   "name": "fuzz 92",
@@ -25795,18 +26094,18 @@
  },
  {
   "name": "fuzz 96",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: In ect Tick {  }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Intéok\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"é\" (21:37)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot i  d { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID):é?\nquery named: [Named]\n",
+  "error": "Unexpected character \"é\" (6:20)"
  },
  {
   "name": "fuzz 97",
-  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id\nme: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
-  "error": "Expected \":\" but found \"me\" (4:1)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String\n: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected name but found \":\" (13:1)"
  },
  {
   "name": "fuzz 98",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order \nthrows OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nev)ught { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"ev\" (25:1)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author }\n\nquery book(id: ID): B)",
+  "error": "Expected a definition keyword (entity, query, ...) but found \")\" (5:22)"
  },
  {
   "name": "fuzz 99",
@@ -26728,8 +27027,8 @@
  },
  {
   "name": "fuzz 100",
-  "text": "\ne,tity Author { id: ID name: String }\nentity Bo1e999ok { id: ID title: String author: Author }\nry book(id: ID): Book?\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"e\" (2:1)"
+  "text": "\ne,tity Author { id: ID name: String books(page: PageArgs =1e999 { first: 10 }): Page<Book> }\nentity Book { id: ID }ery author(id: ID): Author?\n",
+  "error": "Number out of range: 1e999 (2:59)"
  },
  {
   "name": "fuzz 101",
@@ -26738,13 +27037,13 @@
  },
  {
   "name": "fuzz 102",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer1e999= customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book/*(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int(: Tick\n",
-  "error": "Unterminated block comment (17:11)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }1e999ty Bot implements Named { id: /*ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named(\n",
+  "error": "Number out of range: 1e999 (3:69)"
  },
  {
   "name": "fuzz 103",
-  "text": "\nentity Book { id: ID title: String }\nentity Author { id:/*e: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
-  "error": "Unterminated block comment (3:20)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qt/*}\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Unterminated block comment (14:89)"
  },
  {
   "name": "fuzz 104",
@@ -26753,12 +27052,12 @@
  },
  {
   "name": "fuzz 105",
-  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: S-uthor: Author }\nquery ...k(id: ID): Book?\n",
-  "error": "Unexpected character \"-\" (3:30)"
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<B-entity Book { id: ID }\nquery ...hor(id: ID): Author?\n",
+  "error": "Unexpected character \"-\" (2:82)"
  },
  {
   "name": "fuzz 106",
-  "text": "\nentity Book { id: ID ,le: String }\nentity Author { id: ID name: String }\nunion Hit = Book | Author\nquery search: [Hit]\n",
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.ro,== \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
   "ir": {
    "rayfold": "0.1",
    "types": {
@@ -26935,36 +27234,6 @@
       }
      ]
     },
-    "Book": {
-     "kind": "entity",
-     "name": "Book",
-     "annotations": [],
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "named",
-        "name": "ID",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 1
-      },
-      {
-       "name": "le",
-       "type": {
-        "kind": "named",
-        "name": "String",
-        "nullable": false
-       },
-       "args": [],
-       "annotations": [],
-       "ordinal": 2
-      }
-     ],
-     "implements": []
-    },
     "Author": {
      "kind": "entity",
      "name": "Author",
@@ -26991,32 +27260,686 @@
        "args": [],
        "annotations": [],
        "ordinal": 2
+      },
+      {
+       "name": "bio",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "lazy",
+         "args": {}
+        }
+       ],
+       "ordinal": 3
       }
      ],
      "implements": []
     },
-    "Hit": {
-     "kind": "union",
-     "name": "Hit",
+    "Book": {
+     "kind": "entity",
+     "name": "Book",
+     "annotations": [
+      {
+       "name": "cache",
+       "args": {
+        "maxAge": {
+         "$duration": 60000
+        },
+        "scope": {
+         "$ident": "public"
+        }
+       }
+      }
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "title",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "stock",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "author",
+       "type": {
+        "kind": "named",
+        "name": "Author",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      },
+      {
+       "name": "secret",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "allow",
+         "args": {
+          "read": {
+           "$expr": {
+            "k": "bin",
+            "op": "==",
+            "l": {
+             "k": "path",
+             "root": "viewer",
+             "path": [
+              "ro"
+             ]
+            },
+            "r": {
+             "k": "lit",
+             "v": "admin"
+            }
+           }
+          }
+         }
+        }
+       ],
+       "ordinal": 5
+      },
+      {
+       "name": "reviews",
+       "type": {
+        "kind": "named",
+        "name": "Page",
+        "nullable": false,
+        "args": [
+         {
+          "kind": "named",
+          "name": "Review",
+          "nullable": false
+         }
+        ]
+       },
+       "args": [
+        {
+         "name": "page",
+         "type": {
+          "kind": "named",
+          "name": "PageArgs",
+          "nullable": false
+         },
+         "annotations": [],
+         "default": {
+          "first": 10
+         }
+        }
+       ],
+       "annotations": [],
+       "ordinal": 6
+      },
+      {
+       "name": "version",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "version",
+         "args": {}
+        }
+       ],
+       "ordinal": 7
+      }
+     ],
+     "implements": []
+    },
+    "BookPatch": {
+     "kind": "input",
+     "name": "BookPatch",
      "annotations": [],
-     "members": [
-      "Book",
-      "Author"
+     "fields": [
+      {
+       "name": "title",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "stock",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "range",
+         "args": {
+          "min": 0
+         }
+        }
+       ],
+       "ordinal": 2
+      },
+      {
+       "name": "secret",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Review": {
+     "kind": "entity",
+     "name": "Review",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "rating",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "bookId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": []
+    },
+    "Order": {
+     "kind": "entity",
+     "name": "Order",
+     "annotations": [
+      {
+       "name": "allow",
+       "args": {
+        "read": {
+         "$expr": {
+          "k": "bin",
+          "op": "==",
+          "l": {
+           "k": "path",
+           "root": "viewer",
+           "path": [
+            "id"
+           ]
+          },
+          "r": {
+           "k": "path",
+           "root": "this",
+           "path": [
+            "customerId"
+           ]
+          }
+         }
+        }
+       }
+      }
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "customerId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "bookId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "qty",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ],
+     "implements": []
+    },
+    "Tick": {
+     "kind": "object",
+     "name": "Tick",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ]
+    },
+    "OutOfStock": {
+     "kind": "error",
+     "name": "OutOfStock",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "bookId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "available",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ]
+    },
+    "Bought": {
+     "kind": "event",
+     "name": "Bought",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "orderId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
      ]
     }
    },
    "ops": {
-    "search": {
+    "book": {
      "kind": "query",
-     "name": "search",
-     "args": [],
+     "name": "book",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
      "returns": {
-      "kind": "list",
-      "of": {
-       "kind": "named",
-       "name": "Hit",
-       "nullable": false
+      "kind": "named",
+      "name": "Book",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "books": {
+     "kind": "query",
+     "name": "books",
+     "args": [
+      {
+       "name": "page",
+       "type": {
+        "kind": "named",
+        "name": "PageArgs",
+        "nullable": false
+       },
+       "annotations": [],
+       "default": {
+        "first": 20
+       }
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Page",
+      "nullable": false,
+      "args": [
+       {
+        "kind": "named",
+        "name": "Book",
+        "nullable": false
+       }
+      ]
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "cost",
+       "args": {
+        "base": 5,
+        "perItem": 1
+       }
+      }
+     ]
+    },
+    "author": {
+     "kind": "query",
+     "name": "author",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Author",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "order": {
+     "kind": "query",
+     "name": "order",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Order",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "allow",
+       "args": {
+        "read": {
+         "$expr": {
+          "k": "bin",
+          "op": "!=",
+          "l": {
+           "k": "path",
+           "root": "viewer",
+           "path": []
+          },
+          "r": {
+           "k": "lit",
+           "v": null
+          }
+         }
+        }
+       }
+      }
+     ]
+    },
+    "buy": {
+     "kind": "command",
+     "name": "buy",
+     "args": [
+      {
+       "name": "bookId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
       },
+      {
+       "name": "qty",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "range",
+         "args": {
+          "min": 1,
+          "max": 10
+         }
+        }
+       ],
+       "default": 1
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Order",
+      "nullable": false
+     },
+     "throws": [
+      "OutOfStock"
+     ],
+     "emits": [
+      "Bought"
+     ],
+     "annotations": [
+      {
+       "name": "allow",
+       "args": {
+        "write": {
+         "$expr": {
+          "k": "bin",
+          "op": "!=",
+          "l": {
+           "k": "path",
+           "root": "viewer",
+           "path": []
+          },
+          "r": {
+           "k": "lit",
+           "v": null
+          }
+         }
+        }
+       }
+      },
+      {
+       "name": "simulate",
+       "args": {}
+      }
+     ]
+    },
+    "restock": {
+     "kind": "command",
+     "name": "restock",
+     "args": [
+      {
+       "name": "bookId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      },
+      {
+       "name": "qty",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Book",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "patchBook": {
+     "kind": "command",
+     "name": "patchBook",
+     "args": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": []
+      },
+      {
+       "name": "patch",
+       "type": {
+        "kind": "named",
+        "name": "BookPatch",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Book",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "ticks": {
+     "kind": "stream",
+     "name": "ticks",
+     "args": [
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Tick",
       "nullable": false
      },
      "throws": [],
@@ -27024,15 +27947,36 @@
      "annotations": []
     }
    },
-   "views": {}
+   "views": {
+    "Book.default": {
+     "type": "Book",
+     "name": "default",
+     "shape": {
+      "items": [
+       {
+        "kind": "field",
+        "name": "id"
+       },
+       {
+        "kind": "field",
+        "name": "title"
+       },
+       {
+        "kind": "field",
+        "name": "stock"
+       }
+      ]
+     }
+    }
+   }
   },
   "diagnostics": [],
-  "hash": "0ac971831ac0cba709d8b5d79728f03c3034d99984ba76d903a9bb8b02b20577"
+  "hash": "53f87b04787d0abb2cee4309d1939dd005704cbc787b1979d97c2582b7958a51"
  },
  {
   "name": "fuzz 107",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: v}.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatc]tle: String? stock: I/*? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated block comment (12:37)"
+  "text": "\nentity Author { id:}ame: String]/*y Book { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
+  "error": "Unterminated block comment (2:33)"
  },
  {
   "name": "fuzz 108",
@@ -27973,8 +28917,8 @@
  },
  {
   "name": "fuzz 110",
-  "text": "\nobject Named @interface { id : ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity $ { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
-  "error": "Expected name but found \"$\" (5:8)"
+  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id:  ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Ord$@allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"$\" (20:25)"
  },
  {
   "name": "fuzz 111",
@@ -28937,8 +29881,8 @@
  },
  {
   "name": "fuzz 117",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID?ty Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, availabl\": Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated string (20:110)"
+  "text": "\nentity Author { id: ID name: String }\nentity? id: ID title: String author: Author }\nquery\"book(id: ID): Book?\n",
+  "error": "Unterminated string (4:6)"
  },
  {
   "name": "fuzz 118",
@@ -28947,13 +29891,13 @@
  },
  {
   "name": "fuzz 119",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { ord  ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected \":\" but found \"ID\" (24:21)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: ed]\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"]\" (7:16)"
  },
  {
   "name": "fuzz 120",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: Book[ch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"[\" (23:38)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquer[amed: [Named]\n",
+  "error": "Expected a definition keyword (entity, query, ...) but found \"quer\" (7:1)"
  },
  {
   "name": "fuzz 121",
@@ -28967,8 +29911,8 @@
  },
  {
   "name": "fuzz 123",
-  "text": "\nentity Author { id: ID name: String }\nentity Book {{ id: ID tit\": Strcommandauthor: Author }\nquery book(id: ID): Book?\n",
-  "error": "Unterminated string (3:26)"
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = { {first: 10 }): P\"e<Bookcommandentity Book { id: ID }\nquery author(id: ID): Author?\n",
+  "error": "Unterminated string (2:78)"
  },
  {
   "name": "fuzz 124",
@@ -29002,8 +29946,8 @@
  },
  {
   "name": "fuzz 130",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity]w { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: Pa}Args = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order thr(tOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \"]\" (13:7)"
+  "text": "\nobject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: S]email: String }\nentity Bot implements Named { id: ID name}String model: String }\nentity Note { id: ID body: String (: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected name but found \"]\" (3:48)"
  },
  {
   "name": "fuzz 131",
@@ -29017,8 +29961,8 @@
  },
  {
   "name": "fuzz 133",
-  "text": "\nentity Author { id: queryame: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
-  "error": "Expected name but found \":\" (2:29)"
+  "text": "\nentity Author { id: ID naqueryString books(page: PageArgs = { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: ID): Author?\n",
+  "error": "Expected \":\" but found \"books\" (2:38)"
  },
  {
   "name": "fuzz 134",
@@ -29032,18 +29976,18 @@
  },
  {
   "name": "fuzz 136",
-  "text": "\nentity Author éD name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Revie\nd: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID):entityook?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"é\" (2:15)"
+  "text": "\néBook { id: ID title: String }\nentit\nhor { id: ID name: Stentityng }\nunion Hit = Book | Author\nquery search: [Hit]\n",
+  "error": "Unexpected character \"é\" (2:1)"
  },
  {
   "name": "fuzz 137",
-  "text": "\n}bject Named @interface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { id: ID name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
-  "error": "Expected a definition keyword (entity, query, ...) but found \"}\" (2:1)"
+  "text": "\nentity}Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
+  "error": "Expected name but found \"}\" (2:7)"
  },
  {
   "name": "fuzz 138",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncom\\buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unexpected character \"\\\\\" (21:4)"
+  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String author: A\\ }\nquery book(id: ID): Book?\n",
+  "error": "Unexpected character \"\\\\\" (3:45)"
  },
  {
   "name": "fuzz 139",
@@ -29052,8 +29996,8 @@
  },
  {
   "name": "fuzz 140",
-  "text": "\nentity Author { id: ID name: Stri:o: String? @lazy }\nentity Book ...ache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @version\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title st?\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatch): Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Expected name but found \":\" (2:34)"
+  "text": "\nobject : @in...rface { id: ID name: String }\nentity Person implements Named { id: ID name: String email: String }\nentity Bot implements Named { ?D name: String model: String }\nentity Note { id: ID body: String author: Named }\nquery note(id: ID): Note?\nquery named: [Named]\n",
+  "error": "Expected name but found \":\" (2:8)"
  },
  {
   "name": "fuzz 141",
@@ -29980,13 +30924,13 @@
  },
  {
   "name": "fuzz 143",
-  "text": "\nentity Author { id: I1e999 String }\nen\"ook { id: ID title: String author: Author }\nquery book(id: ID): Book?\n",
-  "error": "Unterminated string (3:3)"
+  "text": "\nentity Author { id: ID nam1e999ng books(page: P\"s = { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: ID): Author?\n",
+  "error": "Unterminated string (2:48)"
  },
  {
   "name": "fuzz 144",
-  "text": "\nentity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author/*uery book(id: ID): Book?\n",
-  "error": "Unterminated block comment (3:50)"
+  "text": "\nentity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }\nentity Book { id: /*\nquery author(id: ID): Author?\n",
+  "error": "Unterminated block comment (3:19)"
  },
  {
   "name": "fuzz 145",
@@ -30914,8 +31858,8 @@
  },
  {
   "name": "fuzz 148",
-  "text": "\nentity Author { id: ID name: String bio: String? @lazy }\nentity Book @cache(maxAge: 60s, scope: public) {\n  id: ID\n  title: String\n  stock: Int\n  author: Author\n  secret: String? @allow(read: viewer.role == \"admin\")\n  reviews(page: PageArgs = { first: 10 }): Page<Review>\n  version: Int @vercommandon\n}\ninput BookPatch { title: String? stock: Int? @range(min: 0) secret: String? }\nentity Review { id: ID rating: Int bookId: ID }\nentity Order @allow(read: viewer.id == customerId) { id: ID customerId: ID bookId: ID qty: Int }\nobject Tick { n: Int }\nview Book.default = { id title stock }\nquery book(id: ID): Book?\nquery books(page: PageArgs = { first: 20 }): Page<Book> @cost(base: 5, perItem: 1)\nquery author(id: ID): Author?\nquery order(id: ID): Order? @allow(read: viewer != null)\ncommand buy(bookId: ID, qty\" Int = 1 @range(min: 1, max: 10)): Order throws OutOfStock { bookId: ID, available: Int } emits Bought @allow(write: viewer != null) @simulate\ncommand restock(bookId: ID, qty: Int): Book\ncommand patchBook(id: ID, patch: BookPatview: Book\nevent Bought { orderId: ID }\nstream ticks(n: Int): Tick\n",
-  "error": "Unterminated string (21:28)"
+  "text": "\nentity Book { id: ID title: Strcommandg }\nentity Author { id: ID name: String }\nunion Hit = Bo\"k | Author\nquery search:viewit]\n",
+  "error": "Unterminated string (4:15)"
  },
  {
   "name": "fuzz 149",
