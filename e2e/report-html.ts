@@ -342,6 +342,9 @@ const benchTable = `<table>
 </table>`;
 
 const html = `<title>Should You Use Rayfold?</title>
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="description" content="A measured, side-by-side comparison of Rayfold with REST and GraphQL, with the real requests and responses behind every number.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>

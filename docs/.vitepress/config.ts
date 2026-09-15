@@ -51,10 +51,12 @@ export default defineConfig({
   base: "/",
   cleanUrls: true,
   lastUpdated: true,
-  srcExclude: ["publishing.md", "**/README.md"],
+  srcExclude: ["releasing.md", "**/README.md"],
   ignoreDeadLinks: "localhostLinks",
   head: [
+    ["link", { rel: "icon", href: "/favicon.ico", sizes: "32x32" }],
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
+    ["link", { rel: "apple-touch-icon", href: "/apple-touch-icon.png" }],
     ["meta", { name: "theme-color", content: "#0f6e5a" }],
     // Archivo SemiBold is the wordmark's typeface
     ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],
