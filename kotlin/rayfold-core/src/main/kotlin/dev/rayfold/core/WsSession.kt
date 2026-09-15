@@ -75,8 +75,10 @@ class RayfoldWsSession(
         scope.launch {
             try {
                 server.execute(env, ExecuteOptions(viewer, cancel = cancelJob)).collect { f ->
-                    send(f, binary)
+                    // free the id before the final frame goes out: messages are read on another thread, and a client may
+                    // reuse the id as soon as it sees that frame
                     if (f["fin"] == JsonPrimitive(true)) (f["id"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { ops.remove(it, cancelJob) }
+                    send(f, binary)
                 }
             } finally {
                 for (id in ids) ops.remove(id, cancelJob)
