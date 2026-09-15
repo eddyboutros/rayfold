@@ -3,6 +3,11 @@
 Every change a user will notice, newest first. Versions follow [docs/versioning.md](docs/versioning.md); the npm
 packages and the Maven artifacts share one version number.
 
+## Unreleased
+
+- **The documentation site is at https://rayfold.dev/.** Links to `eddyboutros.github.io/rayfold/` redirect there,
+  problem-type URIs included, which keep their 0.1.0 form.
+
 ## 0.1.0 (2026-09-15)
 
 The first release: the specification (Core 0.1 and the `live`, `rb`, `mcp` and `http` extensions), and

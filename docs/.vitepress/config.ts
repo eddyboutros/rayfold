@@ -48,13 +48,13 @@ export default defineConfig({
   description:
     "One protocol for app APIs: a typed schema, queries shaped by the screen, live updates and cache patches. For TypeScript, React, Kotlin, Java and Spring Boot.",
   lang: "en-US",
-  base: "/rayfold/",
+  base: "/",
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: ["publishing.md", "**/README.md"],
   ignoreDeadLinks: "localhostLinks",
   head: [
-    ["link", { rel: "icon", type: "image/svg+xml", href: "/rayfold/favicon.svg" }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
     ["meta", { name: "theme-color", content: "#0f6e5a" }],
     // Archivo SemiBold is the wordmark's typeface
     ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],

@@ -1,7 +1,8 @@
 /**
  * One page per problem type a Rayfold server can answer with. The `type` of every RFC 9457 problem document points at
- * https://eddyboutros.github.io/rayfold/errors/<type>, and errors.test.ts fails if a type either runtime can send
- * has no entry here.
+ * https://eddyboutros.github.io/rayfold/errors/<type>, which GitHub redirects to the page on rayfold.dev; the URI is
+ * an identifier clients may compare, so it stays as 0.1.0 published it. errors.test.ts fails if a type either
+ * runtime can send has no entry here.
  */
 
 export interface ErrorType {

@@ -17,8 +17,8 @@ Rayfold gives you:
 - **Plain HTTP when you want it.** JSON over `POST`, cacheable `GET`, REST routes from `@http`, OpenAPI 3.2, and an
   MCP endpoint so AI agents can use the same API.
 
-The [website](https://eddyboutros.github.io/rayfold/) has a [get started guide](https://eddyboutros.github.io/rayfold/get-started/)
-for TypeScript, React, Kotlin, Java and Spring Boot, and a [playground](https://eddyboutros.github.io/rayfold/playground)
+The [website](https://rayfold.dev/) has a [get started guide](https://rayfold.dev/get-started/)
+for TypeScript, React, Kotlin, Java and Spring Boot, and a [playground](https://rayfold.dev/playground)
 that runs Rayfold in your browser.
 
 ## Install
