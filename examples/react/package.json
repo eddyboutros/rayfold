@@ -1,0 +1,24 @@
+{
+  "name": "@rayfold/example-react",
+  "private": true,
+  "version": "0.0.1",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "server": "tsx src/server.ts",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@rayfold/client": "*",
+    "@rayfold/react": "*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@rayfold/server": "*",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tsx": "^4.20.0",
+    "vite": "^8.3.0"
+  }
+}

@@ -1,0 +1,30 @@
+entity Author {
+  id: ID
+  name: String
+}
+
+entity Book @cache(maxAge: 60s, scope: public) {
+  id: ID
+  title: String
+  stock: Int
+  author: Author
+  """What the shop paid. Only staff can see it."""
+  costPrice: Decimal? @allow(read: viewer.role == "staff")
+}
+
+error OutOfStock { bookId: ID, available: Int }
+
+event StockChanged { bookId: ID, stock: Int }
+
+query book(id: ID): Book?
+query books(page: PageArgs = { first: 20 }): Page<Book>
+
+"""Take copies off the shelf. Fails if there are not enough."""
+command buy(bookId: ID, qty: Int = 1 @range(min: 1, max: 10)): Book
+  throws OutOfStock
+  emits StockChanged
+  @allow(write: viewer != null)
+
+command restock(bookId: ID, qty: Int @range(min: 1, max: 1000)): Book
+  emits StockChanged
+  @allow(write: viewer.role == "staff")
