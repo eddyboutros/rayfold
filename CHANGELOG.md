@@ -7,6 +7,26 @@ packages and the Maven artifacts share one version number.
 
 - **The documentation site is at https://rayfold.dev/.** Links to `eddyboutros.github.io/rayfold/` redirect there,
   problem-type URIs included, which keep their 0.1.0 form.
+- **Security: a `__proto__` key in a request's arguments is plain data again (TypeScript server).** Next to a `$ref`, or
+  in the body of an `@http` route that takes the whole body, it replaced the prototype of the server's copy of the
+  arguments, so a client could pass values that argument validation never saw. `Object.prototype` itself was not
+  touched.
+- **Fixed: a command retried with the same idempotency key could run twice under the Spring Boot starter.** Spring
+  Security hands over a user's authorities in a different order from one request to the next, so the retry was looked
+  up under another viewer. The starter now sorts them before deriving `roles` and `role`.
+- **Fixed: the JVM runtime scopes idempotency records by the viewer's canonical JSON,** as the TypeScript runtime does,
+  not by `toString()`. A viewer map with its keys in another order, which is what a second instance sharing the store
+  can see, now finds the first answer. A record written before this change is not found by a retry after it.
+- **Fixed: `store.screen()` through the runtime.** A shape reaching a relation with arguments, such as
+  `author { books(page: { first: 2 }) { items { id } } }`, failed with `unimplemented`, and aliases came back empty. Both
+  runtimes now serve a field with arguments from its parent when the op's resolver already returned it (a loader is
+  still needed otherwise), and `screen` keys its rows by field name. A field selected twice in different ways is
+  refused.
+- **Fixed: JVM query and stream resolvers are handed `ctx.policy`,** the pushable read policy of what they return, as
+  field loaders and the TypeScript runtime already were, so a data source can filter a list at the source.
+- **Fixed: a refused WebSocket handshake in `rayfold-client-okhttp`** fails the waiting batches with
+  `unavailable` every time, instead of sometimes with an untyped `ClosedSendChannelException`.
+- **Fixed: `rayfold mock --port 0` and `rayfold dev --port 0` printed port 0** instead of the port they got.
 
 ## 0.1.0 (2026-09-15)
 
