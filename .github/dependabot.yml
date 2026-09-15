@@ -7,10 +7,20 @@ updates:
     groups:
       development:
         dependency-type: development
+    # a major version changes APIs (graphql 17 did); take those by hand, together with the code they need
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: gradle
     directory: /kotlin
     schedule:
       interval: weekly
+    groups:
+      gradle:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
