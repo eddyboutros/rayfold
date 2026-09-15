@@ -78,6 +78,10 @@ describe("queries and default views", () => {
   it("rejects unknown fields, bad args and missing variables as invalid_argument", async () => {
     expect(await one({ id: 1, op: "book", args: { id: "b1" }, shape: "{ nope }" })).toMatchObject({ id: 1, error: { code: "invalid_argument" }, fin: true });
     expect(await one({ id: 1, op: "books", args: { page: { first: "x" } } })).toMatchObject({ error: { code: "invalid_argument", message: expect.stringContaining("page.first") } });
+    expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: -1 } } })).toMatchObject({ error: { code: "invalid_argument", message: "books().page.offset: must be >= 0" } });
+    // guard: an offset of 0 or more is a valid page
+    expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: 0 } }, shape: "{ items { id } }" })).toMatchObject({ id: 1, data: {} });
+    expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: 1 } }, shape: "{ items { id } }" })).toMatchObject({ id: 1, data: {} });
     expect(await one({ id: 1, op: "books", args: { nope: 1 } })).toMatchObject({ error: { code: "invalid_argument", message: expect.stringContaining("unknown argument") } });
     expect(await one({ id: 1, op: "book", args: { id: "b1" }, shape: "{ reviews(page: { first: $n }) { items { id } } }" })).toMatchObject({ error: { code: "invalid_argument", message: expect.stringContaining("$n") } });
   });

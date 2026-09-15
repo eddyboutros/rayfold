@@ -103,6 +103,8 @@ object Args {
                     val first = (obj["first"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()
                     if (first != null && first > MAX_PAGE_FIRST) obj["first"] = JsonPrimitive(MAX_PAGE_FIRST)
                     if (first != null && first < 0) throw RayfoldException(Code.INVALID_ARGUMENT, "$path.first: must be >= 0")
+                    val offset = (obj["offset"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()
+                    if (offset != null && offset < 0) throw RayfoldException(Code.INVALID_ARGUMENT, "$path.offset: must be >= 0")
                 }
                 JsonObject(obj)
             }

@@ -241,14 +241,20 @@ class ArgsTest {
     }
 
     @Test
-    fun `page size is clamped to 200 and a negative size is rejected`() {
+    fun `page size is clamped to 200, and a negative size or offset is rejected`() {
         val books = opArgs("books")
-        fun first(raw: String) = ((coerce(books, raw, path = "books()")["page"] as? JsonObject) ?: error("no page arg"))["first"]
+        fun page(raw: String) = (coerce(books, raw, path = "books()")["page"] as? JsonObject) ?: error("no page arg")
+        fun first(raw: String) = page(raw)["first"]
         assertEquals(JsonPrimitive(200), first("""{"page":{"first":500}}"""))
         assertEquals(JsonPrimitive(200), first("""{"page":{"first":200}}"""))
         assertEquals(JsonPrimitive(0), first("""{"page":{"first":0}}"""))
         assertEquals(JsonPrimitive(20), first("{}"), "the op's declared default page")
         assertEquals("books().page.first: must be >= 0", rejected(books, """{"page":{"first":-1}}""", path = "books()"))
+        assertEquals("books().page.offset: must be >= 0", rejected(books, """{"page":{"first":2,"offset":-1}}""", path = "books()"))
+        // guard: an offset of 0 or more, or none, reaches the resolver as sent
+        assertEquals(JsonPrimitive(0), page("""{"page":{"first":2,"offset":0}}""")["offset"])
+        assertEquals(JsonPrimitive(3), page("""{"page":{"first":2,"offset":3}}""")["offset"])
+        assertNull(page("""{"page":{"first":2}}""")["offset"])
     }
 
     // ------------------------------------------------------------------ $ref
@@ -374,10 +380,15 @@ class ArgsTest {
         assertEquals(JsonPrimitive(10), pageFirstSeen("{ id reviews { total } }"), "the field's declared default")
         assertEquals(JsonPrimitive(3), pageFirstSeen("{ id reviews(page: {first: 3}) { total } }"))
         assertEquals(JsonPrimitive(200), pageFirstSeen("{ id reviews(page: {first: 500}) { total } }"), "clamped to the page maximum")
+        pageFirstSeen("{ id reviews(page: {first: 2, offset: 1}) { total } }")
+        assertEquals(JsonPrimitive(1), (seen.last()["page"] as? JsonObject)?.get("offset"), "guard: an offset of 0 or more reaches the loader")
         val loads = seen.size
         val bad = server.collect(batch("""{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id reviews(page: {first: -1}) { total } }"}""")).single()
         assertEquals("invalid_argument", bad.errorCode())
         assertEquals("Book.reviews.page.first: must be >= 0", bad.errorMessage())
+        val badOffset = server.collect(batch("""{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id reviews(page: {first: 2, offset: -1}) { total } }"}""")).single()
+        assertEquals("invalid_argument", badOffset.errorCode())
+        assertEquals("Book.reviews.page.offset: must be >= 0", badOffset.errorMessage())
         assertEquals(loads, seen.size, "a rejected field arg never reaches the loader")
     }
 

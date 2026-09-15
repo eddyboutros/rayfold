@@ -89,6 +89,8 @@ export function coerceValue(ir: RayfoldSchemaIR, t: TypeRef, v: unknown, path: s
         const first = obj["first"];
         if (typeof first === "number" && first > MAX_PAGE_FIRST) obj["first"] = MAX_PAGE_FIRST;
         if (typeof first === "number" && first < 0) throw new RayfoldError("invalid_argument", `${path}.first: must be >= 0`);
+        const offset = obj["offset"];
+        if (typeof offset === "number" && offset < 0) throw new RayfoldError("invalid_argument", `${path}.offset: must be >= 0`);
       }
       return obj;
     }
