@@ -1,7 +1,7 @@
 name: Release
 
 # Push a tag such as v0.1.0 after `node scripts/set-version.mjs 0.1.0`. Both jobs refuse a tag that does not match
-# the version in the sources. docs/publishing.md lists the secrets and the one-time setup on npm and Maven Central.
+# the version in the sources. docs/releasing.md lists the secrets and the one-time setup on npm and Maven Central.
 on:
   push:
     tags:

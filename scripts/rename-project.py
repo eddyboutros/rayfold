@@ -28,8 +28,7 @@ nb = (a.binary_abbrev or (new[0] + "b")).lower()
 OB, NB, Ob, Nb = ob.upper(), nb.upper(), ob.capitalize(), nb.capitalize()
 
 SKIP_DIRS = {"node_modules", ".git", ".gradle", "build", "raw", ".idea", ".kotlin", "dist"}
-SKIP_FILES = {"package-lock.json", "results.json", "methods.json", "security.json", "realdata.json", "report.md", "report.html", "rename-project.py",
-              "publishing.md"}  # it names other projects called Ray; edit it by hand
+SKIP_FILES = {"package-lock.json", "results.json", "methods.json", "security.json", "realdata.json", "report.md", "report.html", "rename-project.py"}
 SKIP_PATH_PARTS = [os.path.join("conformance", "fixtures")]
 TEXT_EXT = {".ts", ".js", ".mjs", ".json", ".md", ".kt", ".kts", ".html", ".css", ".yml", ".yaml", ".txt", ".conf", ".py", ".properties", ".toml", "." + old}
 

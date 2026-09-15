@@ -43,7 +43,7 @@ if (!args.includes("--no-build")) execSync("node scripts/build.mjs", { cwd: ROOT
 const packages = PACKAGES.map((p) => ({ dist: join(ROOT, p.dir, "dist"), manifest: readJson(join(ROOT, p.dir, "dist", "package.json")) }));
 const versions = new Set(packages.map((p) => p.manifest.version));
 if (versions.size !== 1) fail(`the packages disagree on the version (${[...versions].join(", ")}); run node scripts/set-version.mjs <version>`);
-if (!dry && !readJson(join(ROOT, "package.json")).repository) fail('set "repository" in the root package.json first (docs/publishing.md, section "npm")');
+if (!dry && !readJson(join(ROOT, "package.json")).repository) fail('set "repository" in the root package.json first (docs/releasing.md)');
 for (const { manifest } of packages) if (onNpm(manifest.name, manifest.version)) fail(`${manifest.name}@${manifest.version} is already on npm; bump the version first`);
 
 const flags = ["--access public", dry ? "--dry-run" : "", provenance ? "--provenance" : "", tag ? `--tag ${tag}` : ""].filter(Boolean).join(" ");

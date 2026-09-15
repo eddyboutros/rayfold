@@ -93,7 +93,7 @@ npm run smoke:maven                        # publish the JVM modules locally and
 | Path | What |
 |---|---|
 | [`spec/`](spec/00-overview.md) | The protocol: schema, shapes, batches, frames, errors, auth, cache (Core); live, RB, MCP (extensions); evolution; security; ADRs |
-| [`docs/`](docs/index.md) | User guides and background; [`docs/publishing.md`](docs/publishing.md) is the release checklist |
+| [`docs/`](docs/index.md) | User guides and background; [`docs/releasing.md`](docs/releasing.md) is the release checklist |
 | [`packages/schema`](packages/schema) | `.rayfold` parser, validator, shapes, policy expressions, breaking-change diff, TypeScript/Kotlin/Java generators |
 | [`packages/builder`](packages/builder) | code-first TypeScript schemas with inferred types |
 | [`packages/server`](packages/server) | the Node.js server: executor, batches, idempotency, policies, cost, cache headers, live queries, HTTP, `@http` bindings, OpenAPI, WebSocket, MCP |
@@ -108,7 +108,12 @@ npm run smoke:maven                        # publish the JVM modules locally and
 | [`scripts/`](scripts) | build, publish, set-version, smoke tests, docs site, oracles for the Kotlin tests |
 | [`data/`](data) | the Project Gutenberg catalogue used by the real-data tests and the demo (see its README for attribution) |
 
-Status: **draft 0.1**. Core is deliberately small; live sync, binary wire, MCP bridge and federation are extensions.
+Status: **Core 0.1 is frozen**: it changes only by errata. Core is deliberately small; live queries, the binary format,
+the MCP bridge and REST routes are extensions, and those are still drafts. [ROADMAP.md](ROADMAP.md) says what comes next.
+
+The protocol and the schema language are the standard; the packages in this repository are reference libraries built
+on them. Batch loaders, the normalized client cache, React hooks and the offline queue are their design, not
+requirements for other implementations ([spec/00](spec/00-overview.md#protocol-schema-language-libraries)).
 
 ## License
 

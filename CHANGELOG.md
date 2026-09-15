@@ -27,6 +27,18 @@ packages and the Maven artifacts share one version number.
 - **Fixed: a refused WebSocket handshake in `rayfold-client-okhttp`** fails the waiting batches with
   `unavailable` every time, instead of sometimes with an untyped `ClosedSendChannelException`.
 - **Fixed: `rayfold mock --port 0` and `rayfold dev --port 0` printed port 0** instead of the port they got.
+- **The manifest lists `mcp` when the MCP endpoint is mounted** beside the server, in both runtimes, so a client can
+  tell it is there (spec/process.md).
+- **`rayfold check --strict` says what failed:** when only warnings fail the check, it prints
+  `FAILED: warnings against <file> (--strict)` instead of claiming breaking changes.
+- **Spec clarification: what is protocol and what is library.** A client is not required to keep a normalized cache;
+  only a client that keeps one must key it by `Type:id` (07 §3). Repeating a failed request is the client's choice,
+  guided by `retryable` (03 §4). The overview now separates the protocol, the schema language and the reference
+  libraries (00). Nothing changes on the wire.
+- **Spec erratum (11, Evolution):** the list of compatible changes said that making a required argument optional was
+  not allowed. It is allowed, as `rayfold check` has always treated it; so is making a nullable result field non-null.
+- **`ROADMAP.md`** says what comes next, what 0.1 does not do yet, and what is not planned; `docs/releasing.md`
+  replaces the pre-release checklist.
 
 ## 0.1.0 (2026-09-15)
 
