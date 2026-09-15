@@ -38,11 +38,15 @@ class BookshopApplicationTests {
         client.close();
     }
 
+    URI uri(String path) {
+        return URI.create("http://127.0.0.1:" + port + path);
+    }
+
     /** Sends a batch of one op, as the viewer the token names or as nobody, and returns the op's one frame. */
     @SuppressWarnings("unchecked")
     Map<String, Object> send(Map<String, Object> op, String token) throws Exception {
         String body = Rayfold.toJson(Map.of("ops", List.of(op))).toString();
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/rayfold"))
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri("/rayfold"))
             .timeout(Duration.ofSeconds(5))
             .header("Content-Type", "application/rayfold+json")
             .POST(HttpRequest.BodyPublishers.ofString(body));
@@ -54,6 +58,10 @@ class BookshopApplicationTests {
         return (Map<String, Object>) Rayfold.parseJson(frames.getFirst());
     }
 
+    HttpResponse<String> get(String path) throws Exception {
+        return client.send(HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     Map<String, Object> query(String name, Map<String, ?> args, String shape, String user) throws Exception {
         var op = new LinkedHashMap<String, Object>(Map.of("id", 1, "op", name, "args", args));
         if (shape != null) op.put("shape", shape);
@@ -62,7 +70,11 @@ class BookshopApplicationTests {
 
     Map<String, Object> command(String name, Map<String, ?> args, String shape, String user) throws Exception {
         // every client sends an idempotency key with a command
-        var op = new LinkedHashMap<String, Object>(Map.of("id", 1, "op", name, "args", args, "key", UUID.randomUUID().toString()));
+        return command(name, args, shape, user, UUID.randomUUID().toString());
+    }
+
+    Map<String, Object> command(String name, Map<String, ?> args, String shape, String user, String key) throws Exception {
+        var op = new LinkedHashMap<String, Object>(Map.of("id", 1, "op", name, "args", args, "key", key));
         if (shape != null) op.put("shape", shape);
         return send(op, user);
     }
@@ -82,6 +94,18 @@ class BookshopApplicationTests {
     }
 
     @Test
+    void booksComeAPageAtATimeAndTheCursorPicksUpWhereTheLastPageEnded() throws Exception {
+        var first = query("books", Map.of("page", Map.of("first", 2)), "{ items { id } cursor hasMore total }", null);
+        assertThat(first.get("data")).isEqualTo(Map.of(
+            "items", List.of(Map.of("$type", "Book", "id", "b1"), Map.of("$type", "Book", "id", "b2")),
+            "cursor", "b2", "hasMore", true, "total", 3L));
+        String cursor = at(first, "data", "cursor");
+        var second = query("books", Map.of("page", Map.of("first", 2, "after", cursor)), "{ items { id } cursor hasMore total }", null);
+        assertThat(second.get("data")).isEqualTo(Map.of(
+            "items", List.of(Map.of("$type", "Book", "id", "b3")), "cursor", "b3", "hasMore", false, "total", 3L));
+    }
+
+    @Test
     void buyTakesCopiesOffTheShelf() throws Exception {
         var frame = command("buy", Map.of("bookId", "b3", "qty", 2), "{ id stock }", "customer");
         assertThat(frame.get("ok")).isEqualTo(Map.of("$type", "Book", "id", "b3", "stock", 5L));
@@ -89,18 +113,68 @@ class BookshopApplicationTests {
     }
 
     @Test
+    void aPurchaseRetriedWithTheSameKeyGetsTheFirstAnswerAgainMarkedAsAReplayAndSellsOnce() throws Exception {
+        String key = UUID.randomUUID().toString();
+        var first = command("buy", Map.of("bookId", "b3", "qty", 2), "{ id stock }", "customer", key);
+        assertThat(first.get("ok")).isEqualTo(Map.of("$type", "Book", "id", "b3", "stock", 5L));
+        assertThat(BookshopApplicationTests.<Map<String, Object>>at(first, "meta")).doesNotContainKey("replay");
+
+        var retry = command("buy", Map.of("bookId", "b3", "qty", 2), "{ id stock }", "customer", key);
+        var replayed = new LinkedHashMap<String, Object>(at(first, "meta"));
+        replayed.put("replay", true);
+        var expected = new LinkedHashMap<>(first);
+        expected.put("meta", replayed);
+        assertThat(retry).isEqualTo(expected);
+        assertThat(store.book("b3").orElseThrow().stock()).isEqualTo(5);
+
+        // guard: a new key is a new purchase
+        var next = command("buy", Map.of("bookId", "b3", "qty", 2), "{ id stock }", "customer");
+        assertThat(next.get("ok")).isEqualTo(Map.of("$type", "Book", "id", "b3", "stock", 3L));
+        assertThat(store.book("b3").orElseThrow().stock()).isEqualTo(3);
+    }
+
+    @Test
+    void aQtyOutsideOneToTenIsRefusedBeforeTheResolverSeesItAndNothingIsSold() throws Exception {
+        var none = command("buy", Map.of("bookId", "b3", "qty", 0), null, "customer");
+        assertThat(none.get("error")).isEqualTo(Map.of("code", "invalid_argument", "message", "buy().qty: must be >= 1"));
+        var tooMany = command("buy", Map.of("bookId", "b3", "qty", 11), null, "customer");
+        assertThat(tooMany.get("error")).isEqualTo(Map.of("code", "invalid_argument", "message", "buy().qty: must be <= 10"));
+        assertThat(store.book("b3").orElseThrow().stock()).isEqualTo(7);
+    }
+
+    @Test
+    void aQtyAtEitherEndOfTheRangeSells() throws Exception {
+        // Dune has 7 copies, so staff bring it up to the 10 one purchase may take
+        command("restock", Map.of("bookId", "b3", "qty", 3), null, "staff");
+        var most = command("buy", Map.of("bookId", "b3", "qty", 10), "{ id stock }", "customer");
+        assertThat(most.get("ok")).isEqualTo(Map.of("$type", "Book", "id", "b3", "stock", 0L));
+        var least = command("buy", Map.of("bookId", "b1", "qty", 1), "{ id stock }", "customer");
+        assertThat(least.get("ok")).isEqualTo(Map.of("$type", "Book", "id", "b1", "stock", 2L));
+    }
+
+    @Test
     void buyingMoreThanTheShelfHoldsFailsWithOutOfStockAndChangesNothing() throws Exception {
         var frame = command("buy", Map.of("bookId", "b1", "qty", 5), null, "customer");
-        assertThat(BookshopApplicationTests.<String>at(frame, "error", "code")).isEqualTo("domain");
-        assertThat(BookshopApplicationTests.<String>at(frame, "error", "type")).isEqualTo("OutOfStock");
-        assertThat(BookshopApplicationTests.<Object>at(frame, "error", "data")).isEqualTo(Map.of("bookId", "b1", "available", 3L));
+        assertThat(frame.get("error")).isEqualTo(Map.of("code", "domain", "type", "OutOfStock",
+            "message", "Only 3 left of A Wizard of Earthsea", "data", Map.of("bookId", "b1", "available", 3L)));
         assertThat(store.book("b1").orElseThrow().stock()).isEqualTo(3);
+    }
+
+    @Test
+    void buyingWithoutSigningInIsRefusedAndSellsNothing() throws Exception {
+        var frame = command("buy", Map.of("bookId", "b1"), null, null);
+        assertThat(frame.get("error")).isEqualTo(Map.of("code", "unauthenticated", "message", "Sign in to access buy()"));
+        assertThat(store.book("b1").orElseThrow().stock()).isEqualTo(3);
+        // guard: the same purchase from a signed-in customer goes through, one copy by default
+        var signedIn = command("buy", Map.of("bookId", "b1"), "{ id stock }", "customer");
+        assertThat(signedIn.get("ok")).isEqualTo(Map.of("$type", "Book", "id", "b1", "stock", 2L));
+        assertThat(store.book("b1").orElseThrow().stock()).isEqualTo(2);
     }
 
     @Test
     void aCustomerMayNotRestock() throws Exception {
         var frame = command("restock", Map.of("bookId", "b2", "qty", 5), null, "customer");
-        assertThat(BookshopApplicationTests.<String>at(frame, "error", "code")).isEqualTo("permission_denied");
+        assertThat(frame.get("error")).isEqualTo(Map.of("code", "permission_denied", "message", "Not allowed to access restock()"));
         assertThat(store.book("b2").orElseThrow().stock()).isZero();
     }
 
@@ -116,7 +190,8 @@ class BookshopApplicationTests {
         var book = query("book", Map.of("id", "b1"), null, "customer");
         assertThat(book.get("data")).isEqualTo(Map.of("$type", "Book", "id", "b1", "title", "A Wizard of Earthsea", "stock", 3L));
         var asked = query("book", Map.of("id", "b1"), "{ title costPrice }", "customer");
-        assertThat(BookshopApplicationTests.<String>at(asked, "error", "code")).isEqualTo("permission_denied");
+        assertThat(asked.get("error")).isEqualTo(
+            Map.of("code", "permission_denied", "message", "Not allowed to access Book.costPrice", "path", "costPrice"));
     }
 
     @Test
@@ -131,12 +206,25 @@ class BookshopApplicationTests {
     @Test
     void aPageOfBooksLoadsItsAuthorsInOneLookup() throws Exception {
         var frame = query("books", Map.of(), "{ items { title author { name } } total }", null);
-        List<Map<String, Object>> items = at(frame, "data", "items");
-        assertThat(items.stream().map(item -> BookshopApplicationTests.<String>at(item, "author", "name")).toList())
-            .containsExactly("Ursula K. Le Guin", "Ursula K. Le Guin", "Frank Herbert");
+        assertThat(frame.get("data")).isEqualTo(Map.of(
+            "items", List.of(
+                Map.of("$type", "Book", "title", "A Wizard of Earthsea", "author", Map.of("$type", "Author", "name", "Ursula K. Le Guin")),
+                Map.of("$type", "Book", "title", "The Left Hand of Darkness", "author", Map.of("$type", "Author", "name", "Ursula K. Le Guin")),
+                Map.of("$type", "Book", "title", "Dune", "author", Map.of("$type", "Author", "name", "Frank Herbert"))),
+            "total", 3L));
         assertThat(store.authorLookups()).isEqualTo(1);
         // guard: the count follows the lookups, so one more request is one more
         query("book", Map.of("id", "b3"), "{ author { name } }", null);
         assertThat(store.authorLookups()).isEqualTo(2);
+    }
+
+    @Test
+    void theExplorerIsServedBesideTheEndpointAndNothingElseIs() throws Exception {
+        var page = get("/rayfold/explorer");
+        assertThat(page.statusCode()).isEqualTo(200);
+        assertThat(page.headers().firstValue("Content-Type")).hasValue("text/html;charset=utf-8");
+        // the page carries the endpoint it talks to and the title application.properties gave it
+        assertThat(page.body()).contains("<script type=\"application/json\" id=\"config\">{\"endpoint\":\"/rayfold\",\"title\":\"Bookshop\"}</script>");
+        assertThat(get("/elsewhere").statusCode()).isEqualTo(404);
     }
 }

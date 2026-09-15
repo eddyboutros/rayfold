@@ -3,8 +3,8 @@ package com.example.bookshop
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -18,7 +18,9 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /** The server over real HTTP on a free port. Every test gets its own store and server, stopped afterwards. */
 class ServerTest {
@@ -56,6 +58,9 @@ class ServerTest {
         return response.body().lines().filter { it.isNotBlank() }.map(::json).single()
     }
 
+    private fun get(path: String): HttpResponse<String> =
+        client.send(HttpRequest.newBuilder(endpoint.resolve(path)).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString())
+
     private fun op(name: String, args: String, shape: String?, key: String? = null, live: Boolean = false) = buildJsonObject {
         put("id", 1)
         put("op", name)
@@ -69,8 +74,8 @@ class ServerTest {
         send(op(name, args, shape), token)
 
     // every client sends an idempotency key with a command
-    private fun command(name: String, args: String, shape: String? = null, token: String? = null) =
-        send(op(name, args, shape, key = UUID.randomUUID().toString()), token)
+    private fun command(name: String, args: String, shape: String? = null, token: String? = null, key: String = UUID.randomUUID().toString()) =
+        send(op(name, args, shape, key = key), token)
 
     @Test
     fun `book returns the shape it was asked for, with the author's name`() {
@@ -82,6 +87,18 @@ class ServerTest {
     }
 
     @Test
+    fun `books come a page at a time, and the cursor picks up where the last page ended`() {
+        val first = query("books", """{"page":{"first":2}}""", shape = "{ items { id } cursor hasMore total }")
+        assertEquals(
+            json($$"""{"items":[{"$type":"Book","id":"b1"},{"$type":"Book","id":"b2"}],"cursor":"b2","hasMore":true,"total":3}"""),
+            first["data"],
+        )
+        val cursor = first.text("data", "cursor")
+        val second = query("books", """{"page":{"first":2,"after":"$cursor"}}""", shape = "{ items { id } cursor hasMore total }")
+        assertEquals(json($$"""{"items":[{"$type":"Book","id":"b3"}],"cursor":"b3","hasMore":false,"total":3}"""), second["data"])
+    }
+
+    @Test
     fun `buy takes copies off the shelf`() {
         val frame = command("buy", """{"bookId":"b3","qty":2}""", shape = "{ id stock }", token = "customer")
         assertEquals(json($$"""{"$type":"Book","id":"b3","stock":5}"""), frame["ok"])
@@ -89,18 +106,67 @@ class ServerTest {
     }
 
     @Test
+    fun `a purchase retried with the same key gets the first answer again, marked as a replay, and sells once`() {
+        val key = UUID.randomUUID().toString()
+        val first = command("buy", """{"bookId":"b3","qty":2}""", shape = "{ id stock }", token = "customer", key = key)
+        assertEquals(json($$"""{"$type":"Book","id":"b3","stock":5}"""), first["ok"])
+        assertNull(first.getValue("meta").jsonObject["replay"])
+
+        val retry = command("buy", """{"bookId":"b3","qty":2}""", shape = "{ id stock }", token = "customer", key = key)
+        val replayed = JsonObject(first.getValue("meta").jsonObject + ("replay" to JsonPrimitive(true)))
+        assertEquals(JsonObject(first + ("meta" to replayed)), retry)
+        assertEquals(5, store.book("b3")?.stock)
+
+        // guard: a new key is a new purchase
+        val next = command("buy", """{"bookId":"b3","qty":2}""", shape = "{ id stock }", token = "customer")
+        assertEquals(json($$"""{"$type":"Book","id":"b3","stock":3}"""), next["ok"])
+        assertEquals(3, store.book("b3")?.stock)
+    }
+
+    @Test
+    fun `a qty outside 1 to 10 is refused before the resolver sees it, and nothing is sold`() {
+        val none = command("buy", """{"bookId":"b3","qty":0}""", token = "customer")
+        assertEquals(json("""{"code":"invalid_argument","message":"buy().qty: must be >= 1"}"""), none["error"])
+        val tooMany = command("buy", """{"bookId":"b3","qty":11}""", token = "customer")
+        assertEquals(json("""{"code":"invalid_argument","message":"buy().qty: must be <= 10"}"""), tooMany["error"])
+        assertEquals(7, store.book("b3")?.stock)
+    }
+
+    @Test
+    fun `a qty at either end of the range sells`() {
+        // Dune has 7 copies, so staff bring it up to the 10 one purchase may take
+        command("restock", """{"bookId":"b3","qty":3}""", token = "staff")
+        val most = command("buy", """{"bookId":"b3","qty":10}""", shape = "{ id stock }", token = "customer")
+        assertEquals(json($$"""{"$type":"Book","id":"b3","stock":0}"""), most["ok"])
+        val least = command("buy", """{"bookId":"b1","qty":1}""", shape = "{ id stock }", token = "customer")
+        assertEquals(json($$"""{"$type":"Book","id":"b1","stock":2}"""), least["ok"])
+    }
+
+    @Test
     fun `buying more than the shelf holds fails with OutOfStock and changes nothing`() {
         val frame = command("buy", """{"bookId":"b1","qty":5}""", token = "customer")
-        assertEquals("domain", frame.text("error", "code"))
-        assertEquals("OutOfStock", frame.text("error", "type"))
-        assertEquals(json("""{"bookId":"b1","available":3}"""), frame.getValue("error").jsonObject["data"])
+        assertEquals(
+            json("""{"code":"domain","type":"OutOfStock","message":"Only 3 left of A Wizard of Earthsea","data":{"bookId":"b1","available":3}}"""),
+            frame["error"],
+        )
         assertEquals(3, store.book("b1")?.stock)
+    }
+
+    @Test
+    fun `buying without signing in is refused and sells nothing`() {
+        val frame = command("buy", """{"bookId":"b1"}""")
+        assertEquals(json("""{"code":"unauthenticated","message":"Sign in to access buy()"}"""), frame["error"])
+        assertEquals(3, store.book("b1")?.stock)
+        // guard: the same purchase from a signed-in customer goes through, one copy by default
+        val signedIn = command("buy", """{"bookId":"b1"}""", shape = "{ id stock }", token = "customer")
+        assertEquals(json($$"""{"$type":"Book","id":"b1","stock":2}"""), signedIn["ok"])
+        assertEquals(2, store.book("b1")?.stock)
     }
 
     @Test
     fun `a customer may not restock`() {
         val frame = command("restock", """{"bookId":"b2","qty":5}""", token = "customer")
-        assertEquals("permission_denied", frame.text("error", "code"))
+        assertEquals(json("""{"code":"permission_denied","message":"Not allowed to access restock()"}"""), frame["error"])
         assertEquals(0, store.book("b2")?.stock)
     }
 
@@ -116,7 +182,7 @@ class ServerTest {
         val book = query("book", """{"id":"b1"}""", token = "customer")
         assertEquals(json($$"""{"$type":"Book","id":"b1","title":"A Wizard of Earthsea","stock":3}"""), book["data"])
         val asked = query("book", """{"id":"b1"}""", shape = "{ title costPrice }", token = "customer")
-        assertEquals("permission_denied", asked.text("error", "code"))
+        assertEquals(json("""{"code":"permission_denied","message":"Not allowed to access Book.costPrice","path":"costPrice"}"""), asked["error"])
     }
 
     @Test
@@ -130,8 +196,18 @@ class ServerTest {
     @Test
     fun `a page of books loads its authors in one lookup`() {
         val frame = query("books", "{}", shape = "{ items { title author { name } } total }")
-        val items = frame.getValue("data").jsonObject.getValue("items").jsonArray.map { it.jsonObject }
-        assertEquals(listOf("Ursula K. Le Guin", "Ursula K. Le Guin", "Frank Herbert"), items.map { it.text("author", "name") })
+        assertEquals(
+            json(
+                $$"""
+                {"items":[
+                  {"$type":"Book","title":"A Wizard of Earthsea","author":{"$type":"Author","name":"Ursula K. Le Guin"}},
+                  {"$type":"Book","title":"The Left Hand of Darkness","author":{"$type":"Author","name":"Ursula K. Le Guin"}},
+                  {"$type":"Book","title":"Dune","author":{"$type":"Author","name":"Frank Herbert"}}
+                ],"total":3}
+                """,
+            ),
+            frame["data"],
+        )
         assertEquals(1, store.authorLookups.get())
         // guard: the count follows the lookups, so one more request is one more
         query("book", """{"id":"b3"}""", shape = "{ author { name } }")
@@ -152,5 +228,15 @@ class ServerTest {
             command("buy", """{"bookId":"b3","qty":2}""", token = "customer")
             assertEquals(json("""{"id":1,"patch":[{"set":"Book:b3","value":{"stock":5}}]}"""), next())
         }
+    }
+
+    @Test
+    fun `the explorer is served beside the endpoint, and nothing else is`() {
+        val page = get("/rayfold/explorer")
+        assertEquals(200, page.statusCode())
+        assertEquals("text/html; charset=utf-8", page.headers().firstValue("Content-Type").orElse(null))
+        // the page carries the endpoint it talks to and the title startServer gave it
+        assertContains(page.body(), """<script type="application/json" id="config">{"endpoint":"/rayfold","title":"Bookshop"}</script>""")
+        assertEquals(404, get("/elsewhere").statusCode())
     }
 }
