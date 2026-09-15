@@ -1,22 +1,67 @@
-# Rayfold
+---
+layout: home
+title: Rayfold
+titleTemplate: One protocol for your app's API
 
-Rayfold is an API protocol for web apps, mobile apps and services. You describe your API once, in a schema, and
-Rayfold gives you:
+hero:
+  name: Rayfold
+  text: One protocol for your app's API
+  tagline: Describe the API once. Screens ask for exactly the data they show, stay current without fetching again, and the schema decides who can do what. For TypeScript, React, Kotlin, Java and Spring Boot.
+  image:
+    light: /logo.svg
+    dark: /logo-dark.svg
+    alt: ""
+  actions:
+    - theme: brand
+      text: Get started
+      link: /get-started/
+    - theme: alt
+      text: Try it in your browser
+      link: /playground
+    - theme: alt
+      text: View on GitHub
+      link: https://github.com/eddyboutros/rayfold
 
-- **One request per screen.** A client sends several operations in one batch, and a later operation can use an
-  earlier one's result. "Create an order, then show it" is one round trip.
-- **Screens that stay current.** Every command returns patches for the entities it changed. The client's cache applies
-  them, so every component showing that book or order updates without fetching it again. Live queries push changes
-  made by other people.
-- **Rules in the schema.** Who may read or change what (`@allow`), how much a request may cost (`@cost`), how long a
-  result may be cached (`@cache`) and when a field goes away (`@deprecated(sunset:)`) are declared in the schema and
-  enforced by the runtime. Tooling reports breaking changes before they ship.
-- **No N+1 by accident.** Field resolvers are batch loaders by default: one call per nesting level, whatever the
-  number of rows.
-- **Plain HTTP when you want it.** JSON over `POST`, cacheable `GET`, REST routes from `@http`, an OpenAPI document,
-  and an MCP endpoint so AI agents can use the same API.
+features:
+  - title: One request per screen
+    details: Send several operations together, and let a later one use an earlier one's result. Placing an order and showing it is one round trip.
+    link: /learn/batches
+    linkText: Batches
+  - title: Screens that stay current
+    details: Every command returns patches for what it changed, and the client cache applies them. Add live true to a query and other people's changes arrive too.
+    link: /learn/live
+    linkText: Live updates
+  - title: Rules in the schema
+    details: Who may read or change what, what a request may cost and how long a result may be cached are declared once and enforced on every request.
+    link: /learn/auth
+    linkText: Who can do what
+  - title: No N+1 by accident
+    details: A loader gets every parent at once, so a page of 50 books loads its authors in one call, not 50.
+    link: /learn/queries
+    linkText: Queries and shapes
+  - title: Errors with names
+    details: Commands declare what can go wrong. Clients handle OutOfStock by name, with its data, instead of parsing a message.
+    link: /learn/commands
+    linkText: Commands and errors
+  - title: Plain HTTP when you want it
+    details: JSON over POST, cacheable GET, REST routes, an OpenAPI document, and an MCP endpoint so AI agents can use the same API.
+    link: /guide/from-rest
+    linkText: Coming from REST
+---
 
-```
+<div class="home-section">
+
+## What it looks like
+
+A schema, a request for one screen, and what comes back. The same request works against a TypeScript, Kotlin,
+Java or Spring Boot server.
+
+<div class="home-trio">
+<div>
+
+**The schema**
+
+```rayfold
 entity Book {
   id: ID
   title: String
@@ -25,27 +70,75 @@ entity Book {
 }
 
 query book(id: ID): Book?
-command restock(id: ID, qty: Int): Book
+
+command buy(bookId: ID, qty: Int = 1): Book
+  throws OutOfStock
+  @allow(write: viewer != null)
 ```
 
-## Start here
+</div>
+<div>
 
-| You build | Read |
-|---|---|
-| A Node.js server and a web or Node client | [Quickstart](guide/quickstart.md) |
-| A React app | [React](guide/react.md) |
-| A Kotlin server, or a Kotlin or Android client | [Kotlin and Android](guide/kotlin.md) |
-| A Java server, with or without Spring Boot | [Java and Spring Boot](guide/java-spring.md) |
-| Screens that update before the server answers, and work offline | [Offline and optimistic updates](guide/offline.md) |
-| Resolvers over Postgres, with policies in SQL | [Postgres](guide/postgres.md) |
-| Traces of every batch, op and loader | [Tracing](guide/tracing.md) |
-| A move from an existing REST or GraphQL API | [From REST](guide/from-rest.md), [From GraphQL](guide/from-graphql.md) |
+**One request, two steps**
 
-## Reference
+```json
+{
+  "rayfold": "0.1",
+  "ops": [
+    { "id": 1, "op": "buy",
+      "args": { "bookId": "b1" } },
+    { "id": 2, "op": "book",
+      "args": { "id": { "$ref": "1.id" } },
+      "shape": "{ title stock author { name } }",
+      "live": true }
+  ]
+}
+```
 
-- [The specification](../spec/00-overview.md): the schema language, shapes, batches, frames, errors, auth, caching,
-  live queries, the binary format, the MCP bridge, evolution and security.
-- [How Rayfold compares](comparison.md) with REST, GraphQL and others, with measurements.
-- [Versioning](versioning.md) of the packages, the protocol and your schema, and [how the specification changes](../spec/process.md).
+</div>
+<div>
 
-Rayfold is open source under the Apache License 2.0.
+**Frames back**
+
+```json
+{ "id": 1,
+  "ok": { "$type": "Book", "id": "b1",
+    "title": "A Wizard of Earthsea", "stock": 2 },
+  "patch": [{ "set": "Book:b1", "value": {
+    "$type": "Book", "id": "b1",
+    "title": "A Wizard of Earthsea", "stock": 2 } }],
+  "meta": { "cost": 1 }, "fin": true }
+{ "id": 2,
+  "data": { "$type": "Book",
+    "title": "A Wizard of Earthsea", "stock": 2,
+    "author": { "$type": "Author",
+      "name": "Ursula K. Le Guin" } },
+  "meta": { "cost": 2 } }
+{ "id": 2,
+  "patch": [{ "at": "", "value": { "stock": 7 } }] }
+```
+
+</div>
+</div>
+
+The last frame comes later, when a member of staff restocks the book: the query was sent with `live: true`, so the
+server keeps it open and sends only what changed.
+
+</div>
+
+<div class="home-section">
+
+## Pick your stack
+
+Every guide builds the same small bookshop, and every example project runs its tests on each change to the
+repository, so the code you copy is code that works.
+
+<div class="home-stacks">
+  <a href="./get-started/typescript"><strong>TypeScript</strong><span>Server and client on Node.js</span></a>
+  <a href="./get-started/react"><strong>React</strong><span>Hooks that follow the cache</span></a>
+  <a href="./get-started/kotlin"><strong>Kotlin</strong><span>Server and client, Android-ready</span></a>
+  <a href="./get-started/java"><strong>Java</strong><span>Plain Java 21 server</span></a>
+  <a href="./get-started/spring-boot"><strong>Spring Boot</strong><span>Annotated beans and Spring Security</span></a>
+</div>
+
+</div>

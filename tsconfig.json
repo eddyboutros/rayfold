@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["packages/*/src", "examples/*/src", "examples/bookstore-web", "conformance/src", "bench", "e2e", "scripts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["packages/*/src", "examples/*/src", "examples/bookstore-web", "conformance/src", "docs/.vitepress", "bench", "e2e", "scripts", "vitest.config.ts", "playwright.config.ts"]
 }

@@ -1,0 +1,146 @@
+---
+title: The binary format
+description: Carry the same frames in about half the bytes with RB, and choose it per request.
+---
+
+# The binary format
+
+RB, short for Rayfold Binary, is a second encoding of the frames you have seen as JSON. It changes the bytes on the
+wire, not what they mean: the same request gives the same frames, and a client picks JSON or RB for each request. This
+page explains what makes RB smaller, when it is worth it, how client and server agree on it, and what it saves on the
+bookshop.
+
+## What RB is
+
+- **Keys from the schema.** Both sides number the protocol's own keys (`id`, `data`, `fin`, `$type` and the rest),
+  then every field, argument, enum value and operation name in the schema, sorted. A key like `title` goes on the
+  wire as a small number.
+- **Strings written once.** Each message keeps a string table. The second time `"Book"` or an author's name appears,
+  RB writes a reference to the first.
+- **Short numbers.** Integers take as few bytes as they need; 0 to 127 take one.
+- **Length-prefixed frames.** Each frame starts with its length, so a streamed response or a live query decodes frame
+  by frame as the bytes arrive.
+
+The byte layout is in [spec 09](../../spec/09-binary-format.md).
+
+## When to use it
+
+Use RB when payload size matters: phones on slow networks, long lists, a steady flow of live updates. Keep JSON where
+people read the traffic, such as curl, the explorer and logs, and for callers without a copy of the schema, such as
+scripts and AI agents. One server answers both at the same time, so you can move one client over and compare.
+
+## How client and server agree
+
+Over HTTP, two headers decide, independently of each other:
+
+| Header | Value | Meaning |
+|---|---|---|
+| `Content-Type` | `application/rayfold` | the request body is RB |
+| `Content-Type` | `application/rayfold+json` | the request body is JSON |
+| `Accept` | `application/rayfold` | answer with RB frames |
+| `Accept` | anything else | answer with JSON frames, one per line |
+
+A JSON body sent with `Accept: application/rayfold` gets an RB answer. An `Accept` that lists RB and a JSON type as
+well gets JSON. Here is `book` for `b1` with its author, both ways RB:
+
+```http
+POST /rayfold
+Content-Type: application/rayfold
+Accept: application/rayfold
+Rayfold-Safe: true
+
+(64 bytes)
+
+HTTP/1.1 200 OK
+Content-Type: application/rayfold
+
+(79 bytes)
+```
+
+The same request as JSON is 107 bytes up and 158 bytes down. Decoded, both answers are this frame:
+
+```json
+{"id":1,"data":{"$type":"Book","title":"A Wizard of Earthsea","stock":3,"author":{"$type":"Author","name":"Ursula K. Le Guin"}},"meta":{"cost":2},"fin":true}
+```
+
+Over WebSocket, text messages are JSON and binary messages are RB, and one socket can carry both.
+
+A server lists `rb` among its extensions in `GET /rayfold/manifest` (`"extensions":["live","rb"]`), next to the schema
+a client needs to build the key numbers. That schema leaves out how access policies decide, which RB does not need:
+it encodes exactly like the server's own copy.
+
+## Turn it on in TypeScript
+
+Load the schema from the manifest, then give it to the transport:
+
+```ts
+import { RayfoldClient, createFetchTransport } from "@rayfold/client";
+
+const url = "http://localhost:4000/rayfold";
+const { schema } = await (await fetch(`${url}/manifest`)).json();
+
+const client = new RayfoldClient({
+  transport: createFetchTransport({ url, binary: schema, headers: () => ({ authorization: "Bearer customer" }) }),
+  schema,
+});
+
+const book = await client.query<Book>("book", { id: "b1" }, { shape: "{ title stock author { name } }" });
+```
+
+- `binary: schema` on the transport sends and reads RB.
+- `schema` on the client asks for compact frames: the server leaves out `$type` wherever the schema already fixes it,
+  and the client puts it back. It works with JSON too, and the savings add up.
+
+Queries and commands return the same values as over JSON. A WebSocket transport takes the same option:
+`createWebSocketTransport({ url: "ws://localhost:4000/rayfold/ws", binary: schema })`. The bookshop example serves
+HTTP only; `attachWebSocket(http, server)` from `@rayfold/server` adds the socket.
+
+## Kotlin
+
+The Kotlin client sends JSON. Its `HttpTransport` and WebSocket transports have no RB option yet, so there is nothing
+to turn on. The Kotlin server in `rayfold-core` answers RB over HTTP and WebSocket like the TypeScript server does, so
+a TypeScript or browser client can use RB against it.
+
+## Keep the schema in step
+
+The key numbers come from the schema, and adding one name moves the numbers of every name sorted after it. Client and
+server must therefore hold the same schema, and the TypeScript client does not check that they do. A client whose copy
+had one extra field on `Author` read `book` as:
+
+```json
+{"$type":"Book","stock":"A Wizard of Earthsea","restock":3,"author":{"$type":"Author","items":"Ursula K. Le Guin"}}
+```
+
+No error, just the wrong names. So load the schema from the server's manifest, not from your build. Every response
+carries the server's schema hash in the `Rayfold-Schema` header, and the manifest has it as `schemaHash`; when they
+differ, as after a deploy, load the manifest again before the next RB request. A `fetch` function passed to
+`createFetchTransport` sees each response's headers.
+
+## What it saves
+
+On the bookshop over loopback, counting the bytes of the HTTP bodies:
+
+| Request | Direction | JSON | JSON, compact | RB | RB, compact |
+|---|---|---:|---:|---:|---:|
+| `book` b1 `{ title stock author { name } }` | up | 107 | 122 | 64 | 73 |
+| | down | 158 | 108 | 79 | 58 |
+| `books` first 20 `{ items { id title stock author { name } } total hasMore cursor }` | up | 152 | 167 | 99 | 108 |
+| | down | 452 | 337 | 187 | 154 |
+
+Compact requests are a few bytes larger going up, because each op says `"compact": true`. The bookshop has three
+books; the gap grows with the result.
+
+The repository's benchmark, `npm run bench`, runs three flows against a store of 40 books, with compact frames. Bytes
+down:
+
+| Flow | GraphQL | Rayfold, JSON | Rayfold, RB |
+|---|---:|---:|---:|
+| Book page: a book, its author and 3 reviews | 282 | 302 | 177 |
+| List: 20 books with author names | 2074 | 2083 | 1080 |
+| Place an order and read it back with stock | 157 | 220 | 101 |
+
+## Next
+
+- Where RB saves on every change: [Live updates](./live.md).
+- Round trips, latency and the other flows: [Comparison](../comparison.md).
+- The byte layout: [spec 09, Binary format](../../spec/09-binary-format.md).

@@ -10,7 +10,10 @@ place; this page explains how they fit together.
   `npm run typecheck`.
 - `cd kotlin && ./gradlew test` runs the JVM modules: the Kotlin runtime, the Java API, the Spring Boot starter and
   the Kotlin client.
-- `npm run e2e:html` renders the comparison report from the last test run; `npm run docs:site` builds the docs site.
+- `npm run e2e:html` renders the comparison report from the last test run; `npm run docs:dev` serves the docs site
+  with the playground, and `npm run docs:build` builds it (a broken link fails the build).
+- The code on the site comes from `examples/`. Change an example, and its tests and the pages that show it change
+  with it; `node scripts/examples-jvm.mjs` builds and tests the Kotlin, Java and Spring Boot examples.
 
 ## Where a change goes
 

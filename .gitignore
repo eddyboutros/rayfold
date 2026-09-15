@@ -13,8 +13,14 @@ kotlin/**/build/
 # raw downloads: rebuild data/gutenberg.json.gz with `npm run import:gutenberg` (see data/README.md)
 data/raw/
 
-# the documentation site: node scripts/build-site.mjs
-site/
+# the documentation site: npm run docs:build
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# builds of the JVM examples
+examples/**/build/
+examples/**/target/
+examples/**/.gradle/
 
 # editor settings
 .idea/

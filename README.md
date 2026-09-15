@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="logo/rayfold-symbol-color-dark.svg">
+  <img src="logo/rayfold-symbol-color.svg" width="72" height="72" alt="">
+</picture>
+
 # Rayfold
 
 Rayfold is an API protocol for web apps, mobile apps and services. You describe your API once, in a schema, and
@@ -11,6 +16,10 @@ Rayfold gives you:
 - **No N+1 by accident.** Field resolvers are batch loaders by default: one call per nesting level.
 - **Plain HTTP when you want it.** JSON over `POST`, cacheable `GET`, REST routes from `@http`, OpenAPI 3.2, and an
   MCP endpoint so AI agents can use the same API.
+
+The [website](https://eddyboutros.github.io/rayfold/) has a [get started guide](https://eddyboutros.github.io/rayfold/get-started/)
+for TypeScript, React, Kotlin, Java and Spring Boot, and a [playground](https://eddyboutros.github.io/rayfold/playground)
+that runs Rayfold in your browser.
 
 ## Install
 
@@ -74,7 +83,7 @@ npm test                                   # the TypeScript suite: packages, con
 npm run typecheck
 npm run build                              # the npm packages into packages/*/dist
 npm run smoke:packages                     # install the packed packages in a fresh project and use them there
-npm run docs:site                          # the documentation site into site/ (fails on a broken link)
+npm run docs:dev                           # the documentation site and playground at http://localhost:5173/rayfold/
 npm run rayfold -- dev examples/bookstore-ts   # explorer http://localhost:4400, /rayfold, /rayfold/ws, /mcp
 npm run bench                              # REST vs GraphQL vs Rayfold (JSON, RB) -> bench/results/latest.md
 npm run e2e && npm run e2e:html            # the comparison suite -> e2e/report.html
