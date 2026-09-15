@@ -169,7 +169,10 @@ class SecurityViewerConfiguration {
         if (auth == null || !auth.isAuthenticated || auth is AnonymousAuthenticationToken) {
             null
         } else {
-            val authorities = auth.authorities.mapNotNull { it.authority }
+            // sorted before anything is derived from them: Spring Security's order can change from one request to the next
+            // (a FACTOR_ authority hashes differently each time), and the viewer is the scope of idempotency records, so a
+            // retry must see the same roles, the same first role and the same authorities
+            val authorities = auth.authorities.mapNotNull { it.authority }.sorted()
             val roles = authorities.filter { it.startsWith("ROLE_") }.map { it.removePrefix("ROLE_") }
             mapOf("id" to auth.name, "roles" to roles, "role" to roles.firstOrNull(), "authorities" to authorities)
         }

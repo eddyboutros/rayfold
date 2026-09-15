@@ -1,6 +1,7 @@
 package dev.rayfold.spring.shop;
 
 import dev.rayfold.java.Rayfold;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,11 +18,16 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** The starter inside a real Spring Boot application on a real port, called over HTTP as a browser or service would. */
+/**
+ * The starter inside a real Spring Boot application on a real port, called over HTTP as a browser or service would.
+ * The context is cached across test classes and keeps its idempotency records, so every purchase carries a key of its
+ * own; only the replay test sends one key twice.
+ */
 @SpringBootTest(classes = ShopApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ShopStarterTest {
     @Value("${local.server.port}")
@@ -35,6 +41,11 @@ class ShopStarterTest {
     @BeforeEach
     void reset() {
         shop.reset();
+    }
+
+    @AfterEach
+    void closeClient() {
+        client.close();
     }
 
     HttpResponse<String> send(String method, String path, String body, String... headers) throws Exception {
@@ -61,89 +72,123 @@ class ShopStarterTest {
         return (T) cur;
     }
 
-    static final String BUY_B1 = """
-        {"rayfold":"0.1","ops":[{"id":1,"op":"buy","args":{"id":"b1","qty":1},"key":"key-000000000000001","shape":"{ id stock }"}]}""";
+    static Object json(String text) {
+        return Rayfold.parseJson(text);
+    }
+
+    static String freshKey() {
+        return "shop-" + UUID.randomUUID();
+    }
+
+    static String buy(String id, int qty, String key) {
+        return """
+            {"rayfold":"0.1","ops":[{"id":1,"op":"buy","args":{"id":"%s","qty":%d},"key":"%s","shape":"{ id stock }"}]}""".formatted(id, qty, key);
+    }
+
+    static String problem(int status, String type, String detail, String code) {
+        return """
+            {"type":"https://eddyboutros.github.io/rayfold/errors/%s","title":"%s","status":%d,"detail":"%s","code":"%s"}""".formatted(type, type.replace('_', ' '), status, detail, code);
+    }
+
+    static final String BOUGHT_B1 = """
+        {"id":1,"ok":{"$type":"Book","id":"b1","stock":2},"patch":[{"set":"Book:b1","value":{"$type":"Book","id":"b1","stock":2}}],"meta":{"cost":1},"fin":true}""";
 
     @Test
     void aNestedFieldIsServedByOneLoaderCallForEveryBook() throws Exception {
         var f = frames("""
             {"rayfold":"0.1","ops":[{"id":1,"op":"books","shape":"{ id title author { name } }"}]}""");
-        List<Object> books = at(f.get(0), "data");
-        assertThat(books).hasSize(2);
-        assertThat((String) at(books, 0, "author", "name")).isEqualTo("Ursula K. Le Guin");
-        assertThat((String) at(books, 1, "author", "name")).isEqualTo("Frank Herbert");
+        assertThat(f).isEqualTo(List.of(json("""
+            {"id":1,"data":[{"$type":"Book","id":"b1","title":"The Dispossessed","author":{"$type":"Author","name":"Ursula K. Le Guin"}},\
+            {"$type":"Book","id":"b2","title":"Dune","author":{"$type":"Author","name":"Frank Herbert"}}],"meta":{"cost":2},"fin":true}""")));
         assertThat(shop.authorLoads.get()).isEqualTo(1);
     }
 
     @Test
     void aSignedInUserBuysAndGetsThePatchedBook() throws Exception {
-        var f = frames(BUY_B1, "X-User", "alice");
-        assertThat((Long) at(f.get(0), "ok", "stock")).isEqualTo(2L);
+        assertThat(frames(buy("b1", 1, freshKey()), "X-User", "alice")).isEqualTo(List.of(json(BOUGHT_B1)));
         assertThat(shop.sold).containsExactly("alice:b1");
+        assertThat(shop.books.get("b1").stock()).isEqualTo(2);
+    }
+
+    @Test
+    void aRetryWithTheSameKeyIsAnsweredFromTheRecordAndSellsOnce() throws Exception {
+        String key = freshKey();
+        assertThat(frames(buy("b1", 1, key), "X-User", "alice")).isEqualTo(List.of(json(BOUGHT_B1)));
+        assertThat(frames(buy("b1", 1, key), "X-User", "alice")).isEqualTo(List.of(json(BOUGHT_B1.replace("{\"cost\":1}", "{\"cost\":1,\"replay\":true}"))));
+        assertThat(shop.sold).containsExactly("alice:b1");
+        assertThat(shop.books.get("b1").stock()).isEqualTo(2);
+        // guard: a new key is a new purchase
+        assertThat(frames(buy("b1", 1, freshKey()), "X-User", "alice")).isEqualTo(List.of(json(BOUGHT_B1.replace("\"stock\":2", "\"stock\":1"))));
+        assertThat(shop.sold).containsExactly("alice:b1", "alice:b1");
     }
 
     @Test
     void guardAnAnonymousPurchaseIsRefusedAndChangesNothing() throws Exception {
-        var f = frames(BUY_B1);
-        assertThat((String) at(f.get(0), "error", "code")).isEqualTo("unauthenticated");
+        assertThat(frames(buy("b1", 1, freshKey()))).isEqualTo(List.of(json("""
+            {"id":1,"error":{"code":"unauthenticated","message":"buy(): idempotency keys need an identified caller"},"fin":true}""")));
         assertThat(shop.books.get("b1").stock()).isEqualTo(3);
         assertThat(shop.sold).isEmpty();
     }
 
     @Test
     void aDeclaredErrorReachesTheClientTyped() throws Exception {
-        var f = frames("""
-            {"rayfold":"0.1","ops":[{"id":1,"op":"buy","args":{"id":"b2","qty":1},"key":"key-000000000000002"}]}""", "X-User", "alice");
-        assertThat((String) at(f.get(0), "error", "type")).isEqualTo("OutOfStock");
-        assertThat((Long) at(f.get(0), "error", "data", "available")).isEqualTo(0L);
-        assertThat((String) at(f.get(0), "error", "message")).isEqualTo("Only 0 left");
-    }
-
-    @Test
-    void aWriteFromAnotherSiteIsRefusedWhileAnAllowedOriginAndCrossSiteReadsGoThrough() throws Exception {
-        var evil = send("POST", "/rayfold", BUY_B1, "Content-Type", "application/rayfold+json", "X-User", "alice", "Origin", "https://evil.example");
-        assertThat(evil.statusCode()).isEqualTo(403);
-        assertThat(evil.body()).contains("\"code\":\"permission_denied\"");
-        assertThat(shop.books.get("b1").stock()).isEqualTo(3);
-        // guard: the origin in rayfold.allowed-origins may write
-        var allowed = frames(BUY_B1, "X-User", "alice", "Origin", "https://app.example");
-        assertThat((Long) at(allowed.get(0), "ok", "stock")).isEqualTo(2L);
-        // guard: a safe read from any site is answered (the browser keeps the answer from the other site's page)
-        var read = frames("""
-            {"rayfold":"0.1","ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ title }"}]}""", "Origin", "https://evil.example", "Rayfold-Safe", "true");
-        assertThat((String) at(read.get(0), "data", "title")).isEqualTo("The Dispossessed");
-    }
-
-    @Test
-    void onlyJsonBodiesAreAccepted() throws Exception {
-        var res = send("POST", "/rayfold", BUY_B1, "Content-Type", "text/plain", "X-User", "alice");
-        assertThat(res.statusCode()).isEqualTo(415);
-        assertThat(res.body()).contains("unsupported_media_type");
+        assertThat(frames(buy("b2", 1, freshKey()), "X-User", "alice")).isEqualTo(List.of(json("""
+            {"id":1,"error":{"code":"domain","type":"OutOfStock","message":"Only 0 left","data":{"available":0}},"fin":true}""")));
         assertThat(shop.sold).isEmpty();
     }
 
     @Test
-    void theManifestShowsTheSchemaWithoutPolicyExpressions() throws Exception {
+    void aWriteFromAnotherSiteIsRefusedWhileAnAllowedOriginAndCrossSiteReadsGoThrough() throws Exception {
+        var evil = send("POST", "/rayfold", buy("b1", 1, freshKey()), "Content-Type", "application/rayfold+json", "X-User", "alice", "Origin", "https://evil.example");
+        assertThat(evil.statusCode()).isEqualTo(403);
+        assertThat(evil.headers().firstValue("Content-Type")).contains("application/problem+json");
+        assertThat(json(evil.body())).isEqualTo(json(problem(403, "permission_denied", "Origin https://evil.example is not allowed", "permission_denied")));
+        assertThat(shop.books.get("b1").stock()).isEqualTo(3);
+        assertThat(shop.sold).isEmpty();
+        // guard: the origin in rayfold.allowed-origins may write
+        assertThat(frames(buy("b1", 1, freshKey()), "X-User", "alice", "Origin", "https://app.example")).isEqualTo(List.of(json(BOUGHT_B1)));
+        // guard: a safe read from any site is answered (the browser keeps the answer from the other site's page)
+        var read = frames("""
+            {"rayfold":"0.1","ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ title }"}]}""", "Origin", "https://evil.example", "Rayfold-Safe", "true");
+        assertThat(read).isEqualTo(List.of(json("""
+            {"id":1,"data":{"$type":"Book","title":"The Dispossessed"},"meta":{"cost":1},"fin":true}""")));
+    }
+
+    @Test
+    void onlyJsonBodiesAreAccepted() throws Exception {
+        var res = send("POST", "/rayfold", buy("b1", 1, freshKey()), "Content-Type", "text/plain", "X-User", "alice");
+        assertThat(res.statusCode()).isEqualTo(415);
+        assertThat(json(res.body())).isEqualTo(json(problem(415, "unsupported_media_type", "Content-Type text/plain is not accepted; send application/rayfold+json", "invalid_argument")));
+        assertThat(shop.sold).isEmpty();
+    }
+
+    @Test
+    void theManifestNamesThePolicyButNotItsExpression() throws Exception {
         var res = send("GET", "/rayfold/manifest", null);
         assertThat(res.statusCode()).isEqualTo(200);
-        assertThat(res.body()).contains("\"Secret\"").contains("\"allow\"").doesNotContain("$expr");
+        Object manifest = json(res.body());
+        assertThat(ShopStarterTest.<Object>at(manifest, "rayfold")).isEqualTo("0.1");
+        assertThat(ShopStarterTest.<Object>at(manifest, "extensions")).isEqualTo(List.of("live", "rb"));
+        assertThat(ShopStarterTest.<Object>at(manifest, "schema", "types", "Secret", "annotations")).isEqualTo(List.of(Map.of("name", "allow")));
+        assertThat(res.body()).doesNotContain("$expr");
     }
 
     @Test
     void theSchemaPolicyHidesASecretFromAnonymousReaders() throws Exception {
         String batch = """
             {"rayfold":"0.1","ops":[{"id":1,"op":"secret","args":{"id":"s1"},"shape":"{ id note }"}]}""";
-        Object hidden = at(frames(batch).get(0), "data");
-        assertThat(hidden).isNull();
+        assertThat(frames(batch)).isEqualTo(List.of(json("""
+            {"id":1,"data":null,"meta":{"cost":1},"fin":true}""")));
         // guard: a signed-in reader gets it, through the asynchronous resolver
-        assertThat((String) at(frames(batch, "X-User", "alice").get(0), "data", "note")).isEqualTo("classified");
+        assertThat(frames(batch, "X-User", "alice")).isEqualTo(List.of(json("""
+            {"id":1,"data":{"$type":"Secret","id":"s1","note":"classified"},"meta":{"cost":1},"fin":true}""")));
     }
 
     @Test
     void aStreamSendsOneFramePerElement() throws Exception {
         var f = frames("""
             {"rayfold":"0.1","ops":[{"id":1,"op":"countdown","args":{"from":2}}]}""");
-        assertThat(f.stream().filter(x -> x.containsKey("item")).map(x -> x.get("item")).toList()).containsExactly(2L, 1L, 0L);
+        assertThat(f).isEqualTo(List.of(json("{\"id\":1,\"item\":2}"), json("{\"id\":1,\"item\":1}"), json("{\"id\":1,\"item\":0}"), json("{\"id\":1,\"fin\":true}")));
     }
 
     @Test
@@ -152,7 +197,8 @@ class ShopStarterTest {
         String s = URLEncoder.encode("{ title }", StandardCharsets.UTF_8);
         var res = send("GET", "/rayfold/book?a=" + a + "&s=" + s, null, "Accept", "application/json");
         assertThat(res.statusCode()).as(res.body()).isEqualTo(200);
-        assertThat((String) at(Rayfold.parseJson(res.body()), "data", "title")).isEqualTo("The Dispossessed");
+        assertThat(json(res.body())).isEqualTo(json("""
+            {"id":1,"data":{"$type":"Book","title":"The Dispossessed"},"meta":{"cost":1},"fin":true}"""));
     }
 
     @Test

@@ -250,7 +250,9 @@ class BatchRunner(
         val results = ConcurrentHashMap<Int, JsonElement>()
         val status = ConcurrentHashMap<Int, String>()
         val done = planned.associate { it.req.id to CompletableDeferred<Unit>() }
-        val viewerScope = sha256(viewer.toString())
+        // canonical JSON, as the TypeScript runtime's hashJson: the same viewer built with its keys in another order (a
+        // Map's iteration order, another instance sharing the store) must land in the same scope
+        val viewerScope = sha256(Canonical.json(viewer))
         val deadline = deadlineOf(envelope.meta["deadline"])
 
         val all: suspend () -> Unit = {

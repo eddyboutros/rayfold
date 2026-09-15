@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.net.BindException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -60,6 +61,8 @@ class JavaApiTest {
         query echo(i: Int, l: Long, f: Float, d: Decimal, b: Boolean, s: String, list: [Int], nested: Filter?): String
         object Reading { big: Long raw: Bytes at: Instant }
         query reading: Reading
+        object Scalars { huge: Long at: Instant legacy: Instant count: Long? }
+        query scalars(huge: Long, at: Instant, legacy: Instant, count: Long?): Scalars
         command buy(id: ID, qty: Int): Book throws OutOfStock emits Sold
         stream countdown(from: Int): Int
         """;
@@ -67,6 +70,8 @@ class JavaApiTest {
     record Author(String id, String name, Instant born) {}
 
     record Reading(long big, byte[] raw, ZonedDateTime at) {}
+
+    record Scalars(BigInteger huge, OffsetDateTime at, Date legacy, Long count) {}
 
     record Book(String id, String title, BigDecimal price, int stock, String authorId, Format format, List<String> tags) {
         Book withStock(int s) { return new Book(id, title, price, s, authorId, format, tags); }
@@ -92,6 +97,7 @@ class JavaApiTest {
     final AtomicInteger authorLoads = new AtomicInteger();
     final List<String> sold = Collections.synchronizedList(new ArrayList<>());
     final List<Object> events = Collections.synchronizedList(new ArrayList<>());
+    final List<Scalars> received = Collections.synchronizedList(new ArrayList<>());
     final HttpClient client = HttpClient.newHttpClient();
     RayfoldServer server;
     HttpServer http;
@@ -141,6 +147,12 @@ class JavaApiTest {
             .stream("countdown", (args, ctx) -> Stream.iterate(args.getInt("from"), i -> i >= 0, i -> i - 1))
             .query("reading", (args, ctx) -> new Reading(9007199254740993L, new byte[] {(byte) 0xfb, (byte) 0xff},
                 ZonedDateTime.of(2026, 9, 15, 10, 30, 0, 0, ZoneId.of("Europe/Paris"))))
+            .query("scalars", (args, ctx) -> {
+                Scalars s = new Scalars(new BigInteger(args.getString("huge")), OffsetDateTime.parse(args.getString("at")),
+                    Date.from(Instant.parse(args.getString("legacy"))), args.getLong("count"));
+                received.add(s);
+                return s;
+            })
             .build();
         server.getEvents().on("Sold", payload -> { events.add(Rayfold.fromJson(payload)); return kotlin.Unit.INSTANCE; });
         http = Rayfold.http(server)
@@ -155,6 +167,7 @@ class JavaApiTest {
     @AfterEach
     void stop() {
         http.stop(0);
+        client.close();
     }
 
     /** POSTs a batch and returns its frames as Java maps. */
@@ -213,12 +226,10 @@ class JavaApiTest {
     void aSignedInCommandReturnsThePatchedBookAndEmitsItsEvent() throws Exception {
         var frames = post("alice", """
             {"rayfold":"0.1","ops":[{"id":1,"op":"buy","args":{"id":"b1","qty":1},"key":"key-0000000000001","shape":"{ id stock }"}]}""");
-        assertEquals(2L, (Long) at(frames.get(0), "ok", "stock"));
-        List<Object> patch = at(frames.get(0), "patch");
-        assertTrue(patch.stream().anyMatch(p -> "Book:b1".equals(at(p, "set"))), "the patch names Book:b1: " + patch);
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"ok":{"$type":"Book","id":"b1","stock":2},"patch":[{"set":"Book:b1","value":{"$type":"Book","id":"b1","stock":2}}],"meta":{"cost":1},"fin":true}""")), frames);
         assertEquals(List.of("alice:b1"), sold);
-        assertEquals("b1", at(events.get(0), "bookId"));
-        assertEquals(1L, (Long) at(events.get(0), "qty"));
+        assertEquals(List.of(Map.of("bookId", "b1", "qty", 1L, "seq", 1L)), events, "the event as declared, numbered by the bus");
         assertEquals(2, books.get("b1").stock());
     }
 
@@ -344,7 +355,8 @@ class JavaApiTest {
         try {
             var page = get("http://127.0.0.1:" + withExplorer.getAddress().getPort() + "/rayfold/explorer");
             assertEquals(200, page.statusCode(), page.body());
-            assertTrue(page.body().contains("\"title\":\"Bookshop\""), "the page carries its title");
+            assertEquals("text/html; charset=utf-8", page.headers().firstValue("Content-Type").orElse(null));
+            assertEquals(new RayfoldExplorer("/rayfold", "Bookshop").getHtml(), page.body(), "the page for this endpoint, under its title");
         } finally {
             withExplorer.stop(0);
         }
@@ -357,7 +369,25 @@ class JavaApiTest {
         new RayfoldExplorer("/rayfold", "Mounted by hand").mount(http);
         var page = get(url + "/explorer");
         assertEquals(200, page.statusCode(), page.body());
-        assertTrue(page.body().contains("\"title\":\"Mounted by hand\""), "the page carries its title");
+        assertEquals("text/html; charset=utf-8", page.headers().firstValue("Content-Type").orElse(null));
+        assertEquals(new RayfoldExplorer("/rayfold", "Mounted by hand").getHtml(), page.body());
+        assertTrue(page.body().contains("{\"endpoint\":\"/rayfold\",\"title\":\"Mounted by hand\"}"), "the page carries its own configuration");
+    }
+
+    @Test
+    void bigIntegerOffsetDateTimeDateAndABoxedLongTravelAsTheSchemaEncodesThemBothWays() throws Exception {
+        var text = post(null, """
+            {"rayfold":"0.1","ops":[{"id":1,"op":"scalars","args":{"huge":"9007199254740993","at":"2026-09-15T10:30:00+02:00","legacy":"2026-09-15T08:30:00.123Z","count":null},"shape":"{ huge at legacy count }"}]}""");
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"data":{"huge":"9007199254740993","at":"2026-09-15T08:30:00Z","legacy":"2026-09-15T08:30:00.123Z","count":null},"meta":{"cost":1},"fin":true}""")), text);
+        // numbers on the way in: a Long within 2^53 as a JSON number, and one past it, which comes back as text
+        var numbers = post(null, """
+            {"rayfold":"0.1","ops":[{"id":1,"op":"scalars","args":{"huge":9007199254740991,"at":"1970-01-01T00:00:00Z","legacy":"1970-01-01T00:00:00Z","count":-9007199254740993},"shape":"{ huge at legacy count }"}]}""");
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"data":{"huge":"9007199254740991","at":"1970-01-01T00:00:00Z","legacy":"1970-01-01T00:00:00Z","count":"-9007199254740993"},"meta":{"cost":1},"fin":true}""")), numbers);
+        assertEquals(List.of(
+            new Scalars(new BigInteger("9007199254740993"), OffsetDateTime.of(2026, 9, 15, 10, 30, 0, 0, ZoneOffset.ofHours(2)), new Date(1789461000123L), null),
+            new Scalars(new BigInteger("9007199254740991"), OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC), new Date(0L), -9007199254740993L)), received);
     }
 
     @Test

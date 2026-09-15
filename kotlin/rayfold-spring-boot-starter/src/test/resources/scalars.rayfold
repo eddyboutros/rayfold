@@ -1,3 +1,5 @@
 object Reading { amount: Decimal big: Long small: Long at: Instant zoned: Instant day: Date raw: Bytes ratio: Float }
+object Echo { huge: Long at: Instant legacy: Instant count: Long? }
 
 query reading: Reading
+query echo(huge: Long, at: Instant, legacy: Instant, count: Long?): Echo

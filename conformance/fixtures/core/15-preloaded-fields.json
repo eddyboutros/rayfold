@@ -1,0 +1,395 @@
+{
+  "name": "Fields a resolver filled in from the shape it was given (spec 02)",
+  "schema": "\nentity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }\nentity Book { id: ID }\nquery author(id: ID): Author?\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Author": {
+        "kind": "entity",
+        "name": "Author",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "books",
+            "type": {
+              "kind": "named",
+              "name": "Page",
+              "nullable": false,
+              "args": [
+                {
+                  "kind": "named",
+                  "name": "Book",
+                  "nullable": false
+                }
+              ]
+            },
+            "args": [
+              {
+                "name": "page",
+                "type": {
+                  "kind": "named",
+                  "name": "PageArgs",
+                  "nullable": false
+                },
+                "annotations": [],
+                "default": {
+                  "first": 10
+                }
+              }
+            ],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ],
+        "implements": []
+      },
+      "Book": {
+        "kind": "entity",
+        "name": "Book",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ],
+        "implements": []
+      }
+    },
+    "ops": {
+      "author": {
+        "kind": "query",
+        "name": "author",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Author",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {}
+  },
+  "data": {
+    "Author": [
+      {
+        "id": "a1",
+        "name": "Ursula",
+        "books": {
+          "items": [
+            {
+              "id": "b1"
+            }
+          ],
+          "total": 3,
+          "hasMore": true,
+          "cursor": "b1"
+        }
+      },
+      {
+        "id": "a2",
+        "name": "Octavia"
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "author": {
+        "from": "Author",
+        "where": {
+          "id": "$args.id"
+        },
+        "mode": "one"
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "a field with arguments and no loader serves the value the resolver put on its parent",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "author",
+            "args": {
+              "id": "a1"
+            },
+            "shape": "{ name books(page: { first: 1 }) { total items { id } } shelf: books(page: { first: 1 }) { hasMore } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Author",
+            "name": "Ursula",
+            "books": {
+              "total": 3,
+              "items": [
+                {
+                  "$type": "Book",
+                  "id": "b1"
+                }
+              ]
+            },
+            "shelf": {
+              "hasMore": true
+            }
+          },
+          "meta": {
+            "cost": 6
+          },
+          "fin": true
+        }
+      ],
+      "calls": {
+        "Query.author": 1
+      }
+    },
+    {
+      "name": "guard: without the value on its parent, such a field still needs a loader",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "author",
+            "args": {
+              "id": "a2"
+            },
+            "shape": "{ name books(page: { first: 1 }) { total } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "error": {
+            "code": "unimplemented",
+            "message": "No loader for Author.books",
+            "path": "books"
+          },
+          "fin": true
+        }
+      ],
+      "calls": {
+        "Query.author": 1
+      }
+    }
+  ]
+}

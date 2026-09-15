@@ -7,6 +7,7 @@ import kotlinx.serialization.json.put
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.net.InetAddress
+import java.util.Base64
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -71,14 +72,36 @@ class HostGuardTest {
     @Test
     fun `a loopback RayfoldHttp refuses a foreign Host with 403 before routing, on every route, and nothing runs`() {
         val (port, store) = serve()
-        for (res in listOf(post(port, "evil.example"), get(port, "/rayfold/manifest", "evil.example:$port"), get(port, "/rayfold/openapi.json", "evil.example"), get(port, "/rayfold/nope", "evil.example"))) {
+        val refused = listOf(
+            post(port, "evil.example") to "Host evil.example is not allowed on a loopback server",
+            get(port, "/rayfold/manifest", "evil.example:$port") to "Host evil.example:$port is not allowed on a loopback server",
+            get(port, "/rayfold/openapi.json", "evil.example") to "Host evil.example is not allowed on a loopback server",
+            get(port, "/rayfold/nope", "evil.example") to "Host evil.example is not allowed on a loopback server",
+        )
+        for ((res, detail) in refused) {
             assertEquals(403, res.status, res.head)
+            assertEquals("application/problem+json", res.header("Content-Type"))
             assertEquals("nosniff", res.header("X-Content-Type-Options"))
             assertEquals("no-store", res.header("Cache-Control"))
-            assertEquals("permission denied", (Json.parseToJsonElement(res.body) as kotlinx.serialization.json.JsonObject).s("title"))
+            assertEquals(refusal(detail), Json.parseToJsonElement(res.body))
         }
-        assertEquals(refusal("Host evil.example is not allowed on a loopback server"), Json.parseToJsonElement(post(port, "evil.example").body))
         assertEquals(emptyMap(), store.calls.toMap())
+    }
+
+    @Test
+    fun `an HTTP 1-1 request without a Host header is refused with 403 before anything runs (guard - the same request with one is answered)`() {
+        val (port, store) = serve()
+        // a single query answered as one JSON document, so the raw body is exactly the frame
+        val target = "/rayfold/book?a=${Base64.getUrlEncoder().withoutPadding().encodeToString("""{"id":"b1"}""".toByteArray())}&s=%7B+id+%7D"
+        val bare = rawHttp(port, "GET $target HTTP/1.1\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
+        assertEquals(403, bare.status, bare.head)
+        assertEquals("application/problem+json", bare.header("Content-Type"))
+        assertEquals(refusal("Missing Host header"), Json.parseToJsonElement(bare.body))
+        assertEquals(emptyMap(), store.calls.toMap())
+        val hosted = rawHttp(port, "GET $target HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
+        assertEquals(200, hosted.status, hosted.head)
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1},"fin":true}"""), obj(hosted.body))
+        assertEquals(mapOf("Query.book" to 1), store.calls.toMap())
     }
 
     @Test

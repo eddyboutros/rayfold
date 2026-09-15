@@ -19,6 +19,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -274,18 +275,26 @@ class LiveTest {
         }
     }
 
-    /** Bounded: a missed release fails the test instead of hanging it. */
-    private fun untilReleased(bs: Bookstore) {
-        val deadline = System.nanoTime() + 5_000_000_000L
-        while (bs.server.changes.size > 0) {
-            check(System.nanoTime() < deadline) { "the live query still holds its subscription" }
-            Thread.onSpinWait()
+    /** Counts down once the op named [name] has ended; its hook returns only after a live op let go of its subscription. */
+    private class OpEnded(private val name: String) : Instrumentation {
+        val latch = CountDownLatch(1)
+        override suspend fun op(info: OpInfo, run: suspend () -> Outcome): Outcome = try {
+            run()
+        } finally {
+            if (info.name == name) latch.countDown()
         }
+    }
+
+    /** Bounded: a missed release fails the test instead of hanging it. */
+    private fun untilReleased(bs: Bookstore, ended: OpEnded) {
+        assertTrue(ended.latch.await(5, TimeUnit.SECONDS), "the live query ended within 5 s")
+        assertEquals(0, bs.server.changes.size)
     }
 
     @Test
     fun `a live query over HTTP streams its patches between keep-alive lines, and a client that leaves releases it`() {
-        val bs = Bookstore()
+        val ended = OpEnded("book")
+        val bs = Bookstore(instrumentation = ended)
         liveOverHttp(bs, "application/rayfold-frames+json") { res ->
             assertEquals(200, res.statusCode())
             assertEquals("no-store", res.headers().firstValue("Cache-Control").orElse(null))
@@ -297,13 +306,14 @@ class LiveTest {
             runBlocking { command(bs.server, "placeOrder", """{"input":{"lines":[{"bookId":"b1","qty":2}]}}""", KEY, u1) }
             assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":3}}]}"""), obj(generateSequence { line() }.first { it.isNotEmpty() }))
             res.body().close() // the client leaves; the next keep-alive fails to write, which cancels the batch
-            untilReleased(bs)
+            untilReleased(bs, ended)
         }
     }
 
     @Test
     fun `a live query over RB gets zero-length frames as keep-alives`() {
-        val bs = Bookstore()
+        val ended = OpEnded("book")
+        val bs = Bookstore(instrumentation = ended)
         val rb = RbCodec(bs.server.ir)
         liveOverHttp(bs, "application/rayfold") { res ->
             assertEquals("application/rayfold", res.headers().firstValue("Content-Type").orElse(null))
@@ -315,7 +325,7 @@ class LiveTest {
             assertEquals(0, byte(), "a zero-length frame")
             assertEquals(0, byte(), "and another, while nothing changes")
             input.close()
-            untilReleased(bs)
+            untilReleased(bs, ended)
         }
     }
 }

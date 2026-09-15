@@ -326,9 +326,15 @@ class McpTest {
         val port = serveMcp(bs)
         val body = """{"jsonrpc":"2.0","id":1,"method":"tools/list"}"""
         fun raw(p: Int, host: String) = rawHttp(p, "POST /mcp HTTP/1.1\r\nHost: $host\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body")
+        fun refusal(detail: String) =
+            obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/permission_denied","title":"permission denied","status":403,"detail":"$detail","code":"permission_denied"}""")
         val rebound = raw(port, "evil.example:$port")
         assertEquals(403, rebound.status)
-        assertTrue("Host evil.example:$port is not allowed on a loopback server" in rebound.body, rebound.body)
+        assertEquals("application/problem+json", rebound.header("Content-Type"))
+        assertEquals(refusal("Host evil.example:$port is not allowed on a loopback server"), obj(rebound.body))
+        val bare = rawHttp(port, "POST /mcp HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body")
+        assertEquals(403, bare.status, bare.head)
+        assertEquals(refusal("Missing Host header"), obj(bare.body))
         assertEquals(200, raw(port, "localhost:$port").status)
         val listed = serveMcp(Bookstore(), McpOptions(allowedHosts = setOf("mcp.example")))
         assertEquals(200, raw(listed, "mcp.example").status)

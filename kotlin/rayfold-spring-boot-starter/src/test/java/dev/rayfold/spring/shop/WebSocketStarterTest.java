@@ -28,18 +28,17 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 
-import static dev.rayfold.spring.shop.ShopStarterTest.at;
+import static dev.rayfold.spring.shop.ShopStarterTest.json;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /**
  * The WebSocket transport on the application's own port, from spring-boot-starter-websocket, opened as a browser or
  * a JVM client would: batches and live queries, RB, the viewer from the handshake, and the Origin refusal with its
- * guard. Every wait is bounded at 5 s.
+ * guard. Every wait is bounded at 5 s, and a wait on the server is for a signal ([OpEnds]), never a poll.
  */
-@SpringBootTest(classes = ShopApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(classes = {ShopApplication.class, OpEnds.class}, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class WebSocketStarterTest {
     @Value("${local.server.port}")
     int port;
@@ -50,17 +49,22 @@ class WebSocketStarterTest {
     @Autowired
     RayfoldServer server;
 
+    @Autowired
+    OpEnds opEnds;
+
     final HttpClient client = HttpClient.newHttpClient();
     final List<WebSocket> opened = new ArrayList<>();
 
     @BeforeEach
     void reset() {
         shop.reset();
+        opEnds.getEnded().clear();
     }
 
     @AfterEach
     void close() {
         opened.forEach(WebSocket::abort);
+        client.shutdownNow();
     }
 
     /** Whole messages as they arrive: text as parsed JSON, binary as the list of RB frames it holds. */
@@ -109,11 +113,14 @@ class WebSocketStarterTest {
         return ws;
     }
 
-    static void until(BooleanSupplier condition, String what) {
+    /** Waits, at most 5 s in all, until the server reports that this op ("kind name") ended. */
+    void ended(String op) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) fail("not within 5 s: " + what);
-            Thread.onSpinWait();
+        while (true) {
+            long left = deadline - System.nanoTime();
+            String next = left > 0 ? opEnds.getEnded().poll(left, TimeUnit.NANOSECONDS) : null;
+            if (next == null) fail("no " + op + " ended within 5 s");
+            if (op.equals(next)) return;
         }
     }
 
@@ -124,11 +131,13 @@ class WebSocketStarterTest {
         assertThat(ws.getSubprotocol()).isEqualTo("rayfold.0.1");
         ws.sendText("""
             {"ops":[{"id":1,"op":"me"}]}""", true).get(5, TimeUnit.SECONDS);
-        assertThat((String) at(m.next(), "data")).isEqualTo("alice/customer");
+        assertThat(m.next()).isEqualTo(json("""
+            {"id":1,"data":"alice/customer","meta":{"cost":1},"fin":true}"""));
 
         ws.sendText("""
             {"ops":[{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}]}""", true).get(5, TimeUnit.SECONDS);
-        int stock = ShopStarterTest.<Number>at(m.next(), "data", "stock").intValue();
+        assertThat(m.next()).isEqualTo(json("""
+            {"id":2,"data":{"$type":"Book","id":"b1","stock":3},"meta":{"cost":1}}"""));
         assertThat(server.getChanges().getSize()).as("the live query holds a subscription").isEqualTo(1);
 
         // a purchase over HTTP on the same server reaches the socket as a patch; a fresh key, since the cached test
@@ -139,19 +148,19 @@ class WebSocketStarterTest {
             .timeout(Duration.ofSeconds(5)).header("Content-Type", "application/rayfold+json").header("X-User", "alice")
             .POST(HttpRequest.BodyPublishers.ofString(buy)).build(), HttpResponse.BodyHandlers.ofString());
         assertThat(bought.statusCode()).as(bought.body()).isEqualTo(200);
-        assertThat(bought.body()).as("the purchase ran").contains("\"ok\"").doesNotContain("replay");
-        Object patch = m.next();
-        assertThat((String) at(patch, "patch", 0, "set")).isEqualTo("Book:b1");
-        assertThat(ShopStarterTest.<Number>at(patch, "patch", 0, "value", "stock").intValue()).isEqualTo(stock - 1);
+        assertThat(json(bought.body())).as("the purchase ran").isEqualTo(json(ShopStarterTest.BOUGHT_B1));
+        assertThat(m.next()).isEqualTo(json("""
+            {"id":2,"patch":[{"set":"Book:b1","value":{"stock":2}}]}"""));
 
         ws.sendText("""
             {"cancel":2}""", true).get(5, TimeUnit.SECONDS);
-        assertThat((String) at(m.next(), "error", "code")).isEqualTo("canceled");
-        until(() -> server.getChanges().getSize() == 0, "the cancelled live query lets go of its subscription");
+        assertThat(m.next()).isEqualTo(json("""
+            {"id":2,"error":{"code":"canceled","message":"Canceled"},"fin":true}"""));
+        // the canceled frame is sent only after the cancelled op let go of its subscription
+        assertThat(server.getChanges().getSize()).isEqualTo(0);
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void anRbMessageIsAnsweredInRbAndAClientThatVanishesReleasesItsLiveQuery() throws Exception {
         Messages m = new Messages();
         WebSocket ws = open(m);
@@ -159,12 +168,12 @@ class WebSocketStarterTest {
         byte[] batch = codec.encode(Json.Default.parseToJsonElement("""
             {"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id title }","live":true}]}"""));
         ws.sendBinary(ByteBuffer.wrap(batch), true).get(5, TimeUnit.SECONDS);
-        List<Object> frames = (List<Object>) m.next();
-        assertThat((String) at(frames, 0, "data", "$type")).isEqualTo("Book");
-        assertThat((String) at(frames, 0, "data", "id")).isEqualTo("b1");
+        assertThat(m.next()).isEqualTo(List.of(json("""
+            {"id":1,"data":{"$type":"Book","id":"b1","title":"The Dispossessed"},"meta":{"cost":1}}""")));
         assertThat(server.getChanges().getSize()).as("guard: while the socket is open, its live query stays subscribed").isEqualTo(1);
         ws.abort(); // no close frame: the connection just drops
-        until(() -> server.getChanges().getSize() == 0, "the vanished client's live query is released");
+        ended("query book");
+        assertThat(server.getChanges().getSize()).as("the vanished client's live query is released").isEqualTo(0);
     }
 
     @Test
@@ -180,6 +189,7 @@ class WebSocketStarterTest {
         WebSocket ws = open(m, "Origin", "https://app.example");
         ws.sendText("""
             {"ops":[{"id":1,"op":"me"}]}""", true).get(5, TimeUnit.SECONDS);
-        assertThat((String) at(m.next(), "data")).as("guard: rayfold.allowed-origins lets this page in").isEqualTo("anonymous");
+        assertThat(m.next()).as("guard: rayfold.allowed-origins lets this page in").isEqualTo(json("""
+            {"id":1,"data":"anonymous","meta":{"cost":1},"fin":true}"""));
     }
 }

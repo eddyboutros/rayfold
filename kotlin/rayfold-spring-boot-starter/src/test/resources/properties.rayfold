@@ -1,0 +1,6 @@
+entity Author { id: ID name: String }
+entity Book { id: ID title: String author: Author }
+entity Secret @allow(read: viewer != null) { id: ID note: String }
+
+query book(id: ID): Book?
+query secret(id: ID): Secret?

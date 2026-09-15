@@ -11,7 +11,6 @@ import java.io.IOException
 import java.net.Socket
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * The WebSocket transport over real sockets: handshake, batches, cancel, id reuse, live queries, and the spec 12
@@ -155,7 +154,14 @@ class WebSocketTest {
         // a client batch 1 -> 2 remapped to 3 -> 4, the ref rewritten to the new id
         ws.text("""{"ops":[{"id":3,"op":"placeOrder","args":{"input":{"lines":[{"bookId":"b3","qty":1}]}},"key":"$KEY"},{"id":4,"op":"order","args":{"id":{"${'$'}ref":"3.id"}},"shape":"{ id total }"}]}""")
         val pipelined = listOf(ws.next(), ws.next()).associateBy { it.opId() }
-        assertTrue("ok" in (pipelined[3] ?: error("no frame for op 3")))
+        assertEquals(
+            obj(
+                """{"id":3,"ok":{"${'$'}type":"Order","id":"o1","status":"PLACED","total":"8.00","items":[{"qty":1,"unitPrice":"8.00","book":{"${'$'}type":"Book","id":"b3","title":"Kindred"}}]},""" +
+                    """"patch":[{"set":"Order:o1","value":{"${'$'}type":"Order","id":"o1","status":"PLACED","total":"8.00","items":[{"qty":1,"unitPrice":"8.00","book":{"${'$'}ref":"Book:b3"}}]}},""" +
+                    """{"set":"Book:b3","value":{"${'$'}type":"Book","id":"b3","title":"Kindred"}},{"set":"Book:b3","value":{"stock":99}}],"meta":{"cost":3},"fin":true}""",
+            ),
+            pipelined[3],
+        )
         assertEquals(obj("""{"${'$'}type":"Order","id":"o1","total":"8.00"}"""), pipelined[4]?.get("data"))
     }
 
@@ -254,12 +260,15 @@ class WebSocketTest {
     }
 
     @Test
-    fun `a loopback listener refuses a foreign Host at the handshake (guard - loopback names and an allowed host get 101)`() {
+    fun `a loopback listener refuses a foreign or missing Host at the handshake (guard - loopback names and an allowed host get 101)`() {
         val bs = Bookstore()
         val l = listen(bs)
         val rebound = upgrade(l.port, mapOf("Host" to "evil.example:${l.port}"))
         assertEquals(403, rebound.status)
         assertEquals("Host evil.example:${l.port} is not allowed on a loopback server", rebound.rest())
+        val bare = upgrade(l.port, mapOf("Host" to null))
+        assertEquals(403, bare.status, bare.head)
+        assertEquals("Missing Host header", bare.rest())
         assertEquals(101, upgrade(l.port, mapOf("Host" to "localhost:${l.port}")).status)
         val listed = listen(Bookstore(), WsOptions(allowedHosts = setOf("ws.example")))
         assertEquals(101, upgrade(listed.port, mapOf("Host" to "ws.example")).status)
@@ -322,7 +331,7 @@ class WebSocketTest {
         val bs = Bookstore()
         val ws = upgrade(listen(bs).port)
         ws.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}]}""")
-        assertTrue("stock" in ws.next().toString())
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":5},"meta":{"cost":1}}"""), ws.next())
         assertEquals(1, bs.server.changes.size, "guard: while the connection is open, its live query stays subscribed")
         ws.socket.shutdownOutput() // FIN, no close frame
         ws.untilClosed() // the server closes its side once it has cancelled the connection's batches

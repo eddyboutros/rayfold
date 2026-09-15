@@ -109,6 +109,46 @@ class RuntimeTest {
     }
 
     @Test
+    fun `the same viewer built with its keys in another order is one idempotency scope, and a viewer with another id is not (guard)`() = runTest(timeout = 5.seconds) {
+        var runs = 0
+        val restock: suspend (JsonObject, RayfoldContext) -> Any? = { _, _ -> runs++; CommandResult(book) }
+        val server = RayfoldServer(ir, Resolvers(commands = mapOf("restock" to restock)))
+        val key = "shared-key-000000006"
+        // as a Map with another iteration order, or another instance sharing the store, would hand the viewer over
+        val ada = obj("""{"id":"u1","roles":["ADMIN","AUTHOR"],"org":{"name":"Acme","region":"eu"}}""")
+        val adaReordered = obj("""{"org":{"region":"eu","name":"Acme"},"roles":["ADMIN","AUTHOR"],"id":"u1"}""")
+        assertEquals(ada, adaReordered)
+        assertTrue(ada.toString() != adaReordered.toString(), "the two differ in key order only")
+
+        val first = server.collect(envelope(op(1, "restock", restockArgs, key)), ada).single()
+        val retry = server.collect(envelope(op(1, "restock", restockArgs, key)), adaReordered).single()
+        assertEquals(1, runs, "a replay, not a second run")
+        assertEquals(JsonObject(first + ("meta" to obj("""{"cost":1,"replay":true}"""))), retry)
+
+        val grace = obj("""{"org":{"region":"eu","name":"Acme"},"roles":["ADMIN","AUTHOR"],"id":"u2"}""")
+        assertEquals(first, server.collect(envelope(op(1, "restock", restockArgs, key)), grace).single(), "answered as a first run, with no replay marker")
+        assertEquals(2, runs, "another viewer's identical key is a different command")
+    }
+
+    @Test
+    fun `a field with arguments and no loader serves the value the resolver already put on its parent`() = runTest(timeout = 5.seconds) {
+        val schema = SchemaText.load("entity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> } entity Book { id: ID } query author(id: ID): Author?").ir
+        val planned = obj("""{"id":"a1","name":"Ursula","books":{"items":[{"id":"b1"}],"total":3,"hasMore":true,"cursor":"b1"}}""")
+        val server = RayfoldServer(schema, Resolvers(queries = mapOf("author" to { _, _ -> planned })))
+        val shape = "{ name books(page: { first: 1 }) { total items { id } } shelf: books(page: { first: 1 }) { hasMore } }"
+        val frames = server.collect(obj("""{"ops":[{"id":1,"op":"author","args":{"id":"a1"},"shape":"$shape"}]}"""))
+        assertEquals(listOf(obj("""{"id":1,"data":{"${'$'}type":"Author","name":"Ursula","books":{"total":3,"items":[{"${'$'}type":"Book","id":"b1"}]},"shelf":{"hasMore":true}},"meta":{"cost":6},"fin":true}""")), frames)
+    }
+
+    @Test
+    fun `guard - without its value on the parent, a field with arguments still needs a loader`() = runTest(timeout = 5.seconds) {
+        val schema = SchemaText.load("entity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> } entity Book { id: ID } query author(id: ID): Author?").ir
+        val server = RayfoldServer(schema, Resolvers(queries = mapOf("author" to { _, _ -> obj("""{"id":"a1","name":"Ursula"}""") })))
+        val frames = server.collect(obj("""{"ops":[{"id":1,"op":"author","args":{"id":"a1"},"shape":"{ name books(page: { first: 1 }) { total } }"}]}"""))
+        assertEquals(listOf(obj("""{"id":1,"error":{"code":"unimplemented","message":"No loader for Author.books","path":"books"},"fin":true}""")), frames)
+    }
+
+    @Test
     fun `reusing a key with different arguments is rejected without running the command`() = runTest(timeout = 5.seconds) {
         var runs = 0
         val restock: suspend (JsonObject, RayfoldContext) -> Any? = { _, _ -> runs++; CommandResult(book) }

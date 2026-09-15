@@ -1,6 +1,7 @@
 package dev.rayfold.core
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.DynamicTest
@@ -118,7 +119,12 @@ class ShapesTest {
         assertEquals(64, depth(Shapes.parse(nested(64))), "guard: 64 levels parse")
         assertEquals("Bad shape: nested deeper than 64 levels", fails(nested(65)))
         assertEquals("Bad shape: nested deeper than 64 levels", fails(nested(100_000)), "refused before recursing, so no StackOverflowError")
-        Shapes.parse("{ x(v: ${"[".repeat(63)}${"]".repeat(63)}) }") // guard: one shape level and 63 list levels
+        val lists = (1 until 63).fold(JsonArray(emptyList())) { inner, _ -> JsonArray(listOf(inner)) }
+        assertEquals(
+            Shape(listOf(ShapeItem(kind = "field", name = "x", args = mapOf("v" to lists)))),
+            Shapes.parse("{ x(v: ${"[".repeat(63)}${"]".repeat(63)}) }"),
+            "guard: one shape level and 63 list levels parse, every level kept",
+        )
         assertEquals("Bad shape: nested deeper than 64 levels", fails("{ x(v: ${"[".repeat(64)}${"]".repeat(64)}) }"))
     }
 

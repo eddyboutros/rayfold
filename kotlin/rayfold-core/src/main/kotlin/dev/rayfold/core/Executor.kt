@@ -118,7 +118,7 @@ class Executor(
     suspend fun runQuery(op: OpDef, args: JsonObject, shape: Shape, explicit: Boolean, cost: Long, ctx: RayfoldContext, emit: (JsonObject) -> Unit, unionPaths: MutableSet<String>? = null): JsonElement {
         checkOpPolicy(op, "read", args, ctx)
         val fn = resolvers.queries[op.name] ?: throw RayfoldException(Code.UNIMPLEMENTED, "No resolver for query ${op.name}")
-        val raw = fn(args, ctx)
+        val raw = fn(args, hinted(ctx, op.returns))
         val st = State(ctx, explicit)
         val data = projectValue(raw, op.returns, shape, "", st)
         emit(Frames.data(ctx.opId, st.compact(data), cost, st.errors.toList(), st.deferred.isEmpty(), ctx.compact))
@@ -177,7 +177,7 @@ class Executor(
         checkOpPolicy(op, "read", args, ctx)
         val fn = resolvers.streams[op.name] ?: throw RayfoldException(Code.UNIMPLEMENTED, "No resolver for stream ${op.name}")
         var items = 0
-        fn(args, ctx).collect { v ->
+        fn(args, hinted(ctx, op.returns)).collect { v ->
             if (ctx.isCancelled()) throw RayfoldException(Code.CANCELED, "Canceled")
             if (++items > maxItems) throw RayfoldException(Code.RESOURCE_EXHAUSTED, "${op.name}() yielded more than $maxItems items")
             val st = State(ctx, explicit)
@@ -192,6 +192,15 @@ class Executor(
     internal fun checkOpPolicy(op: OpDef, mode: String, args: JsonObject, ctx: RayfoldContext) {
         val d = Policy.decide(op.annotations, mode, ExprEnv(ctx.viewer, args, JsonNull))
         if (d != Policy.Decision.ALLOW) throw Policy.error(d, "${op.name}()")
+    }
+
+    /**
+     * The context for a resolver that loads [t]: with the type's pushable read policy (spec 06 section 4), so the data
+     * source can filter at the source. Only the resolver's own context carries it, never the projection's.
+     */
+    private fun hinted(ctx: RayfoldContext, t: TypeRef): RayfoldContext {
+        val hint = ir.types[t.baseName()]?.annotations?.let { Policy.pushableFilter(it) }
+        return if (hint == null) ctx else ctx.copy(policy = hint)
     }
 
     private suspend fun flushDeferred(st: State, emit: (JsonObject) -> Unit) {
@@ -399,7 +408,9 @@ class Executor(
     private suspend fun loadField(def: TypeDef, field: FieldDef, targets: List<Slot>, args: JsonObject, ctx: RayfoldContext): List<JsonElement?> {
         val loader = resolvers.fields[def.name]?.get(field.name)
         if (loader == null) {
-            if (field.args.isNotEmpty()) throw RayfoldException(Code.UNIMPLEMENTED, "No loader for ${def.name}.${field.name}")
+            // A field with arguments needs a loader, unless every parent already carries its value: a resolver that planned
+            // the whole shape from ctx.shape returns nested pages with their rows.
+            if (field.args.isNotEmpty() && !targets.all { field.name in it.value }) throw RayfoldException(Code.UNIMPLEMENTED, "No loader for ${def.name}.${field.name}")
             return targets.map { it.value[field.name] }
         }
         // One load per (field, arguments, entity) for the whole batch: an entity another op already loaded, or is
@@ -440,10 +451,7 @@ class Executor(
 
         if (need.isNotEmpty()) {
             try {
-                // the loader gets the read policy of what it loads, so it can filter at the source (spec 06 section 4)
-                val hint = ir.types[field.type.baseName()]?.annotations?.let { Policy.pushableFilter(it) }
-                val hinted = if (hint == null) ctx else ctx.copy(policy = hint)
-                val loaded = instrumentation.loader(LoaderInfo(def.name, field.name, need.size)) { loader(need.map { it.value }, args, hinted) }
+                val loaded = instrumentation.loader(LoaderInfo(def.name, field.name, need.size)) { loader(need.map { it.value }, args, hinted(ctx, field.type)) }
                 if (loaded.size != need.size) {
                     throw RayfoldException(Code.INTERNAL, "Loader for ${def.name}.${field.name} returned ${loaded.size} for ${need.size} parents")
                 }

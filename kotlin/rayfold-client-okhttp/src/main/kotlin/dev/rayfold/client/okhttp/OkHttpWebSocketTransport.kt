@@ -46,7 +46,9 @@ class OkHttpWebSocketTransport @JvmOverloads constructor(
                 closed("Connection closed ($code${if (reason.isNotEmpty()) " $reason" else ""})")
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (!opened.isDone) opened.completeExceptionally(t)
+                // A socket that never opened (a refused handshake) fails the batches waiting for it, and each reports that
+                // itself. Ending them here too raced that report and could close a batch's channel under it.
+                if (opened.completeExceptionally(t)) return
                 closed("Connection failed: ${t.message}")
             }
         })

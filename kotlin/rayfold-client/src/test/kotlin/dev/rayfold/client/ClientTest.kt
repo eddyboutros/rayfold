@@ -3,12 +3,16 @@ package dev.rayfold.client
 import com.sun.net.httpserver.HttpServer
 import dev.rayfold.core.Code
 import dev.rayfold.core.HttpOptions
+import dev.rayfold.core.Instrumentation
+import dev.rayfold.core.OpInfo
+import dev.rayfold.core.Outcome
 import dev.rayfold.core.RayfoldException
 import dev.rayfold.core.RayfoldHttp
 import dev.rayfold.core.RayfoldServer
 import dev.rayfold.core.RayfoldWebSocket
 import dev.rayfold.core.Resolvers
 import dev.rayfold.core.SchemaText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -22,7 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.yield
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -45,6 +48,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.URI
+import java.net.http.HttpClient
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -88,6 +92,16 @@ class ClientTest {
     private lateinit var wsUri: URI
     private val closeables = mutableListOf<AutoCloseable>()
 
+    /** Completes once a `book` query has ended on the server; a live op's hook returns only after it unsubscribed. */
+    private val bookQueryEnded = CompletableDeferred<Unit>()
+    private val bookQueryEnds = object : Instrumentation {
+        override suspend fun op(info: OpInfo, run: suspend () -> Outcome): Outcome = try {
+            run()
+        } finally {
+            if (info.kind == "query" && info.name == "book") bookQueryEnded.complete(Unit)
+        }
+    }
+
     private fun JsonObject.str(k: String) = this[k]?.jsonPrimitive?.content ?: error("no $k in $this")
     private fun JsonElement.stock() = jsonObject["stock"]?.jsonPrimitive?.int ?: error("no stock in $this")
     private fun book(id: String, title: String, stock: Int, authorId: String) = buildJsonObject { put("id", id); put("title", title); put("stock", stock); put("authorId", authorId) }
@@ -122,6 +136,7 @@ class ClientTest {
                 streams = mapOf("ticks" to { args, _ -> ticks(args["n"]?.jsonPrimitive?.int ?: 0) }),
                 fields = mapOf("Book" to mapOf("author" to { parents, _, _ -> authorLoads.incrementAndGet(); parents.map { p -> authors[p.str("authorId")] } })),
             ),
+            instrumentation = bookQueryEnds,
         )
         http = RayfoldHttp(server, HttpOptions()) { ex -> viewerOf(ex.requestHeaders.getFirst("X-User")) }.start(0)
         url = "http://127.0.0.1:${http.address.port}/rayfold"
@@ -152,9 +167,11 @@ class ClientTest {
 
     private fun bounded(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) = runBlocking { withTimeout(5_000) { block() } }
 
-    /** Yields until [cond] holds; the 5 s bound around every test fails it instead of spinning forever. */
-    private suspend fun until(cond: () -> Boolean) {
-        while (!cond()) yield()
+    /** A JDK client for a WebSocket transport, closed after the test with the transport. */
+    private fun wsTransport(user: String): JdkWebSocketTransport {
+        val jdk = HttpClient.newHttpClient()
+        closeables.add(AutoCloseable { jdk.shutdownNow() })
+        return JdkWebSocketTransport(wsUri, mapOf("X-User" to user), jdk).also { closeables.add(it) }
     }
 
     @Test
@@ -365,8 +382,7 @@ class ClientTest {
 
     @Test
     fun `one socket carries concurrent batches with their own op ids, and refs are rewritten`() = bounded {
-        val t = JdkWebSocketTransport(wsUri, mapOf("X-User" to "alice")).also { closeables.add(it) }
-        val client = RayfoldClient(t)
+        val client = RayfoldClient(wsTransport("alice"))
         val a = async { client.query("book", args("id" to "b1"), "{ title }") }
         val b = async { client.query("book", args("id" to "b2"), "{ title }") }
         assertEquals("The Dispossessed", a.await().jsonObject["title"]?.jsonPrimitive?.content)
@@ -380,7 +396,7 @@ class ClientTest {
 
     @Test
     fun `a live query over WebSocket gets another user's change pushed, and cancelling it unsubscribes`() = bounded {
-        val alice = RayfoldClient(JdkWebSocketTransport(wsUri, mapOf("X-User" to "alice")).also { closeables.add(it) })
+        val alice = RayfoldClient(wsTransport("alice"))
         val bob = RayfoldClient(http("bob"))
         val stock = Channel<Int>(Channel.UNLIMITED)
         val job = launch { alice.live("book", args("id" to "b1"), "{ id stock }").collect { stock.send(it.stock()) } }
@@ -389,6 +405,7 @@ class ClientTest {
         bob.command("buy", args("id" to "b1", "qty" to 1))
         assertEquals(2, stock.receive())
         job.cancelAndJoin()
-        until { server.changes.size == 0 }
+        bookQueryEnded.await() // bounded by the test's 5 s: the cancel must reach the server
+        assertEquals(0, server.changes.size)
     }
 }

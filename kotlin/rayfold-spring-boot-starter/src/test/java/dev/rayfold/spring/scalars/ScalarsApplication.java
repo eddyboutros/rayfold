@@ -1,19 +1,27 @@
 package dev.rayfold.spring.scalars;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import dev.rayfold.spring.Arg;
 import dev.rayfold.spring.RayfoldQuery;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.stereotype.Component;
 import tools.jackson.databind.cfg.DateTimeFeature;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 
 /**
  * An application whose Jackson writes dates as timestamps, besides its defaults of BigDecimal and long as JSON numbers
@@ -43,5 +51,20 @@ public class ScalarsApplication {
     @RayfoldQuery("reading")
     public Reading reading() {
         return READING;
+    }
+
+    public record Echo(BigInteger huge, OffsetDateTime at, Date legacy, Long count) {}
+
+    /** Answers with the arguments it was given, keeping each as the binding converted it. */
+    @Component
+    public static class Echoes {
+        final List<Echo> received = Collections.synchronizedList(new ArrayList<>());
+
+        @RayfoldQuery("echo")
+        public Echo echo(@Arg BigInteger huge, @Arg OffsetDateTime at, @Arg Date legacy, @Arg Long count) {
+            Echo e = new Echo(huge, at, legacy, count);
+            received.add(e);
+            return e;
+        }
     }
 }

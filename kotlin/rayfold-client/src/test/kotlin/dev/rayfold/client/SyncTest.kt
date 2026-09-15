@@ -135,7 +135,10 @@ class SyncTest {
         assertEquals(3, stockOf("b1"), "nothing has reached the server yet")
         net.gate?.complete(Unit)
         assertEquals(5, done.await().stock())
-        while (seen.receive() != 5) Unit
+        // the answer lands under the prediction, which the watch reports as a change to its book (still 4), and then the
+        // settled command takes the prediction away; nothing else follows
+        assertEquals(listOf(4, 5), listOf(seen.receive(), seen.receive()))
+        assertTrue(seen.tryReceive().isFailure, "no value after the server's own")
         assertEquals(5, c.stock())
         assertEquals(emptyList(), c.cache.predictions)
         watching.cancel()

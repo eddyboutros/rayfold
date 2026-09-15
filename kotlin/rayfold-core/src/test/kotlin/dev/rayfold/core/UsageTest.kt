@@ -58,12 +58,19 @@ class UsageTest {
     @Test
     fun `records nothing without a sink, and stops at the limit of one that is full`() = runTest(timeout = 5.seconds) {
         val quiet = server(null)
-        quiet.execute(request("web", "{ id title }")).toList()
+        val answered = quiet.execute(request("web", "{ id title }")).toList()
         assertNull(quiet.usage)
+        assertEquals(listOf(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","title":"T1"},"meta":{"cost":1},"fin":true}""")), answered)
+        // guard: the same batch on a server with a sink is recorded, and answered the same, so recording is the only difference
+        val recording = MemoryUsage()
+        assertEquals(answered, server(recording).execute(request("web", "{ id title }")).toList())
+        assertEquals(listOf("web book  1", "web book Book.id 1", "web book Book.title 1"), recording.snapshot().map { "${it.client} ${it.op} ${it.path} ${it.count}" })
 
-        // guard: a full sink records no more rather than growing without bound
+        // a full sink records no more rather than growing without bound: the op and the first member fit, the title does not
         val small = MemoryUsage(2)
         server(small).execute(request("web", "{ id title }")).toList()
-        assertEquals(2, small.size)
+        assertEquals(listOf("web book  1", "web book Book.id 1"), small.snapshot().map { "${it.client} ${it.op} ${it.path} ${it.count}" })
+        server(small).execute(request("web", "{ id title }")).toList()
+        assertEquals(listOf("web book  2", "web book Book.id 2"), small.snapshot().map { "${it.client} ${it.op} ${it.path} ${it.count}" }, "what it holds still counts")
     }
 }

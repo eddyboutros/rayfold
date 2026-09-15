@@ -1,6 +1,8 @@
 package dev.rayfold.core
 
 import com.sun.net.httpserver.HttpServer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.net.InetSocketAddress
@@ -46,9 +48,18 @@ class ExplorerTest {
             HttpResponse.BodyHandlers.ofString(),
         )
 
+    /** The configuration a served page carries, read from the element the page's own script reads it from. */
+    private fun config(page: String): JsonElement =
+        Json.parseToJsonElement(Regex("""<script type="application/json" id="config">(.*?)</script>""").find(page)?.groupValues?.get(1) ?: error("the page has no config element"))
+
     @Test
     fun `the explorer is not served unless it is turned on`() {
-        assertEquals(404, get(serve(HttpOptions()), "/rayfold/explorer").statusCode())
+        val res = get(serve(HttpOptions()), "/rayfold/explorer")
+        assertEquals(404, res.statusCode())
+        assertEquals(
+            obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/not_found","title":"not found","status":404,"detail":"No route for GET /rayfold/explorer","code":"not_found"}"""),
+            obj(res.body()),
+        )
     }
 
     @Test
@@ -57,15 +68,16 @@ class ExplorerTest {
         assertEquals(200, res.statusCode())
         assertEquals("text/html; charset=utf-8", res.headers().firstValue("content-type").orElse(""))
         assertEquals("no-store", res.headers().firstValue("cache-control").orElse(""))
-        assertTrue(res.body().contains("Rayfold explorer"), "the page itself")
+        assertEquals(RayfoldExplorer.page("/rayfold", "Rayfold"), res.body())
+        assertEquals(obj("""{"endpoint":"/rayfold","title":"Rayfold"}"""), config(res.body()))
     }
 
     @Test
     fun `the page is configured for the path the endpoint is mounted at`() {
         val res = get(serve(HttpOptions(explorer = true, explorerTitle = "Acme API"), "/api"), "/api/explorer")
         assertEquals(200, res.statusCode())
-        assertTrue(res.body().contains("\"endpoint\":\"/api\""), "it sends its batches where the endpoint is")
-        assertTrue(res.body().contains("\"title\":\"Acme API\""), "the title it was given")
+        assertEquals(obj("""{"endpoint":"/api","title":"Acme API"}"""), config(res.body()), "it sends its batches where the endpoint is, under the title it was given")
+        assertEquals(RayfoldExplorer.page("/api", "Acme API"), res.body())
     }
 
     @Test
@@ -73,6 +85,7 @@ class ExplorerTest {
         val page = RayfoldExplorer.page("/rayfold", "</script><script>alert(1)</script>")
         assertFalse(page.contains("</script><script>alert(1)"), "never closes the element it sits in")
         assertTrue(page.contains("\\u003c/script>"), "escaped, so the browser reads it as text")
+        assertEquals(obj("""{"endpoint":"/rayfold","title":"</script><script>alert(1)</script>"}"""), config(page), "and read back as the title it was")
     }
 
     @Test
@@ -84,11 +97,14 @@ class ExplorerTest {
 
         val res = get(http.address.port, "/rayfold/explorer")
         assertEquals(200, res.statusCode())
-        assertTrue(res.body().contains("\"title\":\"Own server\""))
+        assertEquals("text/html; charset=utf-8", res.headers().firstValue("content-type").orElse(""))
+        assertEquals(obj("""{"endpoint":"/rayfold","title":"Own server"}"""), config(res.body()))
+        assertEquals(RayfoldExplorer("/rayfold", "Own server").html, res.body())
 
         val posted = get(http.address.port, "/rayfold/explorer", method = "POST")
         assertEquals(405, posted.statusCode())
         assertEquals("GET", posted.headers().firstValue("allow").orElse(""))
+        assertEquals("", posted.body())
     }
 
     @Test

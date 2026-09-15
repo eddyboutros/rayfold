@@ -76,9 +76,9 @@ internal fun JsonObject.i(k: String): Int = (this[k] as? JsonPrimitive)?.intOrNu
 private fun JsonObject.with(vararg kv: Pair<String, JsonElement>): JsonObject = JsonObject(this + kv)
 
 /** A fresh bookstore: the TS example's schema (as the TS runtime compiled it) over a freshly seeded store. */
-class Bookstore(options: BatchOptions = BatchOptions()) {
+class Bookstore(options: BatchOptions = BatchOptions(), instrumentation: Instrumentation = Instrumentation.NONE) {
     val store = BookstoreStore()
-    val server = RayfoldServer(Oracle.ir("bookstore.ir.json"), bookstoreResolvers(store), options)
+    val server = RayfoldServer(Oracle.ir("bookstore.ir.json"), bookstoreResolvers(store), options, instrumentation = instrumentation)
 }
 
 /** examples/bookstore-ts/src/resolvers.ts, statement for statement. Every entity-field loader is batch: one call per level. */

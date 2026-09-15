@@ -1,0 +1,6 @@
+entity Secret @allow(read: viewer != null) { id: ID note: String }
+entity Post { id: ID title: String retired: Boolean }
+
+query me: String
+query secret(id: ID): Secret?
+command retire(id: ID): Post @allow(write: "ADMIN" in viewer.roles)
