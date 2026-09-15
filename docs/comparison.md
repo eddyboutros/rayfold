@@ -37,11 +37,11 @@ every implementation once, rotating which one goes first, so drift on the machin
 | A. product page (book + author + 3 reviews) | REST | 2 | 405 | 0 | 0.44 | 1.71 |
 | | GraphQL | 1 | 282 | 157 | 0.48 | 1.97 |
 | | Rayfold (JSON) | 1 | 302 | 182 | 0.41 | 1.03 |
-| | Rayfold (RB) | 1 | **176** | 143 | 0.43 | 1.88 |
+| | Rayfold (RB) | 1 | **177** | 143 | 0.43 | 1.88 |
 | B. catalogue list (20 books with author names) | REST | 2 | 2810 | 0 | 0.83 | 4.34 |
 | | GraphQL | 1 | 2074 | 89 | 0.48 | 3.29 |
 | | Rayfold (JSON) | 1 | 2083 | 142 | 0.38 | 0.92 |
-| | Rayfold (RB) | 1 | **1080** | 94 | 0.44 | 1.05 |
+| | Rayfold (RB) | 1 | **1080** | 95 | 0.44 | 1.05 |
 | C. place order, read it back with stock | REST | 3 | 327 | 35 | 0.47 | 3.44 |
 | | GraphQL | 2 | 157 | 204 | 0.72 | 3.80 |
 | | Rayfold (JSON) | **1** | 220 | 279 | 0.40 | 1.01 |

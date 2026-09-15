@@ -58,4 +58,4 @@ advertise a schema-derived dictionary. Neither changes the RB byte stream.
 
 ## 6. Measured
 
-`rayfold bench` reports bytes for the same responses in JSON and RB; see [`bench/results/`](../bench/results/).
+`npm run bench` reports bytes for the same responses in JSON and RB; see [`bench/results/`](../bench/results/).
