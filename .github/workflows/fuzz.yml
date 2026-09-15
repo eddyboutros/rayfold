@@ -24,4 +24,5 @@ jobs:
         run: |
           export FUZZ_SEED=$(( RANDOM * 32768 + RANDOM ))
           echo "FUZZ_SEED=$FUZZ_SEED"
-          FUZZ_RUNS=20000 npx vitest run packages/schema/src/fuzz.test.ts packages/server/src/fuzz.test.ts
+          # vitest's 5 s per-test limit is sized for the default depth; 5,000 HTTP round trips on a runner take longer
+          FUZZ_RUNS=20000 npx vitest run --testTimeout=600000 packages/schema/src/fuzz.test.ts packages/server/src/fuzz.test.ts
