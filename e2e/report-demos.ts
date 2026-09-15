@@ -459,6 +459,11 @@ each with JSON Schema in and out, and its typed errors</div>
   var raf = null;
   var at = 0;
   var playing = false;
+  // how far the current scene has played: offset ms had passed when its clock last started, at startedAt, in a scene
+  // length ms long (0 while a scene is shown finished)
+  var offset = 0;
+  var startedAt = 0;
+  var length = 0;
   reel.setAttribute("data-js", "");
 
   // one dot per scene, so the frame stays the same size however many scenes there are
@@ -468,7 +473,7 @@ each with JSON Schema in and out, and its typed errors</div>
     dot.className = "chapter" + (i === 0 ? " on" : "");
     dot.textContent = String(i + 1);
     dot.title = scene.getAttribute("data-title") || "";
-    dot.addEventListener("click", function () { at = i; run(i); });
+    dot.addEventListener("click", function () { run(i, 0); });
     if (chapterBox) chapterBox.appendChild(dot);
     return dot;
   });
@@ -484,13 +489,16 @@ each with JSON Schema in and out, and its typed errors</div>
     return pre.rayfoldSource;
   }
 
-  function progress(ms) {
+  function now() { return performance.now(); }
+
+  // the bar stands at the share of the scene played so far and, while the scene moves, fills the rest at its pace
+  function progress(moving) {
     if (!bar) return;
     bar.style.transition = "none";
-    bar.style.width = "0%";
+    bar.style.width = length ? Math.round(1000 * offset / length) / 10 + "%" : "0%";
+    if (!moving || !length) return;
     void bar.offsetWidth;
-    if (!ms) return;
-    bar.style.transition = "width " + ms + "ms linear";
+    bar.style.transition = "width " + (length - offset) + "ms linear";
     bar.style.width = "100%";
   }
 
@@ -504,20 +512,21 @@ each with JSON Schema in and out, and its typed errors</div>
     scenes.forEach(function (s, i) { s.classList.toggle("on", i === n); });
   }
 
-  function typeInto(pre, text, ms) {
+  // types the code in over ms, starting from ms in, so a scene played on after a pause carries on mid-line
+  function typeInto(pre, text, ms, from) {
     if (!pre) return;
+    var typed = function (t) { return text.slice(0, Math.ceil(Math.min(1, t / ms) * text.length)); };
     pre.textContent = "";
-    var body = document.createTextNode("");
+    var body = document.createTextNode(typed(from));
     var caret = document.createElement("i");
     caret.className = "caret";
     pre.appendChild(body);
     pre.appendChild(caret);
-    var started = 0;
-    function step(now) {
-      if (!started) started = now;
-      var share = Math.min(1, (now - started) / ms);
-      body.nodeValue = text.slice(0, Math.ceil(share * text.length));
-      if (share < 1) { raf = requestAnimationFrame(step); return; }
+    var began = now() - from;
+    function step() {
+      var t = now() - began;
+      body.nodeValue = typed(t);
+      if (t < ms) { raf = requestAnimationFrame(step); return; }
       raf = null;
       if (caret.parentNode) caret.parentNode.removeChild(caret);
     }
@@ -530,14 +539,18 @@ each with JSON Schema in and out, and its typed errors</div>
     if (pre) pre.textContent = sourceOf(pre);
   }
 
-  function run(n) {
+  // shows scene n as it stands from ms into its timeline and plays on from there; paused, it shows the scene finished
+  function run(n, from) {
     clear();
     at = ((n % scenes.length) + scenes.length) % scenes.length;
     scenes.forEach(function (s, i) { if (i !== at) finish(s); });
     var scene = scenes[at];
     dress(scene, at);
+    offset = from;
+    startedAt = now();
+    length = 0;
 
-    if (!playing || still) { finish(scene); progress(0); return; }
+    if (!playing || still) { finish(scene); progress(false); return; }
 
     var pre = scene.querySelector("pre.code");
     var text = pre ? sourceOf(pre) : "";
@@ -545,33 +558,42 @@ each with JSON Schema in and out, and its typed errors</div>
     var delay = Number(scene.getAttribute("data-delay") || 1000);
     var hold = Number(scene.getAttribute("data-hold") || 1700);
     var typing = text ? Math.max(650, Math.min(1600, text.length * 8)) : 250;
+    length = typing + steps * delay + hold;
 
-    scene.setAttribute("data-step", "0");
-    if (pre) pre.textContent = "";
-    progress(typing + steps * delay + hold);
+    var reached = 0;
+    for (var k = 1; k <= steps; k++) if (typing + k * delay <= from) reached = k;
+    if (reached === steps) scene.removeAttribute("data-step");
+    else scene.setAttribute("data-step", String(reached));
+    progress(true);
 
-    // the clock drives the scene and the paint follows it: a hidden tab pauses animation frames, never the timers
-    typeInto(pre, text, typing);
-    if (pre) timers.push(setTimeout(function () { pre.textContent = text; }, typing + 40));
-    for (var i = 1; i <= steps; i++) {
+    // the clock drives the scene and the paint follows it: a hidden tab stops animation frames, never the timers
+    if (pre && from < typing + 40) {
+      typeInto(pre, text, typing, from);
+      later(typing + 40, function () { pre.textContent = text; });
+    } else if (pre) pre.textContent = text;
+    for (var i = reached + 1; i <= steps; i++) {
       (function (k) {
-        timers.push(setTimeout(function () {
+        later(typing + k * delay, function () {
           if (k === steps) scene.removeAttribute("data-step");
           else scene.setAttribute("data-step", String(k));
-        }, typing + k * delay));
+        });
       })(i);
     }
-    timers.push(setTimeout(function () { run(at + 1); }, typing + steps * delay + hold));
+    later(length, function () { run(at + 1, 0); });
   }
 
-  function play() { playing = true; if (toggle) toggle.textContent = "Pause"; run(at); }
+  // something that happens t ms into the current scene, however much of the scene has already played
+  function later(t, fn) { timers.push(setTimeout(fn, t - offset)); }
 
+  function play() { playing = true; if (toggle) toggle.textContent = "Pause"; run(at, offset); }
+
+  // freezes the scene where it stands - the typing, the step and the bar - so Play goes on from that very moment
   function pause() {
+    if (length) offset = Math.min(length, offset + now() - startedAt);
     playing = false;
     clear();
     if (toggle) toggle.textContent = "Play";
-    finish(scenes[at]);
-    progress(0);
+    progress(false);
   }
 
   var resumeWhenVisible = false;
@@ -588,7 +610,7 @@ each with JSON Schema in and out, and its typed errors</div>
 
   // a choice made with the buttons outlasts the reel's first scroll into view, which would otherwise start it again
   if (toggle) toggle.addEventListener("click", function () { started = true; if (playing) pause(); else play(); });
-  if (restart) restart.addEventListener("click", function () { started = true; playing = true; if (toggle) toggle.textContent = "Pause"; run(0); });
+  if (restart) restart.addEventListener("click", function () { started = true; playing = true; if (toggle) toggle.textContent = "Pause"; run(0, 0); });
 
   dress(scenes[0], 0);
   if (still) { finish(scenes[0]); if (toggle) toggle.textContent = "Play"; return; }
