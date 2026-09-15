@@ -118,7 +118,8 @@ export function createBindingHandler(server: RayfoldServer, opts: BindingOptions
           }
           if (b.body === "*") {
             if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new RayfoldError("invalid_argument", "Body must be a JSON object");
-            Object.assign(args, parsed);
+            // own properties, as JSON.parse made them: Object.assign would turn a "__proto__" key into the prototype of args
+            for (const [k, v] of Object.entries(parsed)) Object.defineProperty(args, k, { value: v, enumerable: true, writable: true, configurable: true });
           } else args[b.body] = parsed;
         }
       }

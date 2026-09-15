@@ -10,7 +10,7 @@ import { request as httpRequest, type IncomingHttpHeaders, type Server } from "n
 import { connect, type AddressInfo, type Socket } from "node:net";
 import { createRayfoldServer, listen, MemoryIdempotencyStore } from "@rayfold/server";
 import { RbCodec } from "@rayfold/rb";
-import { loadSchema } from "@rayfold/schema";
+import { base64url, canonicalShape, loadSchema, parseShapeText, shapeIdOf } from "@rayfold/schema";
 import { bookstoreSchemaText, createBookstore } from "../examples/bookstore-ts/src/index.ts";
 import { MemoryShapeRegistry } from "../packages/server/src/views.ts";
 import { freshStore, startRayfold, type Exchange } from "./harness.ts";
@@ -242,18 +242,41 @@ describe("Overload and resource exhaustion", () => {
   });
 
   it("a flood of distinct shapes cannot grow the shape registry without bound", async () => {
-    const registry = new MemoryShapeRegistry(loadSchema(bookstoreSchemaText()).ir, 10);
+    const ir = loadSchema(bookstoreSchemaText()).ir;
+    const registry = new MemoryShapeRegistry(ir, 10);
     const b = createBookstore({ shapes: registry });
     const http = await listen(b.server, 0);
     extra.push(http);
     const base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+    const pinned = b.server.registerShape("{ id title price }");
+    const idOf = (shape: string) => shapeIdOf(canonicalShape(parseShapeText(shape), (t, v) => ir.views[`${t}.${v}`]));
+    const byId = (id: string) => raw(base, "GET", `/rayfold/book?a=${base64url(JSON.stringify({ id: "b1" }))}&s=${id}`, {});
+    const served = (data: Record<string, unknown>) => [{ id: 1, data: { $type: "Book", ...data }, meta: { cost: 1 }, fin: true }];
+    const unknownShape = (id: string) => [{ id: 1, error: { code: "not_found", message: `Unknown shape ${id}` }, fin: true }];
+    const book: Record<string, unknown> = { id: "b1", title: "The Dispossessed", format: "PAPERBACK", price: "12.99", stock: 5 };
     const fields = ["id", "title", "format", "price", "stock"];
+    const ids: string[] = [];
     let last: Exchange | undefined;
     for (let i = 0; i < 30; i++) {
-      const shape = `{ ${fields.filter((_, j) => (i >> j) & 1).join(" ") || "id"} alias${i}: title }`;
-      last = (await raw(base, "POST", "/rayfold", JSON_HEADERS, JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape }] }))).ex;
+      const chosen = fields.filter((_, j) => (i >> j) & 1);
+      const shape = `{ ${chosen.join(" ") || "id"} alias${i}: title }`;
+      ids.push(idOf(shape));
+      const res = await raw(base, "POST", "/rayfold", JSON_HEADERS, JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape }] }));
+      last = res.ex;
+      expect(res.status).toBe(200);
+      expect(framesOf(res.body)).toEqual(served({ ...Object.fromEntries((chosen.length ? chosen : ["id"]).map((f) => [f, book[f]])), [`alias${i}`]: "The Dispossessed" }));
     }
-    report({ area, attack: "A client sends thousands of distinct inline shapes; each one used to be remembered forever.", defence: "Shapes learned from requests are kept up to a limit (10,000 by default; 10 in this test), least recently used first out; rejected shapes are never kept.", guard: "Shapes registered by the server itself stay, and every request is still answered.", runtimes: BOTH, ...(last ? { exchange: last } : {}) }, registry.size === 10);
+    expect(new Set(ids).size).toBe(30);
+    report({ area, attack: "A client sends thousands of distinct inline shapes; each one used to be remembered forever.", defence: "Shapes learned from requests are kept up to a limit (10,000 by default; 10 in this test), least recently used first out; rejected shapes are never kept.", guard: "Shapes registered by the server itself stay, and every request is still answered.", runtimes: BOTH, ...(last ? { exchange: last } : {}) }, registry.size === 11);
+    // the server's own shape stays, and exactly the ten most recent learned ones are kept
+    expect(framesOf((await byId(pinned)).body)).toEqual(served({ id: "b1", title: "The Dispossessed", price: "12.99" }));
+    expect(framesOf((await byId(ids[19]!)).body)).toEqual(unknownShape(ids[19]!));
+    expect(framesOf((await byId(ids[20]!)).body)).toEqual(served({ format: "PAPERBACK", stock: 5, alias20: "The Dispossessed" }));
+    const deep = "{ " + "author { books { items { ".repeat(4) + "id" + " } } }".repeat(4) + " }";
+    const refused = await raw(base, "POST", "/rayfold", JSON_HEADERS, JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: deep }] }));
+    expect(framesOf(refused.body)).toEqual([{ id: 1, error: { code: "resource_exhausted", message: "Shape depth 13 exceeds 8" }, fin: true }]);
+    expect(registry.size).toBe(11);
+    expect(framesOf((await byId(idOf(deep))).body)).toEqual(unknownShape(idOf(deep)));
   });
 
   it("a flood of idempotency keys cannot grow the replay store without bound", async () => {
@@ -330,10 +353,48 @@ describe("Data exposure and trust", () => {
   });
 
   it("a $ref path cannot reach an object's prototype", async () => {
-    const attack = await post("/rayfold", JSON_HEADERS, { ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }, { id: 2, op: "book", args: { id: { $ref: "1.constructor" } } }] });
-    const f = framesOf(attack.body).find((x) => x["id"] === 2) as { error?: { code: string } };
-    report({ area, attack: "A batch points $ref at \"1.constructor\" or \"1.__proto__\" to pull built-in objects into the arguments.", defence: "$ref paths read only the earlier result's own data; anything else resolves to nothing.", guard: "$ref to \"1.id\" passes the book's id along.", runtimes: TS, exchange: attack.ex }, f.error?.code === "invalid_argument" && ({} as Record<string, unknown>)["polluted"] === undefined);
-    expect(framesOf((await post("/rayfold", JSON_HEADERS, { ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }, { id: 2, op: "book", args: { id: { $ref: "1.id" } }, shape: "{ title }" }] })).body)[1]).toMatchObject({ data: { title: "The Dispossessed" } });
+    const builtIns = Object.getOwnPropertyNames(Object.prototype);
+    const first = { id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" };
+    const firstFrame = { id: 1, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true };
+    const paths = ["constructor", "__proto__", "constructor.prototype", "__proto__.polluted"];
+    const attacks: Array<Awaited<ReturnType<typeof post>>> = [];
+    for (const path of paths) attacks.push(await post("/rayfold", JSON_HEADERS, { ops: [first, { id: 2, op: "book", args: { id: { $ref: `1.${path}` } }, shape: "{ title }" }] }));
+    report({ area, attack: "A batch points $ref at \"1.constructor\" or \"1.__proto__\" to pull built-in objects into the arguments.", defence: "$ref paths read only the earlier result's own data; anything else resolves to nothing.", guard: "$ref to \"1.id\" passes the book's id along.", runtimes: TS, exchange: attacks[0]!.ex }, attacks.every((a) => framesOf(a.body)[1]!["error"] !== undefined) && rayfold.store.calls["Query.book"] === paths.length && ({} as Record<string, unknown>)["polluted"] === undefined);
+    expect(attacks.map((a) => framesOf(a.body))).toEqual(paths.map((path) => [firstFrame, { id: 2, error: { code: "invalid_argument", message: `ops.2.args.id: $ref 1.${path} resolved to nothing` }, fin: true }]));
+    expect(rayfold.store.calls).toEqual({ "Query.book": paths.length }); // op 2 never ran
+    expect(Object.getOwnPropertyNames(Object.prototype)).toEqual(builtIns);
+    const honest = await post("/rayfold", JSON_HEADERS, { ops: [first, { id: 2, op: "book", args: { id: { $ref: "1.id" } }, shape: "{ title }" }] });
+    expect(framesOf(honest.body)).toEqual([firstFrame, { id: 2, data: { $type: "Book", title: "The Dispossessed" }, meta: { cost: 1 }, fin: true }]);
+    expect(rayfold.store.calls).toEqual({ "Query.book": paths.length + 2 });
+  });
+
+  it("a \"__proto__\" or \"constructor\" key in the arguments stays plain data, beside a $ref too", async () => {
+    const builtIns = Object.getOwnPropertyNames(Object.prototype);
+    // Raw JSON text: an object literal cannot hold an own "__proto__" key, but JSON.parse on the server makes one.
+    const batch = (ops: string) => post("/rayfold", JSON_HEADERS, `{"ops":[${ops}]}`);
+    const first = `{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ format }"}`;
+    const firstFrame = { id: 1, data: { $type: "Book", format: "PAPERBACK" }, meta: { cost: 1 }, fin: true };
+    const unknown = (id: number, at: string) => ({ id, error: { code: "invalid_argument", message: `${at}: unknown argument` }, fin: true });
+    const inArgs = await batch(`{"id":1,"op":"book","args":{"id":"b1","__proto__":{"polluted":"yes"}},"shape":"{ id }"}`);
+    const inConstructor = await batch(`{"id":1,"op":"book","args":{"id":"b1","constructor":{"prototype":{"polluted":"yes"}}},"shape":"{ id }"}`);
+    const besideRef = await batch(`${first},{"id":2,"op":"books","args":{"filter":{"format":{"$ref":"1.format"}},"__proto__":{"page":{"first":1},"polluted":"yes"}},"shape":"{ total }"}`);
+    const nested = await batch(`${first},{"id":2,"op":"books","args":{"filter":{"format":{"$ref":"1.format"},"__proto__":{"maxPrice":"1.00"}}},"shape":"{ total }"}`);
+    const body = await raw(rayfold.base, "QUERY", "/books", { "content-type": "application/json" }, `{"__proto__":{"filter":{"format":"HARDCOVER"}}}`);
+    report({ area, attack: "A request carries a \"__proto__\" or \"constructor\" key in its arguments, beside a $ref or in a REST-style body, so the server's copy of the arguments would take attacker data as its prototype and pass on values validation never saw.", defence: "Arguments are copied key by key as plain data, the way JSON.parse reads them, so the key fails validation as an unknown argument and nothing reaches Object.prototype.", guard: "The same requests without the extra key are served, with the filter and page size they really carry.", runtimes: TS, exchange: besideRef.ex }, body.status === 400 && rayfold.store.calls["Query.books"] === undefined && ({} as Record<string, unknown>)["polluted"] === undefined);
+    expect(framesOf(inArgs.body)).toEqual([unknown(1, "book().__proto__")]);
+    expect(framesOf(inConstructor.body)).toEqual([unknown(1, "book().constructor")]);
+    expect(framesOf(besideRef.body)).toEqual([firstFrame, unknown(2, "books().__proto__")]);
+    expect(framesOf(nested.body)).toEqual([firstFrame, unknown(2, "books().filter.__proto__")]);
+    expect(JSON.parse(body.body)).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/invalid_argument", title: "invalid argument", status: 400, detail: "books().__proto__: unknown argument", code: "invalid_argument" });
+    expect(rayfold.store.calls).toEqual({ "Query.book": 2 }); // no poisoned books op ran
+    expect(Object.getOwnPropertyNames(Object.prototype)).toEqual(builtIns);
+
+    const honest = await batch(`${first},{"id":2,"op":"books","args":{"filter":{"format":{"$ref":"1.format"}}},"shape":"{ total }"}`);
+    expect(framesOf(honest.body)).toEqual([firstFrame, { id: 2, data: { total: 19 }, meta: { cost: 25 }, fin: true }]);
+    const honestBody = await raw(rayfold.base, "QUERY", "/books", { "content-type": "application/json" }, `{"filter":{"format":"HARDCOVER"}}`);
+    expect(honestBody.status).toBe(200);
+    expect((JSON.parse(honestBody.body) as { total: number }).total).toBe(9);
+    expect(rayfold.store.calls).toEqual({ "Query.book": 3, "Query.books": 2, "Book.author": 1 });
   });
 
   it("a \"__proto__\" key in a binary request stays plain data", async () => {

@@ -167,7 +167,8 @@ export function resolveRefs(value: unknown, lookup: (opId: number, path: string[
     return v;
   }
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) out[k] = resolveRefs(v, lookup, `${at}.${k}`);
+  // an own property, as JSON.parse made it: assigning "__proto__" would replace the copy's prototype and smuggle in arguments
+  for (const [k, v] of Object.entries(obj)) Object.defineProperty(out, k, { value: resolveRefs(v, lookup, `${at}.${k}`), enumerable: true, writable: true, configurable: true });
   return out;
 }
 
