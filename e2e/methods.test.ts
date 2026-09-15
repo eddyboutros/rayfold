@@ -75,25 +75,37 @@ describe("GET", () => {
     const q2 = `{ book(id: "b1") { title id price author { name } } }`;
     const g1 = await exchange(gql.base, "GET", `/graphql?query=${encodeURIComponent(q1)}`);
     expect(data(g1)["book"].author.name).toBe("Ursula K. Le Guin");
+    expect(gql.counters.loaderCalls).toEqual({ author: 1 });
     const g304 = await exchange(gql.base, "GET", `/graphql?query=${encodeURIComponent(q1)}`, { headers: { "if-none-match": g1.headers["etag"]! } });
     expect(g304.status).toBe(304);
+    expect(gql.counters.loaderCalls).toEqual({ author: 2 }); // the ETag is computed from a fresh result
     const g2 = await exchange(gql.base, "GET", `/graphql?query=${encodeURIComponent(q2)}`);
     expect(g2.status).toBe(200);
+    expect(data(g2)).toEqual(data(g1));
+    expect(gql.counters.loaderCalls).toEqual({ author: 3 });
     const gqlEntries = new Set([g1.ex.request.target, g2.ex.request.target]).size;
+    expect(gqlEntries).toBe(2);
 
     // Rayfold: the query's HTTP binding; the default view already embeds the author's name
     const y1 = await exchange(rayfold.base, "GET", "/books/b1");
-    expect(y1.json).toMatchObject({ id: "b1", title: "The Dispossessed", author: { name: "Ursula K. Le Guin" } });
+    expect(y1.json).toEqual({ $type: "Book", id: "b1", title: "The Dispossessed", format: "PAPERBACK", price: "12.99", stock: 5, author: { $type: "Author", id: "a1", name: "Ursula K. Le Guin" } });
+    expect(rayfold.store.calls).toEqual({ "Query.book": 1, "Book.author": 1 });
     const y304 = await exchange(rayfold.base, "GET", "/books/b1", { headers: { "if-none-match": y1.headers["etag"]! } });
     expect(y304.status).toBe(304);
+    expect(rayfold.store.calls).toEqual({ "Query.book": 2, "Book.author": 2 }); // the ETag is computed from a fresh result
     // custom shapes travel as canonical ids, so field order never splits the cache
     const views = (t: string, v: string) => ir.views[`${t}.${v}`];
     const s1 = "{ id title price author { name } }";
     const id1 = shapeIdOf(canonicalShape(parseShapeText(s1), views));
-    expect(shapeIdOf(canonicalShape(parseShapeText("{ title id price author { name } }"), views))).toBe(id1);
+    const id2 = shapeIdOf(canonicalShape(parseShapeText("{ title id price author { name } }"), views));
+    expect(id2).toBe(id1);
     expect(rayfold.bookstore.server.registerShape(s1)).toBe(id1); // what `rayfold shapes` does at build time
-    const y2 = await exchange(rayfold.base, "GET", `/rayfold/book?a=${base64url(JSON.stringify({ id: "b1" }))}&s=${id1}`, { label: "custom shape by canonical id (same URL for either field order)" });
-    expect(y2.status).toBe(200);
+    const shapeUrl = (id: string) => `/rayfold/book?a=${base64url(JSON.stringify({ id: "b1" }))}&s=${id}`;
+    const y2 = await exchange(rayfold.base, "GET", shapeUrl(id1), { label: "custom shape by canonical id (same URL for either field order)" });
+    expect(y2.json).toEqual({ id: 1, data: { $type: "Book", id: "b1", title: "The Dispossessed", price: "12.99", author: { $type: "Author", name: "Ursula K. Le Guin" } }, meta: { cost: 2 }, fin: true });
+    expect(rayfold.store.calls).toEqual({ "Query.book": 3, "Book.author": 3 });
+    const rayfoldEntries = new Set([shapeUrl(id1), shapeUrl(id2)]).size;
+    expect(rayfoldEntries).toBe(1);
 
     report.addMethod({
       method: "GET",
@@ -144,14 +156,20 @@ describe("POST", () => {
       { id: 2, op: "payOrder", args: { id: { $ref: "1.id" } }, key: "k-post-rayfold-000002", shape: "{ id status }" },
     ];
     const y = await rayfoldPost(ops, U1);
-    expect(frames(y)[1]!["ok"].status).toBe("PAID");
+    expect(frames(y)).toEqual([
+      { id: 1, ok: { $type: "Order", id: "o1", status: "PLACED" }, patch: [{ set: "Order:o1", value: { $type: "Order", id: "o1", status: "PLACED" } }, { set: "Book:b3", value: { stock: 99 } }], meta: { cost: 1 }, fin: true },
+      { id: 2, ok: { $type: "Order", id: "o1", status: "PAID" }, patch: [{ set: "Order:o1", value: { $type: "Order", id: "o1", status: "PAID" } }], meta: { cost: 1 }, fin: true },
+    ]);
+    expect(rayfold.store.calls).toEqual({ "Command.placeOrder": 1, "Command.payOrder": 1 });
     const rayfoldOrders = rayfold.store.orders.size;
     const yRetry = await rayfoldPost(ops, U1, "retry after a lost response: both ops replay");
-    expect(frames(yRetry).every((f) => f["meta"]?.replay === true)).toBe(true);
+    expect(frames(yRetry)).toEqual(frames(y).map((f) => ({ ...f, meta: { ...f["meta"], replay: true } })));
+    expect(rayfold.store.calls).toEqual({ "Command.placeOrder": 1, "Command.payOrder": 1 }); // neither command ran again
     expect(rayfold.store.orders.size).toBe(rayfoldOrders);
     const yBinding = await exchange(rayfold.base, "POST", "/orders", { headers: { ...JSON_CT, ...U1, "idempotency-key": "k-post-bind-00001" }, body: JSON.stringify(lines), label: "the same command through its HTTP binding" });
     expect(yBinding.status).toBe(201);
-    expect(yBinding.headers["location"]).toMatch(/^\/orders\/o\d+$/);
+    expect(yBinding.headers["location"]).toBe("/orders/o2");
+    expect(rayfold.store.calls["Command.placeOrder"]).toBe(2); // guard: a new key is not a replay
 
     report.addMethod({
       method: "POST",
@@ -231,8 +249,10 @@ describe("PATCH", () => {
     await restEvents.close();
     expect(restEvents.events.items).toEqual([{ bookId: "b5", stock: 15 }]); // only the sentinel: nothing announces a price change
     const restViews = ((rPatch.json as Obj)["price"] === "10.75" ? 1 : 0) + ((rList.json as Obj)["items"].find((b: Obj) => b["id"] === "b5").price === "10.75" ? 1 : 0);
+    expect(restViews).toBe(1);
     const rBad = await exchange(rest.base, "PATCH", "/books/b5", { headers: { ...MERGE_CT, ...ADMIN }, body: JSON.stringify({ price: "-1.00" }), label: "negative price: rejected by a hand-written check" });
     expect(rBad.status).toBe(400);
+    expect(rest.store.books.get("b5")).toMatchObject({ price: "10.75", stock: 15 }); // nothing was written
     const restContract = JSON.stringify(await (await fetch(`${rest.base}/openapi.json`)).json());
     expect(restContract).not.toContain("minimum"); // the published document does not know the rule
 
@@ -244,8 +264,11 @@ describe("PATCH", () => {
     const gPage = (cache.read("page") as Obj)["book"] as Obj;
     expect(gPage).toMatchObject({ title: "Beloved", price: "10.75" });
     const gqlViews = ((cache.read("list") as Obj)["books"].items.find((b: Obj) => b["id"] === "b5").price === "10.75" ? 1 : 0) + (gPage["price"] === "10.75" ? 1 : 0);
+    expect(gqlViews).toBe(2);
+    expect(gql.counters.originRequests).toBe(3); // the two views and the mutation: no refetch
     const gBad = await gqlPost(`mutation { updateBook(id: "b5", patch: { price: "-1.00" }) { id } }`, {}, ADMIN, "negative price: rejected by a hand-written check");
     expect((gBad.json as Obj)["errors"][0].extensions.code).toBe("BAD_USER_INPUT");
+    expect(gql.store.books.get("b5")!.price).toBe("10.75");
     const subs = data(await gqlPost(`{ __schema { subscriptionType { fields { name } } } }`))["__schema"].subscriptionType.fields.map((f: Obj) => f["name"]);
     expect(subs).toEqual(["stockChanged"]); // no subscription covers price changes
 
@@ -268,11 +291,17 @@ describe("PATCH", () => {
     await livePrices.atLeast(2, "the live view's update");
     stop();
     expect(livePrices.items).toEqual(["9.50", "10.75"]);
+    expect(rayfoldViews).toBe(2);
+    // neither cached view ran its query again; the third book load is the live view following the change
+    expect(rayfold.store.calls).toEqual({ "Query.books": 1, "Query.book": 3, "Command.updateBook": 1 });
     const yPatch = await exchange(rayfold.base, "PATCH", "/books/b5", { headers: { ...MERGE_CT, ...ADMIN }, body: JSON.stringify({ stock: 12 }), label: "HTTP binding: only stock is sent" });
-    expect(yPatch.json).toMatchObject({ id: "b5", title: "Beloved", price: "10.75", stock: 12 });
+    expect(yPatch.json).toEqual({ $type: "Book", id: "b5", title: "Beloved", format: "PAPERBACK", price: "10.75", stock: 12, author: { $type: "Author", id: "a4", name: "Toni Morrison" } });
+    expect(rayfold.store.calls["Command.updateBook"]).toBe(2);
     const yBad = await exchange(rayfold.base, "PATCH", "/books/b5", { headers: { ...MERGE_CT, ...ADMIN }, body: JSON.stringify({ price: "-1.00" }), label: "negative price: rejected by @range(min: 0) from the schema" });
     expect(yBad.status).toBe(400);
-    expect((yBad.json as Obj)["detail"]).toBe("updateBook().patch.price: must be >= 0");
+    expect(yBad.json).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/invalid_argument", title: "invalid argument", status: 400, detail: "updateBook().patch.price: must be >= 0", code: "invalid_argument" });
+    expect(rayfold.store.calls["Command.updateBook"]).toBe(2); // refused before the resolver ran
+    expect(rayfold.store.books.get("b5")).toMatchObject({ price: "10.75", stock: 12 });
     const openapi = (await (await fetch(`${rayfold.base}/rayfold/openapi.json`)).json()) as Obj;
     expect(openapi["components"].schemas.BookPatch.properties.price).toMatchObject({ "x-rayfold-range": { min: 0 } });
     expect(openapi["paths"]["/books/{id}"].patch.requestBody.content).toHaveProperty("application/merge-patch+json");
@@ -364,7 +393,8 @@ describe("QUERY", () => {
 
     const envelope = JSON.stringify({ ops: [{ id: 1, op: "books", args: { filter, page: { first: 20 } }, shape: "{ items { id title price author { name } } total }" }] });
     const yq = await exchange(rayfold.base, "QUERY", "/rayfold", { headers: RAYFOLD_CT, body: envelope });
-    expect(yq.headers["etag"]).toBeTruthy();
+    const ETAG = /^"sha256-[0-9a-f]{64}"$/;
+    expect(yq.headers["etag"]).toMatch(ETAG);
     expect(frames(yq)[0]!["data"].items.length).toBe(items.length);
     const yb = await exchange(rayfold.base, "QUERY", "/books", { headers: JSON_CT, body: JSON.stringify({ filter }), label: "the same query through its HTTP binding" });
     expect((yb.json as Obj)["items"].length).toBe(items.length);
@@ -382,6 +412,17 @@ describe("QUERY", () => {
     await c.query(`${rayfold.base}/rayfold`, envelope, RAYFOLD_CT);
     const yRepeat = await c.query(`${rayfold.base}/rayfold`, envelope, RAYFOLD_CT);
     expect(yRepeat.fromCache).toBe(true);
+    // the ETag is a digest of the answer: a write outside the results keeps it, a change to a listed book replaces it
+    const etagNow = async () => (await exchange(rayfold.base, "QUERY", "/rayfold", { headers: RAYFOLD_CT, body: envelope })).headers["etag"];
+    await exchange(rayfold.base, "PATCH", "/books/b2", { headers: { ...MERGE_CT, ...ADMIN }, body: JSON.stringify({ price: "18.00" }) });
+    expect(rayfold.store.books.get("b2")).toMatchObject({ format: "HARDCOVER", price: "18.00" });
+    expect(await etagNow()).toBe(yq.headers["etag"]);
+    await exchange(rayfold.base, "PATCH", "/books/b5", { headers: { ...MERGE_CT, ...ADMIN }, body: JSON.stringify({ price: "9.00" }) });
+    const changed = await etagNow();
+    expect(changed).toMatch(ETAG);
+    expect(changed).not.toBe(yq.headers["etag"]);
+    await exchange(rayfold.base, "PATCH", "/books/b5", { headers: { ...MERGE_CT, ...ADMIN }, body: JSON.stringify({ price: "9.50" }) });
+    expect(await etagNow()).toBe(yq.headers["etag"]); // the same answer again, the same ETag
 
     report.addMethod({
       method: "QUERY",

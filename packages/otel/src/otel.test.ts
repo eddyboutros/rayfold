@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { context, propagation, SpanStatusCode } from "@opentelemetry/api";
+import { context, propagation, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor, type ReadableSpan } from "@opentelemetry/sdk-trace-base";
@@ -96,6 +96,28 @@ describe("OpenTelemetry tracing", () => {
     expect(batch.spanContext().traceId).toBe("0af7651916cd43dd8448eb211c80319c");
     expect(parentOf(batch)).toBe("b7ad6b7169203331");
     expect(named("rayfold query book").spanContext().traceId).toBe("0af7651916cd43dd8448eb211c80319c");
+  });
+
+  it("trace context in the envelope's meta continues the caller's trace, tracestate included; a batch is a server span and each op span carries its cost", async () => {
+    const { server } = createBookstore({ instrumentation: rayfoldTracing({ tracer }) });
+    const ops = [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }, { id: 2, op: "books", args: { page: { first: 2 } }, shape: "{ items { id } }" }];
+    const frames = await server.collect({ ops, meta: { traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", tracestate: "vendor=opaque" } });
+    const batch = named("rayfold batch");
+    expect([batch.spanContext().traceId, parentOf(batch), batch.kind]).toEqual(["0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331", SpanKind.SERVER]);
+    expect(batch.spanContext().traceState?.serialize()).toBe("vendor=opaque");
+    const book = named("rayfold query book");
+    const books = named("rayfold query books");
+    // the cost on each span is the one the client is told in the op's frame
+    expect(frames.map((f) => (f as { meta?: { cost?: number } }).meta?.cost)).toEqual([1, 8]);
+    expect([book.kind, book.attributes["rayfold.cost"], books.attributes["rayfold.cost"]]).toEqual([SpanKind.INTERNAL, 1, 8]);
+
+    // guard: a traceparent that does not parse is ignored, and the batch starts a trace of its own
+    exporter.reset();
+    await server.collect({ ops, meta: { traceparent: "00-not-a-trace-01", tracestate: "vendor=opaque" } });
+    const fresh = named("rayfold batch");
+    expect(parentOf(fresh)).toBeUndefined();
+    expect(fresh.spanContext().traceId).not.toBe("0af7651916cd43dd8448eb211c80319c");
+    expect(fresh.spanContext().traceState).toBeUndefined();
   });
 
   it("a resolver's own span nests under its loader span, and a loader that throws is an error span", async () => {

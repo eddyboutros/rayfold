@@ -353,9 +353,11 @@ async function main(argv: string[]): Promise<number> {
       });
       srv.attachWebSocket(http, server, { viewer: () => ({ id: "u1", role: "admin" }) });
       await new Promise<void>((ready) => http.listen(port, ready));
+      // `--port 0` takes any free port: print the one it got, not 0
+      const bound = (http.address() as import("node:net").AddressInfo).port;
       console.log(`Rayfold mock of ${path} (schema ${hash.slice(0, 12)})`);
-      console.log(`  HTTP      http://localhost:${port}/rayfold`);
-      console.log(`  Explorer  http://localhost:${port}/rayfold/explorer`);
+      console.log(`  HTTP      http://localhost:${bound}/rayfold`);
+      console.log(`  Explorer  http://localhost:${bound}/rayfold/explorer`);
       console.log(`  the same call always gives the same answer`);
       await new Promise(() => {});
       return 0;
@@ -398,11 +400,13 @@ async function main(argv: string[]): Promise<number> {
       });
       srv.attachWebSocket(http, server, { viewer });
       await new Promise<void>((r) => http.listen(port, r));
-      console.log(`Rayfold dev server: http://localhost:${port}/`);
-      console.log(`  Explorer  http://localhost:${port}/rayfold/explorer`);
-      console.log(`  HTTP      http://localhost:${port}/rayfold      (POST/QUERY batches, GET /rayfold/{op}, /rayfold/manifest)`);
-      console.log(`  WebSocket ws://localhost:${port}/rayfold/ws    (subprotocol rayfold.0.1)`);
-      console.log(`  MCP       http://localhost:${port}/mcp      (Streamable HTTP, ${srv.MCP_PROTOCOL_VERSION})`);
+      // as with mock, `--port 0` prints the port it got
+      const bound = (http.address() as import("node:net").AddressInfo).port;
+      console.log(`Rayfold dev server: http://localhost:${bound}/`);
+      console.log(`  Explorer  http://localhost:${bound}/rayfold/explorer`);
+      console.log(`  HTTP      http://localhost:${bound}/rayfold      (POST/QUERY batches, GET /rayfold/{op}, /rayfold/manifest)`);
+      console.log(`  WebSocket ws://localhost:${bound}/rayfold/ws    (subprotocol rayfold.0.1)`);
+      console.log(`  MCP       http://localhost:${bound}/mcp      (Streamable HTTP, ${srv.MCP_PROTOCOL_VERSION})`);
       console.log(`  schema    ${server.hash.slice(0, 12)}`);
       await new Promise(() => {});
       return 0;

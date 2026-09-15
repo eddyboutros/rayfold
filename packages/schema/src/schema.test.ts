@@ -144,7 +144,10 @@ describe("validation", () => {
 
   it("warns on unreachable types", () => {
     const d = validateIR(parseSchemaText(`entity A { id: ID } entity B { id: ID } query a: A`));
-    expect(d.map((x) => [x.severity, x.code, x.at])).toContainEqual(["warning", "unreachable", "B"]);
+    expect(d.filter((x) => x.code === "unreachable").map((x) => [x.severity, x.code, x.at])).toEqual([["warning", "unreachable", "B"]]);
+    // guard: a type reached through a field, an argument or a declared error is not reported
+    const reached = validateIR(parseSchemaText(`entity A { id: ID b: B } entity B { id: ID } input F { q: String } error Gone { id: ID } query a(f: F): A command c: A throws Gone`));
+    expect(reached.filter((x) => x.code === "unreachable")).toEqual([]);
   });
 });
 

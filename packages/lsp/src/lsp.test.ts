@@ -132,6 +132,8 @@ describe("what an editor asks for", () => {
       position: { line: 5, character: 0 },
     }) as Array<{ label: string }>;
     expect(atTopLevel.map((i) => i.label)).toEqual(expect.arrayContaining(["entity", "query", "command", "view"]));
+    // guard: a type position is not offered declaration keywords
+    expect(inTypePosition.map((i) => i.label)).not.toContain("entity");
   });
 
   it("shows an operation's signature on hover, and a field's type", () => {
@@ -145,6 +147,9 @@ describe("what an editor asks for", () => {
       contents: { value: string };
     };
     expect(field.contents.value).toContain("Book.author: Author");
+
+    // guard: a blank line has nothing to show
+    expect(request(s, sent, "textDocument/hover", { textDocument: { uri: URI }, position: { line: 5, character: 0 } })).toBeNull();
   });
 
   it("jumps from a type reference to its declaration", () => {

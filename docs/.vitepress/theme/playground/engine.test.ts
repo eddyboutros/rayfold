@@ -19,8 +19,8 @@ const outcomes: Record<string, (frames: Frame[]) => void> = {
   "default-view": (f) => expect(f[0]).toMatchObject({ id: 1, data: { id: "b3", title: "Dune" } }),
   page: (f) => expect(f[0]).toMatchObject({ data: { items: [{ title: "A Wizard of Earthsea", author: { name: "Ursula K. Le Guin" } }, { title: "The Left Hand of Darkness" }], hasMore: true, total: 3 } }),
   buy: (f) => {
-    expect(f[0]).toMatchObject({ id: 1, ok: { id: "b1", stock: 2 } });
-    expect(f.some((x) => "patch" in x && x.patch?.length)).toBe(true);
+    const book = { $type: "Book", id: "b1", title: "A Wizard of Earthsea", stock: 2 };
+    expect(f).toEqual([{ id: 1, ok: book, patch: [{ set: "Book:b1", value: book }], meta: { cost: 1 }, fin: true }]);
   },
   "sold-out": (f) => expect(f[0]).toMatchObject({ id: 1, error: { code: "domain", type: "OutOfStock", data: { bookId: "b2", available: 0 } } }),
   pipeline: (f) => expect(f.find((x) => x.id === 2 && "data" in x)).toMatchObject({ data: { title: "Dune", stock: 5 } }),
@@ -57,7 +57,7 @@ describe("the playground's examples", () => {
       abort.abort();
     }
     expect(seen[0]).toMatchObject({ data: { title: "A Wizard of Earthsea", stock: 3 } });
-    expect(JSON.stringify(seen.at(-1))).toContain("8");
+    expect(seen.at(-1)).toEqual({ id: 1, patch: [{ at: "", value: { stock: 8 } }] });
     expect(kindOf(seen.at(-1)!)).toBe("patch");
   });
 

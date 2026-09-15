@@ -641,13 +641,24 @@ describe("10. A client asking for too much", () => {
     const ABUSE_SHAPE = "{ items { key comments(page: { first: 100 }) { items { body author { user { name } } } } children(page: { first: 100 }) { items { key } } } }";
     resetCounters();
     const y = await rayCall([{ id: 1, op: "issues", args: { page: { first: 200 } }, shape: ABUSE_SHAPE }]);
-    expect(y.frames[0]!["error"]).toMatchObject({ code: "resource_exhausted" });
+    expect(y.status).toBe(200);
+    expect(y.frames).toEqual([{ error: { code: "resource_exhausted", message: "Batch cost 81006 exceeds budget 1000", data: { cost: 81006, budget: 1000 } }, fin: true }]);
     const refused = (y.frames[0]!["error"] as { data: { cost: number; budget: number } }).data;
     expect(calls(rayfold)).toBe(0); // nothing ran
 
+    // Guard: the same selection over one project's first ten issues, with five comments and sub-issues each, fits and runs.
+    const FITS_SHAPE = "{ items { key comments(page: { first: 5 }) { items { body author { user { name } } } } children(page: { first: 5 }) { items { key } } } }";
+    const fits = await rayCall([{ id: 1, op: "issues", args: { filter: { projectId: "p1" }, page: { first: 10 } }, shape: FITS_SHAPE }]);
+    expect(fits.frames.map((f) => Object.keys(f))).toEqual([["id", "data", "meta", "fin"]]);
+    expect(fits.frames[0]!["meta"]).toEqual({ cost: 256 });
+    const rows = items(data(fits.frames[0]!)).map((i) => [i["key"], items(i["comments"]).length, items(i["children"]).length]);
+    expect(rows).toEqual([["ING-100", 3, 0], ["ING-99", 0, 0], ["ING-98", 3, 1], ["ING-97", 0, 0], ["ING-96", 3, 0], ["ING-95", 0, 0], ["ING-94", 3, 0], ["ING-93", 0, 1], ["ING-92", 3, 0], ["ING-91", 0, 0]]);
+    expect(rayfold.counters.loaderCalls).toEqual({ "Query.issues": 1, "Issue.comments": 1, "Issue.children": 1, "Comment.author": 1, "Member.user": 1 });
+
     const g = await gqlCall(`{ issues(first: 200) { items { key comments(first: 100) { items { body author { user { name } } } } children(first: 100) { items { key } } } } }`);
     expect(g.status).toBe(200);
-    expect(calls(gql)).toBeGreaterThan(0);
+    expect(items(data(g.json as Record<string, unknown>)["issues"])).toHaveLength(170);
+    expect(gql.counters.loaderCalls).toEqual({ "Issue.comments": 1, "Issue.children": 1, "Comment.author": 1, "Member.user": 1 });
 
     report.add({
       aspect: "An expensive request from a client",
@@ -745,17 +756,18 @@ describe("12. A downstream system is down", () => {
 
 describe("13. A large field nobody reads first", () => {
   it("the issue arrives, and its long description follows in the same response", async () => {
+    const description = rayfold.store.issues.get("i004")?.description ?? "";
+    expect(description.length).toBeGreaterThan(200);
     const r = await restGet("/issues/i004");
-    expect((r.json as { description: string }).description.length).toBeGreaterThan(200); // always sent, needed or not
+    expect((r.json as { description: string }).description).toBe(description); // always sent, needed or not
 
-    const g = await gqlCall(`{ issue(id: "i004") { key state description } }`);
-    const gParts = 1; // one body: the client waits for everything it asked for
+    const g = await fetch(`${gql.base}/graphql`, { method: "POST", headers: { ...JSON_CT, ...OWNER }, body: JSON.stringify({ query: `{ issue(id: "i004") { key state description } }` }) });
+    const gParts = (g.headers.get("content-type") ?? "").startsWith("multipart/mixed") ? 2 : 1; // incremental delivery would answer multipart/mixed
+    expect(gParts).toBe(1);
+    expect(await g.json()).toEqual({ data: { issue: { key: "ING-4", state: "BACKLOG", description } } }); // one body: the client waits for everything it asked for
 
     const y = await rayCall([{ id: 1, op: "issue", args: { id: "i004" }, shape: "{ key state description }" }]);
-    expect(y.frames).toHaveLength(3);
-    expect(data(y.frames[0]!)).toEqual({ $type: "Issue", key: "ING-4", state: "BACKLOG" });
-    expect(y.frames[1]).toMatchObject({ id: 1, at: "", data: { description: expect.any(String) } });
-    expect(y.frames[2]).toEqual({ id: 1, fin: true });
+    expect(y.frames).toEqual([{ id: 1, data: { $type: "Issue", key: "ING-4", state: "BACKLOG" }, meta: { cost: 1 } }, { id: 1, at: "", data: { description } }, { id: 1, fin: true }]);
 
     report.add({
       aspect: "A slow or large field on a page",

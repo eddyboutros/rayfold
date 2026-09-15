@@ -6,7 +6,7 @@ import { RbCodec } from "@rayfold/rb";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { listen, publicIR, type HttpOptions } from "./http.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
-import { bounded } from "../../../e2e/wait.ts";
+import { Signal, bounded } from "../../../e2e/wait.ts";
 
 type Bookstore = ReturnType<typeof createBookstore>;
 const viewerOf: NonNullable<HttpOptions["viewer"]> = (req) => {
@@ -209,9 +209,31 @@ describe("headers into the batch", () => {
   });
 
   it("Rayfold-Deadline is enforced: an op still running when it passes ends with deadline_exceeded", async () => {
-    const url = `${await serve(probe([]))}/rayfold`;
-    const res = await post({ ops: [{ id: 1, op: "hang" }] }, { "rayfold-deadline": "1" }, "POST", url);
-    expect(await frames(res)).toEqual([{ id: 1, error: { code: "deadline_exceeded", message: "Batch deadline exceeded" }, fin: true }]);
+    // only the deadline's timer is faked: sockets and fetch keep their real timers
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const started = new Signal<true>();
+      const hanging = createRayfoldServer({
+        schema: `entity A { id: ID } query hang: A`,
+        resolvers: {
+          Query: {
+            hang: (_args, ctx) =>
+              new Promise((_r, reject) => {
+                ctx.signal.addEventListener("abort", () => reject(ctx.signal.reason));
+                started.push(true);
+              }),
+          },
+        },
+      });
+      const url = `${await serve(hanging)}/rayfold`;
+      const res = await post({ ops: [{ id: 1, op: "hang" }] }, { "rayfold-deadline": "1000" }, "POST", url);
+      await started.atLeast(1, "the hanging op running under its deadline");
+      const body = frames(res);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await body).toEqual([{ id: 1, error: { code: "deadline_exceeded", message: "Batch deadline exceeded" }, fin: true }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -267,6 +289,23 @@ describe("the Origin rule covers data-changing requests only", () => {
     expect(JSON.parse(smuggled.body)).toMatchObject({ detail: "Safe requests (GET/QUERY) may only contain queries" });
     expect(bs.store.calls["Command.restock"]).toBeUndefined();
     expect(bs.store.books.get("b1")!.stock).toBe(5);
+  });
+
+  it("a command from an origin in allowedOrigins runs; the same command from another origin is refused and runs nothing", async () => {
+    const url = `${await serve(bs.server, { viewer: viewerOf, allowedOrigins: ["http://app.example"] })}/rayfold`;
+    const body = JSON.stringify({ ops: [{ ...restock, shape: "{ id stock }" }] });
+    const allowed = await rawPost(url, { "content-type": "application/rayfold+json", origin: "http://app.example", authorization: "Bearer admin" }, body);
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.trim().split("\n").map((l) => JSON.parse(l))).toEqual([
+      { id: 1, ok: { $type: "Book", id: "b1", stock: 6 }, patch: [{ set: "Book:b1", value: { $type: "Book", id: "b1", stock: 6 } }], meta: { cost: 1 }, fin: true },
+    ]);
+    expect(bs.store.books.get("b1")!.stock).toBe(6);
+    expect(bs.store.calls["Command.restock"]).toBe(1);
+    const refused = await rawPost(url, { "content-type": "application/rayfold+json", origin: other, authorization: "Bearer admin" }, body);
+    expect(refused.status).toBe(403);
+    expect(JSON.parse(refused.body)).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/permission_denied", title: "permission denied", status: 403, detail: `Origin ${other} is not allowed`, code: "permission_denied" });
+    expect(bs.store.books.get("b1")!.stock).toBe(6);
+    expect(bs.store.calls["Command.restock"]).toBe(1);
   });
 });
 

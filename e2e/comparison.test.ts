@@ -400,10 +400,32 @@ describe("10. Evolution and safety tooling", () => {
   });
 
   it("query cost and depth are bounded by Rayfold before execution", async () => {
-    const y = await rayfoldCall([{ id: 1, op: "books", args: { page: { first: 200 } }, shape: "{ items { id author { books(page: { first: 200 }) { items { id author { books(page: { first: 200 }) { items { id } } } } } } } }" }]);
-    expect(y.frames[0]!["error"]).toMatchObject({ code: "resource_exhausted" });
+    reset();
+    const nested = (first: number) => `{ items { id author { books(page: { first: ${first} }) { items { id author { books(page: { first: ${first} }) { items { id } } } } } } } }`;
+    const y = await rayfoldCall([{ id: 1, op: "books", args: { page: { first: 200 } }, shape: nested(200) }]);
+    expect(y.frames).toEqual([{ error: { code: "resource_exhausted", message: "Batch cost 8160806 exceeds budget 1000", data: { cost: 8160806, budget: 1000 } }, fin: true }]);
+    expect(rayfold.store.calls).toEqual({}); // no loader ran
+    // guard: the same nesting with pages of two fits the budget and runs
+    const author = (books: string[], nextLevel?: Obj) => ({ $type: "Author", books: { items: books.map((id) => ({ $type: "Book", id, ...(nextLevel ? { author: nextLevel } : {}) })) } });
+    const fits = await rayfoldCall([{ id: 1, op: "books", args: { page: { first: 2 } }, shape: nested(2) }]);
+    expect(fits.frames).toEqual([{ id: 1, data: { items: [{ $type: "Book", id: "b1", author: author(["b1", "b26"], author(["b1", "b26"])) }, { $type: "Book", id: "b10", author: author(["b10", "b34"], author(["b10", "b34"])) }] }, meta: { cost: 38 }, fin: true }]);
+    // the second level meets the same two authors, whose books this batch already loaded
+    expect(rayfold.store.calls).toEqual({ "Query.books": 1, "Book.author": 2, "Author.books": 1 });
+
+    reset();
+    const levels = (n: number) => "{ items { id " + "author { books(page: { first: 1 }) { items { id ".repeat(n) + "} } } ".repeat(n) + "} }";
+    const deep = await rayfoldCall([{ id: 1, op: "books", args: { page: { first: 1 } }, shape: levels(3) }]);
+    expect(deep.frames).toEqual([{ id: 1, error: { code: "resource_exhausted", message: "Shape depth 11 exceeds 8" }, fin: true }]);
+    expect(rayfold.store.calls).toEqual({});
+    // guard: two levels are depth 8, the limit itself
+    const atLimit = await rayfoldCall([{ id: 1, op: "books", args: { page: { first: 1 } }, shape: levels(2) }]);
+    expect(atLimit.frames).toEqual([{ id: 1, data: { items: [{ $type: "Book", id: "b1", author: author(["b1"], author(["b1"])) }] }, meta: { cost: 15 }, fin: true }]);
+    expect(rayfold.store.calls).toEqual({ "Query.books": 1, "Book.author": 1, "Author.books": 1 });
+
     const g = await gqlCall(`{ books(first: 200) { items { id author { name } } } }`);
     expect(g.status).toBe(200);
+    expect((g.body.data!["books"] as { items: unknown[] }).items).toHaveLength(36);
+    expect(gql.counters.loaderCalls).toEqual({ author: 1 }); // it ran; nothing weighed it first
     report.add({ aspect: "Abusive query (200 x 200 x 200 nested)", values: { REST: 0, GraphQL: 0, Rayfold: 1 }, unit: "rejected before execution (1 = yes)", better: "higher", metric: "rejected before execution?", REST: "n/a (no query language)", GraphQL: "no, unless a cost plugin is added", Rayfold: "yes: static cost vs budget, from @cost and page sizes" });
   });
 });

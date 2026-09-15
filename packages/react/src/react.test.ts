@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { StrictMode, createElement as h, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { RayfoldError, createRayfoldServer, listen } from "@rayfold/server";
-import { RayfoldClient, RayfoldClientError, createFetchTransport } from "@rayfold/client";
+import { RayfoldClient, RayfoldClientError, createFetchTransport, type CommandOptions } from "@rayfold/client";
 import { bounded } from "../../../e2e/wait.ts";
 import { RayfoldProvider, useCommand, useLive, useQuery, type CommandState, type QueryResult, type UseQueryOptions } from "./index.ts";
 
@@ -198,8 +198,8 @@ function LiveStock(props: { id: string; label: string }) {
   return h("p", null, l.data ? `${props.label}: ${l.data.stock}` : l.error ? `${props.label}: error` : `${props.label}: loading`);
 }
 
-function Command(props: { op: string; label: string }) {
-  const [run, state] = useCommand<Book>(props.op);
+function Command(props: { op: string; label: string; options?: CommandOptions }) {
+  const [run, state] = useCommand<Book>(props.op, props.options);
   commands[props.label] = { run, state };
   const err = state.error as RayfoldClientError | undefined;
   const text = state.running ? "running" : err ? `failed ${err.type ?? err.code}` : state.data ? `done ${state.data.stock}` : "ready";
@@ -325,6 +325,30 @@ describe("useCommand", () => {
     // guard: a purchase that fits goes through and updates the book on screen
     await commands["X"]!.run({ id: "b1", qty: 2 });
     await waitForText(view.container, (t) => t.includes("X: done 1") && t.includes("A: Dune 1"), "bought");
+  });
+
+  it("runs that share an idempotency key are one purchase: the retry answers with the first result and sells nothing more", async () => {
+    const { client, requests } = makeClient();
+    const view = mount(client, h("div", null, h(Stock, { id: "b1", label: "A" }), h(Command, { op: "buy", label: "X", options: { key: "buy-b1-0123456789" } })));
+    await waitForText(view.container, (t) => t.includes("A: Dune 3") && t.includes("X: ready"), "ready");
+    const first = await commands["X"]!.run({ id: "b1", qty: 1 });
+    const retry = await commands["X"]!.run({ id: "b1", qty: 1 });
+    expect(retry).toEqual(first);
+    expect(first).toMatchObject({ id: "b1", stock: 2 });
+    expect(books.get("b1")!.stock).toBe(2);
+    expect(requests()).toEqual([["book"], ["buy"], ["buy"]]);
+    await waitForText(view.container, (t) => t.includes("A: Dune 2") && t.includes("X: done 2"), "one purchase on screen");
+  });
+
+  it("guard: runs without a key are separate purchases", async () => {
+    const { client, requests } = makeClient();
+    const view = mount(client, h("div", null, h(Stock, { id: "b1", label: "A" }), h(Command, { op: "buy", label: "X" })));
+    await waitForText(view.container, (t) => t.includes("A: Dune 3") && t.includes("X: ready"), "ready");
+    await commands["X"]!.run({ id: "b1", qty: 1 });
+    await commands["X"]!.run({ id: "b1", qty: 1 });
+    expect(books.get("b1")!.stock).toBe(1);
+    expect(requests()).toEqual([["book"], ["buy"], ["buy"]]);
+    await waitForText(view.container, (t) => t.includes("A: Dune 1") && t.includes("X: done 1"), "two purchases on screen");
   });
 
   it("an unawaited failing run leaves no unhandled rejection behind", async () => {
