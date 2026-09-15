@@ -161,7 +161,7 @@ function scalar(name: string, hint: string, rng: () => number): unknown {
     case "Duration":
       return Math.floor(rng() * 60) * 1000;
     case "Bytes":
-      return Buffer.from(words(rng, 1)).toString("base64");
+      return btoa(words(rng, 1));
     case "JSON":
       return {};
     default:

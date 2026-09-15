@@ -35,7 +35,11 @@ const utf8Decoder = new TextDecoder();
 
 /** Unpadded base64url of the UTF-8 bytes of [text]; the same output as Buffer's "base64url". */
 export function base64url(text: string): string {
-  const b = utf8Encoder.encode(text);
+  return base64urlBytes(utf8Encoder.encode(text));
+}
+
+/** Unpadded base64url of [b]; the same output as Buffer's "base64url". */
+export function base64urlBytes(b: Uint8Array): string {
   let out = "";
   for (let i = 0; i < b.length; i += 3) {
     const n = (b[i]! << 16) | ((b[i + 1] ?? 0) << 8) | (b[i + 2] ?? 0);

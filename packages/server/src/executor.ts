@@ -6,6 +6,7 @@
 import type { Instrumentation } from "./instrumentation.ts";
 import {
   annotation,
+  base64urlBytes,
   baseName,
   fieldsOf,
   type Annotation,
@@ -691,7 +692,7 @@ function serializeScalar(ir: RayfoldSchemaIR, t: TypeRef, v: unknown): unknown {
     case "Decimal":
       return typeof v === "number" ? String(v) : v;
     case "Bytes":
-      return v instanceof Uint8Array ? Buffer.from(v).toString("base64url") : v;
+      return v instanceof Uint8Array ? base64urlBytes(v) : v;
     default:
       return v;
   }

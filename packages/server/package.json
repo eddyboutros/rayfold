@@ -23,6 +23,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./core": "./src/core.ts",
     "./protocol": "./src/protocol.ts"
   },
   "dependencies": {

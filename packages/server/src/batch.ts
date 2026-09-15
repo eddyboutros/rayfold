@@ -8,7 +8,7 @@ import { compactQueryFrame, type Executor } from "./executor.ts";
 import { RayfoldError, VersionConflict, toWireError, type Frame, type RequestEnvelope, type RequestMeta, type RequestOp, type WireError } from "./protocol.ts";
 import { resolveRequestShape, type ShapeRegistry } from "./views.ts";
 import type { UsageSink } from "./usage.ts";
-import { capabilityAllows } from "./capability.ts";
+import { capabilityAllows } from "./capability-scope.ts";
 import { ChangeBus, changeFromPatch, diffResults, foldFrames, readSetOf } from "./live.ts";
 
 export interface BatchOptions {

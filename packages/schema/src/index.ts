@@ -24,7 +24,7 @@ export { ExprError,
   type ExprEnv,
   type BareRoot,
 } from "./expr.ts";
-export { canonicalJson, sha256Hex, hashJson, base64url, fromBase64url } from "./canonical.ts";
+export { canonicalJson, sha256Hex, hashJson, base64url, base64urlBytes, fromBase64url } from "./canonical.ts";
 export { loadSchema, schemaHash, type LoadedSchema } from "./load.ts";
 export { printSchemaText } from "./print.ts";
 export { diffSchemas, isBreaking, type Change, type ChangeLevel, type DiffOptions } from "./diff.ts";
