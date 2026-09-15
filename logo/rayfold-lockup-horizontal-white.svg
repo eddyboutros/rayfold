@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 268 64" width="268" height="64" role="img" aria-label="Rayfold">
+  <rect x="6" y="6" width="13" height="52" fill="#ffffff"></rect>
+  <polygon points="19,6 45,6 58,19 19,19" fill="#ffffff"></polygon>
+  <path d="M19 24 H39 L52 37 H37 L58 58 H40 L19 37 Z" fill="#ffffff"></path>
+  <text x="74" y="46.3" font-family="Archivo, 'Helvetica Neue', Arial, sans-serif" font-weight="600" font-size="56" letter-spacing="-1.79" fill="#ffffff">Rayfold</text>
+</svg>
