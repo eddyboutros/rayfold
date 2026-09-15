@@ -5,6 +5,34 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **A documentation website with a playground:** https://eddyboutros.github.io/rayfold/. Get started in TypeScript,
+  React, Kotlin, Java or Spring Boot, then learn the protocol from the basics to schema evolution. Every code sample
+  comes from the example projects in `examples/`, whose tests run in CI, and the playground runs the Rayfold runtime in
+  the page. `npm run docs:dev` and `npm run docs:build` replace `docs:site`.
+- **`@rayfold/server/core`:** the runtime without its transports, using no Node API, so it runs in a browser, a worker
+  or any other JavaScript runtime. The main entry still exports everything.
+- **Problem types link to their documentation:** the `type` of a problem document is now
+  `https://eddyboutros.github.io/rayfold/errors/<type>` instead of `https://rayfold.dev/errors/<type>`, in both
+  runtimes, and each type has a page. A client that compares the whole URI needs the new base
+  (`PROBLEM_TYPE_BASE` in TypeScript, `Guard.PROBLEM_TYPE_BASE` on the JVM).
+- **A negative page offset is refused** with `invalid_argument` in both runtimes, as a negative `first` already was.
+- **A schema number too large to represent is a syntax error:** `1e999` used to get through the reader and fail
+  later while the schema was hashed.
+- **JVM artifacts work from Kotlin 2.2:** the modules are compiled with language and API version 2.2, so a project
+  does not need the Kotlin compiler the runtime was built with.
+- **The runtime works with Spring Boot's managed kotlinx-coroutines:** it is built against 1.10.2, the version Spring
+  Boot 4.1 ships. Built against 1.11, every request under Boot answered 200 with an empty body.
+- **Scalars from the Spring starter and `rayfold-java` follow the spec:** `Decimal` and a `Long` beyond 2^53 are text,
+  bytes are base64url, and `OffsetDateTime`, `ZonedDateTime` and `java.util.Date` are UTC instants, whatever the
+  application's Jackson settings. `rayfold-java` wrote the last three and large longs differently before.
+- **`RayfoldHttp` logs a failure after the response has started**, instead of dropping the connection silently.
+- **The Kotlin client cancels a live query over HTTP at once**, rather than when the next keep-alive arrives.
+- **Java API:** `HttpBuilder.explorer(title)`, `HttpBuilder.start` declares `IOException`, and `RayfoldExplorer.mount`
+  has overloads without the path.
+- **Fixed:** a body over the limit answered `400` instead of `413` on Linux.
+- **Fixed:** on the Kotlin WebSocket server, reusing an op id right after its final frame arrived could be refused as
+  still in use.
+
 - **Resolver wiring is checked at build time:** `checkWiring(ir, resolvers)` in `@rayfold/server`, and
   `rayfold check schema.rayfold --resolvers <module>`. An operation with no resolver and a field that takes arguments
   with no loader are exactly what the runtime refuses with `unimplemented` on the first call that needs them; both are
