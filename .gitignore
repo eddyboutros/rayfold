@@ -1,5 +1,8 @@
 node_modules/
 dist/
+
+# signing keys, tokens and passwords for releases: never committed (see .secrets/README.md on your machine)
+.secrets/
 *.tsbuildinfo
 .DS_Store
 kotlin/build/
