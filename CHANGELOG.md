@@ -32,6 +32,15 @@ packages and the Maven artifacts share one version number.
 - **Fixed:** a body over the limit answered `400` instead of `413` on Linux.
 - **Fixed:** on the Kotlin WebSocket server, reusing an op id right after its final frame arrived could be refused as
   still in use.
+- **The TypeScript HTTP transport checks the schema before it uses RB:** `binary` now takes the manifest (or the
+  server's full schema), and RB is used only once a response's `Rayfold-Schema` header matches that schema's hash, as
+  spec 09 requires. Before, a client holding a different schema read fields under the wrong names without an error. An
+  RB answer that arrives with another hash fails as `unavailable`, and the next request goes as JSON. Passing
+  `manifest.schema` alone now keeps the transport on JSON, because that schema has its policies removed and hashes
+  differently: pass the whole manifest.
+- **Fixed:** a compact read (`compact: true`, which a client given the schema sends) got `max-age=0, no-cache`,
+  because both servers looked for `@cache` through `$type`, which compact frames leave out. The entity types now come
+  from the schema.
 
 - **Resolver wiring is checked at build time:** `checkWiring(ir, resolvers)` in `@rayfold/server`, and
   `rayfold check schema.rayfold --resolvers <module>`. An operation with no resolver and a field that takes arguments
