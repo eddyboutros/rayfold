@@ -15,7 +15,7 @@ npx rayfold check schema.rayfold
 | `lock <schema> [--out rayfold.lock.json]` | Records field ordinals and the schema hash. Commit it and check later versions against it. |
 | `hash <schema>` | Prints the schema hash. |
 | `explain <schema> <op> [--shape "{...}"] [--args '{...}']` | Shows the plan: cost, depth, one loader call per level, and which policies push down to the data source. |
-| `gen ts\|kotlin\|java <schema> [--out file] [--package pkg] [--class Name]` | Generates TypeScript types, Kotlin data classes, or Java records (one file, one class). |
+| `gen ts\|kotlin\|java\|graphql <schema> [--out file] [--package pkg] [--class Name]` | Generates TypeScript types, Kotlin data classes, Java records (one file, one class), or a GraphQL schema. For GraphQL, what it cannot express is listed on stderr. |
 | `shapes <schema> <file>` | Prints the shape id of each shape in the file, for registering trusted shapes. |
 | `import openapi\|graphql <file> [--out schema.rayfold]` | Reads a first draft of a schema from an OpenAPI document or a GraphQL SDL. What the source cannot say is listed on stderr. |
 | `mock <schema.rayfold> [--port 4500]` | Serves the schema with data the schema itself describes, and the explorer beside it, before any resolver exists. The same call always gives the same answer. |

@@ -31,3 +31,4 @@ export { diffSchemas, isBreaking, type Change, type ChangeLevel, type DiffOption
 export { generateTypeScript } from "./gen-ts.ts";
 export { generateKotlin } from "./gen-kotlin.ts";
 export { generateJava } from "./gen-java.ts";
+export { generateGraphql, type GraphqlSchema } from "./gen-graphql.ts";

@@ -8,12 +8,12 @@ Rayfold: if something here would unblock you, or something you need is missing, 
 
 - Keep what is published correct: the docs, the spec (errata only for Core 0.1), and the rough edges filed as issues.
 - Hear from people trying it: what they build, and where they get stuck.
+- `rayfold gen graphql`: a GraphQL schema from a Rayfold schema, with what GraphQL cannot express listed beside it.
 
 ## Next, when someone needs it
 
 | If you need | What gets built |
 |---|---|
-| A GraphQL schema from a Rayfold schema | `rayfold gen graphql`: the SDL, plus the list of what GraphQL cannot express (typed errors, cache patches, idempotency keys, live queries, several steps in one request) |
 | Hono, Next.js, Bun, Deno or Cloudflare Workers | A fetch `Request`/`Response` handler next to the Node one |
 | More than one server instance | Commands already run once across instances, through a shared idempotency store. Still to come: a shared change bus for live queries, health and readiness endpoints, and a deployment guide |
 | Results typed to the shape you asked for | `rayfold gen ts --client` with typed hooks, and a published VS Code extension that runs the language server |

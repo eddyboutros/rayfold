@@ -31,6 +31,12 @@ packages and the Maven artifacts share one version number.
   behind it, so nothing younger was ever removed; and a record written from a lost lease landed once the new owner had
   answered, because only claims in flight were checked. Both hold now; the Postgres store is held to the same two
   cases.
+
+- **`rayfold gen graphql`** prints a GraphQL schema for a Rayfold schema: types, fields, arguments, defaults,
+  descriptions and deprecations, with queries, commands and streams as `Query`, `Mutation` and `Subscription` fields.
+  What GraphQL cannot express (typed errors, idempotency keys, patches, live queries, the rules written as annotations)
+  is listed on stderr. `generateGraphql` in `@rayfold/schema` returns both.
+
 - **The documentation site is at https://rayfold.dev/.** Links to `eddyboutros.github.io/rayfold/` redirect there,
   problem-type URIs included, which keep their 0.1.0 form.
 - **Security: a `__proto__` key in a request's arguments is plain data again (TypeScript server).** Next to a `$ref`, or

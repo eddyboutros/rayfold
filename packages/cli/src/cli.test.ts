@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { loadSchema } from "@rayfold/schema";
+import { generateGraphql, loadSchema } from "@rayfold/schema";
 import { MCP_PROTOCOL_VERSION } from "@rayfold/server";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { bounded } from "../../../e2e/wait.ts";
@@ -311,6 +311,29 @@ describe("rayfold import", { timeout: 60_000 }, () => {
       stdout: ["entity Book {", "  id: ID", "  title: String", "  rating: Int?", "}", "", 'query getBook(id: String): Book @http(method: GET, path: "/books/{id}")', ""].join("\n"),
       stderr: "",
     });
+  });
+});
+
+describe("rayfold gen graphql", { timeout: 60_000 }, () => {
+  const text = readFileSync(new URL("../../../examples/typescript/src/bookshop.rayfold", import.meta.url), "utf8");
+  const generated = generateGraphql(loadSchema(text).ir);
+  const lost = generated.lost.map((line) => `lost      ${line}\n`).join("");
+
+  it("prints the GraphQL schema on stdout, and on stderr what GraphQL cannot express", async () => {
+    writeFileSync(join(work, "shop.rayfold"), text);
+    expect(await rayfold("gen", "graphql", "shop.rayfold")).toEqual({ status: 0, stdout: generated.sdl, stderr: lost });
+  });
+
+  it("with --out, writes the schema to the file and still lists what was lost", async () => {
+    writeFileSync(join(work, "shop.rayfold"), text);
+    expect(await rayfold("gen", "graphql", "shop.rayfold", "--out", "shop.graphql")).toEqual({ status: 0, stdout: "wrote shop.graphql\n", stderr: lost });
+    expect(readFileSync(join(work, "shop.graphql"), "utf8")).toBe(generated.sdl);
+  });
+
+  it("refuses a schema whose type takes a GraphQL root type's name, and writes nothing", async () => {
+    writeFileSync(join(work, "roots.rayfold"), "entity Query { id: ID }\nquery q: Query\n");
+    expect(await rayfold("gen", "graphql", "roots.rayfold", "--out", "roots.graphql")).toEqual({ status: 1, stdout: "", stderr: "Query is a type in this schema, and GraphQL needs that name for the query root type\n" });
+    expect(existsSync(join(work, "roots.graphql"))).toBe(false);
   });
 });
 

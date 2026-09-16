@@ -36,6 +36,23 @@ becomes `String`, and `String` becomes `String?`.
 A mutation says nothing about what it can fail with or what it emits, and a Relay connection is not a `Page`, so the
 importer leaves a note rather than inventing either. The notes go to stderr; the schema goes to stdout.
 
+## Going the other way
+
+`rayfold gen graphql` prints a GraphQL schema for a Rayfold one, for GraphQL tooling or to compare the two:
+
+```sh
+npx rayfold gen graphql api.rayfold --out schema.graphql
+```
+
+Types, fields, arguments, defaults, descriptions and deprecations carry over, and nullability flips back. Queries become
+`Query` fields, commands `Mutation` fields and streams `Subscription` fields. `Page<Book>` becomes a `BookPage` type,
+since GraphQL has no generics. Every `Query`, `Mutation` and `Subscription` field is nullable, because each Rayfold
+operation succeeds or fails on its own.
+
+What GraphQL has no way to say is listed on stderr rather than dropped without a word: the errors an operation throws,
+the idempotency key and patches of a command, live queries, cacheable reads, operations that use each other's results,
+and rules such as `@allow`, `@cost` and `@cache`. The output describes the API; it does not serve it.
+
 ## A migration in four steps
 
 1. **Translate the SDL.** Types map almost one to one. Mark the fields that can be null with `?`, turn mutations into

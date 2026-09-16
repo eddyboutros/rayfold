@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import {
   canonicalShape,
   diffSchemas,
+  generateGraphql,
   generateJava,
   generateKotlin,
   generateTypeScript,
@@ -40,7 +41,7 @@ function usage(): never {
   lock <schema.rayfold> [--out rayfold.lock.json]                             record ordinals + hash
   hash <schema.rayfold>                                                   print the schema hash
   explain <schema.rayfold> <op> [--shape "{...}"] [--args '{...}']          plan: cost, depth, loaders per level, policy pushdown
-  gen ts|kotlin|java <schema.rayfold> [--out file] [--package pkg] [--class Name]   generate TypeScript types, Kotlin data classes or Java records
+  gen ts|kotlin|java|graphql <schema.rayfold> [--out file] [--package pkg] [--class Name]   generate TypeScript types, Kotlin data classes, Java records or a GraphQL schema
   shapes <schema.rayfold> <shape-file>                                    print shape ids for each line
   import openapi|graphql <file> [--out schema.rayfold]                a schema from an OpenAPI document or a GraphQL SDL
   mock <schema.rayfold> [--port 4500]                                 serve the schema with made-up data, and the explorer
@@ -276,11 +277,22 @@ async function main(argv: string[]): Promise<number> {
       if (!path) usage();
       const { ir } = loadFile(path);
       let text: string;
+      let lost: string[] = [];
       if (lang === "ts") text = generateTypeScript(ir);
       else if (lang === "kotlin") text = generateKotlin(ir, { pkg: flag(rest, "--package") ?? "dev.rayfold.generated" });
       else if (lang === "java") text = generateJava(ir, { pkg: flag(rest, "--package") ?? "dev.rayfold.generated", className: flag(rest, "--class") ?? "RayfoldSchema" });
-      else {
-        console.error(`Unsupported target ${lang} (ts, kotlin, java)`);
+      else if (lang === "graphql") {
+        let generated;
+        try {
+          generated = generateGraphql(ir);
+        } catch (e) {
+          console.error(String((e as Error).message));
+          return 1;
+        }
+        text = generated.sdl;
+        lost = generated.lost;
+      } else {
+        console.error(`Unsupported target ${lang} (ts, kotlin, java, graphql)`);
         return 1;
       }
       const out = flag(rest, "--out");
@@ -288,6 +300,8 @@ async function main(argv: string[]): Promise<number> {
         writeFileSync(out, text);
         console.log(`wrote ${out}`);
       } else process.stdout.write(text);
+      // what GraphQL cannot express, on stderr, so the schema on stdout stays a schema
+      for (const line of lost) console.error(`lost      ${line}`);
       return 0;
     }
     case "shapes": {
