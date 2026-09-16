@@ -133,6 +133,7 @@ export default defineConfig({
             { text: "Postgres", link: "/guide/postgres" },
             { text: "JDBC", link: "/guide/jdbc" },
             { text: "Tracing", link: "/guide/tracing" },
+            { text: "Deployment", link: "/guide/deployment" },
           ],
         },
         {

@@ -28,9 +28,9 @@ export class Signal<T> {
   }
 
   /** Resolves once `cond` holds for the items seen so far (checked now and after every push). */
-  until(cond: (items: T[]) => boolean, label: string): Promise<T[]> {
+  until(cond: (items: T[]) => boolean, label: string, ms = WAIT_MS): Promise<T[]> {
     if (cond(this.items)) return Promise.resolve(this.items);
-    return bounded(new Promise<T[]>((resolve) => this.waiters.push({ cond, resolve: () => resolve(this.items) })), label);
+    return bounded(new Promise<T[]>((resolve) => this.waiters.push({ cond, resolve: () => resolve(this.items) })), label, ms);
   }
 
   atLeast(n: number, label: string): Promise<T[]> {

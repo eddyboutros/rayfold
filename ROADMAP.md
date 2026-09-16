@@ -15,15 +15,17 @@ Rayfold: if something here would unblock you, or something you need is missing, 
 | If you need | What gets built |
 |---|---|
 | Hono, Next.js, Bun, Deno or Cloudflare Workers | A fetch `Request`/`Response` handler next to the Node one |
-| More than one server instance | Commands already run once across instances, through a shared idempotency store. Still to come: a shared change bus for live queries, health and readiness endpoints, and a deployment guide |
+| A fleet of TypeScript and JVM servers on one relay | Both runtimes speak the same relay format and each is proven against a real Postgres; a mixed fleet in the same CI job is what would prove them together |
 | Results typed to the shape you asked for | `rayfold gen ts --client` with typed hooks, and a published VS Code extension that runs the language server |
 | A Rayfold service inside an Apollo supergraph | A GraphQL endpoint and Federation subgraph answered by the Rayfold engine |
 
 ## Known gaps in 0.1
 
-- Live queries and learned shapes live in each process; two instances do not share them. Idempotency records can be
-  shared (`PgIdempotencyStore`, `JdbcIdempotencyStore`), and then a keyed command runs once across instances; with the
-  default in-memory store each process decides on its own, so a retry reaching another one runs the command again.
+- Several servers need the shared stores to behave as one: idempotency records in `PgIdempotencyStore` or
+  `JdbcIdempotencyStore`, changes and events over `PgRelay`. With the in-memory defaults each process decides on its
+  own, so a retry reaching another one runs the command again and a live query there never hears it. Shapes a server
+  learned from requests are its own; shapes registered in code have the same id everywhere
+  ([Deployment](docs/guide/deployment.md)).
 - Credit-based flow control on streams (spec 04, section 5) is not implemented in either runtime.
 - Not yet tested on Safari itself (WebKit stands in for it), a real Android device, a commercial CDN, or load across
   several machines.
