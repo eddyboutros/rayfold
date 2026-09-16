@@ -8,22 +8,31 @@ same three flows cost over REST, GraphQL and Rayfold (`npm run bench`, `bench/re
 | Capability | REST | GraphQL | gRPC / Connect | tRPC | Convex / Zero | MCP | Rayfold |
 |---|---|---|---|---|---|---|---|
 | Client-shaped responses | no (over/under-fetch) | selection sets | no | no | query language | no | shapes, plus a **default view** so a bare call works from curl and agents |
-| Shared HTTP caching | yes | broken (POST, one URL) | no | no | no | no | `GET`/`QUERY` with ETag + `Cache-Control` derived from `@cache` and policies |
+| Shared HTTP caching | yes | `GET` for queries, persisted queries to keep URLs short; `POST` by default | no | no | no | no | `GET`/`QUERY` with ETag + `Cache-Control` derived from `@cache` and policies |
 | Typed contract | OpenAPI (optional) | SDL | Protobuf | TS only | TS only | JSON Schema per tool | one `.rayfold` IR: types, ops, **auth, cost, cache, views, deprecation** |
 | Nullability default | n/a | nullable | optional-ish | TS | TS | JSON Schema | **non-null**; `T?` opts in |
 | N+1 | n/a | DataLoader by hand | n/a | n/a | n/a | n/a | loaders are **batch by default**, one call per level across lists and pages |
 | Round trips for create-then-read | 2 to 3 | 2 | 2 | 2 (batching is per-tick) | 1 (server function) | 2 | **1**: `{ "$ref": "1.id" }` pipelining |
 | Errors | status codes | `errors[]` + partial data, HTTP 200 | 16 codes | thrown | thrown | `isError` | 16 codes **and** typed domain errors declared with `throws`; atomic by default, `@partial` opt-in |
 | Authorization | middleware | per-resolver | interceptors | middleware | rules in code | OAuth only | **policy expressions in the schema**, evaluated per op / type / field; default views never leak |
-| Cost / DoS control | rate limits | bolt-on complexity analysis | none | none | none | none | static cost from `@cost` and page sizes, per-batch budget, trusted-shape allowlist |
+| Cost / DoS control | rate limits | depth and complexity limits from libraries | none | none | none | none | static cost from `@cost` and page sizes, per-batch budget, trusted-shape allowlist |
 | Cache coherence after writes | none | manual cache updates | none | invalidate | automatic | none | commands return **patches**; every client view updates without refetch |
 | Realtime | SSE/WebSocket by hand | subscriptions (separate type) | streams | subscriptions | live queries | none | `"live": true` on any query; the server diffs the result it already served and sends **only what changed** (changed entity fields, rows added to or removed from a list, fields of a plain object), falling back to a fresh `data` frame when the change cannot be described |
-| Streaming / incremental | chunked by hand | `@defer` still a draft | streams | no | no | SSE | every response is frames; `@lazy`/`@defer` deliver later; streams with `fin` |
+| Streaming / incremental | chunked by hand | `@defer` shipped by several servers, still a spec draft | streams | no | no | SSE | every response is frames; `@lazy`/`@defer` deliver later; streams with `fin` |
 | Idempotency | Idempotency-Key convention | none | none | none | mutations are transactions | none | **mandatory key** on commands, replay with `meta.replay` |
 | Evolution | versions | deprecation only | field numbers | none | none | none | additive-only enforced by `rayfold check`, sunset dates, lockfile ordinals, no versions |
 | Agent access | OpenAPI-to-tools adapters | adapters | none | none | none | native | **any Rayfold server is an MCP server** (tools, resources, simulate, typed errors) |
 | Binary wire | no | no | Protobuf | no | no | no | RB: schema key dictionary + string table; same frames as JSON |
 | Discovery | OpenAPI | introspection | reflection | none | none | `tools/list` | `GET /rayfold/manifest`: IR, hash, extensions, limits |
+
+**What this table compares, and what it does not.** Each column says what the protocol gives you by default, not the
+ceiling of what a team can build on it. Most of the GraphQL rows can be met with work that many teams already do:
+persisted queries put reads behind `GET` so a CDN can cache them, DataLoader solves N+1, complexity plugins bound cost,
+an `Idempotency-Key` convention makes retries safe, and cache normalisation in Apollo or Relay keeps views current. The
+claim here is not that GraphQL cannot do these things. It is that each is a separate decision, library and convention
+per team, where Rayfold makes them the default and writes them in the schema, so a second team on the same API gets
+them without repeating the work. Where a row says "no", it means the protocol has no answer of its own, not that the
+ecosystem has none.
 
 ## 2. Measured on the bookstore (loopback, Node 24, 300 iterations, interleaved)
 

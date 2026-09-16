@@ -1,6 +1,7 @@
 # 12. Security considerations
 
-Status: draft, part of Rayfold Core. Every conforming server MUST meet the requirements marked MUST. The reference
+Status: part of Rayfold Core 0.1, frozen with the 0.1.0 release ([process.md](process.md)). Every conforming server
+MUST meet the requirements marked MUST. The reference
 runtimes enforce them by default, and `e2e/security.test.ts` sends each attack below to a running server.
 
 No protocol can make an API impossible to attack. What Rayfold can do is make the safe behaviour the default, put it in

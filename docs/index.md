@@ -128,6 +128,56 @@ server keeps it open and sends only what changed.
 
 <div class="home-section">
 
+## Before and after
+
+The advantage is not that the requests are smaller. It is that the server says what changed, so the code that keeps
+screens correct after a write stops existing. Here is the same feature — buy a book, show it, and leave every other
+open screen correct — written the usual way and then in Rayfold.
+
+**Before.** Nothing here is wrong or unusual; this is what careful code looks like today.
+
+```ts
+// 1. the write
+await client.mutate({ mutation: BUY, variables: { bookId: "b3", qty: 2 } });
+
+// 2. the read it implies: a second round trip, because the mutation's result
+//    does not carry the fields this screen shows
+const { data } = await client.query({
+  query: BOOK,
+  variables: { id: "b3" },
+  fetchPolicy: "network-only",
+});
+
+// 3. every other open view holding that book is now stale. Either refetch them,
+//    or write a cache update for each, and keep that list correct as screens are added
+await client.refetchQueries({ include: [CATALOGUE, CART_BADGE, STOCK_BANNER] });
+```
+
+**After.**
+
+```ts
+const batch = client.batch();
+const bought = batch.command<Book>("buy", { bookId: "b3", qty: 2 }, { shape: "{ id }" });
+const book = batch.query<Book>("book", { id: bought.ref("id") }, { shape: "{ title stock }" });
+await batch.run();
+
+const { title, stock } = await book.promise;
+// step 3 is not shortened, it is gone: `buy` answered with patches for what it
+// changed, and every cached view holding that book has already applied them
+```
+
+Two round trips become one, because step 2 travels in the same request and takes its argument from step 1's result.
+Step 3 disappears, because the command's answer carries the patch. Add `live: true` to the query and another
+customer's purchase arrives through the same mechanism, with no second system to run.
+
+The cost of that: your API has to be described in a schema, and your team learns one more protocol.
+<a href="/should-you-use-rayfold.html">Should you use Rayfold?</a> is the honest version of that trade, and
+[the comparison](/comparison) says which rows are defaults rather than things the alternatives cannot do.
+
+</div>
+
+<div class="home-section">
+
 ## Pick your stack
 
 Every guide builds the same small bookshop, and every example project runs its tests on each change to the

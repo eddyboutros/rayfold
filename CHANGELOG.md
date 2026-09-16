@@ -5,6 +5,14 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **The site states the advantage plainly, compares more fairly, and agrees with itself about what is released.**
+  The landing page now shows one feature written the usual way and then in Rayfold, so the saving is visible rather
+  than described. The comparison table says what each protocol gives by default and now says so explicitly: GraphQL
+  serves reads over `GET` with persisted queries, which a CDN can cache, and the table no longer implies it cannot.
+  "Should you use Rayfold?" said the packages were unpublished and the specification a first draft, on the same page
+  that announced 0.1.0 on npm and Maven Central; it now says what is actually true — published and frozen at Core 0.1,
+  with the extensions still drafts, and no production users yet. Spec 12 no longer calls itself a draft while being
+  part of frozen Core.
 - **Several servers run a keyed command once between them.** `PgIdempotencyStore` (`@rayfold/postgres`) and
   `JdbcIdempotencyStore` (`dev.rayfold:rayfold-jdbc`) keep idempotency records in the database, so a retry that lands on
   another instance replays the first answer instead of running the command a second time. Two requests that arrive

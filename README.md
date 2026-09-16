@@ -70,6 +70,28 @@ POST /rayfold
 {"id":2,"patch":[{"set":"Order:o1","value":{"status":"CANCELLED"}}]}      <- later, because live:true
 ```
 
+## What you stop writing
+
+That tour is one ordinary feature: place an order, show it, and leave every other open screen correct. Written the
+usual way it is three steps, and the third grows with every screen you add.
+
+```ts
+await client.mutate({ mutation: PLACE_ORDER, variables: { input } });        // 1. the write
+const { data } = await client.query({ query: ORDER, variables: { id },      // 2. the read it implies
+  fetchPolicy: "network-only" });
+await client.refetchQueries({ include: [CART, STOCK_BANNER, ORDERS] });     // 3. everything else is stale now
+```
+
+In Rayfold step 2 travels in the same request and takes its argument from step 1's result, and step 3 does not exist:
+the command answers with patches, so every cached view holding those entities has already corrected itself.
+
+```ts
+const batch = client.batch();
+const placed = batch.command<Order>("placeOrder", { input }, { shape: "{ id }" });
+const shown = batch.query<Order>("order", { id: placed.ref("id") }, { shape: "{ status items { qty book { stock } } }" });
+await batch.run();
+```
+
 Read the [documentation](docs/index.md): guides, the [specification](spec/00-overview.md) and
 [how Rayfold compares](docs/comparison.md) with REST and GraphQL.
 

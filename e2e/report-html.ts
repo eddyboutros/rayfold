@@ -513,7 +513,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
 <header class="hero">
   <span class="eyebrow">A measured comparison of Rayfold, REST and GraphQL</span>
   <h1>Should you use Rayfold?</h1>
-  <p class="answer"><strong>Rayfold is a way for an app to talk to its server</strong> - the job REST and GraphQL do today. The same online bookstore was built all three ways and tested for real. Rayfold was ahead on <strong>${led} of ${e2e.rows.length}</strong> everyday tasks${tied ? `, level on ${tied}` : ""}${behind ? ` and behind on ${behind}` : ""}, and on <strong>${mLead} of ${methods.length}</strong> HTTP methods.${realdata ? ` On the full Project Gutenberg catalogue (${(realdata.dataset?.books ?? 0).toLocaleString("en-US")} real books)${rdBehind ? ` the picture is more mixed: Rayfold was ahead on ${rdLead}, level on ${rdTie} and behind on ${plural(rdBehind, "task", "tasks")}, all shown below.` : ` Rayfold was ahead on ${rdLead} of ${realdata.rows.length} tasks${rdTie ? ` and level on ${rdTie}` : ""}, and behind on none; all are shown below.`}` : ""}${workspace ? ` A second, much larger example, a multi-tenant issue tracker with ${(workspace.dataset["issues"] ?? 0).toLocaleString("en-US")} issues, was built the same three ways: Rayfold was ahead on ${wsLead} of ${wsRows.length} scenarios${wsTie ? `, level on ${wsTie}` : ""} and behind on ${wsBehind ? String(wsBehind) : "none"}.` : ""} Use it if your screens combine related data, you need live updates, or AI assistants will call your API. Be aware that Rayfold is new: the specification is a first version and no one runs it in production yet. New to any of this? <a href="#start">Start with the plain-language section</a>, which explains what is being compared before any numbers appear.</p>
+  <p class="answer"><strong>Rayfold is a way for an app to talk to its server</strong> - the job REST and GraphQL do today. The same online bookstore was built all three ways and tested for real. Rayfold was ahead on <strong>${led} of ${e2e.rows.length}</strong> everyday tasks${tied ? `, level on ${tied}` : ""}${behind ? ` and behind on ${behind}` : ""}, and on <strong>${mLead} of ${methods.length}</strong> HTTP methods.${realdata ? ` On the full Project Gutenberg catalogue (${(realdata.dataset?.books ?? 0).toLocaleString("en-US")} real books)${rdBehind ? ` the picture is more mixed: Rayfold was ahead on ${rdLead}, level on ${rdTie} and behind on ${plural(rdBehind, "task", "tasks")}, all shown below.` : ` Rayfold was ahead on ${rdLead} of ${realdata.rows.length} tasks${rdTie ? ` and level on ${rdTie}` : ""}, and behind on none; all are shown below.`}` : ""}${workspace ? ` A second, much larger example, a multi-tenant issue tracker with ${(workspace.dataset["issues"] ?? 0).toLocaleString("en-US")} issues, was built the same three ways: Rayfold was ahead on ${wsLead} of ${wsRows.length} scenarios${wsTie ? `, level on ${wsTie}` : ""} and behind on ${wsBehind ? String(wsBehind) : "none"}.` : ""} Use it if your screens combine related data, you need live updates, or AI assistants will call your API. Be aware that Rayfold is new: version 0.1.0 is published and its core is frozen, but no one runs it in production yet. New to any of this? <a href="#start">Start with the plain-language section</a>, which explains what is being compared before any numbers appear.</p>
   ${heroCompare}
   <p class="caption">One product page (a book, its author and three reviews), loaded from each API. The code lines are the actual requests. Measured: ${esc(productPage?.metric ?? "")}.</p>
   <div class="legend"><span class="l-rest">REST: resources and URLs, with ETags, Idempotency-Key and SSE</span><span class="l-gql">GraphQL: one query language, with DataLoader batching and subscriptions</span><span class="l-rayfold">Rayfold</span></div>
@@ -553,7 +553,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
       back, in one trip.</p>
       <ul>
         <li>No wasted trips and no wasted fields.</li>
-        <li>But every call is a POST, which shared caches and CDNs cannot store, so the same page is rebuilt for every visitor.</li>
+        <li>Calls go to one address and are POSTs by default, which shared caches and CDNs skip. Persisted queries can put reads behind a GET so a CDN can store them; it is a setup step each team makes, not the default.</li>
         <li>And the things a server must get right anyway - safe retries, who may read what, how expensive a call may be - are left to libraries, conventions and code review.</li>
       </ul></article>
     <article class="d-rayfold"><h3>Rayfold, what is measured here</h3>
@@ -639,16 +639,16 @@ ${demosHtml}
     <article class="d-gql"><h3>Stay with GraphQL if</h3><ul>
       <li>You already run GraphQL well, with federation, code generation and trained teams.</li>
       <li>You depend on its large ecosystem, such as Apollo, Relay and IDE tooling.</li>
-      <li>Shared HTTP caching and built-in retry safety matter little to you.</li>
+      <li>You are content to configure persisted queries, cache plugins and retry conventions yourself, or you do not need them.</li>
     </ul></article>
   </div>
   <div class="status">
     <h3>Before you decide: Rayfold's current status</h3>
     <ul>
-      <li>The specification is a first draft (version 0.1). It may still change.</li>
+      <li>Rayfold Core 0.1 (the batch envelope, frames, shapes, errors, permissions, caching and evolution rules) is frozen with the 0.1.0 release: it changes only by errata that no conforming server fails. The live updates, binary encoding, AI bridge and REST-route extensions are drafts and may still change; a server says which it serves in its manifest.</li>
       <li>There are two reference implementations, TypeScript and Kotlin, both complete: batches, live queries over HTTP and WebSocket, the binary encoding, AI tools and REST routes. They produce identical frames for every conformance case.</li>
       <li>The tools a working day needs are there: an explorer served next to the endpoint, a language server so editors underline a broken schema as you type, a mock server that answers from the schema before any resolver exists, importers from an OpenAPI document or a GraphQL SDL, result types that follow the shape you asked for, and a build-time check that every operation and every field taking arguments is actually wired to a resolver.</li>
-      <li>No one runs Rayfold in production yet, and there are no published packages or hosted documentation yet.</li>
+      <li>Version 0.1.0 is published: twelve npm packages and seven JVM artifacts on Maven Central, with the documentation at rayfold.dev. What is young is the use: no one runs Rayfold in production yet, and it has no ecosystem beside these packages.</li>
       <li>All numbers on this page come from automated tests on one computer, not from production traffic. The next section shows every request, so you can judge them yourself.</li>
     </ul>
   </div>
