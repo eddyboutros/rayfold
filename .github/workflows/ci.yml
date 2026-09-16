@@ -79,8 +79,16 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # the fleet holds a JVM server as well, so the two runtimes are held to one format for the shared stores
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - run: npm ci
-      - name: Two Rayfold processes share their idempotency records and their relay through a real Postgres
+      - name: Build the JVM fleet member
+        run: chmod +x kotlin/gradlew && kotlin/gradlew -p e2e/fleet/jvm installDist
+      - name: Rayfold processes, TypeScript and JVM, share their idempotency records and their relay through a real Postgres
         run: npx vitest run e2e/fleet.test.ts
         env:
           DATABASE_URL: postgres://postgres:rayfold@localhost:5432/rayfold

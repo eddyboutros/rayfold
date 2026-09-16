@@ -9,9 +9,20 @@ packages and the Maven artifacts share one version number.
   `client.live()` subscription with a retryable error, the client opens the query again after half a second, doubling
   to thirty, through whatever is in front of the servers, so a rolling deploy is invisible to a screen. `onError` now
   also receives `{ retrying }`; an error that would recur still ends the subscription. (TypeScript client.)
-- **A deployment guide, and a check in CI that runs two servers as two processes against a real Postgres:** a keyed
-  command sent to both at once runs once, a live query and a stream on one hear a command run on the other through
-  `NOTIFY`, and stopping one ends its live queries with a retryable error while the other keeps serving.
+- **A deployment guide, and a check in CI that runs servers as separate processes against a real Postgres:** a keyed
+  command sent to two at once runs once, a live query and a stream on one hear a command run on the other through
+  `NOTIFY`, and stopping one ends its live queries with a retryable error while the other keeps serving. The fleet
+  holds a TypeScript server and a JVM server together, which is what holds the two runtimes to one format for the
+  records and notifications they share.
+- **Fixed: a fleet of TypeScript and JVM servers could not share its idempotency records.** Three things they had
+  never been made to agree on, each found by that check and none of them visible to a fleet of one runtime:
+  the two created `rayfold_idempotency` with different column types and nullability, so whichever server started
+  first left the other unable to write (`jsonb` against a bound string) or to finish a record (`NULL` into a
+  `NOT NULL` token) - both now create the same columns, and a store may be created by either;
+  the JVM could not take over a key another runtime had finished, since it matched the row on a token that is null
+  there; and the two hashed a record's binding differently (`sha256(op + "\n" + args)` on the JVM against the
+  canonical JSON of `{op, args}` in TypeScript), so each answered the other's retries with `already_exists` instead
+  of replaying. Spec 12 §4.2 now states the hash, since a shared store needs every implementation to agree on it.
 - **A server tells its load balancer when to send traffic, and stops without dropping anyone.** `GET /rayfold/health`
   says the process runs. `GET /rayfold/ready` says whether this server should receive traffic and every reason it
   should not: still connecting to the relay, shutting down, or a check you configured (`db: () => pool.query("select

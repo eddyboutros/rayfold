@@ -513,7 +513,9 @@ class BatchRunner(
         if (key == null || ctx.simulate) return execute(p, args, ctx, results, sink, null)
         // every anonymous caller shares one scope, so a key would let one stranger replay another's result
         if (ctx.viewer is JsonNull) throw RayfoldException(Code.UNAUTHENTICATED, "${op.name}(): idempotency keys need an identified caller")
-        val hash = sha256(op.name + "\n" + Canonical.json(args))
+        // The binding a record carries (spec 12 section 4.2). Every runtime hashes it the same way, so a server of
+        // either can replay a record the other wrote when they share a store.
+        val hash = sha256(Canonical.json(buildJsonObject { put("op", JsonPrimitive(op.name)); put("args", args) }))
         var wait = FIRST_WAIT_MS
         while (true) {
             when (val c = idempotency.claim(viewerScope, key, options.idempotencyLeaseMs)) {

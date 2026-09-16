@@ -31,16 +31,22 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
 ) : IdempotencyStore {
     private val table = opts.table.split(".").joinToString(".") { quote(it) }
 
-    /** The DDL for the table this store reads, for Postgres, H2 and anything close to them. */
+    /**
+     * The DDL for the table this store reads, for Postgres, H2 and anything close to them. It matches what
+     * `PgIdempotencyStore` in `@rayfold/postgres` creates, column for column: either runtime may create the table and
+     * the other goes on using it, since a fleet can hold servers of both. Every column but the key is nullable
+     * because a finished record has no claim on it, and the frames are text rather than `jsonb` so that one statement
+     * works on both databases.
+     */
     fun schema(): String =
         "CREATE TABLE IF NOT EXISTS $table (" +
-            "\"scope\" varchar(64) not null, " +
-            "\"key\" varchar(128) not null, " +
-            "\"args_hash\" varchar(64), " +
+            "\"scope\" text not null, " +
+            "\"key\" text not null, " +
+            "\"args_hash\" text, " +
             "\"frame\" text, " +
             "\"compact_frame\" text, " +
-            "\"token\" varchar(64) not null, " +
-            "\"held_until\" bigint not null, " +
+            "\"token\" text, " +
+            "\"held_until\" bigint, " +
             "\"at\" bigint not null, " +
             "primary key (\"scope\", \"key\"))"
 
@@ -99,7 +105,8 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
 
     // ------------------------------------------------------------------ rows
 
-    private class Row(val record: IdempotencyRecord?, val token: String, val heldUntil: Long, val at: Long)
+    /** `token` and `heldUntil` are null on a row another runtime finished: its put clears them rather than zeroing them. */
+    private class Row(val record: IdempotencyRecord?, val token: String?, val heldUntil: Long, val at: Long)
 
     private fun read(c: Connection, scope: String, key: String): Row? {
         val sql = "SELECT \"args_hash\", \"frame\", \"compact_frame\", \"token\", \"held_until\", \"at\" FROM $table WHERE \"scope\" = ? AND \"key\" = ?"
@@ -133,9 +140,12 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
      * [read] returned, so of two processes taking the same key over, exactly one wins.
      */
     private fun takeOver(c: Connection, scope: String, key: String, row: Row, token: String, heldUntil: Long, at: Long): Boolean {
+        // `at` moves on every claim, takeover and put, so it is the row's version: of two processes taking the same key
+        // over, the second finds it changed. The token is matched null-safely, since a row another runtime finished
+        // holds none, and `=` would never match it.
         val sql = "UPDATE $table SET \"args_hash\" = NULL, \"frame\" = NULL, \"compact_frame\" = NULL, \"token\" = ?, \"held_until\" = ?, \"at\" = ? " +
-            "WHERE \"scope\" = ? AND \"key\" = ? AND \"token\" = ? AND \"held_until\" = ? AND \"at\" = ?"
-        return update(c, sql, listOf(token, heldUntil, at, scope, key, row.token, row.heldUntil, row.at)) == 1
+            "WHERE \"scope\" = ? AND \"key\" = ? AND \"at\" = ? AND \"token\" IS NOT DISTINCT FROM ?"
+        return update(c, sql, listOf(token, heldUntil, at, scope, key, row.at, row.token)) == 1
     }
 
     /**

@@ -93,7 +93,10 @@ handshakes:
    anonymous callers.
 2. **Binding.** A record is bound to the operation as well as its coerced arguments. Reusing a key for another
    operation or other arguments is `already_exists`: "Idempotency key K was used for another operation or other
-   arguments".
+   arguments". A store shared by servers of more than one implementation needs them to agree on what the binding is,
+   so it MUST be the SHA-256, in lower-case hexadecimal, of the canonical JSON ([01 §9](01-schema.md): keys sorted,
+   no insignificant whitespace, UTF-8) of `{ "op": <operation name>, "args": <coerced arguments> }`. The scope is the
+   same hash of the viewer.
 3. **Authorization first.** The operation's write policy MUST be checked before a replay is served.
 4. **One execution.** Two requests with the same scope and key that arrive together MUST execute once. The later
    request waits for the first, then replays its result. A command that failed before it changed anything leaves no

@@ -22,15 +22,21 @@ export interface PgIdempotencyOptions {
   now?: () => number;
 }
 
-/** The table this store reads and writes. Times are milliseconds since the epoch, from the server's own clock. */
+/**
+ * The table this store reads and writes. Times are milliseconds since the epoch, from the server's own clock.
+ *
+ * `JdbcIdempotencyStore` creates the same columns, so a fleet may hold servers of both runtimes: whichever starts
+ * first creates the table and the other goes on using it. The frames are text rather than `jsonb` for that reason -
+ * the JVM store binds them as strings, and one definition has to work on both.
+ */
 export function idempotencySchema(table = "rayfold_idempotency"): string {
   return [
     `CREATE TABLE IF NOT EXISTS ${table} (`,
     "  scope text NOT NULL,",
     "  key text NOT NULL,",
     "  args_hash text,",
-    "  frame jsonb,",
-    "  compact_frame jsonb,",
+    "  frame text,",
+    "  compact_frame text,",
     "  token text,",
     "  held_until bigint,",
     "  at bigint NOT NULL,",
@@ -50,6 +56,9 @@ interface Row {
 }
 
 const ms = (v: string | number | null): number => (v === null ? 0 : typeof v === "number" ? v : Number(v));
+
+/** A frame as stored: text from this store and the JVM's, already parsed from a `jsonb` column made by an older one. */
+const frameOf = (stored: unknown): unknown => (typeof stored === "string" ? JSON.parse(stored) : stored);
 
 export class PgIdempotencyStore implements IdempotencyStore {
   private readonly table: string;
@@ -77,8 +86,8 @@ export class PgIdempotencyStore implements IdempotencyStore {
   }
 
   private record(row: Row): IdempotencyRecord {
-    const record: IdempotencyRecord = { argsHash: row.args_hash ?? "", frame: row.frame, at: ms(row.at) };
-    if (row.compact_frame !== null && row.compact_frame !== undefined) record.compactFrame = row.compact_frame;
+    const record: IdempotencyRecord = { argsHash: row.args_hash ?? "", frame: frameOf(row.frame), at: ms(row.at) };
+    if (row.compact_frame !== null && row.compact_frame !== undefined) record.compactFrame = frameOf(row.compact_frame);
     return record;
   }
 
