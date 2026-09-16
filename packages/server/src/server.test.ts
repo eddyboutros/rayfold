@@ -685,22 +685,49 @@ import { loadSchema as secLoadSchema } from "@rayfold/schema";
 import { bookstoreSchemaText as secSchemaText } from "../../../examples/bookstore-ts/src/index.ts";
 
 describe("security: bounded memory", () => {
+  /** A finished key, as a command leaves it: claimed, then recorded under that claim's token. */
+  const finish = async (store: MemoryIdempotencyStore, key: string, at: number) => {
+    const claim = await store.claim("s", key, 1_000);
+    if (claim.state !== "owned") throw new Error(`${key} was not free: ${claim.state}`);
+    await store.put("s", key, { argsHash: "h", frame: {}, at }, claim.token);
+  };
+
   it("the idempotency store sweeps expired records on write and never holds more than its cap", async () => {
     let t = 0;
     const store = new MemoryIdempotencyStore(1_000, () => t, 3);
-    /** A finished key, as a command leaves it: claimed, then recorded under that claim's token. */
-    const record = async (key: string, at: number) => {
-      const claim = await store.claim("s", key, 1_000);
-      if (claim.state !== "owned") throw new Error(`${key} was not free: ${claim.state}`);
-      await store.put("s", key, { argsHash: "h", frame: {}, at }, claim.token);
-    };
-    for (const k of ["a", "b", "c", "d"]) await record(k, t);
+    for (const k of ["a", "b", "c", "d"]) await finish(store, k, t);
     expect(store.size).toBe(3);
     expect(await store.get("s", "a")).toBeUndefined(); // the oldest went first
     expect(await store.get("s", "d")).toBeDefined();
     t = 1_001;
-    await record("e", t);
+    await finish(store, "e", t);
     expect(store.size).toBe(1); // b, c and d expired and were swept by the write
+  });
+
+  it("a claim whose holder died and whose key nobody retried does not block the sweep behind it", async () => {
+    let t = 0;
+    const store = new MemoryIdempotencyStore(1_000, () => t, 2);
+    const dead = await store.claim("s", "gone", 10); // never renewed, never recorded, never retried
+    if (dead.state !== "owned") throw new Error(`expected to own the key, got ${dead.state}`);
+    t = 11; // its lease has run out
+    for (const k of ["a", "b", "c", "d"]) await finish(store, k, t);
+    expect(store.size).toBe(2); // the dead claim went with the oldest records
+    expect(await store.get("s", "a")).toBeUndefined();
+    expect(await store.get("s", "d")).toBeDefined();
+  });
+
+  it("guard: a claim still in flight is never swept, and the answer it records afterwards replays", async () => {
+    let t = 0;
+    const store = new MemoryIdempotencyStore(1_000, () => t, 2);
+    const live = await store.claim("s", "running", 1_000);
+    if (live.state !== "owned") throw new Error(`expected to own the key, got ${live.state}`);
+    for (const k of ["a", "b", "c", "d"]) await finish(store, k, t);
+    expect(store.size).toBe(2); // the claim counts against the cap and the records made room for it
+    expect(await store.get("s", "c")).toBeUndefined();
+    expect(await store.get("s", "d")).toBeDefined();
+    expect(await store.claim("s", "running", 1_000)).toEqual({ state: "inflight", heldUntil: 1_000 });
+    await store.put("s", "running", { argsHash: "h", frame: { ok: 1 }, at: t }, live.token);
+    expect(await store.get("s", "running")).toMatchObject({ frame: { ok: 1 } });
   });
 
   it("through the server, a capped store forgets the oldest key while the newest still replays (guard)", async () => {

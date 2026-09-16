@@ -261,8 +261,17 @@ async function claimKey(rt: BatchRuntime, scope: string, key: string, signal: Ab
     if (signal.aborted) throw signal.reason;
     // Whoever holds it may be another server, so waiting means asking again; a store in this process wakes us sooner.
     const woken = rt.idempotency instanceof MemoryIdempotencyStore ? rt.idempotency.settled(scope, key) : undefined;
-    const pause = new Promise<void>((r) => setTimeout(r, backoff[Math.min(attempt, backoff.length - 1)]));
-    await (woken ? Promise.race([woken, pause]) : pause);
+    // The wait ends on the backoff, when the holder settles (a store in this process), or the moment the op is cancelled.
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", done);
+        resolve();
+      };
+      const timer = setTimeout(done, backoff[Math.min(attempt, backoff.length - 1)]);
+      signal.addEventListener("abort", done, { once: true });
+      void woken?.then(done);
+    });
     if (signal.aborted) throw signal.reason;
   }
 }

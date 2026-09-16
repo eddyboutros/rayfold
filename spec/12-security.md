@@ -78,7 +78,10 @@ handshakes:
    bounded store (default 10,000, least recently used first out). Shapes the server registers itself are never
    evicted. Idempotency records MUST expire (default 24 hours), and the store MUST be bounded (default 100,000,
    expired records first, then the oldest). A key held by a command that is running now is never evicted, since
-   evicting it would let a second request run the same command.
+   evicting it would let a second request run the same command; a key whose lease has run out with nothing recorded
+   holds no command and MUST NOT keep older entries from being evicted behind it. Keys in flight count against the
+   bound, so the room left for records is the bound minus the commands running at that moment: a bound below the
+   number of commands a server runs at once leaves nothing to replay from.
 
 ## 4. Idempotency and replays
 

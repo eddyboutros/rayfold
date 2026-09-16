@@ -18,6 +18,11 @@ packages and the Maven artifacts share one version number.
 - **Spec: leases, and what a failed command leaves behind** (03 §4, 12 §3.6 and §4.4). A claimed key is held under a
   bounded lease that may be taken over once it lapses, a key held by a running command is never evicted, and a command
   that failed or was canceled after its effect records that answer rather than releasing the key.
+- **Fixed: the in-memory idempotency store could grow past its cap, and a stranded server could overwrite the answer
+  of the server that took its key over.** A claim whose holder had died and whose key nobody retried stopped the sweep
+  behind it, so nothing younger was ever removed; and a record written from a lost lease landed once the new owner had
+  answered, because only claims in flight were checked. Both hold now; the Postgres store is held to the same two
+  cases.
 - **The documentation site is at https://rayfold.dev/.** Links to `eddyboutros.github.io/rayfold/` redirect there,
   problem-type URIs included, which keep their 0.1.0 form.
 - **Security: a `__proto__` key in a request's arguments is plain data again (TypeScript server).** Next to a `$ref`, or

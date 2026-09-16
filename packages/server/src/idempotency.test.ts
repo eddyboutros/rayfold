@@ -1,5 +1,5 @@
 import { hashJson } from "@rayfold/schema";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryIdempotencyStore, type IdempotencyStore } from "./context.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import type { Frame } from "./protocol.ts";
@@ -51,7 +51,23 @@ function fleet(count: number, opts: { store: IdempotencyStore; now?: () => numbe
 const book = (server: RayfoldServer, key = KEY, seat = 1): Promise<Frame[]> => server.collect({ ops: [{ id: 1, op: "book", args: { seat }, key }] }, { viewer });
 const replayed = (frames: Frame[]): boolean => Boolean((frames[0] as { meta?: { replay?: boolean } }).meta?.replay);
 
+/** A store whose `renew` fails for the tokens listed: what a server that lost its database sees. */
+class LossyStore extends MemoryIdempotencyStore {
+  readonly granted: string[] = [];
+  readonly lost = new Set<string>();
+  override async claim(scope: string, key: string, leaseMs: number) {
+    const c = await super.claim(scope, key, leaseMs);
+    if (c.state === "owned") this.granted.push(c.token);
+    return c;
+  }
+  override async renew(scope: string, key: string, token: string, leaseMs: number): Promise<boolean> {
+    return this.lost.has(token) ? false : super.renew(scope, key, token, leaseMs);
+  }
+}
+
 describe("one command per key, across servers sharing a store", () => {
+  afterEach(() => vi.useRealTimers());
+
   it("runs the command once however many servers the retries land on, and answers them all with its result", async () => {
     const store = new MemoryIdempotencyStore();
     const f = fleet(2, { store, hold: true });
@@ -209,5 +225,112 @@ describe("one command per key, across servers sharing a store", () => {
     const f = fleet(1, { store });
     expect((await book(f.servers[0]!))[0]).toMatchObject({ ok: { id: "t1" } });
     expect(f.runs()).toBe(1);
+  });
+
+  it("keeps renewing a long command's lease, so a retry arriving after the first lease would have lapsed waits instead of running it again", async () => {
+    vi.useFakeTimers();
+    const store = new MemoryIdempotencyStore(24 * 3_600_000, () => Date.now());
+    const renew = vi.spyOn(store, "renew");
+    const f = fleet(2, { store, now: () => Date.now(), hold: true, leaseMs: 60 });
+    const first = book(f.servers[0]!);
+    await vi.advanceTimersByTimeAsync(61); // past the lease as first granted; renewals ran at 20, 40 and 60 ms
+    expect(renew).toHaveBeenCalledTimes(3);
+    expect(f.runs()).toBe(1);
+
+    const retry = book(f.servers[1]!);
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    expect(f.runs()).toBe(1); // held, not taken over: the other server is still running it
+
+    f.open();
+    const [a, b] = await Promise.all([first, retry]);
+    expect(a[0]).toMatchObject({ ok: { id: "t1" } });
+    expect(b[0]).toMatchObject({ ok: { id: "t1" }, meta: { replay: true } });
+    expect(f.runs()).toBe(1);
+    // the sibling is "waits while a server still holds the key, and takes it over once that server's lease runs out":
+    // there nothing renews, and the retry takes the key
+  });
+
+  it("a server that lost its database loses the key: the next retry takes it over, and the stranded server's answer is never recorded", async () => {
+    let t = 1_000;
+    const store = new LossyStore(24 * 3_600_000, () => t);
+    let runs = 0;
+    let open = () => {};
+    const held = new Promise<void>((r) => (open = r));
+    const schema = `entity Ticket { id: ID seat: Int run: Int } command book(seat: Int): Ticket`;
+    const resolvers = {
+      Command: {
+        book: async ({ seat }: { seat: number }) => {
+          const run = ++runs;
+          if (run === 1) await held;
+          return { id: `t${seat}`, seat, run };
+        },
+      },
+    };
+    const [a, b] = [0, 1].map(() => createRayfoldServer({ schema, resolvers, idempotency: store, now: () => t, idempotencyLeaseMs: 60 }));
+    const stranded = book(a!);
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    expect(store.granted).toHaveLength(1);
+    store.lost.add(store.granted[0]!); // from here its renewals fail, as they would with the database gone
+    t += 61;
+
+    const taken = await bounded(book(b!), "the retry taking over the lapsed key");
+    expect(taken[0]).toMatchObject({ ok: { id: "t1", run: 2 } });
+    expect(replayed(taken)).toBe(false);
+    expect(runs).toBe(2); // the one case where a command runs twice (spec 12 section 4.6)
+
+    open();
+    expect((await bounded(stranded, "the stranded server finishing"))[0]).toMatchObject({ ok: { run: 1 } }); // its own caller still gets its answer
+    expect(await store.get(hashJson(viewer), KEY)).toMatchObject({ frame: { ok: { run: 2 } } }); // but the key speaks for the server that took it
+    expect((await book(a!))[0]).toMatchObject({ ok: { run: 2 }, meta: { replay: true } });
+    expect(runs).toBe(2);
+  });
+
+  it("a retry waiting for a held key stops waiting when its caller goes away, never runs the command, and leaves the key with the holder", async () => {
+    const store = new MemoryIdempotencyStore();
+    const claims = new Signal<string>();
+    const claim = store.claim.bind(store);
+    vi.spyOn(store, "claim").mockImplementation(async (scope: string, key: string, lease: number) => {
+      const c = await claim(scope, key, lease);
+      claims.push(c.state);
+      return c;
+    });
+    const f = fleet(2, { store, hold: true });
+    const first = book(f.servers[0]!);
+    await claims.until((s) => s.includes("owned"), "the first server taking the key");
+
+    const ac = new AbortController();
+    const frames: Frame[] = [];
+    const waiter = (async () => {
+      for await (const fr of f.servers[1]!.execute({ ops: [{ id: 1, op: "book", args: { seat: 1 }, key: KEY }] }, { viewer, signal: ac.signal })) frames.push(fr);
+    })();
+    await claims.until((s) => s.includes("inflight"), "the retry finding the key held");
+    ac.abort();
+    await bounded(waiter, "the waiting retry ending when its caller went away");
+    expect(frames).toEqual([{ id: 1, error: { code: "canceled", message: "Canceled" }, fin: true }]);
+    expect(f.runs()).toBe(1);
+
+    f.open();
+    expect((await first)[0]).toMatchObject({ ok: { id: "t1" } });
+    expect(replayed(await book(f.servers[1]!))).toBe(true); // the key stayed with the holder, so its answer is there
+    expect(f.runs()).toBe(1);
+  });
+
+  it("replays a recorded failure in the form the retry asks for, compact included", async () => {
+    const store = new MemoryIdempotencyStore();
+    const broken = createRayfoldServer({ schema: SCHEMA, resolvers: { Command: { book: async () => null } }, idempotency: store });
+    const first = await book(broken);
+    expect(first[0]).toMatchObject({ error: { code: "internal" }, fin: true });
+
+    const compact = await broken.collect({ ops: [{ id: 7, op: "book", args: { seat: 1 }, key: KEY, compact: true }] }, { viewer });
+    expect(compact).toEqual([{ ...first[0], id: 7, meta: { replay: true } }]);
+  });
+
+  it("hands the store the lease the server was configured with, 30 seconds unless set", async () => {
+    const store = new MemoryIdempotencyStore();
+    const claim = vi.spyOn(store, "claim");
+    await book(fleet(1, { store }).servers[0]!);
+    expect(claim).toHaveBeenLastCalledWith(hashJson(viewer), KEY, 30_000);
+    await book(fleet(1, { store, leaseMs: 1_234 }).servers[0]!, KEY + "b");
+    expect(claim).toHaveBeenLastCalledWith(hashJson(viewer), KEY + "b", 1_234);
   });
 });

@@ -155,7 +155,7 @@ const SEP = String.fromCharCode(0);
 /**
  * In-memory idempotency records, for one server. Records expire after `ttlMs`; expired ones are dropped on read and
  * swept on every write, and past `maxEntries` the oldest go first, so memory stays bounded however many commands
- * arrive. A claimed key is never swept: a command is still running behind it.
+ * arrive. A key claimed by a running command is never swept; a claim whose lease ran out with nothing recorded is.
  */
 export class MemoryIdempotencyStore implements IdempotencyStore {
   private readonly map = new Map<string, Entry>();
@@ -203,13 +203,22 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
   async put(scope: string, key: string, record: IdempotencyRecord, token: string): Promise<void> {
     const k = scope + SEP + key;
     const held = this.map.get(k);
-    if (held?.token !== undefined && held.token !== token) return; // the lease was lost; the new owner speaks for this key
+    // Only the holder of the claim records under it. A lost lease is left alone, and so is a key that whoever took the
+    // lease over has answered since: that record must not be replaced by the stranded server's.
+    if (held?.token !== token) return;
     this.map.delete(k); // re-inserted at the end, so the map stays ordered oldest first
     this.map.set(k, { record, at: record.at });
     held?.wake?.();
     const t = this.now();
     for (const [old, e] of this.map) {
-      if (!e.record) break; // a claim in flight is never swept
+      if (!e.record) {
+        // A claim in flight is never swept: a command is running behind it. One whose lease ran out with nothing
+        // recorded and nobody retrying is dead weight, and must not stand in front of everything younger.
+        if (e.heldUntil !== undefined && e.heldUntil > t) continue;
+        this.map.delete(old);
+        e.wake?.();
+        continue;
+      }
       if (this.map.size > this.maxEntries || t - e.at > this.ttlMs) this.map.delete(old);
       else break;
     }
