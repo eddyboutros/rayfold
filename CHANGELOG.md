@@ -5,6 +5,24 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **A live query outlives the server it was opened on.** When a server going away or a dropped connection ends a
+  `client.live()` subscription with a retryable error, the client opens the query again after half a second, doubling
+  to thirty, through whatever is in front of the servers, so a rolling deploy is invisible to a screen. `onError` now
+  also receives `{ retrying }`; an error that would recur still ends the subscription. (TypeScript client.)
+- **A server tells its load balancer when to send traffic, and stops without dropping anyone.** `GET /rayfold/health`
+  says the process runs. `GET /rayfold/ready` says whether this server should receive traffic and every reason it
+  should not: still connecting to the relay, shutting down, or a check you configured (`db: () => pool.query("select
+  1")`) failing or not answering in time. `server.drain()` turns readiness off, refuses new batches, ends live queries
+  and streams with a retryable `unavailable` that sends their clients to another server, and waits for the batches still
+  running; `shutdown(server, http)` does that, closes the connections and stops hearing the relay, for `SIGTERM`. A
+  WebSocket closes as a server going away (1001) once the frames ending its ops are out.
+- **Live queries and streams follow commands run on other servers.** A `relay` joins the servers behind one load
+  balancer: a command's changes and the events it emits cross it, so a live query or a stream open on any server hears
+  a command run on any other, and no server hears its own change twice. `PgRelay` (`@rayfold/postgres`) carries them
+  over Postgres `LISTEN`/`NOTIFY`, through a table when a message is too large for one notification; `MemoryRelay`
+  joins servers in one process. `server.ready()` resolves once the server hears the others and `server.close()` stops
+  it; a refused message is reported through `onRelayError` and `server.relayFailure` while the command that made the
+  change still succeeds on its own server.
 - **The site states the advantage plainly, compares more fairly, and agrees with itself about what is released.**
   The landing page now shows one feature written the usual way and then in Rayfold, so the saving is visible rather
   than described. The comparison table says what each protocol gives by default and now says so explicitly: GraphQL

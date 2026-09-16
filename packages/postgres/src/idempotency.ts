@@ -8,6 +8,7 @@
  * Create the table once with `idempotencySchema()`, or run the same SQL in your migrations.
  */
 import type { IdempotencyClaim, IdempotencyRecord, IdempotencyStore } from "@rayfold/server/core";
+import { ensure } from "./ddl.ts";
 import type { Queryable } from "./index.ts";
 
 export interface PgIdempotencyOptions {
@@ -67,11 +68,11 @@ export class PgIdempotencyStore implements IdempotencyStore {
     this.now = opts.now ?? Date.now;
   }
 
-  /** Creates the table and index if they are not there yet. */
+  /** Creates the table and index if they are not there yet. Safe to call from every server as it starts. */
   async migrate(): Promise<void> {
     for (const statement of idempotencySchema(this.table).split(";\n")) {
       const text = statement.trim().replace(/;$/, "");
-      if (text) await this.sql.query(text);
+      if (text) await ensure(this.sql, text);
     }
   }
 

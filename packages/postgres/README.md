@@ -82,6 +82,27 @@ command and the other waits, then replays its answer. The running server renews 
 stops, the lease runs out and the next retry takes the key over. Records last 24 hours and the table is bounded
 (`ttlMs`, `maxRecords`, `table`).
 
+## Live updates across servers
+
+Each server hears only the commands it ran itself, so a live query or a stream open on another server stays stale.
+`PgRelay` carries changes and events between servers over `LISTEN`/`NOTIFY`:
+
+```ts
+import { PgRelay, pgNotifications } from "@rayfold/postgres";
+
+const listener = new pg.Client({ connectionString }); // LISTEN belongs to one connection: not the pool
+await listener.connect();
+const relay = new PgRelay(pgNotifications(listener), pool);
+await relay.migrate();
+
+const server = createRayfoldServer({ schema, resolvers, idempotency, relay });
+await server.ready();
+```
+
+A message too large for one notification goes through the `rayfold_relay` table. A server never hears its own message
+back. A refused message is reported through `onRelayError` and `server.relayFailure`; the command that made the change
+still succeeds.
+
 ## License
 
 Apache-2.0

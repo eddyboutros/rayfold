@@ -16,14 +16,26 @@ data class Change(val keys: Set<String>, val ops: Set<String>)
  * The server's change bus (mirrors packages/server/src/live.ts). Every committed command publishes its patch here;
  * adapters may publish their own changes. Live queries subscribe for as long as they are open.
  */
-class ChangeBus {
+class ChangeBus(
+    private val relay: Relay? = null,
+    /** Where a relay's refusal to carry a change goes; the change itself was already made. */
+    onRelayError: (Throwable) -> Unit = {},
+) {
     /** A wrapper per subscription, so the same function subscribed twice is two subscriptions. */
     private class Sub(val fn: (Change) -> Unit)
 
     private val subs = CopyOnWriteArraySet<Sub>()
+    private val forwarding = RelayForwarding(relay, onRelayError)
 
+    /** A change this server made: its own live queries hear it now, and every other server's through the relay. */
     fun publish(c: Change) {
         if (c.keys.isEmpty() && c.ops.isEmpty()) return
+        deliver(c)
+        forwarding.send(RelayMessage.Change(c.keys, c.ops))
+    }
+
+    /** A change reaching this server, made here or elsewhere: only the live queries here hear it. */
+    fun deliver(c: Change) {
         for (s in subs) s.fn(c)
     }
 

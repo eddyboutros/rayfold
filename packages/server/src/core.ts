@@ -13,6 +13,7 @@ export { estimateCost, type CostEstimate } from "./cost.ts";
 export { decide, decisionError, pushableFilter, hasPolicy, type Decision } from "./policy.ts";
 export { checkWiring } from "./wiring.ts";
 export { ChangeBus, changeFromPatch, diffResults, normalizeResult, readSetOf, type Change } from "./live.ts";
+export { MemoryRelay, type Relay, type RelayMessage } from "./relay.ts";
 export type { Instrumentation, BatchInfo, OpInfo, LoaderInfo, Outcome } from "./instrumentation.ts";
 export { MemoryUsage, type UsageSink, type UsageEvent, type UsageEntry } from "./usage.ts";
 export { capabilityAllows } from "./capability-scope.ts";

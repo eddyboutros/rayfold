@@ -737,9 +737,11 @@ function toRef(v: unknown): unknown {
 }
 
 function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(new RayfoldError("canceled", "Canceled"));
+  // the reason travels: a server shutting down ends a stream with `unavailable`, so the client goes elsewhere
+  const reason = () => (signal.reason instanceof RayfoldError ? signal.reason : new RayfoldError("canceled", "Canceled"));
+  if (signal.aborted) return Promise.reject(reason());
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(new RayfoldError("canceled", "Canceled"));
+    const onAbort = () => reject(reason());
     signal.addEventListener("abort", onAbort, { once: true });
     p.then(
       (v) => {

@@ -5,9 +5,14 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import com.sun.net.httpserver.HttpsExchange
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -67,7 +72,27 @@ data class HttpOptions(
     val explorer: Boolean = false,
     /** Shown in the explorer's header, to tell one service from another. */
     val explorerTitle: String? = null,
+    /**
+     * What `GET {path}/ready` checks besides the server itself, by name: each returns when its dependency answers and
+     * throws when it does not, such as `"db" to { pool.connection.use { it.isValid(1) } }`. A failure, or no answer
+     * within [readinessTimeoutMs], makes the server not ready and names the check.
+     */
+    val readiness: Map<String, suspend () -> Unit> = emptyMap(),
+    /** How long a readiness check may take before it counts as failed. */
+    val readinessTimeoutMs: Long = 2_000,
 )
+
+/**
+ * Stops a server the way a rolling deploy needs: [RayfoldServer.drain] turns readiness off and ends live queries and
+ * streams with a retryable error, batches still running get [timeoutMs] to finish, then the listener and its
+ * connections close and the server stops hearing the relay. Wire it to the signal your platform sends, such as a
+ * shutdown hook.
+ */
+suspend fun shutdown(server: RayfoldServer, http: HttpServer, timeoutMs: Long = 10_000) {
+    server.drain(timeoutMs)
+    http.stop(0)
+    server.close()
+}
 
 /**
  * One HTTP exchange as any server sees it. [RayfoldHttp.serve] works on this, so the JDK server, a servlet
@@ -171,6 +196,20 @@ class RayfoldHttp(
             if (sub == "/manifest" && call.method == "GET") return manifest(call, path)
             if (sub == "/openapi.json" && call.method == "GET") return json(call, 200, OpenApi.document(server.ir))
             if (sub == "/explorer" && call.method == "GET") return explorer(call, base, path)
+            if (sub == "/health" && call.method == "GET") {
+                call.setHeader("Cache-Control", "no-store")
+                return json(call, 200, buildJsonObject { put("status", "ok") })
+            }
+            if (sub == "/ready" && call.method == "GET") {
+                val status = runBlocking { readiness() }
+                call.setHeader("Cache-Control", "no-store")
+                return json(call, if (status.ready) 200 else 503, buildJsonObject { put("ready", status.ready); put("reasons", JsonArray(status.reasons.map { JsonPrimitive(it) })) })
+            }
+            if (server.draining.isCompleted) {
+                // the balancer has been told through /ready; a request that still arrives is sent elsewhere
+                call.setHeader("Retry-After", "1")
+                throw RayfoldException(Code.UNAVAILABLE, "The server is shutting down")
+            }
             val envelope: JsonObject
             var safe = false
             if (sub.isEmpty() || sub == "/") {
@@ -224,7 +263,9 @@ class RayfoldHttp(
             call.setHeader("X-Accel-Buffering", "no")
             val out = call.respond(200, -1)
             streaming = true
-            out.use { stream(it, batch, opts, wantsRb) }
+            // the status and headers leave now: a stream waiting for its first item would otherwise leave the client
+            // without a response until the first keep-alive
+            out.use { it.flush(); stream(it, batch, opts, wantsRb) }
         } catch (e: Throwable) {
             if (streaming) {
                 // the status line is gone, so the client only sees the stream end early: the log is the one place this
@@ -235,6 +276,24 @@ class RayfoldHttp(
             }
             problem(call, e)
         }
+    }
+
+    /** What `GET {path}/ready` answers: the server's own readiness, then each configured check given [HttpOptions.readinessTimeoutMs]. */
+    suspend fun readiness(): Readiness = coroutineScope {
+        val own = server.readiness().reasons
+        val limit = options.readinessTimeoutMs
+        val checks = options.readiness.map { (name, check) ->
+            async {
+                try {
+                    if (withTimeoutOrNull(limit) { check() } == null) "$name: no answer within $limit ms" else null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    "$name: ${e.message ?: e}"
+                }
+            }
+        }.awaitAll()
+        Readiness(own + checks.filterNotNull())
     }
 
     /**

@@ -1,6 +1,11 @@
 package dev.rayfold.core
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonArray
@@ -60,11 +65,24 @@ class Resolvers(
     val fields: Map<String, Map<String, FieldLoader>> = emptyMap(),
 )
 
-class EventBus {
+class EventBus(
+    relay: Relay? = null,
+    /** Where a relay's refusal to carry an event goes; the event happened here regardless. */
+    onRelayError: (Throwable) -> Unit = {},
+) {
     private val subs = mutableMapOf<String, MutableList<(JsonObject) -> Unit>>()
     private var seq = 0L
-    @Synchronized
+    private val forwarding = RelayForwarding(relay, onRelayError)
+
+    /** An event this server raised: its own streams hear it now, and every other server's through the relay. */
     fun publish(name: String, payload: JsonObject) {
+        deliver(name, payload)
+        forwarding.send(RelayMessage.Event(name, payload))
+    }
+
+    /** An event reaching this server, raised here or elsewhere: only the streams here hear it. `seq` counts arrivals here. */
+    @Synchronized
+    fun deliver(name: String, payload: JsonObject) {
         seq++
         val enriched = JsonObject(payload + ("seq" to JsonPrimitive(seq)))
         subs[name]?.toList()?.forEach { it(enriched) }
@@ -73,6 +91,27 @@ class EventBus {
     fun on(name: String, fn: (JsonObject) -> Unit): () -> Unit {
         subs.getOrPut(name) { mutableListOf() }.add(fn)
         return { synchronized(this) { subs[name]?.remove(fn) } }
+    }
+}
+
+/**
+ * Hands a bus's messages to the relay without holding the publisher up: the change or event already happened here,
+ * so its caller answers now and a refusal goes to [onRelayError]. One worker, so a server's messages leave in order.
+ */
+internal class RelayForwarding(private val relay: Relay?, private val onRelayError: (Throwable) -> Unit) {
+    private val scope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1)) }
+
+    fun send(message: RelayMessage) {
+        val r = relay ?: return
+        scope.launch {
+            try {
+                r.publish(message)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                onRelayError(e)
+            }
+        }
     }
 }
 

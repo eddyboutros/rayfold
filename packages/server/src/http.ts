@@ -24,6 +24,14 @@ export interface HttpOptions extends OriginOptions {
    * empty line, or a zero-length RB frame (spec 04 section 4), so proxies do not close an idle live query. Default 15 000.
    */
   keepAliveMs?: number;
+  /**
+   * What `GET {path}/ready` checks besides the server itself, by name: each resolves when its dependency answers and
+   * rejects when it does not, such as `{ db: () => pool.query("select 1") }`. A rejection, or no answer within
+   * `readinessTimeoutMs`, makes the server not ready and names the check.
+   */
+  readiness?: Record<string, () => Promise<unknown>>;
+  /** How long a readiness check may take before it counts as failed. Default 2000. */
+  readinessTimeoutMs?: number;
 }
 
 const FRAMES_TYPE = "application/rayfold-frames+json";
@@ -81,6 +89,22 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
       if (sub === "/openapi.json" && req.method === "GET") {
         json(res, 200, openApiFor(server.ir));
         return;
+      }
+      if (sub === "/health" && req.method === "GET") {
+        res.setHeader("Cache-Control", "no-store");
+        json(res, 200, { status: "ok" });
+        return;
+      }
+      if (sub === "/ready" && req.method === "GET") {
+        const status = await readiness(server, opts);
+        res.setHeader("Cache-Control", "no-store");
+        json(res, status.ready ? 200 : 503, status);
+        return;
+      }
+      if (server.draining.aborted) {
+        // the balancer has been told through /ready; a request that still arrives is sent elsewhere
+        res.setHeader("Retry-After", "1");
+        throw new RayfoldError("unavailable", "The server is shutting down");
       }
       let envelope: RequestEnvelope;
       let safe = false;
@@ -358,9 +382,48 @@ function problem(res: ServerResponse, code: ErrorCode, detail: string, wire?: Wi
   res.writeHead(status, { "Content-Type": PROBLEM_TYPE, "Cache-Control": "no-store" }).end(JSON.stringify(body));
 }
 
+/** The server's own readiness and the configured checks, each given `readinessTimeoutMs` to answer. */
+export async function readiness(server: RayfoldServer, opts: HttpOptions = {}): Promise<{ ready: boolean; reasons: string[] }> {
+  const own = server.readiness().reasons;
+  const limit = opts.readinessTimeoutMs ?? 2_000;
+  const checks = await Promise.all(
+    Object.entries(opts.readiness ?? {}).map(async ([name, check]): Promise<string | undefined> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`no answer within ${limit} ms`)), limit);
+      });
+      try {
+        await Promise.race([check(), late]);
+        return undefined;
+      } catch (e) {
+        return `${name}: ${e instanceof Error ? e.message : String(e)}`;
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+  const reasons = [...own, ...checks.filter((c): c is string => c !== undefined)];
+  return { ready: reasons.length === 0, reasons };
+}
+
 /** Start a Node HTTP server hosting the Rayfold endpoint. */
 export function listen(server: RayfoldServer, port: number, opts: HttpOptions = {}): Promise<Server> {
   const handler = createHttpHandler(server, opts);
   const http = createServer((req, res) => void handler(req, res));
   return new Promise((resolve) => http.listen(port, () => resolve(http)));
+}
+
+/**
+ * Stops a server the way a rolling deploy needs: `drain()` turns readiness off and ends live queries and streams with a
+ * retryable error, batches still running get `timeoutMs` to finish, then the connections close and the server stops
+ * hearing the relay. Wire it to the signal your platform sends:
+ * `process.on("SIGTERM", () => shutdown(server, http).then(() => process.exit(0)))`.
+ */
+export async function shutdown(server: RayfoldServer, http: Server, opts: { timeoutMs?: number } = {}): Promise<void> {
+  await server.drain(opts);
+  await new Promise<void>((resolve) => {
+    http.close(() => resolve());
+    http.closeAllConnections();
+  });
+  await server.close();
 }

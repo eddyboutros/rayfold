@@ -52,6 +52,27 @@ and how many are kept (100,000).
 Only JDBC is needed: the SQL is plain enough for Postgres, H2 and their relatives, with no upsert syntax and no locking
 hints. Under Spring Boot, declare the store as a bean and the starter wires it in ([Java and Spring](java-spring.md)).
 
+## Live updates across servers
+
+A command's patches reach the live queries and streams open on the process that ran it, and no other: each process
+hears only itself. `PgRelay` carries changes and events between processes over Postgres `LISTEN`/`NOTIFY`, in the
+same format the TypeScript server uses, so a mixed fleet shares one channel.
+
+```kotlin
+val listener = dataSource.connection // LISTEN belongs to one connection: keep it out of the pool
+val relay = PgRelay(PgNotifications(listener), dataSource::getConnection)
+relay.migrate() // or run relay.schema() in your migrations
+
+val server = RayfoldServer(ir, resolvers, idempotency = idempotency, relay = relay)
+server.ready() // listening to the other servers
+```
+
+`PgNotifications` needs the Postgres driver on the classpath, and only then: `rayfold-jdbc` does not depend on it. The
+driver serialises everything on one connection, so a `notify` sent on the listening connection waits for the current
+poll to end; give `PgNotifications` a second connection for sending to avoid that. A message too large for one
+notification goes through the `rayfold_relay` table. A server never hears its own message back; a refused message is
+reported through `onRelayError` and `relayFailure`, and the command that made the change still succeeds.
+
 ## Why pass `ctx`
 
 When a resolver loads an entity whose read policy can run in SQL (it reads only the viewer, the arguments, literals

@@ -63,10 +63,13 @@ What else is in the package:
 | `openApiFor(server)` | An OpenAPI 3.2 document for those routes. |
 | `createMcpHandler(server)` | The schema as an MCP server: commands become tools, queries become resources. |
 | `MemoryIdempotencyStore` | Where command results are kept so a retry replays instead of running the command again. |
+| `MemoryRelay` | Joins servers in one process, so a command's changes and events reach live queries and streams on the others. |
 
 Running more than one server: pass `idempotency` a store every instance shares, such as `PgIdempotencyStore` from
-`@rayfold/postgres`, and a keyed command runs once across the fleet. `idempotencyLeaseMs` (default 30 seconds) is how
-long a server holds a key before another may take it over.
+`@rayfold/postgres`, and a keyed command runs once across the fleet; `idempotencyLeaseMs` (default 30 seconds) is how
+long a server holds a key before another may take it over. Give each server a `relay`, such as `PgRelay` from the same
+package, and a live query or a stream on any server hears a command run on any other. `server.ready()` resolves once
+it does; `server.close()` stops it.
 
 Security defaults: JSON-only bodies, an Origin check on state-changing requests, a Host check on loopback servers,
 a 1 MiB body limit, nesting and cost limits, and a redacted manifest. See `spec/12-security.md` in the Rayfold

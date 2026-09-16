@@ -23,7 +23,7 @@ import java.util.UUID
  * over with a conditional UPDATE, which fails harmlessly when another process got there first, and the attempt
  * starts again. Every value travels as a bound parameter and every identifier is quoted.
  *
- * Run [schema] once, or let the application's migrations own the table.
+ * Run [migrate] as each server starts, or let the application's migrations own the table ([schema] is its DDL).
  */
 class JdbcIdempotencyStore @JvmOverloads constructor(
     private val connections: () -> Connection,
@@ -43,6 +43,11 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
             "\"held_until\" bigint not null, " +
             "\"at\" bigint not null, " +
             "primary key (\"scope\", \"key\"))"
+
+    /** Runs [schema] if the table is not there yet. Safe to call from every server as it starts, at the same instant included. */
+    fun migrate() {
+        connections().use { ensure(it, schema()) }
+    }
 
     override fun get(scope: String, key: String): IdempotencyRecord? = connections().use { c ->
         val row = read(c, scope, key) ?: return null

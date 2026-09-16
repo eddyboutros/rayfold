@@ -57,11 +57,21 @@ async function handleConnection(socket: Duplex, head: Buffer, req: IncomingMessa
   // text frames for a JSON batch; for an RB batch, binary messages of one length-prefixed RB frame each
   const send = (obj: unknown, binary = false) =>
     socket.write(binary ? encodeFrame(Buffer.from(codecFor(server).encodeFrames([obj])), 0x2) : encodeFrame(Buffer.from(JSON.stringify(obj), "utf8"), 0x1));
+  // Once the server drains, the runtime ends this socket's live queries and streams with `unavailable`. The socket
+  // itself closes as a server going away (1001) as soon as those frames are out, so the client reconnects elsewhere.
+  const goingAway = () => {
+    if (ops.size) return;
+    server.draining.removeEventListener("abort", goingAway);
+    socket.end(encodeFrame(Buffer.concat([Buffer.from([0x03, 0xe9]), Buffer.from("server shutting down")]), 0x8), () => socket.destroy());
+  };
   const close = () => {
+    server.draining.removeEventListener("abort", goingAway);
     for (const ac of ops.values()) ac.abort(new RayfoldError("canceled", "Canceled"));
     ops.clear();
     socket.end();
   };
+  if (server.draining.aborted) goingAway();
+  else server.draining.addEventListener("abort", goingAway, { once: true });
   const onMessage = (payload: Buffer, binary: boolean) => {
     let msg: unknown;
     try {
@@ -95,6 +105,7 @@ async function handleConnection(socket: Duplex, head: Buffer, req: IncomingMessa
           }
         } finally {
           for (const o of env.ops) if (ops.get(o.id) === ac) ops.delete(o.id);
+          if (server.draining.aborted) goingAway();
         }
       })();
       return;

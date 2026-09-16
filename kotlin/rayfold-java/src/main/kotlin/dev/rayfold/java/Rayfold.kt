@@ -15,6 +15,7 @@ import dev.rayfold.core.RayfoldException
 import dev.rayfold.core.RayfoldHttp
 import dev.rayfold.core.RayfoldSchemaIR
 import dev.rayfold.core.RayfoldServer
+import dev.rayfold.core.Relay
 import dev.rayfold.core.Resolvers
 import dev.rayfold.core.RootResolver
 import dev.rayfold.core.SchemaText
@@ -29,7 +30,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.IOException
+import java.util.concurrent.Callable
 import java.util.concurrent.CompletionStage
+import java.util.function.Consumer
 import java.util.function.Function
 import dev.rayfold.core.FieldLoader as CoreFieldLoader
 import dev.rayfold.core.StreamResolver as CoreStreamResolver
@@ -155,6 +158,8 @@ class ServerBuilder internal constructor(private val ir: RayfoldSchemaIR) {
     private var options = BatchOptions()
     private var idempotency: IdempotencyStore = MemoryIdempotencyStore()
     private var instrumentation: Instrumentation = Instrumentation.NONE
+    private var relay: Relay? = null
+    private var onRelayError: Consumer<Throwable> = Consumer {}
 
     private fun op(name: String, kind: String): String {
         val op = ir.ops[name] ?: throw IllegalArgumentException("The schema has no operation $name")
@@ -216,7 +221,16 @@ class ServerBuilder internal constructor(private val ir: RayfoldSchemaIR) {
     /** Hooks around batches, ops and loaders, for tracing: `RayfoldOpenTelemetry` from module rayfold-opentelemetry. */
     fun instrumentation(instrumentation: Instrumentation): ServerBuilder = apply { this.instrumentation = instrumentation }
 
-    fun build(): RayfoldServer = RayfoldServer(ir, Resolvers(queries, commands, streams, fields), options, idempotency, instrumentation)
+    /** Carries changes and events between the instances of this application, so live queries and streams on each hear the others. */
+    fun relay(relay: Relay): ServerBuilder = apply { this.relay = relay }
+
+    /** Called when the relay refuses a message; what it carried already happened on this instance. */
+    fun onRelayError(handler: Consumer<Throwable>): ServerBuilder = apply { onRelayError = handler }
+
+    fun build(): RayfoldServer = RayfoldServer(
+        ir, Resolvers(queries, commands, streams, fields), options, idempotency, instrumentation,
+        relay = relay, onRelayError = { onRelayError.accept(it) },
+    )
 }
 
 /** The built-in HTTP server, configured for Java callers. */
@@ -235,6 +249,16 @@ class HttpBuilder internal constructor(private val server: RayfoldServer) {
     fun maxBodyBytes(bytes: Int): HttpBuilder = apply { options = options.copy(maxBodyBytes = bytes) }
 
     fun threads(threads: Int): HttpBuilder = apply { options = options.copy(threads = threads) }
+
+    /**
+     * A dependency `GET {path}/ready` checks, by name: the callable returns when it answers and throws when it does not.
+     * A failure, or no answer within [readinessTimeout], names the check in the reasons the server is not ready.
+     */
+    fun readiness(name: String, check: Callable<*>): HttpBuilder = apply {
+        options = options.copy(readiness = options.readiness + (name to { check.call(); Unit }))
+    }
+
+    fun readinessTimeout(millis: Long): HttpBuilder = apply { options = options.copy(readinessTimeoutMs = millis) }
 
     /** Turns a request into the viewer the schema's policies see (a map or a record), or null when anonymous. */
     fun viewer(resolve: Function<HttpExchange, Any?>): HttpBuilder = apply { viewer = { ex -> JavaJson.toJson(resolve.apply(ex)) } }

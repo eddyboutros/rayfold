@@ -126,6 +126,9 @@ IdempotencyStore idempotency(DataSource dataSource) {
 }
 ```
 
+Declare a `Relay` bean as well and live queries and streams on every instance hear the commands run on the others;
+`PgRelay` from `rayfold-jdbc` carries them over Postgres `LISTEN`/`NOTIFY` ([JDBC](jdbc.md#live-updates-across-servers)).
+
 ### Who is asking
 
 With Spring Security on the classpath, the viewer is the signed-in user: `id` is the user name, `roles` the `ROLE_`

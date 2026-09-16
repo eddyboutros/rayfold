@@ -9,10 +9,12 @@ import dev.rayfold.core.ManifestMode
 import dev.rayfold.core.RayfoldHttp
 import dev.rayfold.core.RayfoldSchemaIR
 import dev.rayfold.core.RayfoldServer
+import dev.rayfold.core.Relay
 import dev.rayfold.core.SchemaText
 import dev.rayfold.java.Rayfold
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import kotlinx.coroutines.runBlocking
 import org.apache.commons.logging.LogFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
@@ -24,7 +26,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.ApplicationListener
 import org.springframework.context.annotation.Import
+import org.springframework.context.event.ContextClosedEvent
 import org.springframework.core.Ordered
 import org.springframework.core.io.ResourceLoader
 import org.springframework.security.authentication.AnonymousAuthenticationToken
@@ -120,12 +124,15 @@ class RayfoldAutoConfiguration {
         mapper: ObjectProvider<ObjectMapper>,
         instrumentation: ObjectProvider<Instrumentation>,
         idempotency: ObjectProvider<IdempotencyStore>,
+        relay: ObjectProvider<Relay>,
     ): RayfoldServer {
         val builder = Rayfold.server(schema).options(BatchOptions(trustedShapes = properties.trustedShapes, budget = properties.budget, maxDepth = properties.maxDepth))
         // an Instrumentation bean, such as RayfoldOpenTelemetry(openTelemetry), traces every batch
         instrumentation.ifAvailable { builder.instrumentation(it) }
         // an IdempotencyStore bean, such as JdbcIdempotencyStore, keeps commands running once across every instance
         idempotency.ifAvailable { builder.idempotencyStore(it) }
+        // a Relay bean, such as PgRelay, lets live queries and streams on every instance hear the others' commands
+        relay.ifAvailable { builder.relay(it) }
         val bound = AnnotatedResolvers(context, mapper.getIfAvailable { JsonMapper.builder().build() }, schema).bindTo(builder)
         log.info("Rayfold at ${properties.path}: ${bound.size} resolvers bound" + bound.joinToString("") { "\n  $it" })
         return builder.build()
@@ -149,6 +156,10 @@ class RayfoldAutoConfiguration {
     @ConditionalOnMissingBean
     fun rayfoldViewerResolver(): RayfoldViewerResolver = RayfoldViewerResolver { null }
 
+    /** On context close, before the web server stops: drain, so a SIGTERM to the application is a rolling deploy's shutdown. */
+    @Bean
+    fun rayfoldLifecycle(server: RayfoldServer): RayfoldLifecycle = RayfoldLifecycle(server)
+
     @Bean
     fun rayfoldHandlerMapping(http: RayfoldHttp, properties: RayfoldProperties, viewer: RayfoldViewerResolver): SimpleUrlHandlerMapping {
         val base = properties.path.trimEnd('/')
@@ -156,6 +167,20 @@ class RayfoldAutoConfiguration {
             http.serve(ServletCall(request, response), request.contextPath + base) { Rayfold.toJson(viewer.viewer(request)) }
         }
         return SimpleUrlHandlerMapping(mapOf(base to handler, "$base/**" to handler)).apply { order = Ordered.HIGHEST_PRECEDENCE + 10 }
+    }
+}
+
+/**
+ * Drains the server when the context closes. The closed event goes out before any lifecycle bean stops, so this runs
+ * while the web server still answers: readiness turns false, live queries and streams are sent elsewhere, batches in
+ * flight get [drainTimeoutMs] to finish, the relay is left, and only then does the web server close its port.
+ */
+class RayfoldLifecycle(private val server: RayfoldServer, private val drainTimeoutMs: Long = 10_000) : ApplicationListener<ContextClosedEvent> {
+    override fun onApplicationEvent(event: ContextClosedEvent) {
+        runBlocking {
+            server.drain(drainTimeoutMs)
+            server.close()
+        }
     }
 }
 

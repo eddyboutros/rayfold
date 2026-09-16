@@ -88,6 +88,32 @@ new PgIdempotencyStore(pool, { table: "rayfold_idempotency", ttlMs: 24 * 3600_00
 `idempotencySchema()` returns the table and index the store needs, so you can put them in your own migrations instead
 of calling `migrate()`.
 
+## Live updates across servers
+
+A command's patches reach the live queries and streams open on the server that ran it. On another server behind the
+same load balancer they reach nothing: each server hears only itself, so a screen open there stays stale until it asks
+again. `PgRelay` carries changes and events between servers over Postgres `LISTEN`/`NOTIFY`, through the database they
+already share.
+
+```ts
+import pg from "pg";
+import { PgRelay, pgNotifications } from "@rayfold/postgres";
+
+const listener = new pg.Client({ connectionString: process.env.DATABASE_URL }); // LISTEN belongs to one connection: not the pool
+await listener.connect();
+const relay = new PgRelay(pgNotifications(listener), pool);
+await relay.migrate(); // once, or run relaySchema() in your migrations
+
+const server = createRayfoldServer({ schema, resolvers, idempotency, relay });
+await server.ready(); // listening to the other servers
+```
+
+A message travels in one notification unless it is large; then it goes through the `rayfold_relay` table and the
+notification names the row, which is swept later. A relay never hands a server back what that server published, so
+nothing is applied twice. If the relay refuses a message, the command that made the change still succeeds on its own
+server; `onRelayError` and `server.relayFailure` say what the other servers missed. `server.close()` stops listening,
+for a shutdown.
+
 ## Why pass `ctx`
 
 When a resolver loads an entity whose read policy can run in SQL (it reads only the viewer, the arguments, literals and

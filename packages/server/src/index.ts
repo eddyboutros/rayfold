@@ -1,5 +1,5 @@
 export * from "./core.ts";
-export { createHttpHandler, listen, applyCacheHeaders, type HttpOptions } from "./http.ts";
+export { createHttpHandler, listen, shutdown, readiness, applyCacheHeaders, type HttpOptions } from "./http.ts";
 export { createBindingHandler, bindingsOf, type Binding, type BindingOptions } from "./bindings.ts";
 export { openApiFor } from "./openapi.ts";
 export { attachWebSocket, encodeFrame, decodeFrame, SUBPROTOCOL, type WsOptions } from "./ws.ts";

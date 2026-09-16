@@ -1,12 +1,27 @@
 import type { Expr, Shape } from "@rayfold/schema";
 import type { RequestMeta } from "./protocol.ts";
 
+import type { Relay } from "./relay.ts";
+
 /** In-process event bus used for `emits` and for streams that subscribe to events. */
 export class EventBus {
   private readonly subs = new Map<string, Set<(payload: unknown) => void>>();
   private seq = 0;
 
+  constructor(
+    private readonly relay?: Relay,
+    /** Where a relay's refusal to carry an event goes; the event happened here regardless. */
+    private readonly onRelayError: (error: unknown) => void = () => {},
+  ) {}
+
+  /** An event this server raised: its own streams hear it now, and every other server's through the relay. */
   publish(name: string, payload: Record<string, unknown>): void {
+    this.deliver(name, payload);
+    if (this.relay) this.relay.publish({ kind: "event", name, payload }).catch(this.onRelayError);
+  }
+
+  /** An event reaching this server, raised here or elsewhere: only the streams here hear it. `seq` counts arrivals here. */
+  deliver(name: string, payload: Record<string, unknown>): void {
     this.seq++;
     const enriched = { ...payload, seq: this.seq };
     for (const fn of this.subs.get(name) ?? []) fn(enriched);

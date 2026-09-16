@@ -34,6 +34,8 @@ export interface BatchRuntime {
   usage?: UsageSink;
   /** How long a command holds its idempotency key before another server may take it over (spec 03 section 4). */
   leaseMs: number;
+  /** Aborts when the server is shutting down: live queries and streams end on it, with its reason. */
+  draining: AbortSignal;
 }
 
 export interface ExecuteOptions {
@@ -311,6 +313,14 @@ async function runOp(
   batchSignal.addEventListener("abort", relay, { once: true });
   let opTimer: ReturnType<typeof setTimeout> | undefined;
   if (p.req.deadline !== undefined) opTimer = setTimeout(() => opAbort.abort(new RayfoldError("deadline_exceeded", "Deadline exceeded")), p.req.deadline);
+  // A live query or a stream ends only when its caller goes away, so a server shutting down ends it here, with a
+  // retryable error that sends the client to another server. Anything shorter is left to finish.
+  const longLived = p.op.kind === "stream" || p.req.live === true;
+  const onDrain = () => opAbort.abort(rt.draining.reason);
+  if (longLived) {
+    if (rt.draining.aborted) onDrain();
+    else rt.draining.addEventListener("abort", onDrain, { once: true });
+  }
 
   const stamp = (f: Frame): Frame => {
     if (rt.options.timing && "meta" in f && f.meta) f.meta.ms = rt.options.now() - started;
@@ -434,6 +444,7 @@ async function runOp(
   } finally {
     if (opTimer) clearTimeout(opTimer);
     batchSignal.removeEventListener("abort", relay);
+    rt.draining.removeEventListener("abort", onDrain);
   }
   return undefined;
 }

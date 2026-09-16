@@ -230,6 +230,8 @@ class BatchRunner(
     private val instrumentation: Instrumentation = Instrumentation.NONE,
     /** Records which operations each client called (spec 11). */
     private val usage: UsageSink? = null,
+    /** Completes once the server is shutting down: live queries and streams end on it with a retryable `unavailable`. */
+    private val draining: Job = Job(),
 ) {
     private class Planned(val req: RequestOp, val op: OpDef, val explicit: Boolean, val deps: List<Int>) {
         var shape: Shape = Shape()
@@ -353,6 +355,29 @@ class BatchRunner(
         return Outcome()
     }
 
+    /**
+     * A live query or a stream ends only when its caller goes away, so a server shutting down ends it here, with a
+     * retryable error that sends the client to another server. Anything shorter is left to finish.
+     */
+    private suspend fun <T> untilDrained(block: suspend () -> T): T {
+        if (draining.isCompleted) throw shuttingDown()
+        return coroutineScope {
+            val work = async { block() }
+            val watch = launch { draining.join(); work.cancel() }
+            try {
+                work.await()
+            } catch (e: CancellationException) {
+                ensureActive() // our own cancellation still propagates
+                if (work.isCancelled && draining.isCompleted) throw shuttingDown()
+                throw e
+            } finally {
+                watch.cancel()
+            }
+        }
+    }
+
+    private fun shuttingDown() = RayfoldException(Code.UNAVAILABLE, "The server is shutting down")
+
     /** Runs [block]; false when [cancel] completed first and cancelled it. */
     private suspend fun untilCancelled(cancel: Job?, block: suspend () -> Unit): Boolean {
         if (cancel == null) { block(); return true }
@@ -453,10 +478,10 @@ class BatchRunner(
                 "query" -> {
                     if (p.req.live) {
                         if (!opts.allowLive) throw RayfoldException(Code.UNIMPLEMENTED, "Live queries are served over the WebSocket transport")
-                        runLive(p, args, ctx, sink, results) // returns only by cancellation or failure
+                        untilDrained { runLive(p, args, ctx, sink, results) } // returns only by cancellation or failure
                     } else results[id] = executor.runQuery(p.op, args, p.shape, p.explicit, p.cost, ctx, sink::emit)
                 }
-                "stream" -> executor.runStream(p.op, args, p.shape, p.explicit, ctx, sink::emit, options.maxStreamItems)
+                "stream" -> untilDrained { executor.runStream(p.op, args, p.shape, p.explicit, ctx, sink::emit, options.maxStreamItems) }
                 // the command sent its error frame itself (a failure after committing, or the replay of one)
                 "command" -> if (!command(p, args, ctx, viewerScope, results, sink, opts.keyOptional)) { status[id] = "failed"; return Outcome("failed", "${p.op.name} ended with an error") }
             }

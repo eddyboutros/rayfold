@@ -18,6 +18,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The protocol side of one WebSocket connection (spec 04 section 5), whatever server carries the socket: batch
@@ -28,6 +29,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Several batches share a connection; an op id must not be in use by another running batch, which is why clients remap
  * their ids per socket. [sendText] and [sendBinary] may be called from several coroutines at once.
+ *
+ * Once the server drains, the runtime ends this connection's live queries and streams with `unavailable`; as soon as
+ * those frames are out, and nothing else runs here, [onGoingAway] is called for the transport to close the socket as a
+ * server going away (1001), so the client reconnects elsewhere. A connection opened while draining goes away at once.
  */
 class RayfoldWsSession(
     private val server: RayfoldServer,
@@ -35,11 +40,20 @@ class RayfoldWsSession(
     private val sendText: (String) -> Unit,
     private val sendBinary: (ByteArray) -> Unit,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val onGoingAway: () -> Unit = {},
 ) {
     /** Running op ids, each mapped to the cancel job of the batch that holds it. */
     private val ops = ConcurrentHashMap<Int, CompletableJob>()
+
+    /** Batches running: their last frames are out once this is zero. */
+    private val running = AtomicInteger()
     private val closed = AtomicBoolean(false)
+    private val goneAway = AtomicBoolean(false)
     private val rb by lazy { RbCodec(server.ir) }
+
+    init {
+        server.draining.invokeOnCompletion { goingAway() }
+    }
 
     fun onText(text: String) {
         val msg = try {
@@ -72,6 +86,7 @@ class RayfoldWsSession(
         val cancelJob = Job()
         val ids = env.ops.map { it.id }.filter { it > 0 }
         for (id in ids) ops[id] = cancelJob
+        running.incrementAndGet()
         scope.launch {
             try {
                 server.execute(env, ExecuteOptions(viewer, cancel = cancelJob)).collect { f ->
@@ -82,8 +97,15 @@ class RayfoldWsSession(
                 }
             } finally {
                 for (id in ids) ops.remove(id, cancelJob)
+                running.decrementAndGet()
+                if (server.draining.isCompleted) goingAway()
             }
         }
+    }
+
+    private fun goingAway() {
+        if (running.get() > 0 || closed.get()) return
+        if (goneAway.compareAndSet(false, true)) onGoingAway()
     }
 
     private fun batchError(message: String) = buildJsonObject {

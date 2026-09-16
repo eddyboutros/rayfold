@@ -114,7 +114,7 @@ class RayfoldWebSocket(
                 val input = BufferedInputStream(socket.getInputStream())
                 val v = handshake(input) ?: return
                 socket.soTimeout = 0
-                val s = RayfoldWsSession(server, v, { sendFrame(0x1, it.toByteArray(Charsets.UTF_8)) }, { sendFrame(0x2, it) }, scope)
+                val s = RayfoldWsSession(server, v, { sendFrame(0x1, it.toByteArray(Charsets.UTF_8)) }, { sendFrame(0x2, it) }, scope, onGoingAway = ::goingAway)
                 session = s
                 frames(input, s)
             } catch (e: IOException) {
@@ -275,6 +275,13 @@ class RayfoldWebSocket(
 
         private fun cancelAll() {
             session?.cancelAll()
+        }
+
+        /** The server is shutting down and this connection's frames are out: close as a server going away, so the client reconnects elsewhere. */
+        private fun goingAway() {
+            sendFrame(0x8, byteArrayOf(0x03, 0xe9.toByte()) + "server shutting down".toByteArray())
+            runCatching { socket.shutdownOutput() }
+            close()
         }
 
         /** Cancels every batch, waits (bounded) until they let go of their live subscriptions, then releases the socket. */

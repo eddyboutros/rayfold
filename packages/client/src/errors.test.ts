@@ -83,13 +83,14 @@ describe("live() reports failures to onError", () => {
     stop();
   });
 
-  it("a lost connection reaches onError", async () => {
+  it("a lost connection reaches onError, marked as one the query will come back from", async () => {
     const { transport, release } = gatedOffline();
-    const errors = new Signal<unknown>();
-    new RayfoldClient({ transport }).live("book", { id: "b1" }, {}, () => {}, (e) => errors.push(e));
+    const errors = new Signal<{ message: string; retrying: boolean }>();
+    const stop = new RayfoldClient({ transport }).live("book", { id: "b1" }, {}, () => {}, (e, m) => errors.push({ message: (e as Error).message, retrying: m.retrying }));
     release();
     const [e] = await errors.atLeast(1, "connection failure");
-    expect((e as Error).message).toBe("offline");
+    expect(e).toEqual({ message: "offline", retrying: true });
+    stop(); // otherwise it keeps trying, as it should
   });
 
   it("guard: unsubscribing aborts the stream without reporting the abort as an error", async () => {

@@ -300,35 +300,52 @@ export class RayfoldClient {
   /**
    * Live query (extension `live`): the server keeps the query open and pushes patches. `fn` receives the
    * current data now and after every server-side change. `onError` gets an error frame or a failed connection
-   * (not the abort from unsubscribing). Returns an unsubscribe function.
+   * (not the abort from unsubscribing), with `retrying` saying whether the query is being opened again: a server
+   * going away or a connection dropping ends it with a retryable error, and it is reopened after a short wait
+   * (half a second, doubling to thirty) through whatever is in front of the servers, so the subscription outlives a
+   * deploy. Only an error that would recur ends it. Returns an unsubscribe function.
    */
-  live<T = unknown>(op: string, args: Record<string, unknown>, o: OpOptions, fn: (data: T, meta: { initial: boolean }) => void, onError?: (e: unknown) => void): () => void {
+  live<T = unknown>(op: string, args: Record<string, unknown>, o: OpOptions, fn: (data: T, meta: { initial: boolean }) => void, onError?: (e: unknown, meta: { retrying: boolean }) => void): () => void {
     const ac = new AbortController();
     const rk = RayfoldCache.resultKey(op, args, o.shape, o.vars);
     let initial = true;
-    const b = this.batch();
-    const h = b.query<T>(op, args, { ...o, live: true });
-    void b
-      .run({
-        signal: ac.signal,
-        onFrame: (f) => {
-          if (!("id" in f) || f.id !== h.id) return;
-          if ("error" in f) {
-            // after unsubscribing, the stream ends with a "canceled" frame: that is the stop, not a failure
-            if (!ac.signal.aborted) onError?.(new RayfoldClientError(f.error));
-            return;
-          }
-          if (("data" in f && !("at" in f)) || "patch" in f || "fin" in f) {
-            const r = this.cache.getResult(rk);
-            if (!r) return;
-            fn(this.cache.denormalize(r.data) as T, { initial });
-            initial = false;
-          }
-        },
-      })
-      .catch((e: unknown) => {
-        if (!ac.signal.aborted) onError?.(e);
-      });
+    let failures = 0;
+    const open = () => {
+      if (ac.signal.aborted) return;
+      let ended = false;
+      const failed = (e: unknown) => {
+        if (ended || ac.signal.aborted) return;
+        ended = true;
+        const retrying = !(e instanceof RayfoldClientError) || e.retryable;
+        onError?.(e, { retrying });
+        if (!retrying) return;
+        const timer = setTimeout(open, Math.min(30_000, 500 * 2 ** failures++));
+        ac.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+      };
+      const b = this.batch();
+      const h = b.query<T>(op, args, { ...o, live: true });
+      void b
+        .run({
+          signal: ac.signal,
+          onFrame: (f) => {
+            if (!("id" in f) || f.id !== h.id) return;
+            if ("error" in f) {
+              // after unsubscribing, the stream ends with a "canceled" frame: that is the stop, not a failure
+              failed(new RayfoldClientError(f.error));
+              return;
+            }
+            if (("data" in f && !("at" in f)) || "patch" in f || "fin" in f) {
+              failures = 0; // the connection is good again
+              const r = this.cache.getResult(rk);
+              if (!r) return;
+              fn(this.cache.denormalize(r.data) as T, { initial });
+              initial = false;
+            }
+          },
+        })
+        .catch(failed);
+    };
+    open();
     return () => ac.abort();
   }
 

@@ -490,3 +490,4 @@ function snake(name: string): string {
 }
 
 export { PgIdempotencyStore, idempotencySchema, type PgIdempotencyOptions } from "./idempotency.ts";
+export { PgRelay, relaySchema, pgNotifications, pgliteNotifications, type Notifications, type PgRelayOptions } from "./relay.ts";

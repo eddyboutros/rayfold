@@ -6,6 +6,7 @@
  * `data` frame (membership/order changed).
  */
 import type { Frame, PatchOp } from "./protocol.ts";
+import type { Relay } from "./relay.ts";
 
 export interface Change {
   keys: Set<string>;
@@ -14,8 +15,22 @@ export interface Change {
 
 export class ChangeBus {
   private readonly subs = new Set<(c: Change) => void>();
+
+  constructor(
+    private readonly relay?: Relay,
+    /** Where a relay's refusal to carry a change goes; the change itself was already made. */
+    private readonly onRelayError: (error: unknown) => void = () => {},
+  ) {}
+
+  /** A change this server made: its own live queries hear it now, and every other server's through the relay. */
   publish(c: Change): void {
     if (!c.keys.size && !c.ops.size) return;
+    this.deliver(c);
+    if (this.relay) this.relay.publish({ kind: "change", keys: [...c.keys], ops: [...c.ops] }).catch(this.onRelayError);
+  }
+
+  /** A change reaching this server, made here or elsewhere: only the live queries here hear it. */
+  deliver(c: Change): void {
     for (const fn of this.subs) fn(c);
   }
   subscribe(fn: (c: Change) => void): () => void {
