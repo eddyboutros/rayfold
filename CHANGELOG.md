@@ -5,6 +5,19 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **Several servers run a keyed command once between them.** `PgIdempotencyStore` (`@rayfold/postgres`) and
+  `JdbcIdempotencyStore` (`dev.rayfold:rayfold-jdbc`) keep idempotency records in the database, so a retry that lands on
+  another instance replays the first answer instead of running the command a second time. Two requests that arrive
+  together take the key with one statement: one runs the command, the other waits for it and replays. The server that
+  owns a key renews a lease while the command runs, so a server that stops mid-command does not hold the key forever —
+  the lease runs out and the next retry takes it over. `idempotencyLeaseMs` sets the lease (default 30 seconds); on the
+  JVM, `builder.idempotencyStore(...)` or an `IdempotencyStore` bean wires the store in.
+- **Fixed: a command that had committed and was then canceled could run a second time.** When the caller went away or
+  the deadline passed after the resolver had returned, the key was released, so the retry ran the command again. Both
+  runtimes now record a `canceled` answer saying the command committed, and answer retries with it.
+- **Spec: leases, and what a failed command leaves behind** (03 §4, 12 §3.6 and §4.4). A claimed key is held under a
+  bounded lease that may be taken over once it lapses, a key held by a running command is never evicted, and a command
+  that failed or was canceled after its effect records that answer rather than releasing the key.
 - **The documentation site is at https://rayfold.dev/.** Links to `eddyboutros.github.io/rayfold/` redirect there,
   problem-type URIs included, which keep their 0.1.0 form.
 - **Security: a `__proto__` key in a request's arguments is plain data again (TypeScript server).** Next to a `$ref`, or

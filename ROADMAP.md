@@ -15,14 +15,15 @@ Rayfold: if something here would unblock you, or something you need is missing, 
 |---|---|
 | A GraphQL schema from a Rayfold schema | `rayfold gen graphql`: the SDL, plus the list of what GraphQL cannot express (typed errors, cache patches, idempotency keys, live queries, several steps in one request) |
 | Hono, Next.js, Bun, Deno or Cloudflare Workers | A fetch `Request`/`Response` handler next to the Node one |
-| More than one server instance | An atomic idempotency claim, a shared change bus for live queries, Postgres implementations of both, health endpoints and a deployment guide |
+| More than one server instance | Commands already run once across instances, through a shared idempotency store. Still to come: a shared change bus for live queries, health and readiness endpoints, and a deployment guide |
 | Results typed to the shape you asked for | `rayfold gen ts --client` with typed hooks, and a published VS Code extension that runs the language server |
 | A Rayfold service inside an Apollo supergraph | A GraphQL endpoint and Federation subgraph answered by the Rayfold engine |
 
 ## Known gaps in 0.1
 
-- Idempotency records, live queries and learned shapes live in each process. Two instances do not share them yet, so
-  a retry that reaches the other instance may run the command again.
+- Live queries and learned shapes live in each process; two instances do not share them. Idempotency records can be
+  shared (`PgIdempotencyStore`, `JdbcIdempotencyStore`), and then a keyed command runs once across instances; with the
+  default in-memory store each process decides on its own, so a retry reaching another one runs the command again.
 - Credit-based flow control on streams (spec 04, section 5) is not implemented in either runtime.
 - Not yet tested on Safari itself (WebKit stands in for it), a real Android device, a commercial CDN, or load across
   several machines.

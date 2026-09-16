@@ -153,6 +153,8 @@ export class Executor {
     cost: number,
     ctx: RayfoldContext,
     emit: Emit,
+    /** Called once the resolver has returned: from here the command has changed things, whatever happens next. */
+    onCommitted?: () => void,
   ): Promise<{ result: unknown; frame: Frame; full: Frame; compact: Frame; patch: PatchOp[] }> {
     this.checkOpPolicy(op, "write", args, ctx);
     const fn = this.resolvers.Command?.[op.name];
@@ -164,6 +166,7 @@ export class Executor {
       if (e instanceof VersionConflict) throw await this.conflictWithCurrent(op, shape, ctx, e);
       throw this.checkDeclaredError(op, e);
     }
+    onCommitted?.();
     const cr: CommandResult = isCommandResult(raw) ? raw : ok(raw);
     const st: ProjectState = { ctx, errors: [], deferred: [], explicit };
     const data = await this.projectValue(cr.result, op.returns, shape, "", st);

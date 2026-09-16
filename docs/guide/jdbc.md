@@ -30,6 +30,28 @@ val resolvers = Resolvers(
 The store asks for a connection per query and closes it again, which is what a pool expects: hand it
 `dataSource::getConnection`, not one long-lived connection.
 
+## Idempotency records for more than one server
+
+A command's result is kept so that a retry is answered with the first attempt's result instead of running the command
+again. Kept in memory, that only holds for one process: a retry that lands on another one runs the command a second
+time. `JdbcIdempotencyStore` keeps the records in the database, so every process shares them.
+
+```kotlin
+val idempotency = JdbcIdempotencyStore(dataSource::getConnection)
+dataSource.connection.use { it.createStatement().execute(idempotency.schema()) } // or your own migrations
+
+val server = RayfoldServer(ir, resolvers, idempotency = idempotency)
+```
+
+Taking a key is one insert, so of two processes starting the same retry at the same moment exactly one runs the command
+and the other waits and then replays its answer. The process that owns a key renews a lease while the command runs; if
+it stops, the lease runs out and the next retry takes the key over. `BatchOptions(idempotencyLeaseMs = ...)` sets the
+lease (default 30 seconds), and `JdbcIdempotencyOptions` the table name, how long a record answers retries (24 hours)
+and how many are kept (100,000).
+
+Only JDBC is needed: the SQL is plain enough for Postgres, H2 and their relatives, with no upsert syntax and no locking
+hints. Under Spring Boot, declare the store as a bean and the starter wires it in ([Java and Spring](java-spring.md)).
+
 ## Why pass `ctx`
 
 When a resolver loads an entity whose read policy can run in SQL (it reads only the viewer, the arguments, literals

@@ -77,7 +77,8 @@ handshakes:
 6. **Bounded server memory.** Shapes learned from requests MUST be kept only after the op passed planning, and in a
    bounded store (default 10,000, least recently used first out). Shapes the server registers itself are never
    evicted. Idempotency records MUST expire (default 24 hours), and the store MUST be bounded (default 100,000,
-   expired records first, then the oldest).
+   expired records first, then the oldest). A key held by a command that is running now is never evicted, since
+   evicting it would let a second request run the same command.
 
 ## 4. Idempotency and replays
 
@@ -91,8 +92,15 @@ handshakes:
    arguments".
 3. **Authorization first.** The operation's write policy MUST be checked before a replay is served.
 4. **One execution.** Two requests with the same scope and key that arrive together MUST execute once. The later
-   request waits for the first, then replays its result. A command that failed leaves no record and releases the key.
+   request waits for the first, then replays its result. A command that failed before it changed anything leaves no
+   record and releases the key, so a retry runs it. A command that failed after its effect MUST record that failure,
+   and one whose op was canceled or ran out of time after its effect MUST record a `canceled` answer saying the
+   command committed. Retries are answered with the record rather than running the command a second time.
 5. **Form.** A replay answers in the form the retry asks for (compact or full), under the retrying op's id.
+6. **Leases.** A server that takes a key holds it for a bounded lease and renews the lease while the command runs, so
+   that a key is not held forever by a server that stopped. A request MAY take over a key whose lease has run out.
+   This is the one case where a command can run twice: a server that stops between its effect and its record leaves
+   nothing to replay. A lease MUST be longer than the commands the server serves (default 30 seconds).
 
 ## 5. Authorization and data exposure
 

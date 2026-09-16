@@ -112,41 +112,122 @@ export interface IdempotencyRecord {
   at: number;
 }
 
-export interface IdempotencyStore {
-  get(scope: string, key: string): Promise<IdempotencyRecord | undefined>;
-  put(scope: string, key: string, record: IdempotencyRecord): Promise<void>;
-}
+/**
+ * The answer to `claim`: run the command, replay a stored result, or wait for whoever holds the key.
+ * `heldUntil` is when that holder's lease runs out, after which another server may take the key over.
+ */
+export type IdempotencyClaim =
+  | { state: "owned"; token: string }
+  | { state: "done"; record: IdempotencyRecord }
+  | { state: "inflight"; heldUntil: number };
 
 /**
- * In-memory idempotency records. Records expire after `ttlMs`; expired ones are dropped on read and swept on every
- * write, and past `maxEntries` the oldest go first, so memory stays bounded however many commands arrive.
+ * Where a command's result is kept so a retry is answered with the first attempt's result (spec 03 section 4).
+ *
+ * A store shared by several servers is what makes "runs once" hold across all of them: `claim` must be atomic, so that
+ * of two servers asking at the same moment exactly one owns the key and the other waits. The owner renews its lease
+ * while the command runs; if that server dies, the lease runs out and the next retry takes the key over.
+ */
+export interface IdempotencyStore {
+  get(scope: string, key: string): Promise<IdempotencyRecord | undefined>;
+  /** Take the key for `leaseMs`, or report that it is finished or held by someone else. */
+  claim(scope: string, key: string, leaseMs: number): Promise<IdempotencyClaim>;
+  /** Extend the lease while the command runs. False when the claim was lost, so the caller must stop. */
+  renew(scope: string, key: string, token: string, leaseMs: number): Promise<boolean>;
+  /** Record the result and end the claim. */
+  put(scope: string, key: string, record: IdempotencyRecord, token: string): Promise<void>;
+  /** Let the key go with no record, so the next retry runs the command. */
+  release(scope: string, key: string, token: string): Promise<void>;
+}
+
+/** A key is either finished (a record) or claimed (a token, a lease and a promise that ends with the claim). */
+interface Entry {
+  record?: IdempotencyRecord;
+  token?: string;
+  heldUntil?: number;
+  settled?: Promise<void>;
+  wake?: () => void;
+  at: number;
+}
+
+const SEP = String.fromCharCode(0);
+
+/**
+ * In-memory idempotency records, for one server. Records expire after `ttlMs`; expired ones are dropped on read and
+ * swept on every write, and past `maxEntries` the oldest go first, so memory stays bounded however many commands
+ * arrive. A claimed key is never swept: a command is still running behind it.
  */
 export class MemoryIdempotencyStore implements IdempotencyStore {
-  private readonly map = new Map<string, IdempotencyRecord>();
+  private readonly map = new Map<string, Entry>();
+  private tokens = 0;
   constructor(
     private readonly ttlMs = 24 * 3_600_000,
     private readonly now: () => number = Date.now,
     private readonly maxEntries = 100_000,
   ) {}
-  async get(scope: string, key: string): Promise<IdempotencyRecord | undefined> {
-    const k = `${scope}\u0000${key}`;
-    const r = this.map.get(k);
-    if (r && this.now() - r.at > this.ttlMs) {
+
+  private live(k: string): Entry | undefined {
+    const e = this.map.get(k);
+    if (e?.record && this.now() - e.at > this.ttlMs) {
       this.map.delete(k);
       return undefined;
     }
-    return r;
+    return e;
   }
-  async put(scope: string, key: string, record: IdempotencyRecord): Promise<void> {
-    const k = `${scope}\u0000${key}`;
-    this.map.delete(k); // re-inserted at the end, so the map stays ordered oldest first
-    this.map.set(k, record);
+
+  async get(scope: string, key: string): Promise<IdempotencyRecord | undefined> {
+    return this.live(scope + SEP + key)?.record;
+  }
+
+  async claim(scope: string, key: string, leaseMs: number): Promise<IdempotencyClaim> {
+    const k = scope + SEP + key;
+    const held = this.live(k);
     const t = this.now();
-    for (const [old, r] of this.map) {
-      if (this.map.size > this.maxEntries || t - r.at > this.ttlMs) this.map.delete(old);
+    if (held?.record) return { state: "done", record: held.record };
+    if (held?.heldUntil !== undefined && held.heldUntil > t) return { state: "inflight", heldUntil: held.heldUntil };
+    const token = `m${++this.tokens}`;
+    const entry: Entry = { token, heldUntil: t + leaseMs, at: t };
+    entry.settled = new Promise<void>((r) => (entry.wake = r));
+    this.map.set(k, entry);
+    held?.wake?.(); // a lease that ran out: anyone waiting on it looks again and finds this claim
+    return { state: "owned", token };
+  }
+
+  async renew(scope: string, key: string, token: string, leaseMs: number): Promise<boolean> {
+    const e = this.map.get(scope + SEP + key);
+    if (e?.token !== token) return false;
+    e.heldUntil = this.now() + leaseMs;
+    return true;
+  }
+
+  async put(scope: string, key: string, record: IdempotencyRecord, token: string): Promise<void> {
+    const k = scope + SEP + key;
+    const held = this.map.get(k);
+    if (held?.token !== undefined && held.token !== token) return; // the lease was lost; the new owner speaks for this key
+    this.map.delete(k); // re-inserted at the end, so the map stays ordered oldest first
+    this.map.set(k, { record, at: record.at });
+    held?.wake?.();
+    const t = this.now();
+    for (const [old, e] of this.map) {
+      if (!e.record) break; // a claim in flight is never swept
+      if (this.map.size > this.maxEntries || t - e.at > this.ttlMs) this.map.delete(old);
       else break;
     }
   }
+
+  async release(scope: string, key: string, token: string): Promise<void> {
+    const k = scope + SEP + key;
+    const e = this.map.get(k);
+    if (e?.token !== token) return;
+    this.map.delete(k);
+    e.wake?.();
+  }
+
+  /** In this process a waiter can be woken the moment the claim ends; across servers only `claim` can say. */
+  settled(scope: string, key: string): Promise<void> | undefined {
+    return this.map.get(scope + SEP + key)?.settled;
+  }
+
   get size(): number {
     return this.map.size;
   }

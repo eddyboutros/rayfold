@@ -23,6 +23,11 @@ export interface RayfoldServerOptions {
   /** Add `meta.ms` to frames. Default false (keeps frames deterministic). */
   timing?: boolean;
   idempotency?: IdempotencyStore;
+  /**
+   * How long a command holds its idempotency key before another server may take it over, in milliseconds.
+   * Default 30000. It is renewed while the command runs, so it only matters when a server stops mid-command.
+   */
+  idempotencyLeaseMs?: number;
   shapes?: ShapeRegistry;
   events?: EventBus;
   now?: () => number;
@@ -71,10 +76,10 @@ export class RayfoldServer {
       }),
       registry: this.shapes,
       idempotency: opts.idempotency ?? new MemoryIdempotencyStore(undefined, this.options.now),
+      leaseMs: opts.idempotencyLeaseMs ?? 30_000,
       events: this.events,
       changes: this.changes,
       options: this.options,
-      inflight: new Map(),
       ...(opts.usage ? { usage: opts.usage } : {}),
       ...(opts.instrumentation ? { instrumentation: opts.instrumentation } : {}),
     };

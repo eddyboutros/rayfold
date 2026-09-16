@@ -61,6 +61,33 @@ A relation that takes arguments, such as `Author.books(page:)`, needs no loader 
 `screen` already gathered. `checkWiring` cannot see that from the resolvers alone and still reports it as
 `missing-loader`, so filter that finding for the fields your screens gather.
 
+## Idempotency records for more than one server
+
+A command's result is kept so that a retry is answered with the first attempt's result instead of running the command
+again. Kept in memory, that only holds for one server: a retry that lands on another one runs the command a second
+time. `PgIdempotencyStore` keeps the records in Postgres, so every server shares them.
+
+```ts
+import { PgIdempotencyStore } from "@rayfold/postgres";
+
+const idempotency = new PgIdempotencyStore(pool);
+await idempotency.migrate(); // once, or run idempotencySchema() in your migrations
+
+const server = createRayfoldServer({ schema, resolvers, idempotency });
+```
+
+The store is what makes "runs once" hold across servers. A command takes its key with one statement, so of two servers
+starting the same retry at the same moment exactly one runs it and the other waits and then replays its answer. The
+running server holds a lease and renews it while the command runs; if that server stops, the lease runs out and the
+next retry takes the key over. Records last 24 hours and the table is bounded, both adjustable:
+
+```ts
+new PgIdempotencyStore(pool, { table: "rayfold_idempotency", ttlMs: 24 * 3600_000, maxRecords: 100_000 });
+```
+
+`idempotencySchema()` returns the table and index the store needs, so you can put them in your own migrations instead
+of calling `migrate()`.
+
 ## Why pass `ctx`
 
 When a resolver loads an entity whose read policy can run in SQL (it reads only the viewer, the arguments, literals and

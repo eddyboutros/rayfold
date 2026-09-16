@@ -62,6 +62,26 @@ comparing values of different types, `Decimal` inequality) it lets the row throu
 always runs, removes it. Without the pushdown, a list that returns rows the viewer may not see is refused as a whole
 (spec 06 §3); with it, the list holds exactly the permitted rows.
 
+## Idempotency records shared by every server
+
+A command's result is kept so a retry is answered with the first attempt's result instead of running the command
+again. In memory that holds for one server only: a retry that lands on another one runs the command a second time.
+`PgIdempotencyStore` keeps the records in Postgres, so every server shares them.
+
+```ts
+import { PgIdempotencyStore } from "@rayfold/postgres";
+
+const idempotency = new PgIdempotencyStore(db);
+await idempotency.migrate(); // once, or run idempotencySchema() in your own migrations
+
+const server = createRayfoldServer({ schema, resolvers, idempotency });
+```
+
+Taking a key is one statement, so of two servers starting the same retry at the same moment exactly one runs the
+command and the other waits, then replays its answer. The running server renews a lease while the command runs; if it
+stops, the lease runs out and the next retry takes the key over. Records last 24 hours and the table is bounded
+(`ttlMs`, `maxRecords`, `table`).
+
 ## License
 
 Apache-2.0

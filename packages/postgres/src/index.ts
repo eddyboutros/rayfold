@@ -488,3 +488,5 @@ function quote(name: string): string {
 function snake(name: string): string {
   return name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 }
+
+export { PgIdempotencyStore, idempotencySchema, type PgIdempotencyOptions } from "./idempotency.ts";

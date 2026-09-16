@@ -24,6 +24,7 @@
     ".": "./src/index.ts"
   },
   "peerDependencies": {
-    "@rayfold/schema": "*"
+    "@rayfold/schema": "*",
+    "@rayfold/server": "*"
   }
 }

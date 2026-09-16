@@ -62,6 +62,11 @@ What else is in the package:
 | `createBindingHandler(server)` | REST routes from `@http(...)` annotations in the schema. |
 | `openApiFor(server)` | An OpenAPI 3.2 document for those routes. |
 | `createMcpHandler(server)` | The schema as an MCP server: commands become tools, queries become resources. |
+| `MemoryIdempotencyStore` | Where command results are kept so a retry replays instead of running the command again. |
+
+Running more than one server: pass `idempotency` a store every instance shares, such as `PgIdempotencyStore` from
+`@rayfold/postgres`, and a keyed command runs once across the fleet. `idempotencyLeaseMs` (default 30 seconds) is how
+long a server holds a key before another may take it over.
 
 Security defaults: JSON-only bodies, an Origin check on state-changing requests, a Host check on loopback servers,
 a 1 MiB body limit, nesting and cost limits, and a redacted manifest. See `spec/12-security.md` in the Rayfold

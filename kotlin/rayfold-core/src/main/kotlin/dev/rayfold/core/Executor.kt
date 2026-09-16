@@ -130,8 +130,11 @@ class Executor(
     /**
      * Returns the result with both the full and the compact `ok` frame: an idempotent replay answers in the retry's own
      * form. A failure after the resolver ran is a [CommittedCommandException], because its side effect stands.
+     *
+     * [committed] is called the moment the resolver returns, before its result is projected. From there on the side
+     * effect stands whatever happens to the answer, including a cancellation, which no exception can say.
      */
-    suspend fun runCommand(op: OpDef, args: JsonObject, shape: Shape, explicit: Boolean, cost: Long, ctx: RayfoldContext, emit: (JsonObject) -> Unit, policyChecked: Boolean = false): Triple<JsonElement, JsonObject, JsonObject> {
+    suspend fun runCommand(op: OpDef, args: JsonObject, shape: Shape, explicit: Boolean, cost: Long, ctx: RayfoldContext, emit: (JsonObject) -> Unit, policyChecked: Boolean = false, committed: () -> Unit = {}): Triple<JsonElement, JsonObject, JsonObject> {
         if (!policyChecked) checkOpPolicy(op, "write", args, ctx)
         val fn = resolvers.commands[op.name] ?: throw RayfoldException(Code.UNIMPLEMENTED, "No resolver for command ${op.name}")
         val raw = try {
@@ -142,6 +145,7 @@ class Executor(
             if (e.code == Code.DOMAIN && (e.type == null || e.type !in op.throws)) throw RayfoldException(Code.INTERNAL, "${op.name} raised undeclared error ${e.type ?: "?"}")
             throw e
         }
+        committed()
         try {
             val cr = raw as? CommandResult ?: CommandResult(raw as JsonElement?)
             val st = State(ctx, explicit)

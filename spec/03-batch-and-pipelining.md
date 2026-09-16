@@ -67,6 +67,12 @@ before a replay is served. A keyed command from a caller with no viewer is `unau
 callers would share one replay scope. Servers MUST retain keys for at least 24 hours and MUST bound the store
 ([12 §3-4](12-security.md)).
 
+A command that failed before it changed anything leaves no record, so a repeat runs it. One that failed after its
+effect keeps that failure, and one whose op was canceled or ran out of time after its effect keeps a `canceled` answer
+saying the command committed, so a repeat learns that its effect happened instead of being told nothing did. While the command runs its key is held under a lease, and repeats wait. Servers that
+share one store therefore execute once between them; if the server holding a key stops, the lease runs out and a later
+repeat takes the key over ([12 §4](12-security.md)).
+
 Commands without a `key` are rejected with `invalid_argument` unless the command is annotated
 `@idempotent(false)`, which opts it out of the guarantee. Whether and when to repeat a failed request is the
 client's choice, guided by `retryable` ([05](05-errors.md)); a client that repeats keyed commands on its own

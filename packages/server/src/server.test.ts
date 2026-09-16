@@ -688,13 +688,18 @@ describe("security: bounded memory", () => {
   it("the idempotency store sweeps expired records on write and never holds more than its cap", async () => {
     let t = 0;
     const store = new MemoryIdempotencyStore(1_000, () => t, 3);
-    const rec = (at: number) => ({ argsHash: "h", frame: {}, at });
-    for (const k of ["a", "b", "c", "d"]) await store.put("s", k, rec(t));
+    /** A finished key, as a command leaves it: claimed, then recorded under that claim's token. */
+    const record = async (key: string, at: number) => {
+      const claim = await store.claim("s", key, 1_000);
+      if (claim.state !== "owned") throw new Error(`${key} was not free: ${claim.state}`);
+      await store.put("s", key, { argsHash: "h", frame: {}, at }, claim.token);
+    };
+    for (const k of ["a", "b", "c", "d"]) await record(k, t);
     expect(store.size).toBe(3);
     expect(await store.get("s", "a")).toBeUndefined(); // the oldest went first
     expect(await store.get("s", "d")).toBeDefined();
     t = 1_001;
-    await store.put("s", "e", rec(t));
+    await record("e", t);
     expect(store.size).toBe(1); // b, c and d expired and were swept by the write
   });
 

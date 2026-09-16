@@ -68,6 +68,15 @@ class SecurityTest {
 
     private fun key(n: Int) = "security-key-%06d".format(n)
 
+    /** Long enough that no test here can outlive a lease it takes, so nothing depends on how fast the machine is. */
+    private val lease = 60 * 60 * 1000L
+
+    private fun MemoryIdempotencyStore.owns(key: String): String =
+        (claim("s", key, lease) as? IdempotencyClaim.Owned)?.token ?: error("expected to own $key")
+
+    /** What a run does with a key it owns: claim it, then store the answer retries replay. */
+    private fun MemoryIdempotencyStore.record(key: String, rec: IdempotencyRecord) = put("s", key, rec, owns(key))
+
     private fun op(id: Int, name: String, args: String, key: String? = null, shape: String? = null, simulate: Boolean = false, deadline: String? = null) = buildJsonObject {
         put("id", id); put("op", name); put("args", obj(args))
         if (key != null) put("key", key)
@@ -549,25 +558,25 @@ class SecurityTest {
         val rec = IdempotencyRecord("h", JsonObject(emptyMap()), JsonObject(emptyMap()))
         val store = MemoryIdempotencyStore(ttlMs = 100, maxSize = 3, now = { clock })
         assertEquals(100_000, MemoryIdempotencyStore::class.java.getDeclaredField("maxSize").let { f -> f.isAccessible = true; f.get(MemoryIdempotencyStore()) })
-        store.put("s", "a", rec); store.put("s", "b", rec)
+        store.record("a", rec); store.record("b", rec)
         clock = 99
         assertEquals(rec, store.get("s", "a"), "guard: not expired yet")
         clock = 100
-        store.put("s", "c", rec)
+        store.record("c", rec)
         assertEquals(1, store.size, "a and b expired and the put swept them, without any get")
-        store.put("s", "d", rec); store.put("s", "e", rec)
-        store.put("s", "f", rec)
+        store.record("d", rec); store.record("e", rec)
+        store.record("f", rec)
         assertEquals(3, store.size, "full: the oldest record made room")
         assertNull(store.get("s", "c"))
         for (k in listOf("d", "e", "f")) assertEquals(rec, store.get("s", k))
 
         val claims = MemoryIdempotencyStore(maxSize = 2)
-        assertEquals(IdempotencyClaim.Owned, claims.claim("s", "x"))
-        claims.put("s", "y", rec); claims.put("s", "z", rec)
-        assertTrue(claims.claim("s", "x") is IdempotencyClaim.InFlight, "the oldest entry was a claim in flight, so y was evicted instead")
+        val x = claims.owns("x")
+        claims.record("y", rec); claims.record("z", rec)
+        assertTrue(claims.claim("s", "x", lease) is IdempotencyClaim.InFlight, "the oldest entry was a claim in flight, so y was evicted instead")
         assertNull(claims.get("s", "y"))
-        claims.release("s", "x")
-        assertEquals(IdempotencyClaim.Owned, claims.claim("s", "x"), "released claims can be taken again")
+        claims.release("s", "x", x)
+        assertTrue(claims.claim("s", "x", lease) is IdempotencyClaim.Owned, "released claims can be taken again")
     }
 
     @Test

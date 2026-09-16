@@ -9,6 +9,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -22,6 +23,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -39,6 +41,12 @@ data class BatchOptions(
     val maxFrames: Int = 100_000,
     /** Inline shapes remembered by id, least recently used evicted first; [RayfoldServer.registerShape] entries stay. */
     val maxInlineShapes: Int = 10_000,
+    /**
+     * How long one run owns an idempotency key before another may take it over ([IdempotencyStore.claim]). The lease
+     * is renewed every third of it while the command runs, so it bounds how long a key stays held by a server that
+     * died, not how long a command may take.
+     */
+    val idempotencyLeaseMs: Long = 30_000,
 )
 
 /** How a transport runs a batch. None of this is settable from the wire envelope. */
@@ -61,43 +69,70 @@ data class IdempotencyRecord(val argsHash: String, val frame: JsonObject, val co
 
 /** What [IdempotencyStore.claim] found. */
 sealed class IdempotencyClaim {
-    /** The caller now owns the key and must [IdempotencyStore.put] a record or [IdempotencyStore.release] it. */
-    object Owned : IdempotencyClaim()
+    /** The caller runs the command and settles the key with [token]: [IdempotencyStore.put] or [IdempotencyStore.release]. */
+    class Owned(val token: String) : IdempotencyClaim()
     class Done(val record: IdempotencyRecord) : IdempotencyClaim()
-    /** Another run holds the key; [outcome] completes with its record, or with null when it failed and let go. */
-    class InFlight(val outcome: Deferred<IdempotencyRecord?>) : IdempotencyClaim()
-}
-
-interface IdempotencyStore {
-    fun get(scope: String, key: String): IdempotencyRecord?
-    fun put(scope: String, key: String, record: IdempotencyRecord)
-
-    /**
-     * Reserves [key] atomically so that concurrent runs with one key execute the command once. This default is only
-     * as good as [get] (it never answers [IdempotencyClaim.InFlight]); a shared store should override it.
-     */
-    fun claim(scope: String, key: String): IdempotencyClaim = get(scope, key)?.let { IdempotencyClaim.Done(it) } ?: IdempotencyClaim.Owned
-
-    /** Gives up an [IdempotencyClaim.Owned] key after a failure that left nothing to replay. */
-    fun release(scope: String, key: String) {}
+    /** Another run holds the key until [heldUntil] (epoch milliseconds); this one waits and claims again. */
+    class InFlight(val heldUntil: Long) : IdempotencyClaim()
 }
 
 /**
- * In-memory store. Records expire [ttlMs] after they were stored (checked on get, swept on put) and at most
- * [maxSize] keys are kept: expired entries go first, then the oldest.
+ * Where a command's answer is kept so a retry replays it instead of running the command twice. [claim] is the one
+ * operation that must be atomic: a store shared by several server processes makes the guarantee hold across all of
+ * them, and [MemoryIdempotencyStore] holds it within one.
+ *
+ * A claim is a lease, not a lock. Its owner renews it while the command runs, and a claim nobody renewed is taken
+ * over, so a server that dies does not hold a key until its record expires. The [IdempotencyClaim.Owned] token tells
+ * the owner apart from whoever took the key afterwards: [put] and [release] from a lost claim do nothing, which is
+ * what makes handing a lease over safe.
+ */
+interface IdempotencyStore {
+    fun get(scope: String, key: String): IdempotencyRecord?
+
+    /** Reserves [key] for [leaseMs] milliseconds, atomically against every other caller of this store. */
+    fun claim(scope: String, key: String, leaseMs: Long): IdempotencyClaim
+
+    /** Extends an owned claim by another [leaseMs]; false when the claim was lost and this run no longer owns the key. */
+    fun renew(scope: String, key: String, token: String, leaseMs: Long): Boolean
+
+    /** Stores what a retry replays and clears the claim. */
+    fun put(scope: String, key: String, record: IdempotencyRecord, token: String)
+
+    /** Gives up a claim after a failure that left nothing to replay, so the next retry runs the command. */
+    fun release(scope: String, key: String, token: String)
+
+    /**
+     * Waits at most [timeoutMs] for the claim on [key] to settle. The caller claims again either way, so this is only
+     * ever a hint: a store inside one process can wake its waiter the moment the claim settles, one shared between
+     * processes can do no better than sleeping.
+     */
+    suspend fun awaitSettled(scope: String, key: String, timeoutMs: Long) {
+        delay(timeoutMs)
+    }
+}
+
+/**
+ * In-memory store, for one process. Records expire [ttlMs] after they were stored (checked on get, swept on put) and
+ * at most [maxSize] keys are kept: expired entries go first, then the oldest. A waiter here is woken as soon as the
+ * claim it waits for settles, rather than waiting out the caller's backoff.
  */
 class MemoryIdempotencyStore(
     private val ttlMs: Long = 24 * 60 * 60 * 1000L,
     private val maxSize: Int = 100_000,
     private val now: () -> Long = System::currentTimeMillis,
 ) : IdempotencyStore {
-    /** A stored [record], or an in-flight claim whose [waiters] complete when it settles. */
-    private class Entry(val at: Long, val record: IdempotencyRecord?, val waiters: CompletableDeferred<IdempotencyRecord?>?)
+    /** The key is held by one run until [heldUntil], unless it renews; [waiters] complete when the run settles it. */
+    private class Claim(val token: String, var heldUntil: Long) {
+        val waiters = CompletableDeferred<IdempotencyRecord?>()
+    }
+
+    /** A stored [record], or a [claim] in flight. */
+    private class Entry(val at: Long, val record: IdempotencyRecord?, val claim: Claim?)
 
     // insertion order is age order (put re-inserts), so expired and oldest entries sit at the head; guarded by itself
     private val map = LinkedHashMap<String, Entry>()
 
-    /** Keys held: stored records and in-flight claims together. */
+    /** Keys held: stored records and claims in flight together. */
     val size: Int get() = synchronized(map) { map.size }
 
     private fun expired(e: Entry, t: Long) = e.record != null && t - e.at >= ttlMs
@@ -109,52 +144,71 @@ class MemoryIdempotencyStore(
         e.record
     }
 
-    override fun claim(scope: String, key: String): IdempotencyClaim = synchronized(map) {
+    override fun claim(scope: String, key: String, leaseMs: Long): IdempotencyClaim = synchronized(map) {
         val k = "$scope $key"
         val t = now()
         val e = map[k]
         val record = e?.record
-        val waiters = e?.waiters
+        val held = e?.claim
         when {
             e != null && record != null && !expired(e, t) -> IdempotencyClaim.Done(record)
-            waiters != null -> IdempotencyClaim.InFlight(waiters)
+            held != null && held.heldUntil > t -> IdempotencyClaim.InFlight(held.heldUntil)
             else -> {
                 map.remove(k)
-                insert(k, Entry(t, null, CompletableDeferred()), t)
-                IdempotencyClaim.Owned
+                val claim = Claim(UUID.randomUUID().toString(), t + leaseMs)
+                insert(k, Entry(t, null, claim), t)
+                held?.waiters?.complete(null) // whoever waited on the lease that ran out claims again, behind this one
+                IdempotencyClaim.Owned(claim.token)
             }
         }
     }
 
-    override fun put(scope: String, key: String, record: IdempotencyRecord) {
+    override fun renew(scope: String, key: String, token: String, leaseMs: Long): Boolean = synchronized(map) {
+        // a lease that ran out is still this run's while nobody has taken it: renewing then costs no one anything
+        val claim = map["$scope $key"]?.claim?.takeIf { it.token == token } ?: return false
+        claim.heldUntil = now() + leaseMs
+        true
+    }
+
+    override fun put(scope: String, key: String, record: IdempotencyRecord, token: String) {
         val k = "$scope $key"
-        val prior = synchronized(map) {
+        val claim = synchronized(map) {
+            val held = map[k]?.claim?.takeIf { it.token == token } ?: return // the claim was lost: its new owner decides
             val t = now()
-            val p = map.remove(k)
+            map.remove(k)
             insert(k, Entry(t, record, null), t)
-            p
+            held
         }
-        prior?.waiters?.complete(record)
+        claim.waiters.complete(record)
     }
 
-    override fun release(scope: String, key: String) {
+    override fun release(scope: String, key: String, token: String) {
         val k = "$scope $key"
-        val claim = synchronized(map) { map[k]?.takeIf { it.waiters != null }?.also { map.remove(k) } }
-        claim?.waiters?.complete(null)
+        val claim = synchronized(map) { map[k]?.claim?.takeIf { it.token == token }?.also { map.remove(k) } ?: return }
+        claim.waiters.complete(null)
     }
 
-    /** Sweeps expired records off the head, evicts the oldest records while full, then adds [e]. Caller holds the lock. */
+    override suspend fun awaitSettled(scope: String, key: String, timeoutMs: Long) {
+        val waiters = synchronized(map) { map["$scope $key"]?.claim?.waiters } ?: return
+        withTimeoutOrNull(timeoutMs) { waiters.await() }
+    }
+
+    /** Sweeps expired entries off the head, evicts the oldest records while full, then adds [e]. Caller holds the lock. */
     private fun insert(k: String, e: Entry, t: Long) {
         val sweep = map.entries.iterator()
         while (sweep.hasNext()) {
             val head = sweep.next().value
-            if (head.waiters != null) continue // a claim in flight never expires
+            val claim = head.claim
+            if (claim != null) { if (claim.heldUntil <= t) sweep.remove(); continue } // a claim in flight never expires
             if (expired(head, t)) sweep.remove() else break
         }
         if (map.size >= maxSize) {
-            // in-flight claims are skipped: dropping one would let a concurrent duplicate run
+            // claims in flight are skipped: dropping one would let a concurrent duplicate run
             val evict = map.entries.iterator()
-            while (map.size >= maxSize && evict.hasNext()) if (evict.next().value.waiters == null) evict.remove()
+            while (map.size >= maxSize && evict.hasNext()) {
+                val claim = evict.next().value.claim
+                if (claim == null || claim.heldUntil <= t) evict.remove()
+            }
         }
         map[k] = e
     }
@@ -186,7 +240,7 @@ class BatchRunner(
         var resolved: Views.Resolved? = null
     }
 
-    private class Claimed(val scope: String, val key: String, val hash: String)
+    private class Claimed(val scope: String, val key: String, val hash: String, val token: String)
 
     /** Frames out of one batch: caps what resolvers produce and remembers which ops have ended. */
     private class Sink(private val ch: Channel<JsonObject>, private val maxFrames: Int) {
@@ -435,21 +489,49 @@ class BatchRunner(
         // every anonymous caller shares one scope, so a key would let one stranger replay another's result
         if (ctx.viewer is JsonNull) throw RayfoldException(Code.UNAUTHENTICATED, "${op.name}(): idempotency keys need an identified caller")
         val hash = sha256(op.name + "\n" + Canonical.json(args))
+        var wait = FIRST_WAIT_MS
         while (true) {
-            when (val c = idempotency.claim(viewerScope, key)) {
+            when (val c = idempotency.claim(viewerScope, key, options.idempotencyLeaseMs)) {
                 is IdempotencyClaim.Done -> return replay(c.record, hash, key, p, results, sink)
-                // null: that run failed and let go of the key, so try to claim it again
-                is IdempotencyClaim.InFlight -> c.outcome.await()?.let { return replay(it, hash, key, p, results, sink) }
-                IdempotencyClaim.Owned -> return execute(p, args, ctx, results, sink, Claimed(viewerScope, key, hash))
+                is IdempotencyClaim.Owned -> return execute(p, args, ctx, results, sink, Claimed(viewerScope, key, hash, c.token))
+                // Another run owns the key: wait, then claim again. A store in this process wakes us the moment that run
+                // settles, but one behind a database cannot, so it is claiming again, not the wake-up, that answers us.
+                // The wait ends early when the op's deadline passes or the caller goes away, and the op ends with it.
+                is IdempotencyClaim.InFlight -> {
+                    idempotency.awaitSettled(viewerScope, key, wait)
+                    wait = (wait * 2).coerceAtMost(MAX_WAIT_MS)
+                }
             }
+        }
+    }
+
+    /**
+     * Runs [body] while the claim's lease is renewed every third of it, so a command that outlives one lease keeps its
+     * key. Renewals stop as soon as the store says the claim is gone; the [IdempotencyStore.put] that follows is then
+     * ignored, and the run that took the key over answers the retries.
+     */
+    private suspend fun <T> holding(claim: Claimed?, body: suspend () -> T): T {
+        if (claim == null) return body()
+        val lease = options.idempotencyLeaseMs
+        return coroutineScope {
+            val renewals = launch {
+                while (true) {
+                    delay((lease / 3).coerceAtLeast(1))
+                    if (!idempotency.renew(claim.scope, claim.key, claim.token, lease)) break
+                }
+            }
+            try { body() } finally { renewals.cancel() }
         }
     }
 
     private suspend fun execute(p: Planned, args: JsonObject, ctx: RayfoldContext, results: MutableMap<Int, JsonElement>, sink: Sink, claim: Claimed?): Boolean {
         var settled = false
+        var committed = false
         try {
-            val (result, frame, compactFrame) = executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, sink::emit, policyChecked = true)
-            claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, frame, compactFrame)) }
+            val (result, frame, compactFrame) = holding(claim) {
+                executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, sink::emit, policyChecked = true) { committed = true }
+            }
+            claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, frame, compactFrame), it.token) }
             settled = true
             results[p.req.id] = result
             // a dry run never publishes live-query changes (spec 12 section 6); a replay changed nothing, so it is not here
@@ -458,12 +540,22 @@ class BatchRunner(
         } catch (e: CommittedCommandException) {
             // the side effect happened, so this failure is the answer a retry must get, not a second run
             val ef = Frames.error(p.req.id, e.error)
-            claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, ef, ef)) }
+            claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, ef, ef), it.token) }
             settled = true
             sink.send(ef)
             return false
+        } catch (e: CancellationException) {
+            // The deadline passed, or the caller went away, after the resolver had already committed. Releasing the key
+            // here would let the retry run the command a second time, so the key keeps this answer instead. The batch
+            // sends the op's canceled or deadline_exceeded frame itself; this one is only ever replayed.
+            if (committed) claim?.let {
+                val ef = Frames.error(p.req.id, RayfoldException(Code.CANCELED, "${p.op.name}() committed, then the op ended before its result was delivered"))
+                idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, ef, ef), it.token)
+                settled = true
+            }
+            throw e
         } finally {
-            if (!settled) claim?.let { idempotency.release(it.scope, it.key) }
+            if (!settled) claim?.let { idempotency.release(it.scope, it.key, it.token) }
         }
     }
 
@@ -564,6 +656,10 @@ class BatchRunner(
 
     private companion object {
         const val DEADLINE_RULE = "expected an integer number of milliseconds from 0 to ${RequestOp.MAX_DEADLINE_MS}"
+
+        /** Backoff between claims while another run holds the key: 50, 100, 200, 400, then 500 ms. */
+        const val FIRST_WAIT_MS = 50L
+        const val MAX_WAIT_MS = 500L
 
         fun deadlineOf(v: JsonElement?): Long? = StrictJson.integerOrNull(v)?.toLongOrNull()?.takeIf { it in 0..RequestOp.MAX_DEADLINE_MS }
     }

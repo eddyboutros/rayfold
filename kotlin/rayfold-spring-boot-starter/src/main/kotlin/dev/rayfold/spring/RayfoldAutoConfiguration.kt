@@ -3,6 +3,7 @@ package dev.rayfold.spring
 import dev.rayfold.core.BatchOptions
 import dev.rayfold.core.HttpCall
 import dev.rayfold.core.HttpOptions
+import dev.rayfold.core.IdempotencyStore
 import dev.rayfold.core.Instrumentation
 import dev.rayfold.core.ManifestMode
 import dev.rayfold.core.RayfoldHttp
@@ -118,10 +119,13 @@ class RayfoldAutoConfiguration {
         context: ApplicationContext,
         mapper: ObjectProvider<ObjectMapper>,
         instrumentation: ObjectProvider<Instrumentation>,
+        idempotency: ObjectProvider<IdempotencyStore>,
     ): RayfoldServer {
         val builder = Rayfold.server(schema).options(BatchOptions(trustedShapes = properties.trustedShapes, budget = properties.budget, maxDepth = properties.maxDepth))
         // an Instrumentation bean, such as RayfoldOpenTelemetry(openTelemetry), traces every batch
         instrumentation.ifAvailable { builder.instrumentation(it) }
+        // an IdempotencyStore bean, such as JdbcIdempotencyStore, keeps commands running once across every instance
+        idempotency.ifAvailable { builder.idempotencyStore(it) }
         val bound = AnnotatedResolvers(context, mapper.getIfAvailable { JsonMapper.builder().build() }, schema).bindTo(builder)
         log.info("Rayfold at ${properties.path}: ${bound.size} resolvers bound" + bound.joinToString("") { "\n  $it" })
         return builder.build()

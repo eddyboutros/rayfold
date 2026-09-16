@@ -2,7 +2,7 @@
 import type { Instrumentation, Outcome } from "./instrumentation.ts";
 import { annotation, baseName, hashJson, isShapeId, type OpDef, type RayfoldSchemaIR, type Shape, type TypeRef } from "@rayfold/schema";
 import { coerceArgs, collectRefs, getPath, resolveRefs } from "./args.ts";
-import { EventBus, type IdempotencyStore, type RayfoldContext } from "./context.ts";
+import { EventBus, MemoryIdempotencyStore, type IdempotencyClaim, type IdempotencyRecord, type IdempotencyStore, type RayfoldContext } from "./context.ts";
 import { estimateCost } from "./cost.ts";
 import { compactQueryFrame, type Executor } from "./executor.ts";
 import { RayfoldError, VersionConflict, toWireError, type Frame, type RequestEnvelope, type RequestMeta, type RequestOp, type WireError } from "./protocol.ts";
@@ -32,8 +32,8 @@ export interface BatchRuntime {
   instrumentation?: Instrumentation;
   /** Records which operations each client called (spec 11). */
   usage?: UsageSink;
-  /** Commands running right now, by idempotency scope and key: a concurrent retry waits for the first, then replays. */
-  inflight: Map<string, Promise<void>>;
+  /** How long a command holds its idempotency key before another server may take it over (spec 03 section 4). */
+  leaseMs: number;
 }
 
 export interface ExecuteOptions {
@@ -252,6 +252,21 @@ async function runOne(
   });
 }
 
+/** Takes the key for this command, waiting for whoever holds it, and giving up when the op is cancelled. */
+async function claimKey(rt: BatchRuntime, scope: string, key: string, signal: AbortSignal): Promise<Extract<IdempotencyClaim, { state: "owned" } | { state: "done" }>> {
+  const backoff = [50, 100, 200, 400, 500];
+  for (let attempt = 0; ; attempt++) {
+    const claim = await rt.idempotency.claim(scope, key, rt.leaseMs);
+    if (claim.state !== "inflight") return claim;
+    if (signal.aborted) throw signal.reason;
+    // Whoever holds it may be another server, so waiting means asking again; a store in this process wakes us sooner.
+    const woken = rt.idempotency instanceof MemoryIdempotencyStore ? rt.idempotency.settled(scope, key) : undefined;
+    const pause = new Promise<void>((r) => setTimeout(r, backoff[Math.min(attempt, backoff.length - 1)]));
+    await (woken ? Promise.race([woken, pause]) : pause);
+    if (signal.aborted) throw signal.reason;
+  }
+}
+
 /** Runs one op and sends its frames; resolves to the error it failed with, if it failed. */
 async function runOp(
   rt: BatchRuntime,
@@ -353,36 +368,53 @@ async function runOp(
         }
         // Bound to the operation as well as the arguments: a key can never replay another command's result.
         const argsHash = hashJson({ op: p.op.name, args });
-        const claim = key && !ctx.simulate ? `${viewerScope}\u0000${key}` : undefined;
-        let release: (() => void) | undefined;
-        if (claim) {
-          // One execution per key even when retries arrive together: later callers wait for the first, then replay.
-          for (let running = rt.inflight.get(claim); running; running = rt.inflight.get(claim)) await running;
-          rt.inflight.set(claim, new Promise<void>((r) => (release = r)));
+        const keyed = key !== undefined && !ctx.simulate;
+        const replayed = (record: IdempotencyRecord): void => {
+          if (record.argsHash !== argsHash) throw new RayfoldError("already_exists", `Idempotency key ${key} was used for another operation or other arguments`);
+          const stored = p.req.compact && record.compactFrame !== undefined ? record.compactFrame : record.frame;
+          const replay = structuredClone(stored) as Frame & { meta?: Record<string, unknown> };
+          replay.meta = { ...(replay.meta ?? {}), replay: true };
+          (replay as { id: number }).id = id; // a retry may use another op id; the answer belongs to this op
+          sink.push(stamp(replay));
+          results.set(id, (replay as { ok?: unknown }).ok);
+        };
+
+        // One execution per key, however many servers share the store: one caller owns the key and the others wait
+        // for it, then replay its result (spec 03 section 4, spec 12 section 4.4).
+        let token: string | undefined;
+        if (keyed) {
+          const held = await claimKey(rt, viewerScope, key as string, ctx.signal);
+          if (held.state === "done") {
+            replayed(held.record);
+            break;
+          }
+          token = held.token;
         }
+        const renewal = token === undefined ? undefined : setInterval(() => void rt.idempotency.renew(viewerScope, key as string, token as string, rt.leaseMs), Math.max(1, Math.floor(rt.leaseMs / 3)));
+        let committed = false;
         try {
-          if (claim) {
-            const prior = await rt.idempotency.get(viewerScope, key!);
-            if (prior) {
-              if (prior.argsHash !== argsHash) throw new RayfoldError("already_exists", `Idempotency key ${key} was used for another operation or other arguments`);
-              const stored = p.req.compact && prior.compactFrame !== undefined ? prior.compactFrame : prior.frame;
-              const replay = structuredClone(stored) as Frame & { meta?: Record<string, unknown> };
-              replay.meta = { ...(replay.meta ?? {}), replay: true };
-              (replay as { id: number }).id = id; // a retry may use another op id; the answer belongs to this op
-              sink.push(stamp(replay));
-              results.set(id, (replay as { ok?: unknown }).ok);
-              break;
-            }
-          }
-          const { result, full, compact, patch } = await rt.executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, (f) => sink.push(stamp(f)));
+          const { result, full, compact, patch } = await rt.executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, (f) => sink.push(stamp(f)), () => (committed = true));
           results.set(id, result);
-          if (claim) await rt.idempotency.put(viewerScope, key!, { argsHash, frame: structuredClone(full), compactFrame: structuredClone(compact), at: rt.options.now() });
+          if (token !== undefined) await rt.idempotency.put(viewerScope, key as string, { argsHash, frame: structuredClone(full), compactFrame: structuredClone(compact), at: rt.options.now() }, token);
           if (!ctx.simulate) rt.changes.publish(changeFromPatch(patch));
-        } finally {
-          if (claim) {
-            rt.inflight.delete(claim);
-            release?.();
+        } catch (e) {
+          // A command that failed before it changed anything leaves no record, so a retry runs it. One that failed
+          // after its effect records the failure, so a retry is answered with it instead of running the command again.
+          if (token !== undefined) {
+            if (committed) {
+              // The op ended after the effect happened. Recording its `deadline_exceeded` would tell the retry that
+              // nothing happened, and that code is retryable, so the client would run the effect again under a fresh
+              // key. The record says the command committed instead (spec 12 section 4.4).
+              const ended = ctx.signal.aborted
+                ? new RayfoldError("canceled", `${p.op.name}() committed, then the op ended before its result was delivered`)
+                : e;
+              const failure: Frame = { id, error: toWireError(ended), fin: true };
+              await rt.idempotency.put(viewerScope, key as string, { argsHash, frame: failure, compactFrame: failure, at: rt.options.now() }, token);
+            } else await rt.idempotency.release(viewerScope, key as string, token);
           }
+          throw e;
+        } finally {
+          if (renewal) clearInterval(renewal);
         }
         break;
       }

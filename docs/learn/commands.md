@@ -96,6 +96,21 @@ the original result instead of running it a second time. `meta.replay` says so:
 
 The client libraries create a key for each call and keep it when they retry or replay a command queued offline.
 
+Records live in the server's memory by default, which holds for one server. Point every instance at a shared store
+([`PgIdempotencyStore`](../guide/postgres.md) on Node, `JdbcIdempotencyStore` on the JVM) and the guarantee holds across
+a fleet: a retry that lands on another instance replays the first answer, and two retries that arrive together take the
+key with one statement, so one of them runs the command and the other waits for it.
+
+A command that failed before it changed anything leaves no record, so a retry runs it. When the caller goes away or the
+deadline passes *after* the command committed, the record says exactly that:
+
+```json
+{"id":1,"error":{"code":"canceled","message":"buy() committed, then the op ended before its result was delivered"},"meta":{"replay":true},"fin":true}
+```
+
+The retry is told its effect happened. Replaying the op's own `deadline_exceeded` would say the opposite, and since that
+code is retryable the client would come back with a fresh key and buy a second copy.
+
 ## Errors the schema declares
 
 When the resolver throws `OutOfStock`, the client receives it by name, with the data the schema describes:

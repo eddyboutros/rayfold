@@ -113,6 +113,19 @@ the same Origin check. `rayfold.websocket=false` turns it off.
 Declare an `Instrumentation` bean, such as `new RayfoldOpenTelemetry(openTelemetry)` from `rayfold-opentelemetry`,
 and every batch, op and loader call becomes a span ([Tracing](tracing.md)).
 
+### More than one instance
+
+Idempotency records are kept in memory, so a command retried against another instance runs a second time. Declare an
+`IdempotencyStore` bean and the starter hands it to the server; `JdbcIdempotencyStore` from `rayfold-jdbc` keeps the
+records in the database, so every instance shares them and a keyed command runs once across the fleet ([JDBC](jdbc.md)).
+
+```java
+@Bean
+IdempotencyStore idempotency(DataSource dataSource) {
+    return new JdbcIdempotencyStore(dataSource::getConnection);
+}
+```
+
 ### Who is asking
 
 With Spring Security on the classpath, the viewer is the signed-in user: `id` is the user name, `roles` the `ROLE_`
