@@ -8,6 +8,7 @@ import { annotation, baseName, type ArgDef, type FieldDef, type OpDef, type Rayf
 import type { RayfoldServer } from "./server.ts";
 import type { Frame } from "./protocol.ts";
 import { jsonSchemaFor, withRange } from "./json-schema.ts";
+import { publicIR } from "./fetch.ts";
 
 export { jsonSchemaFor, withRange };
 import { hostProblem, mediaType, originProblem, refuse, type OriginOptions } from "./guard.ts";
@@ -85,8 +86,9 @@ export function mcpTools(server: RayfoldServer): McpTool[] {
   return tools;
 }
 
-export function mcpResources(server: RayfoldServer): McpResource[] {
-  const out: McpResource[] = [{ uri: "rayfold://schema", name: "Rayfold schema (IR)", description: "The full schema as JSON IR", mimeType: "application/json" }];
+export function mcpResources(server: RayfoldServer, schema: SchemaMode = "redacted"): McpResource[] {
+  const out: McpResource[] = [];
+  if (schema !== "off") out.push({ uri: "rayfold://schema", name: "Rayfold schema (IR)", description: "The schema as JSON IR", mimeType: "application/json" });
   for (const op of Object.values(server.ir.ops)) {
     if (op.kind !== "query" || op.args.some((a) => !a.type.nullable && a.default === undefined)) continue;
     const r: McpResource = { uri: `rayfold://query/${op.name}`, name: op.name, mimeType: "application/json" };
@@ -150,8 +152,16 @@ function hashKey(s: string): string {
   return (h >>> 0).toString(16).padStart(8, "0") + s.length.toString(16).padStart(8, "0");
 }
 
+/**
+ * What `rayfold://schema` serves: the IR without policy expressions (the default), the whole IR, or nothing at all
+ * (spec 12 §5.6). A policy expression names the fields and viewer attributes that decide an answer, which tells a
+ * caller what to probe, so it is not part of what a schema has to disclose to be useful.
+ */
+export type SchemaMode = "redacted" | "full" | "off";
+
 /** Handle one JSON-RPC request (stateless). */
-export async function handleMcp(server: RayfoldServer, req: JsonRpcRequest, viewer: unknown): Promise<Record<string, unknown> | null> {
+export async function handleMcp(server: RayfoldServer, req: JsonRpcRequest, viewer: unknown, opts: { schema?: SchemaMode } = {}): Promise<Record<string, unknown> | null> {
+  const schemaMode = opts.schema ?? "redacted";
   const reply = (result: unknown) => ({ jsonrpc: "2.0", id: req.id ?? null, result });
   const fail = (code: number, message: string) => ({ jsonrpc: "2.0", id: req.id ?? null, error: { code, message } });
   const p = req.params ?? {};
@@ -172,13 +182,18 @@ export async function handleMcp(server: RayfoldServer, req: JsonRpcRequest, view
       return reply(await callTool(server, name, (p["arguments"] as Record<string, unknown>) ?? {}, viewer));
     }
     case "resources/list":
-      return reply({ resources: mcpResources(server), ttlMs: 300_000, cacheScope: "public" });
+      return reply({ resources: mcpResources(server, schemaMode), ttlMs: 300_000, cacheScope: "public" });
     case "resources/read": {
       const uri = p["uri"];
       if (typeof uri !== "string") return fail(-32602, "uri is required");
-      if (uri === "rayfold://schema") return reply({ contents: [{ uri, mimeType: "application/json", text: JSON.stringify(server.ir) }] });
+      if (uri === "rayfold://schema" && schemaMode !== "off") {
+        const ir = schemaMode === "full" ? server.ir : publicIR(server.ir);
+        return reply({ contents: [{ uri, mimeType: "application/json", text: JSON.stringify(ir) }] });
+      }
       const m = /^rayfold:\/\/query\/([A-Za-z_][A-Za-z0-9_]*)(\?(.*))?$/.exec(uri);
-      if (!m) return fail(-32602, `Unknown resource ${uri}`);
+      // reading a resource is a read: the operation's kind decides, not the name in the URI, so a command named
+      // here is refused rather than run. Otherwise MCP's one safe verb becomes a way to write.
+      if (!m || server.ir.ops[m[1]!]?.kind !== "query") return fail(-32602, `Unknown resource ${uri}`);
       const args: Record<string, unknown> = {};
       for (const [k, v] of new URLSearchParams(m[3] ?? "")) args[k] = v;
       const r = await callTool(server, m[1]!, args, viewer);
@@ -195,6 +210,8 @@ export async function handleMcp(server: RayfoldServer, req: JsonRpcRequest, view
 export interface McpHttpOptions extends OriginOptions {
   path?: string;
   viewer?: (req: IncomingMessage) => unknown | Promise<unknown>;
+  /** What `rayfold://schema` serves. Default `"redacted"`: the IR without policy expressions (spec 12 §5.6). */
+  schema?: SchemaMode;
 }
 
 /** Streamable HTTP endpoint: POST JSON-RPC, JSON reply. */
@@ -235,7 +252,7 @@ export function createMcpHandler(server: RayfoldServer, opts: McpHttpOptions = {
       res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ jsonrpc: "2.0", id: first.id ?? null, error: { code: -32020, message: "HeaderMismatch" } }));
       return true;
     }
-    const results = await Promise.all((Array.isArray(body) ? body : [body]).map((r) => handleMcp(server, r, viewer)));
+    const results = await Promise.all((Array.isArray(body) ? body : [body]).map((r) => handleMcp(server, r, viewer, { schema: opts.schema ?? "redacted" })));
     const out = Array.isArray(body) ? results.filter(Boolean) : results[0];
     res.setHeader("MCP-Protocol-Version", MCP_PROTOCOL_VERSION);
     if (out === null || out === undefined) {

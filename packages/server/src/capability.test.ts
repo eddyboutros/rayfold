@@ -39,6 +39,34 @@ describe("capability tokens (spec 06 section 6)", () => {
     expect(caps.verify(caps.attenuate(narrower, { ttlMs: 900_000 })).exp).toBe(T0 + 30_000);
   });
 
+  it("cannot add or change the facts policies read, only drop them", () => {
+    const caps = new Capabilities({ secret: SECRET, now: at(T0) });
+    const token = caps.mint({ id: "u1" }, { ops: ["book"], ttlMs: 600_000, caps: { tier: "basic", region: "eu" } });
+
+    // dropping a fact is the narrowing attenuation is for
+    expect(caps.verify(caps.attenuate(token, { caps: { tier: "basic" } })).caps).toEqual({ tier: "basic" });
+    expect(caps.verify(caps.attenuate(token, { caps: {} })).caps).toEqual({});
+
+    // guard: a holder must not be able to promote itself by restating a fact differently, or inventing a new one
+    expect(() => caps.attenuate(token, { caps: { tier: "admin" } })).toThrow(/widen/);
+    expect(() => caps.attenuate(token, { caps: { tier: "basic", plan: "unlimited" } })).toThrow(/widen/);
+    expect(() => caps.attenuate(caps.mint({ id: "u1" }, { ops: [], ttlMs: 60_000 }), { caps: { tier: "admin" } })).toThrow(/widen/);
+  });
+
+  it("a fact named like the token's own metadata never stands in for it", () => {
+    // `caps.ops` is the authorisation gate, so a fact called `ops` must not be able to shadow the signed one:
+    // otherwise a holder mints itself the run of the schema through the facts side of the same token.
+    const caps = new Capabilities({ secret: SECRET, now: at(T0) });
+    const token = caps.mint({ id: "u1" }, { ops: ["book"], ttlMs: 60_000, caps: { ops: ["placeOrder"], exp: 0, jti: "forged" } });
+    const viewer = caps.viewerOf(token) as { caps: { ops: string[]; exp: number; jti: string } };
+
+    expect(viewer.caps.ops).toEqual(["book"]);
+    expect(viewer.caps.exp).toBe(T0 + 60_000);
+    expect(viewer.caps.jti).not.toBe("forged");
+    expect(capabilityAllows(viewer, "placeOrder")).toBe(false);
+    expect(capabilityAllows(viewer, "book")).toBe(true); // guard: the real grant still works
+  });
+
   it("the batch runs what the token names and refuses the rest", async () => {
     const caps = new Capabilities({ secret: SECRET, now: at(T0) });
     const bs = createBookstore();

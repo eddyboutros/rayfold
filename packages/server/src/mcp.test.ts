@@ -141,6 +141,49 @@ describe("MCP tool calls run through the normal pipeline", () => {
     expect(bs.store.calls["Query.books"]).toBe(1);
   });
 
+  it("a resource read is a read: a command named as one is refused, not run", async () => {
+    // resources/read is MCP's safe verb. An agent reaching for rayfold://query/placeOrder must not place an order,
+    // whatever the URI claims, so the op's kind decides and the name in the path does not.
+    const res = (await handleMcp(bs.server, { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "rayfold://query/placeOrder" } }, u1)) as { error?: { code: number; message: string } };
+    expect(res.error).toMatchObject({ code: -32602, message: "Unknown resource rayfold://query/placeOrder" });
+    expect(bs.store.calls["Command.placeOrder"]).toBeUndefined();
+    expect(bs.store.orders.size).toBe(0);
+    // guard: a real query at the same shape of URI still runs
+    expect(await handleMcp(bs.server, { jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "rayfold://query/books" } }, u1)).toMatchObject({ result: {} });
+  });
+
+  it("the schema resource hides policy expressions unless it is asked to serve them, and can be turned off", async () => {
+    const read = (schema?: "redacted" | "full" | "off") =>
+      handleMcp(bs.server, { jsonrpc: "2.0", id: 11, method: "resources/read", params: { uri: "rayfold://schema" } }, null, schema ? { schema } : {}) as Promise<{
+        result?: { contents: Array<{ text: string }> };
+        error?: { code: number };
+      }>;
+
+    /** The arguments of every `@allow`/`@deny` in an IR: a policy expression names what a viewer must be to pass it. */
+    const policyArgs = (text: string): unknown[] => {
+      const found: unknown[] = [];
+      JSON.parse(text, (_k, v: unknown) => {
+        const o = v as Record<string, unknown> | null;
+        if (o && typeof o === "object" && !Array.isArray(o) && (o["name"] === "allow" || o["name"] === "deny") && !("type" in o)) found.push(o["args"]);
+        return v;
+      });
+      return found;
+    };
+
+    const redacted = await read();
+    expect(JSON.parse(redacted.result!.contents[0]!.text)).toMatchObject({ rayfold: "0.1" }); // still a usable schema
+    const hidden = policyArgs(redacted.result!.contents[0]!.text);
+    expect(hidden.length).toBeGreaterThan(0); // the bookstore has policies, or this proves nothing
+    expect(hidden.every((a) => JSON.stringify(a) === "{}")).toBe(true);
+
+    const full = await read("full");
+    expect(policyArgs(full.result!.contents[0]!.text).some((a) => JSON.stringify(a) !== "{}")).toBe(true);
+
+    const off = await read("off");
+    expect(off.error).toMatchObject({ code: -32602 });
+    expect(mcpResources(bs.server, "off").map((r) => r.uri)).not.toContain("rayfold://schema");
+  });
+
   it("unknown methods and tools are reported, not thrown", async () => {
     expect(await handleMcp(bs.server, { jsonrpc: "2.0", id: 8, method: "nope" }, null)).toEqual({ jsonrpc: "2.0", id: 8, error: { code: -32601, message: "Method not found: nope" } });
     expect(await call("stockUpdates", {})).toMatchObject({ result: { isError: true, content: [{ type: "text", text: "Unknown tool stockUpdates" }] } });

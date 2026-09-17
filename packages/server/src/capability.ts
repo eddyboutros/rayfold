@@ -14,6 +14,7 @@
  * Attenuation only ever narrows: a derived token may drop operations and shorten the life, never add or extend.
  */
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { canonicalJson } from "@rayfold/schema";
 import { RayfoldError } from "./protocol.ts";
 
 const PREFIX = "rfcap1";
@@ -52,6 +53,19 @@ export interface CapabilitiesOptions {
 
 const b64url = (b: Buffer): string => b.toString("base64url");
 const unb64url = (s: string): Buffer => Buffer.from(s, "base64url");
+
+/**
+ * The facts a derived token may carry. Dropping one is narrowing; keeping one is neutral; anything else is refused.
+ * A server cannot know what a fact means - whether a smaller `maxAmount` is narrower, or which of two `tier` values
+ * sits under the other - so removal is the only narrowing it can verify, and claiming to verify more would be a lie
+ * the policies then trust.
+ */
+function narrowedCaps(held: Record<string, unknown> | undefined, narrow: Record<string, unknown>): Record<string, unknown> {
+  const from = held ?? {};
+  const widened = Object.keys(narrow).filter((k) => !(k in from) || canonicalJson(from[k]) !== canonicalJson(narrow[k]));
+  if (widened.length) throw new RayfoldError("permission_denied", `Cannot widen a capability: ${widened.join(", ")}`);
+  return narrow;
+}
 
 /** Mints, verifies and narrows capability tokens with one secret. */
 export class Capabilities {
@@ -119,8 +133,7 @@ export class Capabilities {
       ops,
       exp,
       jti: randomUUID().replace(/-/g, ""),
-      // extra facts may be replaced, never added to: a narrower token cannot claim more than the one it came from
-      ...(narrow.caps ? { caps: narrow.caps } : {}),
+      ...(narrow.caps ? { caps: narrowedCaps(cap.caps, narrow.caps) } : {}),
     });
   }
 
@@ -131,7 +144,10 @@ export class Capabilities {
   viewerOf(token: string): unknown {
     const cap = this.verify(token);
     const viewer = cap.viewer;
-    const caps = { ops: cap.ops, exp: cap.exp, jti: cap.jti, ...(cap.iss ? { iss: cap.iss } : {}), ...(cap.caps ?? {}) };
+    // The token's own fields go on last: `caps.ops` is what the batch gates on, so a fact of the same name must not
+    // be able to stand in for it. Otherwise a holder grants itself the run of the schema through the facts side of
+    // the very token that was supposed to limit it.
+    const caps = { ...(cap.caps ?? {}), ops: cap.ops, exp: cap.exp, jti: cap.jti, ...(cap.iss ? { iss: cap.iss } : {}) };
     return viewer !== null && typeof viewer === "object" && !Array.isArray(viewer) ? { ...(viewer as Record<string, unknown>), caps } : { viewer, caps };
   }
 

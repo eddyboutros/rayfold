@@ -62,7 +62,7 @@ What else is in the package:
 | `attachWebSocket(httpServer, server, options)` | Batches and live queries over one WebSocket. |
 | `createBindingHandler(server)` | REST routes from `@http(...)` annotations in the schema. |
 | `openApiFor(server.ir, options)` | An OpenAPI 3.2 document for those routes. |
-| `createMcpHandler(server)` | The schema as an MCP server: commands become tools, queries become resources. |
+| `createMcpHandler(server, options)` | The schema as an MCP server: commands become tools, queries become resources. `schema` says what `rayfold://schema` serves — `"redacted"` (the default, the IR without policy expressions), `"full"`, or `"off"`. |
 | `MemoryIdempotencyStore` | Where command results are kept so a retry replays instead of running the command again. |
 | `MemoryUploadStore` | Where uploaded bytes are kept: passing `uploads: { store }` mounts `POST /rayfold/uploads`. |
 | `MemoryRelay` | Joins servers in one process: `join()` gives each its own end, so a command's changes and events reach live queries and streams on the others. |

@@ -5,6 +5,18 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **Three security fixes, two of which change behaviour.** A capability token's extra facts (`caps`, which policies
+  read as `viewer.caps.*`) could be *replaced* when a token was attenuated, so a holder could derive a token claiming
+  anything it liked — and because those facts were merged over the token's own signed fields, one called `ops` stood
+  in for the operation list the batch gates on, which turned a narrow token into the run of the schema. Attenuation
+  now accepts only facts the parent already carried, with the same value, since removal is the one narrowing a server
+  can verify without knowing what a fact means; and the token's own `ops`, `exp`, `jti` and `iss` are applied last, so
+  a fact can never stand in for them. The MCP bridge served the **whole** IR at `rayfold://schema`, policy expressions
+  included, which is a map of what to probe; it now serves the IR without them by default, with `schema: "full"` and
+  `schema: "off"` if you want otherwise (spec 12 §5.6, and what the JVM bridge already did). And `resources/read`
+  would run a **command** if a URI named one, turning MCP's one safe verb into a write: the operation's kind now
+  decides, not the name in the path.
+
 - **Uploads, as the extension `upload`.** `POST /rayfold/uploads` takes bytes on a route of their own and answers with
   a handle; the command that uses them names the handle in its arguments. It is a route rather than a multipart batch
   because a browser may send multipart to any origin without a preflight, which is exactly what the batch endpoint's
