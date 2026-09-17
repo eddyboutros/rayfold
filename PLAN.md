@@ -86,8 +86,12 @@ Order chosen so the early ones have a source of truth outside Rayfold:
 - [ ] **`canonicalization/`** — key ordering, escaping, unicode, duplicate keys, nesting depth. RFC 8785 is the
       reference point for what canonical JSON usually means; document where Rayfold differs and why.
 - [ ] **`hashing/`** — schema hash and binding hash over the above. Expected hash written into the fixture.
-- [ ] **`shapes/`** — the one he called out specifically: `input → parse → canonical form → shape id`, with the
-      expected canonical text *and* id in the fixture. Include the `@defer` cases where the runtimes disagree.
+- [x] **`shapes/`** — 11 vectors: text → canonical form → id, each id the SHA-256 of the canonical text in the same
+      case taken with a general-purpose digest. **Two findings.** (1) Writing them exposed a spec gap: §3 never said
+      how *arguments* are separated, so `reviews(after: "r1" first: 2)` and `reviews(after: "r1", first: 2)` were
+      both defensible and would give different ids — spec 02 §3 now gives every separator in a table. (2) Kotlin
+      accepted `@defer(foo: "x")` and turned `@defer(label: 5)` into a null label, where the grammar admits neither;
+      its parser is now strict. All 9 valid cases already produced identical canonical text and ids in both runtimes.
 - [ ] **`binary/`** — the RB dictionary (40 keys, the count is load-bearing), tag bytes, per-frame string table,
       the `0x09` raw-bytes case TS emits and Kotlin does not.
 - [ ] **`manifest/`** — the document now defined in spec 04 §4a. TS serves `schemaHash` and `limits`; Kotlin does not.

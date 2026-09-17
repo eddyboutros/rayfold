@@ -104,7 +104,17 @@ object Shapes {
                 val d = expectName()
                 if (d != "defer") throw RayfoldException(Code.INVALID_ARGUMENT, "Bad shape: unknown directive @$d")
                 var label: String? = null
-                if (atPunct("(")) { next(); expectName(); expectPunct(":"); label = (next() as? Tok.Str)?.v; expectPunct(")") }
+                if (atPunct("(")) {
+                    next()
+                    // strictly, because a shape's identity is the hash of its canonical text: reading the key and
+                    // discarding it, or letting a non-string label become null, accepts shapes another implementation
+                    // refuses and gives one of them a different id for the same text
+                    val k = expectName()
+                    if (k != "label") throw RayfoldException(Code.INVALID_ARGUMENT, "Bad shape: @defer accepts only label:")
+                    expectPunct(":")
+                    label = (next() as? Tok.Str)?.v ?: throw RayfoldException(Code.INVALID_ARGUMENT, "Bad shape: @defer label must be a string")
+                    expectPunct(")")
+                }
                 return ShapeItem(kind = "defer", label = label, shape = shape())
             }
             val first = expectName()

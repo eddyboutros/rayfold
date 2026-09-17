@@ -44,6 +44,7 @@ Each file is one area:
 | Area | Case fields | Covers |
 |---|---|---|
 | `numbers/` | `literal`, `canonical` | How a number is written when hashed (spec 12 §4.2). The literal is text so the file keeps it exactly as a client would send it — parsing is part of what is under test, since it is where `2.50` and `2.5` become one number. |
+| `shapes/` | `shape`, `canonical`, `id`, or `rejected` | Text → canonical form → shape id (spec 02 §3). The id is the SHA-256 of the canonical text in the same case, taken with a general-purpose digest, so a runtime is checked against the text *and* against the identity rather than only against itself. A `rejected` case is a shape the grammar does not admit. |
 
 ## Still to come
 

@@ -63,10 +63,23 @@ The canonical text of a shape is produced by:
 2. Sorting items at each level by kind first — fields, then type conditions (`...on`), then `@defer` blocks, then
    named-view spreads — and within a kind: fields by output name (alias or field name) then canonical args, type
    conditions by type name, defers by label, spreads by `Type.view`.
-3. Sorting args by name; encoding literal values as canonical JSON; keeping `$name` references verbatim.
-4. Emitting with single spaces, no newlines, and no commas between items: `{ author { id name } id title }`. A
-   composite argument value is canonical JSON, which does have commas and quoted keys:
-   `{ reviews(page: {"after":"r1","first":2}) { items { id rating } } }`.
+3. Sorting args by name; encoding literal values as canonical JSON, numbers included
+   ([12 §4.2](12-security.md)); keeping `$name` references verbatim.
+4. Emitting with single spaces and no newlines: `{ author { id name } id title }`.
+
+Separators are part of the identity, because the id is the hash of this text, so they are given exactly:
+
+| Between | Separator |
+|---|---|
+| items of a shape | one space |
+| arguments of a field | one space, each written `name: value` |
+| members of a composite argument value | `,`, with the key quoted: `{"after":"r1","first":2}` |
+| elements of a list argument value | `,` |
+
+So a field with two arguments is `reviews(after: "r1" first: 2)` — the arguments are items, and items are separated
+by a space — while the members *inside* a value are canonical JSON and separated by commas:
+`reviews(page: {"after":"r1","first":2})`. The two rules meet in
+`{ reviews(page: {"after":"r1","first":2}) { items { id rating } } }`.
 
 The **shape id** is `sha256:` + lowercase hex SHA-256 of the canonical UTF-8 text.
 

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { canonicalJson } from "./canonical.ts";
+import { canonicalShape, parseShapeText, shapeIdOf } from "./shape.ts";
 
 /**
  * The published vectors under `conformance/vectors`, run against this runtime.
@@ -19,6 +20,15 @@ interface NumberCase {
   name: string;
   literal: string;
   canonical: string;
+  why?: string;
+}
+
+interface ShapeCase {
+  name: string;
+  shape: string;
+  canonical?: string;
+  id?: string;
+  rejected?: boolean;
   why?: string;
 }
 
@@ -49,6 +59,34 @@ describe("conformance vectors: numbers", () => {
           // what is under test, since it is where 2.50 and 2.5 become one number
           const value = JSON.parse(c.literal) as number;
           expect(canonicalJson(value), c.why ?? c.name).toBe(c.canonical);
+        });
+      }
+    });
+  }
+});
+
+describe("conformance vectors: shapes", () => {
+  const files = load<ShapeCase>("shapes");
+  // no vector uses a named-view spread, so nothing should ask to resolve one
+  const noViews = () => undefined;
+
+  it("there are vectors to run", () => {
+    expect(files.flatMap((f) => f.cases).length).toBeGreaterThan(5);
+  });
+
+  for (const { file, cases } of files) {
+    describe(file, () => {
+      for (const c of cases) {
+        it(c.name, () => {
+          if (c.rejected) {
+            expect(() => canonicalShape(parseShapeText(c.shape), noViews), c.why ?? c.name).toThrow();
+            return;
+          }
+          const canonical = canonicalShape(parseShapeText(c.shape), noViews);
+          expect(canonical, c.why ?? c.name).toBe(c.canonical);
+          // the id in the vector is the SHA-256 of the canonical text above, taken independently: this asserts the
+          // runtime's own hashing agrees with it rather than assuming it does
+          expect(shapeIdOf(canonical)).toBe(c.id);
         });
       }
     });

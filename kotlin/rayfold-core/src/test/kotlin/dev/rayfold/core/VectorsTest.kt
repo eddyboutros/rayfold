@@ -53,4 +53,35 @@ class VectorsTest {
         assertTrue(out.size > 10, "no number vectors were found under ${root.absolutePath}")
         return out
     }
+
+    @TestFactory
+    fun shapes(): List<DynamicTest> {
+        // no vector uses a named-view spread, so an empty schema is enough to expand against
+        val empty = RayfoldSchemaIR(rayfold = "0.1", types = emptyMap(), ops = emptyMap())
+        val out = mutableListOf<DynamicTest>()
+        for ((file, doc) in area("shapes")) {
+            for (case in doc["cases"]?.jsonArray ?: error("$file has no cases")) {
+                val c = case.jsonObject
+                val name = c["name"]?.jsonPrimitive?.content ?: error("$file has a case without a name")
+                val text = c["shape"]?.jsonPrimitive?.content ?: error("$name has no shape")
+                val why = c["why"]?.jsonPrimitive?.content ?: name
+                val rejected = c["rejected"]?.jsonPrimitive?.content == "true"
+                out.add(
+                    DynamicTest.dynamicTest("shapes/$file: $name") {
+                        if (rejected) {
+                            val failed = runCatching { Shapes.canonical(Shapes.parse(text), empty) }.isFailure
+                            assertTrue(failed, "the shape was accepted but the grammar does not admit it: $why")
+                            return@dynamicTest
+                        }
+                        val canonical = Shapes.canonical(Shapes.parse(text), empty)
+                        assertEquals(c["canonical"]?.jsonPrimitive?.content, canonical, why)
+                        // the id in the vector is the SHA-256 of the canonical text above, taken independently
+                        assertEquals(c["id"]?.jsonPrimitive?.content, Shapes.idOf(canonical), why)
+                    },
+                )
+            }
+        }
+        assertTrue(out.size > 5, "no shape vectors were found under ${root.absolutePath}")
+        return out
+    }
 }

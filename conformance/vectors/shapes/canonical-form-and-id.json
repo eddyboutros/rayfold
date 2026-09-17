@@ -1,0 +1,86 @@
+{
+  "name": "shapes/canonical-form-and-id",
+  "about": "A shape's id is the hash of its canonical text, and that id is an identity the protocol leans on: it is what a trusted-shape allowlist admits, what a client sends instead of the text, and what a cached result is keyed by. Two implementations that canonicalise differently do not disagree loudly - they simply stop recognising each other's shapes.",
+  "source": "spec 02 §3, which gives the sorting and the separators; spec 12 §4.2 for the number form inside an argument. The canonical text of every case below was written from those rules by hand, and each id is the SHA-256 of that text taken with a general-purpose digest - not read out of a Rayfold runtime. The runtime is what is being checked.",
+  "rule": [
+    "Expand named-view spreads; type-condition spreads stay.",
+    "Sort items at each level by kind - fields, then '...on', then '@defer', then named-view spreads - and within a kind: fields by output name (the alias when there is one) then canonical args, type conditions by type name, defers by label, spreads by Type.view.",
+    "Sort arguments by name. Values are canonical JSON, numbers included; a $name reference is kept verbatim.",
+    "Items of a shape and arguments of a field are separated by one space. Members of a composite value are separated by ',' with the key quoted, as canonical JSON.",
+    "The id is 'sha256:' followed by the lowercase hex SHA-256 of the canonical text as UTF-8."
+  ],
+  "cases": [
+    {
+      "name": "fields sort by name",
+      "shape": "{ title id }",
+      "canonical": "{ id title }",
+      "id": "sha256:8a8a5652e83f7c956b9e4fc03e448cf08471167eecee40ea410460c7e17efa07"
+    },
+    {
+      "name": "commas and newlines are whitespace",
+      "shape": "{ id,\n  title }",
+      "canonical": "{ id title }",
+      "id": "sha256:8a8a5652e83f7c956b9e4fc03e448cf08471167eecee40ea410460c7e17efa07",
+      "why": "the same shape written by a person and by a generator has one identity"
+    },
+    {
+      "name": "each level sorts on its own",
+      "shape": "{ author { name id } id }",
+      "canonical": "{ author { id name } id }",
+      "id": "sha256:8403b704123bad2c4a20216fdae366ba9d6f6381b88f40a5d9fd87abcde3c352"
+    },
+    {
+      "name": "an alias is the name a field sorts under",
+      "shape": "{ z: id a: title }",
+      "canonical": "{ a: title z: id }",
+      "id": "sha256:f1a644c0c527572cf970716fbe8ec23beeae81c37fff1d1b547a1d531c81cf8e",
+      "why": "the output name is what the caller sees, so it is what identity follows"
+    },
+    {
+      "name": "arguments sort by name and are separated by a space",
+      "shape": "{ reviews(first: 2, after: \"r1\") { id } }",
+      "canonical": "{ reviews(after: \"r1\" first: 2) { id } }",
+      "id": "sha256:39859649451aea5ef873e4be6c016526eb0245bf20ef3a0e3e160edec292ceba"
+    },
+    {
+      "name": "a composite argument value is canonical JSON",
+      "shape": "{ reviews(page: { first: 2, after: \"r1\" }) { items { rating id } } }",
+      "canonical": "{ reviews(page: {\"after\":\"r1\",\"first\":2}) { items { id rating } } }",
+      "id": "sha256:cab4c03192b29fa35569bdf0ef16cffdbc3d0d97fe3ad5d01b360cdb017d1b7e",
+      "why": "quoted keys and commas inside the value, a space between arguments: the two separators are different and both are part of the id"
+    },
+    {
+      "name": "a number in an argument takes the form numbers/ pins",
+      "shape": "{ books(first: 2.50) { id } }",
+      "canonical": "{ books(first: 2.5) { id } }",
+      "id": "sha256:22dec90ef168635a5a43415663779a0f5a23e489a490f3d63301f4759c126b9f",
+      "why": "shape identity inherits the number rule, so 2.50 and 2.5 are one shape"
+    },
+    {
+      "name": "a variable reference is kept as written",
+      "shape": "{ items(page: { first: $n }) { id } }",
+      "canonical": "{ items(page: {\"first\":$n}) { id } }",
+      "id": "sha256:2b9bd5b17fe7f770e6919489ef3cac79ae39c4e1dd7e158e3213a68d8c1e572b",
+      "why": "the value is not known when the shape is identified, so the reference itself is what is hashed"
+    },
+    {
+      "name": "kinds sort before names: fields, then a type condition, then a defer",
+      "shape": "{ @defer(label: \"slow\") { blurb } ...on Book { title } id }",
+      "canonical": "{ id ...on Book { title } @defer(label: \"slow\") { blurb } }",
+      "id": "sha256:863cabdc4d42a832819c2a190ced6646ac9ef918212141889b03d77b15597726"
+    },
+
+    {
+      "name": "@defer takes no key but label",
+      "shape": "{ id @defer(foo: \"x\") { blurb } }",
+      "rejected": true,
+      "why": "the grammar in §1 names label and nothing else. An implementation that reads the key and discards it accepts a shape another rejects, and the two then disagree about which shapes exist at all."
+    },
+    {
+      "name": "@defer's label is a string",
+      "shape": "{ id @defer(label: 5) { blurb } }",
+      "rejected": true,
+      "why": "an implementation that quietly treats a non-string label as absent produces different canonical text for this shape, and so a different id, without anything failing"
+    }
+  ]
+}
