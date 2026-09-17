@@ -8,6 +8,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -20,6 +21,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.security.MessageDigest
@@ -62,6 +64,8 @@ data class ExecuteOptions(
     val batchState: MutableMap<String, CompletableDeferred<JsonElement>>? = null,
     /** Set by the batch itself from `meta.client`, for usage telemetry (spec 11). */
     val client: String = "",
+    /** Set by the batch itself: the envelope's `meta`, which carries the W3C trace context (spec 04 section 4). */
+    val meta: JsonObject = JsonObject(emptyMap()),
 )
 
 /** A command's first run, or its failure after the side effect. Both frame forms are kept so a retry is answered in the form it asks for. */
@@ -302,6 +306,7 @@ class BatchRunner(
         val scoped = opts.copy(
             batchState = ConcurrentHashMap(),
             client = (envelope.meta["client"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: "",
+            meta = envelope.meta,
         )
         val results = ConcurrentHashMap<Int, JsonElement>()
         val status = ConcurrentHashMap<Int, String>()
@@ -445,6 +450,10 @@ class BatchRunner(
                 if (d !in ids) return bad("ops[$i].args: \$ref to unknown op $d")
             }
             if (req.live && op.kind != "query") return bad("ops[$i].live: only queries can be live")
+            // `@live(false)` opts a query out; declared in the schema and enforced nowhere, so it opened live anyway
+            if (req.live && (op.annotations.find("live")?.args?.get("value") as? JsonPrimitive)?.booleanOrNull == false) {
+                return bad("ops[$i].live: ${op.name} is declared @live(false)")
+            }
         }
         return null
     }
@@ -473,7 +482,10 @@ class BatchRunner(
                 Args.coerce(ir, p.op.args, rawArgs, "${p.op.name}()")
             }
             usage?.record(UsageEvent(p.op.name, "", opts.client), System.currentTimeMillis())
-            val ctx = RayfoldContext(viewer, p.req.simulate, id, p.op.name, p.req.vars, events, compact = p.req.compact, ifVersion = p.req.ifVersion, batch = opts.batchState ?: ConcurrentHashMap(), shape = p.shape, client = opts.client)
+            // the op's own job, so a resolver (and Values.isCancelled() for Java) can see a deadline or a caller
+            // hanging up. Left at its default here, isCancelled answered false for every resolver ever written.
+            val job = currentCoroutineContext()[Job]
+            val ctx = RayfoldContext(viewer, p.req.simulate, id, p.op.name, p.req.vars, events, isCancelled = { job?.isActive == false }, compact = p.req.compact, ifVersion = p.req.ifVersion, batch = opts.batchState ?: ConcurrentHashMap(), shape = p.shape, client = opts.client, meta = opts.meta)
             when (p.op.kind) {
                 "query" -> {
                     if (p.req.live) {
@@ -607,7 +619,7 @@ class BatchRunner(
     private suspend fun runLive(p: Planned, args: JsonObject, ctx: RayfoldContext, sink: Sink, results: MutableMap<Int, JsonElement>) {
         val id = p.req.id
         // read sets and diffs need `$type`, so the query always runs in full form; compaction happens on the way out
-        val runCtx = if (!ctx.compact) ctx else RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, ctx.isCancelled, compact = false, ifVersion = ctx.ifVersion, batch = ctx.batch, shape = ctx.shape, client = ctx.client)
+        val runCtx = if (!ctx.compact) ctx else RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, ctx.isCancelled, compact = false, ifVersion = ctx.ifVersion, batch = ctx.batch, shape = ctx.shape, client = ctx.client, meta = ctx.meta)
         class Run(val frames: List<JsonObject>, val data: JsonElement, val unions: Set<String>)
         suspend fun collect(): Run {
             val frames = mutableListOf<JsonObject>()

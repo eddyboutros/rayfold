@@ -5,6 +5,84 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **Fifteen conformance defects fixed, most of them in both runtimes.** None changes what a correct client already
+  did; each closes a place where a runtime did not do what the specification says.
+  On the wire: an unsafe `POST` answered with a single JSON frame now carries `Cache-Control: no-store` (spec 07 §3) —
+  the one response a shared cache is most likely to keep was the one that never said not to. One operation can no
+  longer produce two terminal frames: a command that emitted `ok` and then failed while recording its idempotency
+  record or publishing its change used to send a second, and the guard now sits in the frame sink rather than at each
+  call site that could reach it (spec 04 §2). An `item` frame carries `errors` of its own as spec 04 §2 says, instead
+  of TypeScript tucking them into `meta` and the JVM dropping them. `@live(false)` is enforced, so a query the schema
+  opted out of is refused rather than opened live anyway. A declared domain error names itself once in a problem
+  document, under `type` and `title` as spec 05 §4 says, rather than in a second member called `errorType`. And the
+  WebSocket handler no longer offers stream items it cannot handle.
+  In the schema validator, both runtimes: `@page` on an operation that does not return `Page<T>` is refused; a **field**
+  returning `Page<T>` must accept page arguments, which spec 01 §9 always required of a field or a query and which was
+  only ever checked for queries; a type reached only through a view is no longer reported unreachable (rule 9); and
+  `@deprecated(sunset: 2027-06-30)` without quotes is refused instead of lexing into three numbers and leaving a
+  deprecation nothing could ever retire.
+  On the JVM: `isCancelled` is wired to the operation's job, so a resolver — and `Values.isCancelled()` from Java —
+  can see a deadline or a caller that hung up, where it used to answer false for every resolver ever written; the
+  context carries the request envelope's `meta`, so the W3C `traceparent` the transport already copied in reaches
+  resolvers; a 501 says `Allow`; and the ETag stops digesting `meta.ms`, which is how long the server took and so
+  differed on every identical answer.
+  In `@rayfold/postgres`: `maxRecords` counts keys held by commands running now and never evicts one, so the bound
+  means on Postgres what it already meant on the memory and JDBC stores (spec 12 §3). A fleet could previously hold
+  the full bound in records *plus* a claim for every command in flight.
+
+- **`cap` is not negotiated through the manifest**, and spec 06 §6 now says so. Spec 04 §4a requires a client not to
+  use an extension a server does not list, and no server ever listed `cap`, which read as though capability tokens
+  could not be used at all. There was never anything to negotiate: a token is a bearer credential presented where any
+  other credential would be, and a holder that has one does not need to ask what the server supports.
+
+- **A published conformance vector suite, and what it found.** `conformance/vectors/` is a second kind of
+  conformance artifact beside the fixtures: where a fixture is a request and the frames a server must answer it with, a
+  vector is a pure function and the answer the specification says it has — a number's canonical form, a shape's id, a
+  hash, the status an error code derives, the outcome of a denial. Ten areas, and one rule that decides how they are
+  built: **every expectation is written from the specification, never captured from a runtime.** A vector taken from an
+  implementation proves only that the implementations agree, which was true the whole time spec 09 said 38 RB
+  dictionary keys and both codecs held 40. Both runtimes read the same files.
+  It produced eight gaps in the specification and seven defects in the code, six of the gaps before any code ran. Three
+  of the defects change JVM behaviour: `Canonical.number` now writes the fewest digits that read back as the same
+  double, as ECMAScript asks, rather than Java's `Double.toString`, so a denormal is `5e-324` and not `4.9e-324` —
+  which moves the idempotency binding and viewer-scope hashes for values at the extremes of the double range, and
+  leaves every other number alone. The JVM shape parser is strict: `@defer(foo: "x")` and `@defer(label: 5)` are
+  refused rather than read and discarded, so a shape the JVM used to accept is now an error, and the second of those
+  no longer produces a different canonical form — and so a different shape id — from the TypeScript one. And a policy
+  denial on a list element now fails the operation rather than answering null, which is what spec 06 §3's table says
+  and what the JVM already did.
+
+- **The IR is written out.** Spec 01 §9 gave the IR's top-level shape and then said the canonical definition was
+  `packages/schema/src/ir.ts`, so the structure the protocol's identity is computed over was defined by pointing at one
+  implementation and nobody outside could reproduce a schema hash. §9 now carries the whole structure, member by
+  member, including §9.1a's built-in definitions — the twelve scalars, `Page` and `PageArgs`, which every IR contains
+  before a line of schema is read and which the old text never mentioned, so an implementer would have hashed only
+  their own declarations and matched nobody. `conformance/vectors/hashing/schema.json` is the proof rather than the
+  claim: the hashes in it were built by hand from the document alone and match both runtimes exactly.
+  One rule was decided rather than discovered along the way: **the document's `extensions` member is excluded from the
+  hashed form.** Vendor data is ignored by implementations that do not know it, so an identity that moved with it would
+  make two servers offering the same conversation look different and a gateway that strips vendor metadata look like a
+  schema change. TypeScript hashed the whole document and now does not; the JVM already projected it out, but its IR
+  could not hold the member at all and dropped it when loading a document, which it no longer does. No published hash
+  moves — nothing populates `extensions` today.
+
+- **Patches have a chapter, and a deletion no longer takes two rows with it.** Spec 13 says what a client must do with
+  a `patch`: the six operations, the order they apply in, which of them are safe to receive twice, and a deterministic
+  answer for the cases that used to be left to a reader — a deletion, a membership change, a pagination boundary, an
+  authorization change, a reconnect, a duplicate. Written as a clarification of Core rather than a change to it.
+  Writing the property test for §8's invariant found a data-loss bug in **both** clients on its first generated
+  sequence: a command's `del` and its live query's positional `list` operation describe one removal and both reach the
+  client that ran the command, so a client that shortened its list on the `del` then applied `del: [0]` to whatever had
+  moved into the slot — one removal, two rows gone from the screen. A deleted row now keeps its position until the
+  positional operation has been applied. `conformance/vectors/patch/apply.json` has the regression case.
+
+- **A live query no longer misses a change committed while its first read runs.** The TypeScript server read, then
+  subscribed to the change bus. A command committing in that window changed rows the read had already looked at and
+  the client was told nothing — and since nothing later is obliged to touch the same rows again, the screen stayed
+  quietly wrong until something unrelated disturbed it. The server now attaches to the bus before the first execution
+  and judges what arrived during it against the read set once there is one. Spec 08 §3 requires this of any server;
+  the JVM already did it.
+
 - **Three security fixes, two of which change behaviour.** A capability token's extra facts (`caps`, which policies
   read as `viewer.caps.*`) could be *replaced* when a token was attenuated, so a holder could derive a token claiming
   anything it liked — and because those facts were merged over the token's own signed fields, one called `ops` stood

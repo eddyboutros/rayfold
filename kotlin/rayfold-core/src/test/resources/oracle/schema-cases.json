@@ -21369,6 +21369,12 @@
    },
    {
     "severity": "error",
+    "code": "page-args",
+    "at": "O.x",
+    "message": "A field returning Page<T> must accept page: PageArgs (or first/after)"
+   },
+   {
+    "severity": "error",
     "code": "not-generic",
     "at": "P.x",
     "message": "String is not generic"
@@ -21417,7 +21423,7 @@
    }
   ],
   "hash": "42b6d693101f412302a86213db43ca65ed64f485377fd4c9b15800e431ee87a1",
-  "loadError": "Invalid schema:\n  NoId: entity NoId must declare id: ID [entity-id]\n  NullableId: entity NullableId must declare id: ID [entity-id]\n  O.x: Page takes 1 type argument(s) [generic-arity]\n  P.x: String is not generic [not-generic]\n  In.e: entity NoId cannot be used as an input field [bad-type-position]\n  In2.f: Only entity and object fields take arguments [args-not-allowed]\n  Err.x: entity NoId cannot be used as a field [bad-type-position]\n  U: Union members must be entities or objects (String is scalar) [bad-union-member]\n  U: Unknown union member Missing [unknown-type]\n  Reserved.__secret: Field name __secret is reserved [reserved-name]\n  __Hidden: Type name __Hidden is reserved [reserved-name]"
+  "loadError": "Invalid schema:\n  NoId: entity NoId must declare id: ID [entity-id]\n  NullableId: entity NullableId must declare id: ID [entity-id]\n  O.x: Page takes 1 type argument(s) [generic-arity]\n  O.x: A field returning Page<T> must accept page: PageArgs (or first/after) [page-args]\n  P.x: String is not generic [not-generic]\n  In.e: entity NoId cannot be used as an input field [bad-type-position]\n  In2.f: Only entity and object fields take arguments [args-not-allowed]\n  Err.x: entity NoId cannot be used as a field [bad-type-position]\n  U: Union members must be entities or objects (String is scalar) [bad-union-member]\n  U: Unknown union member Missing [unknown-type]\n  Reserved.__secret: Field name __secret is reserved [reserved-name]\n  __Hidden: Type name __Hidden is reserved [reserved-name]"
  },
  {
   "name": "findings: annotations",

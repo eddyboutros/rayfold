@@ -237,7 +237,8 @@ export class Executor {
           await this.projectMany(job.slots, job.type, job.shape, st);
         }
         const frame: Frame = { id: ctx.opId, item: ctx.compact ? stripTypes(item) : item };
-        if (st.errors.length) (frame as { meta?: unknown }).meta = { errors: st.errors };
+        // spec 04 §2: an `item` frame carries `errors` of its own, not tucked inside `meta`
+        if (st.errors.length) (frame as { errors?: unknown }).errors = st.errors;
         emit(frame);
       }
     } finally {

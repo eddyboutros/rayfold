@@ -207,7 +207,7 @@ class WebSocketTest {
         ws.text("{nope")
         assertEquals(obj("""{"error":{"code":"invalid_argument","message":"Message is not valid JSON"},"fin":true}"""), ws.next())
         ws.text("""{"id":1,"item":1}""")
-        assertEquals(obj("""{"error":{"code":"invalid_argument","message":"Expected a batch envelope, {cancel}, or a stream item"},"fin":true}"""), ws.next())
+        assertEquals(obj("""{"error":{"code":"invalid_argument","message":"Expected a batch envelope or {cancel}"},"fin":true}"""), ws.next())
         ws.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }"}]}""")
         assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), ws.next()["data"])
     }

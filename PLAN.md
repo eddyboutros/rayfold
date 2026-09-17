@@ -102,6 +102,11 @@ independent implementer would have hit.
       **Writing it found the gap in §9 immediately:** every IR carries the built-in definitions — twelve scalars,
       `Page`, `PageArgs`, each `builtin: true` — before a line of schema is read, and §9 as committed did not say so.
       An implementer would have hashed only their own declarations and matched nobody. Now §9.1a.
+      **Only TypeScript ran it until 2026-09-17**, because `hashing()` on the JVM reads `bindings` and `scopes` and
+      this file has neither — so the protocol's identity was checked against the document on one runtime. There is
+      now a `schemaHash()` factory: the JVM agrees with both hand-built hashes and with the 1946-byte canonical
+      length. It also runs `documentCases`, stated over the IR document because no schema text produces an
+      `extensions` member, which is how Kotlin's inability to hold that member finally surfaced.
 - [x] **`errors/`** — the 16-code status table plus the rule that decides *how* a refusal arrives: a problem
       document before a batch is parsed, an error frame once it has been. Both runtimes agreed on all of it. The one
       correction was mine — I guessed the 415 problem type was `payload_unsupported` when it is
@@ -170,30 +175,38 @@ ambiguity. So 13 specifies what 0.1 actually guarantees, and names the rest Rese
 - [ ] An independent implementation, by someone given only the spec, the vectors and examples. Where they ask
       "what does this mean?" is the specification's remaining ambiguity.
 
-## 4. Open defects from the documentation audit — 22 of 28
+## 4. Open defects — 5 left, all feature-sized
 
-Full list with file:line in `scratchpad/code-bugs-next-phase.md`. Six are closed: the three security defects, and
-Kotlin's number form, `@defer` parser, unpaired surrogate and manifest members — **the last four closed by the vector
-pack rather than individually**, which is the point of building it.
+Fifteen closed on 2026-09-18, each with a test and each mirrored in both runtimes where both were wrong:
 
-**Pull forward regardless of the pack:**
-- [ ] **Kotlin's IR omits `extensions`** (`Ir.kt`), and `IrJson.of` leaves it out of the hash input — a genuine
-      schema-hash divergence. `hashing/` should catch it.
-- [ ] **TS live query loses changes committed during its first run** (`batch.ts:475` awaits `collect()`, subscribes
-      at `:493`). Kotlin subscribes first and treats an unset read set as dirty. A silent data-correctness race.
+- **Conformance:** an unsafe `POST` single-frame response now carries `no-store` (spec 07 §3) in both runtimes; a
+  second terminal frame for one op is impossible, guarded in `FrameSink` rather than at each call site that could
+  push one (spec 04 §2); an `item` frame carries `errors` top-level rather than inside `meta`, and Kotlin no longer
+  drops them; `@live(false)` is enforced; the RFC 9457 problem document uses one name for a domain error's type
+  instead of `errorType` beside it; the WebSocket handler no longer advertises stream items it cannot handle.
+- **Validator, both runtimes:** `@page` on a non-`Page` operation is refused; a field returning `Page<T>` must accept
+  page arguments, as spec 01 §9 always said; views seed reachability (rule 9); and an unquoted `@deprecated(sunset:)`
+  date is refused instead of lexing into three numbers and leaving a deprecation that could never be retired.
+- **JVM:** `isCancelled` is wired to the op's job, so `Values.isCancelled()` answers truthfully; the context carries
+  the envelope's `meta`, so `traceparent` reaches resolvers; a 501 says `Allow`; the ETag stops digesting `meta.ms`.
+- **Postgres:** `maxRecords` counts keys in flight and never evicts a live claim (spec 12 §3), so the bound means
+  what it means on the memory and JDBC stores.
+- **Specification:** `cap` is documented as not negotiated through the manifest (spec 06 §6) — a token is a bearer
+  credential, so there was never anything to negotiate, and 04's unlisted-extension rule does not reach it.
 
-**Remaining cross-runtime (~8):** list-element policy denial (TS returns null, Kotlin fails the op — spec says
-Kotlin); Kotlin drops stream-item `errors`; `isCancelled` never wired, so `Values.isCancelled()` is always false;
-no `meta` on the Kotlin context, so `traceparent` never reaches resolvers; ETag does not strip `meta.ms`; 501
-without `Allow`; `cap` in neither manifest, so by process.md no client may use capability tokens; Kotlin client has
-no RB and no `upload()`; `maxRecords` counts in-flight claims on memory/JDBC but not on Postgres.
+What is left is not defect work. Each is a feature someone has to want:
 
-**Remaining correctness (~12):** post-`fin` frames reachable on a throwing idempotency `put`; `@live(false)`
-enforced nowhere; unsafe `POST` single-frame response carries no `Cache-Control`; `@range` on a default never
-checked; `@page` on a query has no return-type check; reachability never seeds from `ir.views`;
-`createBindingHandler` is Node-only so REST bindings cannot be served on a fetch runtime; `client.upload()` is
-fetch-transport only; `JdbcStore` has no `screen()`; credit-based flow control implemented nowhere (now Reserved);
-misleading WebSocket error strings; `errorType` vs `type`/`title` between `fetch.ts` and `bindings.ts`.
+- [ ] **A fetch-runtime `@http` binding handler.** `createBindingHandler` is written against Node's `req`/`res`, so
+      REST routes are served on Node only. `docs/guide/runtimes.md` says so.
+- [ ] **`upload()` on the WebSocket transport.** It throws `unimplemented` there; a fetch transport is the way.
+- [ ] **RB and `upload()` in the Kotlin client** (`Transport.kt:92` hard-codes JSON).
+- [ ] **`JdbcStore.screen()`**: the whole-screen single-statement compiler is Node-only.
+- [ ] **Credit-based flow control** (spec 04 §5), which the spec now calls Reserved rather than a MUST, so there is
+      no non-conformance to fix — only a feature to build.
+
+One thing deliberately left as it is: `@range` on a default is never checked (`args.ts:20`, `Args.kt:23`). Spec 01
+scopes the rule to values a caller actually sent, so both runtimes are conformant; checking defaults would be better
+but it is a change to the rule, not a fix to the code.
 
 ## 5. Not doing yet, and why
 
@@ -205,4 +218,14 @@ reviewer and I agree the protocol should be reproducible by a third party before
 - [ ] Reply to the reviewer — he asked for the fixture pack when it exists, and there is now a concrete result to
       send: eight spec gaps and six code defects, six of the gaps found before running any code.
 - [ ] `rayfold check --strict` wording; "Enforce HTTPS" in the Pages settings.
-- [ ] Decide whether `PLAN.md` and `engineer-response.md` belong in a public repo.
+- [ ] Decide whether `PLAN.md` belongs in a public repo (`engineer-response.md` is deleted).
+
+## 7. Cutting 0.2.0
+
+- [ ] Re-read the markdown against the code one more time, as agreed at the start of this block: the pack, the patch
+      chapter and the IR rewrite all moved text, and 67 files were corrected before any of that landed.
+- [ ] Bump 0.1.0 to 0.2.0 across the npm workspaces and the Gradle build, write the changelog entry, tag, publish to
+      npm and Maven Central, then check rayfold.dev.
+- [ ] Decide which of the 20 open defects block the release. The most serious left are post-`fin` frames being
+      reachable (a spec 04 violation), `@live(false)` enforced nowhere while an example declares it, and an unsafe
+      `POST` single-frame response missing `no-store`. None is a cross-runtime disagreement.

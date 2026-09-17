@@ -148,9 +148,20 @@ export class PgIdempotencyStore implements IdempotencyStore {
   private async sweep(): Promise<void> {
     await this.sql.query(`DELETE FROM ${this.table} WHERE frame IS NOT NULL AND at < $1`, [this.now() - this.ttlMs]);
     if (++this.puts % 100 !== 0) return;
+    // spec 12 §3: keys in flight count against the bound, so the room left for records is the bound minus the
+    // commands running at that moment — the rank is taken over every row, records and claims alike. But a key a
+    // command still holds is never evicted (evicting it would let a second request run the same command), so only
+    // the evictable rows beyond the bound go: a recorded result, or a claim whose lease has run out holding nothing.
+    // Counting only records, as this did, put in-flight claims outside the bound altogether.
     await this.sql.query(
-      `DELETE FROM ${this.table} WHERE (scope, key) IN (SELECT scope, key FROM ${this.table} WHERE frame IS NOT NULL ORDER BY at DESC OFFSET $1)`,
-      [this.maxRecords],
+      `DELETE FROM ${this.table} WHERE (scope, key) IN (
+         SELECT scope, key FROM (
+           SELECT scope, key, row_number() OVER (ORDER BY at DESC) AS rank FROM ${this.table}
+           WHERE frame IS NOT NULL OR held_until IS NULL OR held_until <= $2
+         ) ranked
+         WHERE rank > GREATEST($1 - (SELECT count(*) FROM ${this.table} WHERE frame IS NULL AND held_until > $2), 0)
+       )`,
+      [this.maxRecords, this.now()],
     );
   }
 

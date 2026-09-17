@@ -68,4 +68,16 @@ describe("watch() calls back for its own result only", () => {
     await b1.atLeast(2, "b1 told");
     await b2.atLeast(2, "b2 told");
   });
+
+  it("a command landing while the watch is still loading is not lost", async () => {
+    const seen = new Signal<number>();
+    // no await between the two: the command lands while the watch's own first fetch is still in flight, which on
+    // the server side was a real hole (spec 08 section 3). The watch reports the cache as it stands once the fetch
+    // resolves, so the change is in the first value it delivers rather than being dropped.
+    client.watch<{ stock: number }>("book", { id: "b1" }, SHAPE, (b) => seen.push(b.stock));
+    await order("b1");
+    await seen.atLeast(1, "watch delivered");
+    const fresh = await client.query<{ stock: number }>("book", { id: "b1" }, SHAPE);
+    expect(seen.items[seen.items.length - 1]).toBe(fresh.stock);
+  });
 });

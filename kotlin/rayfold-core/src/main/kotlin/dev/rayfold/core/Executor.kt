@@ -37,6 +37,11 @@ data class RayfoldContext(
     /** The `Rayfold-Client` name of the caller, for usage telemetry (spec 11); empty when it did not name itself. */
     val client: String = "",
     /**
+     * The request envelope's `meta` (spec 04 section 4), so a resolver can read the W3C `traceparent`/`tracestate`
+     * the transport copied in and join the caller's trace. Empty when the request carried none.
+     */
+    val meta: JsonObject = JsonObject(emptyMap()),
+    /**
      * The pushable read policy of what this resolver is about to load (spec 06 section 4), so a data source can
      * apply it itself instead of loading rows the viewer may not see. Null when nothing can be pushed.
      */
@@ -226,7 +231,7 @@ class Executor(
             val st = State(ctx, explicit)
             val item = projectValue(v, op.returns, shape, "", st)
             while (st.deferred.isNotEmpty()) { val job = st.deferred.removeFirst(); projectMany(job.slots, job.type, job.shape, st, job.nullable) }
-            emit(Frames.item(ctx.opId, st.compact(item)))
+            emit(Frames.item(ctx.opId, st.compact(item), st.errors.toList()))
         }
         if (ctx.isCancelled()) throw RayfoldException(Code.CANCELED, "Canceled")
         emit(Frames.fin(ctx.opId))

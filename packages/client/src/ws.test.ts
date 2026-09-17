@@ -217,7 +217,7 @@ describe("RB over the WebSocket transport (spec 09 section 4)", () => {
       expect(received.items[0]).toEqual([{ error: { code: "invalid_argument", message: "Message is not valid RB" }, fin: true }]);
       ws.send("null");
       await received.atLeast(2, "the text error");
-      expect(received.items[1]).toEqual({ error: { code: "invalid_argument", message: "Expected a batch envelope, {cancel}, or a stream item" }, fin: true });
+      expect(received.items[1]).toEqual({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true });
       ws.send(new Uint8Array(codec.encode({ ops: [{ id: 1, op: "book", args: { id: "b2" }, shape: "{ id }" }] })));
       await received.atLeast(3, "an RB answer after the errors");
       expect(received.items[2]).toEqual([{ id: 1, data: { $type: "Book", id: "b2" }, meta: { cost: 1 }, fin: true }]);

@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { canonicalJson, hashJson } from "./canonical.ts";
 import { canonicalShape, parseShapeText, shapeIdOf } from "./shape.ts";
-import { loadSchema } from "./load.ts";
+import { loadSchema, schemaHash } from "./load.ts";
+import type { JsonValue } from "./ir.ts";
 
 /**
  * The published vectors under `conformance/vectors`, run against this runtime.
@@ -98,6 +99,7 @@ describe("conformance vectors: hashing", () => {
 describe("conformance vectors: the schema hash", () => {
   const doc = JSON.parse(readFileSync(join(ROOT, "hashing", "schema.json"), "utf8")) as {
     cases: Array<{ name: string; schema: string; hash?: string; canonicalBytes?: number; differsFrom?: string; why?: string }>;
+    documentCases: Array<{ name: string; schema: string; extensions: Record<string, JsonValue>; sameAs: string; why?: string }>;
   };
   const hashOf = (schema: string) => loadSchema(schema).hash;
 
@@ -116,6 +118,16 @@ describe("conformance vectors: the schema hash", () => {
         const other = doc.cases.find((x) => x.name === c.differsFrom)!;
         expect(hashOf(c.schema), c.why ?? c.name).not.toBe(hashOf(other.schema));
       }
+    });
+  }
+
+  // Cases stated over the IR document rather than over schema text, because no schema text produces `extensions`.
+  for (const c of doc.documentCases) {
+    it(c.name, () => {
+      const { ir } = loadSchema(c.schema);
+      const withVendor = { ...ir, extensions: c.extensions };
+      expect(withVendor.extensions, "the member survives on the document").toEqual(c.extensions);
+      expect(schemaHash(withVendor), c.why ?? c.name).toBe(hashOf(doc.cases.find((x) => x.name === c.sameAs)!.schema));
     });
   }
 });

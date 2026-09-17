@@ -69,8 +69,5 @@
       "hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "why": "the scope still exists as a value; a keyed command from an anonymous caller is refused for a different reason (§4.1)"
     }
-  ],
-  "notSpecifiedYet": {
-    "schemaHash": "The third hash the protocol depends on cannot be given a vector yet. It is SHA-256 of the canonical IR, and spec 01 §9 gives the IR's top-level shape and then says the canonical definition is `packages/schema/src/ir.ts`. So the structure the protocol's identity is computed over is defined by pointing at one implementation, and an independent implementer cannot reproduce the hash without reading that file. Writing the IR out normatively is the prerequisite for a `hashing/schema.json`, and is tracked in PLAN.md."
-  }
+  ]
 }

@@ -49,6 +49,29 @@ function fleet(count: number, opts: { store: IdempotencyStore; now?: () => numbe
 }
 
 const book = (server: RayfoldServer, key = KEY, seat = 1): Promise<Frame[]> => server.collect({ ops: [{ id: 1, op: "book", args: { seat }, key }] }, { viewer });
+
+describe("a store that fails after the command committed", () => {
+  /** A store whose `put` throws: the command has run, and recording its result is what fails. */
+  class UnwritableStore extends MemoryIdempotencyStore {
+    override async put(): Promise<void> {
+      throw new Error("the database went away");
+    }
+  }
+
+  it("still sends one terminal frame for the op, not two", async () => {
+    const server = createRayfoldServer({
+      schema: SCHEMA,
+      resolvers: { Command: { book: async ({ seat }: { seat: number }) => ({ id: `t${seat}`, seat }) } },
+      idempotency: new UnwritableStore(),
+    });
+    const frames = await server.collect({ ops: [{ id: 1, op: "book", args: { seat: 1 }, key: KEY }] }, { viewer });
+    // spec 04 §2. The command emitted `ok` with `fin`, then the failing `put` reached the failure path, which used
+    // to push a second terminal frame for the same id — two answers to one operation.
+    const terminal = frames.filter((f) => (f as { id?: number }).id === 1 && (f as { fin?: boolean }).fin === true);
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0]).toMatchObject({ id: 1, ok: { id: "t1", seat: 1 } });
+  });
+});
 const replayed = (frames: Frame[]): boolean => Boolean((frames[0] as { meta?: { replay?: boolean } }).meta?.replay);
 
 /** A store whose `renew` fails for the tokens listed: what a server that lost its database sees. */

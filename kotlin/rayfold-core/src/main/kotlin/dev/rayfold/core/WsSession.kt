@@ -80,7 +80,7 @@ class RayfoldWsSession(
             StrictJson.integerOrNull(cancel)?.toIntOrNull()?.let { ops[it]?.complete() }
             return
         }
-        if (m == null || m["ops"] !is JsonArray) return send(batchError("Expected a batch envelope, {cancel}, or a stream item"), binary)
+        if (m == null || m["ops"] !is JsonArray) return send(batchError("Expected a batch envelope or {cancel}"), binary)
         val env = RequestEnvelope.from(m)
         for (o in env.ops) if (o.id > 0 && ops.containsKey(o.id)) return send(batchError("op id ${o.id} is already in use on this connection"), binary)
         val cancelJob = Job()

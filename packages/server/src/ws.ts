@@ -110,7 +110,7 @@ async function handleConnection(socket: Duplex, head: Buffer, req: IncomingMessa
       })();
       return;
     }
-    send({ error: { code: "invalid_argument", message: "Expected a batch envelope, {cancel}, or a stream item" }, fin: true }, binary);
+    send({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true }, binary);
   };
 
   let buf = head.length ? Buffer.from(head) : Buffer.alloc(0);

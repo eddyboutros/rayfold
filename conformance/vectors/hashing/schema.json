@@ -34,5 +34,17 @@
       "why": "guard, and a subtle one: a namespaced annotation is kept on the node's own annotations list (§4), so it IS hashed and this schema differs. What is excluded from the hash is the document's `extensions` member, which is a different thing - see the note below"
     }
   ],
-  "extensionsAreNotHashed": "The document's `extensions` member is the one part of the IR left out of the hashed form. Vendor data there is ignored by implementations that do not know it, so an identity that moved with it would make two servers offering the same conversation look different, and a gateway that strips vendor metadata look like a schema change. Note this is not the same as a namespaced annotation, which lives on a node and is hashed."
+  "extensionsAreNotHashed": "The document's `extensions` member is the one part of the IR left out of the hashed form. Vendor data there is ignored by implementations that do not know it, so an identity that moved with it would make two servers offering the same conversation look different, and a gateway that strips vendor metadata look like a schema change. Note this is not the same as a namespaced annotation, which lives on a node and is hashed.",
+  "documentCases": [
+    {
+      "name": "vendor data in the document's extensions member does not change the identity",
+      "schema": "entity Book { id: ID title: String } query book(id: ID): Book?",
+      "extensions": {
+        "acme.owner": "platform-team",
+        "acme.revision": 7
+      },
+      "sameAs": "an entity and a query",
+      "why": "the one case in this pack that cannot be written as schema text, because no schema text produces an `extensions` member: it is attached to the loaded IR. A runtime whose IR cannot hold the member at all passes this by accident while still failing spec 01 §9.1, so the runners also check the member survives a load."
+    }
+  ]
 }

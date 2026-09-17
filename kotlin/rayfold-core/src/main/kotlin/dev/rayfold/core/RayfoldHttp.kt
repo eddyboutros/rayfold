@@ -220,7 +220,12 @@ class RayfoldHttp(
             val envelope: JsonObject
             var safe = false
             if (sub.isEmpty() || sub == "/") {
-                if (call.method != "POST" && call.method != "QUERY") throw RayfoldException(Code.UNIMPLEMENTED, "Method ${call.method} not allowed on $base")
+                if (call.method != "POST" && call.method != "QUERY") {
+                    // a 501 says what to send instead, as the TypeScript handler does
+                    call.setHeader("Allow", "POST, QUERY")
+                    call.setHeader("Accept-Query", "application/rayfold+json")
+                    throw RayfoldException(Code.UNIMPLEMENTED, "Method ${call.method} not allowed on $base")
+                }
                 val binary = checkContentType(call) == RbCodec.CONTENT_TYPE
                 val body = readBody(call)
                 envelope = if (binary) {
@@ -256,12 +261,14 @@ class RayfoldHttp(
                 val frames = runBlocking { server.collect(batch, opts) }
                 val etag = if (safe) CacheHeaders.apply(server.ir, env.ops, frames, v, call::setHeader) else null
                 if (etag != null && call.header("If-None-Match") == etag) return call.respond(304, 0).close()
+                // spec 07 section 3: a batch that is not marked safe is never stored. Set before the single-frame
+                // return below, which used to leave without a cache header at all.
+                if (!safe) call.setHeader("Cache-Control", "no-store")
                 if (wantsSingle && frames.size == 1) {
                     val f = frames[0]
                     val status = (f["error"] as? JsonObject)?.let { e -> STATUS[Code.entries.first { it.wire == (e["code"] as JsonPrimitive).content }] ?: 500 } ?: 200
                     return json(call, status, f)
                 }
-                if (!safe) call.setHeader("Cache-Control", "no-store")
                 return if (wantsRb) bytes(call, RbCodec.CONTENT_TYPE, rb.encodeFrames(frames)) else bytes(call, FRAMES_TYPE, ndjson(frames))
             }
             // frames leave one by one, so a long batch never sits in memory as one response and a live query stays open

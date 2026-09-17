@@ -132,6 +132,62 @@ class VectorsTest {
     }
 
     /**
+     * `hashing/schema.json`: the schema hash, which is the protocol's identity - what the manifest publishes and
+     * what the `Rayfold-Schema` header carries. The hashes in that file were built by hand from spec 01 sections 9
+     * and 9.1a, so this is the JVM checked against the document rather than against the other runtime.
+     *
+     * `documentCases` are stated over the IR document instead of over schema text, because no schema text produces
+     * an `extensions` member. A runtime whose IR cannot hold the member passes the hash half by accident, so the
+     * case asserts the member survives a load as well.
+     */
+    @TestFactory
+    fun schemaHash(): List<DynamicTest> {
+        val doc = Json.parseToJsonElement(File(File(root, "hashing"), "schema.json").readText()).jsonObject
+        val cases = doc["cases"]!!.jsonArray.map { it.jsonObject }
+        fun schemaOf(name: String) = cases.first { it["name"]!!.jsonPrimitive.content == name }["schema"]!!.jsonPrimitive.content
+        fun hashOf(schema: String) = SchemaText.load(schema).hash
+
+        val out = mutableListOf<DynamicTest>()
+        for (c in cases) {
+            val name = c["name"]!!.jsonPrimitive.content
+            val why = c["why"]?.jsonPrimitive?.content ?: name
+            out.add(
+                DynamicTest.dynamicTest("hashing/schema: $name") {
+                    val schema = c["schema"]!!.jsonPrimitive.content
+                    c["hash"]?.jsonPrimitive?.content?.let { assertEquals(it, hashOf(schema), why) }
+                    c["canonicalBytes"]?.jsonPrimitive?.content?.toInt()?.let {
+                        assertEquals(it, Canonical.json(IrJson.of(SchemaText.load(schema).ir)).length, "the canonical IR is this many bytes")
+                    }
+                    c["differsFrom"]?.jsonPrimitive?.content?.let {
+                        assertTrue(hashOf(schema) != hashOf(schemaOf(it)), why)
+                    }
+                },
+            )
+        }
+        for (case in doc["documentCases"]!!.jsonArray) {
+            val c = case.jsonObject
+            val name = c["name"]!!.jsonPrimitive.content
+            out.add(
+                DynamicTest.dynamicTest("hashing/schema: $name") {
+                    val loaded = SchemaText.load(c["schema"]!!.jsonPrimitive.content)
+                    val vendor = c["extensions"]!!.jsonObject
+                    val withVendor = loaded.ir.copy(extensions = vendor)
+                    assertEquals(vendor, withVendor.extensions, "the member survives on the document")
+                    // and survives a round trip through the document form, which is where it used to be dropped
+                    assertEquals(vendor, RayfoldSchemaIR.parse(irWithExtensions(withVendor)).extensions, "the member survives a load")
+                    assertEquals(hashOf(schemaOf(c["sameAs"]!!.jsonPrimitive.content)), SchemaText.hash(withVendor), c["why"]?.jsonPrimitive?.content ?: name)
+                },
+            )
+        }
+        assertTrue(out.size > 3, "no schema-hash vectors were found under ${root.absolutePath}")
+        return out
+    }
+
+    /** The document form of [ir] including `extensions`, which the hashed form of [IrJson.of] leaves out by rule. */
+    private fun irWithExtensions(ir: RayfoldSchemaIR): String =
+        JsonObject(IrJson.of(ir) + ("extensions" to (ir.extensions ?: JsonObject(emptyMap())))).toString()
+
+    /**
      * The denial table of spec 06 section 3, run against a real server. The expectation is the table, not either
      * runtime: the two disagreed on the list-element row, and the table is what decided which was right.
      */

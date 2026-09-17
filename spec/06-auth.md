@@ -71,6 +71,11 @@ validate, costs nothing and is not counted against the batch. Rate limiting over
 A server MAY issue **capability tokens**: short-lived, scoped, delegatable references to a viewer. They let an agent
 or a downstream service perform exactly one class of operation without ever holding the user's credentials.
 
+Unlike the other extensions, `cap` is **not negotiated through the manifest**, and a server does not list it in
+`extensions` ([04 §4a](04-frames-and-transport.md)). There is nothing for a client to negotiate: a token is a bearer
+credential presented where any other credential would be, and a holder that has one uses it without asking what the
+server supports. So 04's rule that a client MUST NOT use an unlisted extension does not reach this one.
+
 A token carries what it claims and is signed, so verifying one needs no storage and no round trip:
 
 ```

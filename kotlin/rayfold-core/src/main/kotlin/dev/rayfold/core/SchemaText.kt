@@ -945,6 +945,13 @@ internal object SchemaValidator {
                     continue
                 }
                 if (on !in allowed) err("annotation-position", at, "@${a.name} is not allowed on $on")
+                // an unquoted date lexes as three numbers, and a non-string sunset is one sunsetPassed can never
+                // read, so the member could never be removed
+                a.args["sunset"]?.let { sunset ->
+                    if (a.name == "deprecated" && (sunset as? JsonPrimitive)?.isString != true) {
+                        err("bad-sunset", at, "@deprecated sunset must be a quoted date, as in @deprecated(sunset: \"2027-06-30\")")
+                    }
+                }
                 if (a.name == "allow" || a.name == "deny") {
                     for ((k, v) in a.args) {
                         if (k != "read" && k != "write") err("bad-policy-arg", at, "@${a.name} accepts read: and write:, not $k:")
@@ -983,6 +990,9 @@ internal object SchemaValidator {
                     if (vt.isList || vt.name !in setOf("Int", "Long", "String", "Instant") || vt.nullable) err("bad-version-field", at, "@version fields must be non-null Int, Long, String or Instant")
                 }
                 if (f.annotations.any { it.name == "page" } && !f.type.isPage) err("page-on-non-page", at, "@page requires a Page<T> field")
+                if (f.type.isPage && f.args.none { (!it.type.isList && it.type.name == "PageArgs") || it.name == "first" }) {
+                    err("page-args", at, "A field returning Page<T> must accept page: PageArgs (or first/after)")
+                }
                 if (f.annotations.any { it.name == "partial" } && !f.type.nullable) err("partial-non-null", at, "@partial fields must be nullable (they become null on failure)")
             }
         }
@@ -1057,6 +1067,8 @@ internal object SchemaValidator {
             if (op.returns.isPage) {
                 val hasPageArg = op.args.any { !it.type.isList && it.type.name == "PageArgs" } || op.args.any { it.name == "first" }
                 if (!hasPageArg) err("page-args", at, "An operation returning Page<T> must accept page: PageArgs (or first/after)")
+            } else if (op.annotations.any { it.name == "page" }) {
+                err("page-on-non-page", at, "@page requires a Page<T> result")
             }
         }
 
@@ -1095,6 +1107,8 @@ internal object SchemaValidator {
             reachable.addAll(op.throws)
             for (e in op.emits) visit(TypeRef(kind = "named", name = e, nullable = false))
         }
+        // rule 9 counts views, so a type reached only through one is not unreachable
+        for (v in ir.views.values) visit(TypeRef(kind = "named", name = v.type, nullable = false))
         for (t in ir.types.values) {
             if (t.builtin || t.name in reachable) continue
             if (t.kind == "entity" || t.kind == "object" || t.kind == "union") warn("unreachable", t.name, "${t.kind} ${t.name} is not reachable from any operation")
@@ -1153,6 +1167,7 @@ internal object SchemaValidator {
  * Keys present exactly when the TypeScript IR has them (optional fields only when set, flags only when true).
  */
 object IrJson {
+    /** The hashed form: every document member of spec 01 section 9.1 except `extensions`, which is excluded by rule. */
     fun of(ir: RayfoldSchemaIR): JsonObject = buildJsonObject {
         put("rayfold", ir.rayfold)
         put("types", JsonObject(ir.types.mapValues { type(it.value) }))

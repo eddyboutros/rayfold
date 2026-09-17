@@ -127,7 +127,14 @@ object CacheHeaders {
         if (maxAge == 0.0 && swr == 0.0) directives.add("no-cache")
         set("Cache-Control", directives.joinToString(", "))
         set("Vary", "Rayfold-Client, Accept, Authorization")
-        val digest = MessageDigest.getInstance("SHA-256").digest(Canonical.json(JsonArray(frames)).toByteArray())
+        // `meta.ms` is how long the server took, so it differs on every identical answer and would make every ETag
+        // a miss. Dropped from the digest only, exactly as applyCacheHeaders does - the emptied `meta` stays, since
+        // removing it altogether would canonicalise differently and part the two runtimes' ETags.
+        val digested = frames.map { f ->
+            val meta = f["meta"] as? JsonObject
+            if (meta == null) f else JsonObject(f + ("meta" to JsonObject(meta - "ms")))
+        }
+        val digest = MessageDigest.getInstance("SHA-256").digest(Canonical.json(JsonArray(digested)).toByteArray())
         val etag = "\"sha256-${digest.joinToString("") { "%02x".format(it) }}\""
         set("ETag", etag)
         return etag

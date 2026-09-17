@@ -105,13 +105,15 @@ function json(body: unknown, init: { status?: number; headers?: Record<string, s
 
 /** An RFC 9457 refusal, as a response. */
 function problemResponse(status: number, code: string, detail: string, problemType = code, headers: Record<string, string> = {}, wire?: WireError): Response {
+  // spec 05 §4: a declared domain error identifies itself by its own type rather than by the protocol code, so its
+  // name is the problem `type` and `title` — the same convention `problem()` in bindings.ts follows. This used to
+  // put it in a member of its own called `errorType`, which was a second name for one fact.
   const body = {
-    type: PROBLEM_TYPE_BASE + problemType,
-    title: problemType.replace(/_/g, " "),
+    type: PROBLEM_TYPE_BASE + (wire?.type ?? problemType),
+    title: wire?.type ?? problemType.replace(/_/g, " "),
     status,
     detail,
     code,
-    ...(wire?.type !== undefined ? { errorType: wire.type } : {}),
     ...(wire?.data !== undefined ? { data: wire.data } : {}),
   };
   return new Response(JSON.stringify(body), {
@@ -443,7 +445,10 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
         const frames: Frame[] = [];
         for await (const f of server.execute(envelope, { viewer, signal: request.signal })) frames.push(f);
         const headers: Record<string, string> = { ...common };
+        // spec 07 §3: a batch that is not marked safe is never stored. The streaming branch below says so too, and
+        // this one used to return before saying anything at all.
         if (safe) Object.assign(headers, cacheHeadersFor(server, envelope, frames, viewer));
+        else headers["Cache-Control"] = "no-store";
         const noneMatch = request.headers.get("if-none-match");
         if (safe && noneMatch && noneMatch === headers["ETag"]) {
           // no body to sniff; the cached response keeps its own headers

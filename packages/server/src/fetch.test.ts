@@ -41,6 +41,18 @@ describe("the fetch handler answers a batch", () => {
     expect(await denied.json()).toMatchObject({ error: { code: "unauthenticated" } });
   });
 
+  it("an unsafe batch is never stored, whichever body it answers with", async () => {
+    // spec 07 §3. The single-frame branch returned before any cache header was set, so the one response a shared
+    // cache is most likely to keep was the one that never said not to.
+    const single = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, { accept: "application/json" });
+    expect(single.headers.get("cache-control")).toBe("no-store");
+    const streamed = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] });
+    expect(streamed.headers.get("cache-control")).toBe("no-store");
+    // guard: a batch the caller marked safe still gets its shared-cache headers instead
+    const safe = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, { accept: "application/json", "rayfold-safe": "true" });
+    expect(safe.headers.get("cache-control")).not.toBe("no-store");
+  });
+
   it("runs a command for a viewer the handler derived from the request", async () => {
     const res = await post({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key: KEY }] }, { authorization: "Bearer admin", accept: "application/json" });
     expect(res.status).toBe(200);

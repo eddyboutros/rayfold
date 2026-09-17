@@ -247,6 +247,43 @@ describe("idempotency records in Postgres", () => {
     expect(runs).toBe(101);
   });
 
+  it("counts a key held by a running command against the bound, and never evicts it", async () => {
+    // spec 12 §3. This store ranked and trimmed only recorded rows, so claims in flight sat outside the bound
+    // altogether: a fleet could hold maxRecords records *plus* a claim per running command.
+    const store = new PgIdempotencyStore(sql, { now: () => now, maxRecords: 3 });
+    await store.migrate();
+    const held = await store.claim("v", "held-key", 60_000);
+    expect(held.state).toBe("owned");
+
+    let runs = 0;
+    const server = createRayfoldServer({
+      schema: SCHEMA,
+      resolvers: { Command: { book: async ({ seat }: { seat: number }) => (runs++, { id: `t${seat}`, seat }) } },
+      idempotency: store,
+      now: () => now,
+    });
+    const key = (n: number) => `key-${String(n).padStart(12, "0")}`;
+    for (let n = 1; n <= 100; n++) {
+      now += 1;
+      await book(server, key(n));
+    }
+    // three rows in all, not three records beside the live claim
+    expect(await store.size()).toBe(3);
+    // and the live claim is one of them: it was never evicted, because evicting it would let a second request run
+    // the same command
+    expect((await store.claim("v", "held-key", 60_000)).state).toBe("inflight");
+
+    // guard: a claim whose lease has run out holds no command, so it does not keep older entries behind it
+    now += 120_000;
+    await store.claim("v", "stale-key", 1);
+    now += 1000;
+    for (let n = 101; n <= 200; n++) {
+      now += 1;
+      await book(server, key(n));
+    }
+    expect(await store.size()).toBe(3);
+  });
+
   it("works in a schema-qualified table, with the index named after it", async () => {
     await db.query("CREATE SCHEMA app");
     const store = new PgIdempotencyStore(sql, { now: () => now, table: "app.rayfold_idempotency" });

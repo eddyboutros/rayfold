@@ -105,6 +105,12 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
         continue;
       }
       if (!allowed.has(on)) err("annotation-position", at, `@${a.name} is not allowed on ${on}`);
+      if (a.name === "deprecated" && a.args["sunset"] !== undefined && typeof a.args["sunset"] !== "string") {
+        // An unquoted date lexes as three numbers — `2027-06-30` becomes sunset: 2027 and two positional values —
+        // and a non-string sunset is one `sunsetPassed` (diff.ts) can never read, so the member could never be
+        // removed. Silent before this check, and only visible years later.
+        err("bad-sunset", at, `@deprecated sunset must be a quoted date, as in @deprecated(sunset: "2027-06-30")`);
+      }
       if (a.name === "allow" || a.name === "deny") {
         for (const [k, v] of Object.entries(a.args)) {
           if (k !== "read" && k !== "write") err("bad-policy-arg", at, `@${a.name} accepts read: and write:, not ${k}:`);
@@ -158,6 +164,9 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
       }
       const hasPage = f.annotations.some((a) => a.name === "page");
       if (hasPage && !isPageRef(f.type)) err("page-on-non-page", at, `@page requires a Page<T> field`);
+      if (isPageRef(f.type) && !f.args.some((a) => (a.type.kind === "named" && a.type.name === "PageArgs") || a.name === "first")) {
+        err("page-args", at, `A field returning Page<T> must accept page: PageArgs (or first/after)`);
+      }
       if (f.annotations.some((a) => a.name === "partial") && !f.type.nullable) {
         err("partial-non-null", at, `@partial fields must be nullable (they become null on failure)`);
       }
@@ -256,6 +265,8 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
     if (isPageRef(op.returns)) {
       const hasPageArg = op.args.some((a) => a.type.kind === "named" && a.type.name === "PageArgs") || op.args.some((a) => a.name === "first");
       if (!hasPageArg) err("page-args", at, `An operation returning Page<T> must accept page: PageArgs (or first/after)`);
+    } else if (op.annotations.some((a) => a.name === "page")) {
+      err("page-on-non-page", at, `@page requires a Page<T> result`);
     }
   }
 
@@ -293,6 +304,8 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
     for (const e of op.throws) reachable.add(e);
     for (const e of op.emits) visit({ kind: "named", name: e, nullable: false });
   }
+  // rule 9 counts views, so a type reached only through one is not unreachable
+  for (const v of Object.values(ir.views)) visit({ kind: "named", name: v.type, nullable: false });
   for (const t of Object.values(ir.types)) {
     if (t.builtin || reachable.has(t.name)) continue;
     if (t.kind === "entity" || t.kind === "object" || t.kind === "union") {

@@ -109,10 +109,22 @@ describe("validation", () => {
     expect(errorsOf(`entity A { id: ID x: [Int] @page(cursor) }`)).toContain("page-on-non-page");
     expect(errorsOf(`entity A { id: ID } query q: Page<A>`)).toContain("page-args");
     expect(errorsOf(`entity A { id: ID } query q(page: PageArgs): Page<A>`)).toEqual([]);
+    // spec 01 §9's paging rule is about a field *or* a query, and the field half went unchecked
+    expect(errorsOf(`entity R { id: ID } entity A { id: ID rs: Page<R> } query a: A`)).toContain("page-args");
+    expect(errorsOf(`entity R { id: ID } entity A { id: ID rs(page: PageArgs): Page<R> } query a: A`)).toEqual([]);
+    expect(errorsOf(`entity R { id: ID } entity A { id: ID rs(first: Int): Page<R> } query a: A`)).toEqual([]);
+    // rule 8 likewise covers both, and the operation half went unchecked
+    expect(errorsOf(`entity A { id: ID } query q: A @page(cursor)`)).toContain("page-on-non-page");
+    expect(errorsOf(`entity A { id: ID } query q(page: PageArgs): Page<A> @page(cursor)`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID } query q: A @allow(read: this.x == 1)`)).toContain("policy-this-on-op");
     expect(errorsOf(`entity A { id: ID } query q: A @allow(read: viewer != null)`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID x: Int @allow(read: this.x == 1) }`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID } query q: A @cache(maxAge: 5, scope: public)`)).toContain("bad-cache-maxage");
+    // an unquoted date lexes as three numbers (sunset: 2027 and two positional values), and diff.ts can only read a
+    // string, so the member could never be retired. docs/guide/from-rest.md taught the unquoted form.
+    expect(errorsOf(`entity A { id: ID p: Int @deprecated(sunset: 2027-06-30) }`)).toContain("bad-sunset");
+    expect(errorsOf(`entity A { id: ID p: Int @deprecated(sunset: "2027-06-30") }`)).toEqual([]);
+    expect(errorsOf(`entity A { id: ID p: Int @deprecated(reason: "old") }`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID } query q: A @cache(maxAge: 5s, scope: public)`)).toEqual([]);
   });
 
@@ -148,6 +160,9 @@ describe("validation", () => {
     // guard: a type reached through a field, an argument or a declared error is not reported
     const reached = validateIR(parseSchemaText(`entity A { id: ID b: B } entity B { id: ID } input F { q: String } error Gone { id: ID } query a(f: F): A command c: A throws Gone`));
     expect(reached.filter((x) => x.code === "unreachable")).toEqual([]);
+    // rule 9 counts views, so a type reached only through one is reachable
+    const viaView = validateIR(parseSchemaText(`entity A { id: ID } entity B { id: ID n: String } query a: A view B.card = { n }`));
+    expect(viaView.filter((x) => x.code === "unreachable")).toEqual([]);
   });
 });
 

@@ -102,7 +102,11 @@ object Frames {
         if (errors.isNotEmpty()) put("errors", JsonArray(errors))
         put("fin", true)
     }
-    fun item(id: Int, item: JsonElement): JsonObject = buildJsonObject { put("id", id); put("item", item) }
+    /** spec 04 section 2: an `item` frame carries `errors` of its own, as a `data` frame does. */
+    fun item(id: Int, item: JsonElement, errors: List<JsonObject> = emptyList()): JsonObject = buildJsonObject {
+        put("id", id); put("item", item)
+        if (errors.isNotEmpty()) put("errors", JsonArray(errors))
+    }
     fun patch(id: Int, patch: List<JsonObject>): JsonObject = buildJsonObject { put("id", id); put("patch", JsonArray(patch)) }
     fun at(id: Int, at: String, data: JsonElement, errors: List<JsonObject>): JsonObject = buildJsonObject {
         put("id", id); put("at", at); put("data", data)

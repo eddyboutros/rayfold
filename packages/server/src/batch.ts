@@ -9,6 +9,7 @@ import { RayfoldError, VersionConflict, toWireError, type Frame, type RequestEnv
 import { resolveRequestShape, type ShapeRegistry } from "./views.ts";
 import type { UsageSink } from "./usage.ts";
 import { capabilityAllows } from "./capability-scope.ts";
+import type { Change } from "./live.ts";
 import { ChangeBus, changeFromPatch, diffResults, foldFrames, readSetOf } from "./live.ts";
 
 export interface BatchOptions {
@@ -55,10 +56,19 @@ export class FrameSink implements AsyncIterable<Frame> {
   private readonly queue: Frame[] = [];
   private waiting: ((r: IteratorResult<Frame>) => void) | null = null;
   private closed = false;
+  private readonly ended = new Set<number>();
   readonly frames: Frame[] = [];
 
   push(f: Frame): void {
     if (this.closed) return;
+    // spec 04 §2: one terminal frame per op. A command that emitted `ok` with `fin` and then failed while recording
+    // its idempotency record or publishing its change reached the failure path and pushed a second one for the same
+    // id, so the guard belongs here rather than at each of those call sites.
+    const id = (f as { id?: unknown }).id;
+    if (typeof id === "number") {
+      if (this.ended.has(id)) return;
+      if ((f as { fin?: unknown }).fin === true) this.ended.add(id);
+    }
     this.frames.push(f);
     if (this.waiting) {
       const w = this.waiting;
@@ -227,6 +237,11 @@ function validateEnvelope(rt: BatchRuntime, envelope: RequestEnvelope): WireErro
       if (!ids.has(d)) return bad(`ops[${i}].args: $ref to unknown op ${d}`);
     }
     if (req.live && rt.ir.ops[req.op]!.kind !== "query") return bad(`ops[${i}].live: only queries can be live`);
+    // `@live(false)` opts a query out: a search whose every keystroke would re-run it, say. Declared in the schema
+    // and enforced nowhere, so the runtime opened it live anyway.
+    if (req.live && annotation(rt.ir.ops[req.op]!, "live")?.args["value"] === false) {
+      return bad(`ops[${i}].live: ${req.op} is declared @live(false)`);
+    }
   }
   return null;
 }
@@ -472,33 +487,46 @@ async function runLive(
     await rt.executor.runQuery(p.op, args, p.shape, p.explicit, p.cost, runCtx, (f) => frames.push(f));
     return { frames, data: foldFrames(frames) };
   };
-  const first = await collect();
-  let current = first.data;
-  let readSet = readSetOf(current);
   // Entity types reachable from the result type: a new entity of such a type may change membership.
   const typeSet = reachableEntityTypes(rt.ir, p.op.returns);
-  for (const f0 of first.frames) {
-    const f = wire(f0);
-    if ("fin" in f && f.fin && !("data" in f) && !("error" in f)) continue; // keep the op open
-    if ("data" in f && !("at" in f)) {
-      const { fin: _fin, ...rest } = f as { fin?: boolean } & Record<string, unknown>;
-      sink.push(stamp(rest as Frame));
-    } else sink.push(stamp(f));
-  }
-  results.set(id, current);
-
+  let readSet = new Set<string>();
   let dirty = false;
   let running = false;
   let wake: (() => void) | null = null;
+  const hits = (c: Change): boolean =>
+    c.ops.has(p.op.name) || [...c.keys].some((k) => readSet.has(k) || typeSet.has(k.slice(0, k.indexOf(":"))));
+  // Subscribing after the first read would drop anything committed while it ran: the result the client gets is
+  // already stale, and no later change is obliged to touch the same rows again, so the screen stays wrong
+  // indefinitely. There is no read set to judge those changes against yet, so hold them until there is.
+  let held: Change[] | null = [];
   const off = rt.changes.subscribe((c) => {
-    const hit = c.ops.has(p.op.name) || [...c.keys].some((k) => readSet.has(k) || typeSet.has(k.slice(0, k.indexOf(":"))));
-    if (!hit) return;
+    if (held) {
+      held.push(c);
+      return;
+    }
+    if (!hits(c)) return;
     dirty = true;
     wake?.();
   });
   const onAbort = () => wake?.();
   ctx.signal.addEventListener("abort", onAbort, { once: true });
   try {
+    const first = await collect();
+    let current = first.data;
+    readSet = readSetOf(current);
+    const duringFirst = held;
+    held = null;
+    if (duringFirst.some(hits)) dirty = true;
+    for (const f0 of first.frames) {
+      const f = wire(f0);
+      if ("fin" in f && f.fin && !("data" in f) && !("error" in f)) continue; // keep the op open
+      if ("data" in f && !("at" in f)) {
+        const { fin: _fin, ...rest } = f as { fin?: boolean } & Record<string, unknown>;
+        sink.push(stamp(rest as Frame));
+      } else sink.push(stamp(f));
+    }
+    results.set(id, current);
+
     while (!ctx.signal.aborted) {
       if (!dirty) await new Promise<void>((res) => (wake = res));
       wake = null;

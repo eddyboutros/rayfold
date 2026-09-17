@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
+import { bookstoreResolvers, bookstoreSchemaText, createBookstore, seed } from "../../../examples/bookstore-ts/src/index.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
+import { createRayfoldServer, type Resolvers } from "./index.ts";
 import type { Frame } from "./protocol.ts";
 import { diffResults } from "./live.ts";
 
@@ -178,5 +179,105 @@ describe("compact live queries", () => {
     await live.until(2);
     expect(live.frames[1]).toEqual({ id: 1, data: { items: [{ id: "b3" }, { id: "b9" }] } });
     await live.stop();
+  });
+});
+
+/**
+ * A live query subscribes to the change bus and reads. Whichever order those happen in, the window between them is
+ * a hole: a command committed inside it changes rows the read had already looked at, and the client is told
+ * nothing. Nothing later is obliged to touch the same rows again, so the screen stays wrong until something
+ * unrelated happens to disturb it. These park the first read so the window is wide open and deterministic.
+ */
+describe("a change committed while the first read is still running", () => {
+  /** A bookstore whose `Query.book` reads, then parks until the test releases it, then returns what it read. */
+  function parkedFirstRead() {
+    const store = seed();
+    const base = bookstoreResolvers(store);
+    const parked = new Signal<true>();
+    let release: (() => void) | null = null;
+    const gate = new Promise<void>((r) => (release = r));
+    let held = true;
+    const book = base.Query!["book"] as (args: { id: string }, ctx: unknown) => unknown;
+    const resolvers: Resolvers = {
+      ...base,
+      Query: {
+        ...base.Query,
+        book: async (args: { id: string }, ctx: unknown) => {
+          // Copied, not referenced: a real datastore hands back the row it read, and this one would otherwise
+          // alias the command's own mutation and so never be stale at all.
+          const read = book(args, ctx) as Record<string, unknown> | null;
+          const row = read && { ...read };
+          if (held) {
+            held = false;
+            parked.push(true);
+            await gate;
+          }
+          return row;
+        },
+      },
+    };
+    return {
+      server: createRayfoldServer({ schema: bookstoreSchemaText(), resolvers }),
+      store,
+      reading: () => parked.atLeast(1, "the first read reached the store"),
+      release: () => release?.(),
+    };
+  }
+
+  it("reaches the client, rather than waiting for something unrelated to disturb the same rows", async () => {
+    const gated = parkedFirstRead();
+    bs = { server: gated.server, store: gated.store };
+    const live = startLive([{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }]);
+    await gated.reading();
+    // the read has seen stock 5 and has not returned yet; this is the window
+    await bs.server.collect({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 2 }, key: KEY }] }, { viewer: admin });
+    gated.release();
+
+    await live.until(1);
+    expect(live.frames[0]).toEqual({ id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 } }); // the value the read saw
+    await live.until(2);
+    expect(live.frames[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 7 } }] });
+    await live.stop();
+    expect(bs.server.changes.size).toBe(0);
+  });
+
+  it("sends nothing when it misses the read set, so the guard is not blanket", async () => {
+    const gated = parkedFirstRead();
+    bs = { server: gated.server, store: gated.store };
+    const live = startLive([{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }]);
+    await gated.reading();
+    await bs.server.collect({ ops: [{ id: 1, op: "restock", args: { bookId: "b2", qty: 2 }, key: KEY }] }, { viewer: admin }); // another row
+    gated.release();
+    await live.until(1);
+
+    await bs.server.collect({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 2 }, key: KEY + "x" }] }, { viewer: admin });
+    await live.until(2);
+    // the b1 patch is the very next frame, so the b2 change in the window sent nothing
+    expect(live.frames[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 7 } }] });
+    await live.stop();
+  });
+});
+
+describe("@live(false)", () => {
+  const SCHEMA = `
+entity Hit { id: ID  title: String }
+query search(q: String): [Hit] @live(false)
+query hits: [Hit]
+`;
+  const server = () =>
+    createRayfoldServer({
+      schema: SCHEMA,
+      resolvers: { Query: { search: () => [{ id: "h1", title: "One" }], hits: () => [{ id: "h1", title: "One" }] } },
+    });
+
+  it("refuses to open a query the schema opted out of, and still opens one that did not", async () => {
+    // declared in examples/workspace-ts/workspace.rayfold and enforced nowhere, so the runtime opened it live anyway
+    const refused = await server().collect({ ops: [{ id: 1, op: "search", args: { q: "x" }, shape: "{ id }", live: true }] }, {});
+    expect(refused[0]).toMatchObject({ error: { code: "invalid_argument" }, fin: true });
+    expect((refused[0] as { error: { message: string } }).error.message).toContain("@live(false)");
+
+    // guard: the opt-out is per operation, not a refusal of live queries on this server
+    const plain = await server().collect({ ops: [{ id: 1, op: "search", args: { q: "x" }, shape: "{ id }" }] }, {});
+    expect(plain[0]).toMatchObject({ id: 1, data: [{ id: "h1" }] });
   });
 });

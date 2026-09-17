@@ -162,6 +162,12 @@ data class RayfoldSchemaIR(
     val types: Map<String, TypeDef>,
     val ops: Map<String, OpDef>,
     val views: Map<String, ViewDef> = emptyMap(),
+    /**
+     * Vendor data, namespaced by the vendor (spec 01 section 9.1). Carried so an IR document survives a load, and
+     * left out of the hashed form by [IrJson.of] - an identity that moved with vendor data would make two servers
+     * offering the same conversation look different.
+     */
+    val extensions: JsonObject? = null,
 ) {
     fun type(name: String): TypeDef? = types[name]
 

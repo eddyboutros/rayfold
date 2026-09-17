@@ -36,6 +36,12 @@ whose type is reachable within that bound. Intersection
 triggers a re-execution with the original args, shape, vars and viewer; the new result is diffed against
 the previous one (§2). Re-executions are coalesced: changes arriving during a run schedule exactly one more.
 
+A read set only exists once a first result does, but the window before that is not exempt. A server MUST attach to
+the change bus **before** it begins the first execution, and MUST treat a change that arrived while that execution
+was running as intersecting unless it can establish that it does not. A server that attaches afterwards loses every
+change committed during the first read: the client holds a result that is already stale, nothing later is obliged to
+touch the same rows again, and the query stays silent until an unrelated change happens to disturb it.
+
 This is deliberately conservative (a change to any entity of a reachable type re-runs the query). Adapters
 that can compute exact dependencies (row-level replication, query-level read tracking) MAY narrow the
 intersection test; they MUST NOT widen the frames' meaning.
