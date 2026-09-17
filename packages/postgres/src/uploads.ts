@@ -58,10 +58,20 @@ interface Row {
   viewer: string | null;
   size: string | number;
   at: string | number;
-  bytes?: Uint8Array | Buffer;
+  bytes?: Uint8Array;
 }
 
 const ms = (v: string | number): number => (typeof v === "number" ? v : Number(v));
+
+/**
+ * What the driver wants for a `bytea` parameter. node-postgres serialises a `Buffer` to bytes and anything else
+ * through `JSON.stringify`, so the bytes have to arrive as one; PGlite takes the array as it is. This package never
+ * imports a driver and is built without Node's types, so `Buffer` is reached for only where it exists.
+ */
+const bytea = (b: Uint8Array): Uint8Array => {
+  const buf = (globalThis as { Buffer?: { from(b: Uint8Array): Uint8Array } }).Buffer;
+  return buf ? buf.from(b) : b;
+};
 
 export class PgUploadStore {
   private readonly table: string;
@@ -123,7 +133,7 @@ export class PgUploadStore {
       meta.viewer === undefined || meta.viewer === null ? null : JSON.stringify(meta.viewer),
       size,
       t,
-      Buffer.from(bytes),
+      bytea(bytes),
     ]);
     await this.sweep(t);
     const upload: PgUpload = { id, size, at: t };

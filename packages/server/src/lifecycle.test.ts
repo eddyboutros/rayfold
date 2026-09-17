@@ -258,6 +258,20 @@ describe("draining", () => {
     expect(closed.items[0]).toEqual({ code: 1001, reason: "server shutting down" });
   });
 
+  it("shutdown() lets the frames that end a live query reach the client before the socket goes", async () => {
+    // drain() ends the op, but the frame it produced still has to travel: the handler hands it to a stream and a
+    // separate loop writes it to the socket. Closing connections the moment drain() resolves drops it on the floor,
+    // and the client is left with a response that simply stops - which is the one thing a rolling deploy must not do.
+    const built = build();
+    const { base, http } = await serve(built.server);
+    const live = await stream(base, liveBook);
+    await live.atLeast(1, "the live query answering");
+
+    await shutdown(built.server, http, { timeoutMs: 5_000 });
+    await live.atLeast(2, "the live query being ended before the socket closed");
+    expect(live.items[1]).toEqual(unavailable);
+  });
+
   it("shutdown() drains, closes the port, and stops hearing the relay", async () => {
     const relay = new MemoryRelay();
     const built = build({ relay: relay.join() });

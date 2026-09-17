@@ -142,11 +142,20 @@ export function listen(server: RayfoldServer, port: number, opts: HttpOptions = 
  * hearing the relay. Wire it to the signal your platform sends:
  * `process.on("SIGTERM", () => shutdown(server, http).then(() => process.exit(0)))`.
  */
-export async function shutdown(server: RayfoldServer, http: Server, opts: { timeoutMs?: number } = {}): Promise<void> {
+export async function shutdown(server: RayfoldServer, http: Server, opts: { timeoutMs?: number; flushMs?: number } = {}): Promise<void> {
   await server.drain(opts);
   await new Promise<void>((resolve) => {
-    http.close(() => resolve());
-    http.closeAllConnections();
+    let force: ReturnType<typeof setTimeout> | undefined;
+    http.close(() => {
+      if (force) clearTimeout(force);
+      resolve();
+    });
+    // `drain()` resolves when the operations end, which is not when their last frames have reached the socket: the
+    // handler hands frames to a stream and a separate loop writes them. So idle connections go now, the ones still
+    // writing are left to finish and close themselves, and only a client that never reads is cut off, after `flushMs`.
+    http.closeIdleConnections();
+    force = setTimeout(() => http.closeAllConnections(), opts.flushMs ?? 1_000);
+    force.unref?.();
   });
   await server.close();
 }

@@ -98,7 +98,8 @@ describe("uploads in Postgres", () => {
     const c = member(new MemoryUploadStore());
     const other = (await (await send(a, bytes(16))).json()) as { id: string };
     expect(await (await consume(c, other.id, "0123456789abcdeg")).json()).toMatchObject({ ok: { bytes: 0 } });
-  });
+    // three servers and a WASM Postgres between them: the default bound is the suite's, not this test's
+  }, 20_000);
 
   it("gives the bytes back exactly as they arrived, with what the client said about them", async () => {
     const s = await store();
