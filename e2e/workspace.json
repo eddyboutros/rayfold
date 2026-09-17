@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-15T19:55:33.326Z",
+  "generatedAt": "2026-09-17T10:05:03.712Z",
   "dataset": {
     "orgs": 2,
     "users": 18,
@@ -1173,7 +1173,7 @@
                 "authorization": "Bearer u01",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"moveIssue\",\"args\":{\"id\":\"i078\",\"to\":\"IN_PROGRESS\"},\"key\":\"7ad824515fbd473caabbf3f2190ecce3\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"moveIssue\",\"args\":{\"id\":\"i078\",\"to\":\"IN_PROGRESS\"},\"key\":\"9508f347ec8b4acb9b65d31fa61b7477\"}]}"
             },
             "response": {
               "status": 200,
@@ -1962,7 +1962,7 @@
       "better": "higher",
       "metric": "delivery of a slow field",
       "REST": "the description is part of the issue resource, so it is sent every time, even to a list that never shows it",
-      "GraphQL": "one body: the client waits for the slowest field it asked for (`@defer` is still not in graphql-js 16)",
+      "GraphQL": "one body: the client waits for the slowest field it asked for (`@defer` is still not in graphql-js 17)",
       "Rayfold": "`@lazy` on the field: the frame with the page comes first, the description follows at its path in the same response",
       "verdict": "lead",
       "examples": {

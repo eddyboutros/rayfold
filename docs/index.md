@@ -86,7 +86,8 @@ command buy(bookId: ID, qty: Int = 1): Book
   "rayfold": "0.1",
   "ops": [
     { "id": 1, "op": "buy",
-      "args": { "bookId": "b1" } },
+      "args": { "bookId": "b1" },
+      "key": "7f3c9a2e4b1d4c6f" },
     { "id": 2, "op": "book",
       "args": { "id": { "$ref": "1.id" } },
       "shape": "{ title stock author { name } }",

@@ -6,6 +6,7 @@ book, watches it, buys a copy and prints the stock the purchase left. One Gradle
 | File | What |
 |---|---|
 | `src/main/resources/bookshop.rayfold` | The schema |
+| `src/main/kotlin/com/example/bookshop/Store.kt` | The shelves, in memory |
 | `src/main/kotlin/com/example/bookshop/Server.kt` | Resolvers, the batched `Book.author` loader, the viewer, the server |
 | `src/main/kotlin/com/example/bookshop/Client.kt` | The client app |
 | `src/test/kotlin/com/example/bookshop/` | Tests over HTTP against a server on a free port |

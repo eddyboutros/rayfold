@@ -38,4 +38,4 @@ volume alone (put rate limits in front of the server, see spec 12), and findings
 
 npm packages are published from GitHub Actions with provenance statements, Maven artifacts are signed, and every
 release attaches a CycloneDX software bill of materials. CI scans dependencies (npm audit, OSV-Scanner, Dependabot)
-and the history for committed secrets (gitleaks) on every push.
+and the history for committed secrets (gitleaks) on every pull request and every push to `main`.

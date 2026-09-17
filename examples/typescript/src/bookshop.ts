@@ -10,13 +10,13 @@ import { resolvers, seed, viewerFrom, type Store } from "./resolvers.ts";
 
 export { resolvers, seed, viewerFrom, type Author, type Book, type Store, type Viewer } from "./resolvers.ts";
 
+// #region server
 const schema = readFileSync(new URL("./bookshop.rayfold", import.meta.url), "utf8");
 
 export function createBookshop(store: Store = seed()): { server: RayfoldServer; store: Store } {
   return { server: createRayfoldServer({ schema, resolvers: resolvers(store) }), store };
 }
 
-// #region server
 export function bookshopHttp(server: RayfoldServer): Server {
   const endpoint = createHttpHandler(server, { viewer: (req) => viewerFrom(req.headers.authorization) });
   const explorer = createExplorerHandler({ endpoint: "/rayfold", title: "Bookshop" });

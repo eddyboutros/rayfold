@@ -24,7 +24,7 @@ uniform codes for retries, alerting and HTTP status mapping.
 | `message` | yes | Human-readable, not for programmatic use. |
 | `data` | when `type` is set | Payload matching the error type's fields. |
 | `path` | no | Result path the error applies to (partial errors). |
-| `retryable` | no | Server hint. Default: true for `unavailable`, `deadline_exceeded`, `aborted`; false otherwise. |
+| `retryable` | no | Server hint, sent only when it differs from the default. A receiver that sees none derives it: true for `unavailable`, `deadline_exceeded` and `aborted`, false otherwise. |
 
 ## 2. Protocol codes
 
@@ -38,7 +38,8 @@ Plus `domain` for declared errors.
 
 ## 3. HTTP status derivation
 
-Used only for single-frame JSON responses and batch-level failures; frame streams are always `200`.
+Used for a single-frame JSON response (`Accept: application/json`, one op, one frame) and for a problem document a
+server answers before it parses a batch. Frame streams are always `200`.
 
 | Code | Status |
 |---|---|
@@ -68,15 +69,27 @@ non-partial field.
 
 ## 5. Declared errors
 
-A command's `throws` list is a closed union. A resolver MUST NOT raise a domain error that is not declared;
-the runtime converts an undeclared one to `internal` and logs it. Queries and streams MAY declare `throws`
-too. Generated clients expose the union as a discriminated type on `error.type`.
+A command's `throws` list is a closed union. A resolver MUST NOT raise a domain error that is not declared; the
+runtime converts an undeclared one to `internal`. The check is made on commands, which are the operations whose
+errors clients branch on; queries and streams MAY declare `throws` too, and their declarations are documentation
+rather than an enforced closed set. Generated clients expose the union as a discriminated type on `error.type`.
 
 ## 6. Problem Details
 
-Batch-level failures over HTTP use RFC 9457:
+Refusals a server makes before it parses a batch, and every response from an HTTP binding ([04 §8](04-frames-and-transport.md)),
+use RFC 9457. A batch that parses and then fails as a whole — over budget, for one — is an `error` frame on the frame
+channel instead, because by then there is a frame channel to put it on.
 
 ```json
-{ "type": "https://eddyboutros.github.io/rayfold/errors/invalid_argument", "title": "Invalid argument", "status": 400,
-  "detail": "ops[1].args.input.qty: expected Int", "code": "invalid_argument" }
+{ "type": "https://eddyboutros.github.io/rayfold/errors/invalid_argument", "title": "invalid argument", "status": 400,
+  "detail": "placeOrder().input.qty: expected Int", "code": "invalid_argument" }
+```
+
+`title` is the problem type with underscores replaced by spaces. A binding's problem document may also carry `path`
+and `data`. A **declared domain error** identifies itself by its own type rather than by the protocol code: `type` is
+the base URI plus the error's name, and `title` is that name.
+
+```json
+{ "type": "https://eddyboutros.github.io/rayfold/errors/OutOfStock", "title": "OutOfStock", "status": 422,
+  "detail": "Only 2 left", "code": "failed_precondition", "data": { "available": 2 } }
 ```

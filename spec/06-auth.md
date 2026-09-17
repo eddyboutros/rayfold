@@ -38,7 +38,8 @@ rules (`viewer.id == ownerId`) are natural.
 | Field, explicitly selected | `permission_denied` with `path`, whole op fails (atomic), unless the field is `@partial` -> `null` + partial error. |
 | Type, explicitly selected, at a nullable position | `null`, exactly as for an entity that does not exist, so a denial never reveals that the entity exists ([12 §5](12-security.md)). |
 | Type, explicitly selected, at a non-null position or as a list element | `permission_denied` with `path`, whole op fails (atomic). |
-| Type or field, field only in a default view | Field omitted silently. Default views never leak and never fail. |
+| Field, only in a default view | Field omitted silently. Default views never leak and never fail. |
+| Type, only in a default view | The member is present and `null`, as for a nullable position above: a default view never fails the operation. |
 
 An expression that cannot be evaluated, such as ordering text against a boolean, fails closed: `@allow` does not
 allow and `@deny` denies. Numbers and numeric text (Decimal and Long travel as text) compare exactly by value
@@ -47,8 +48,9 @@ allow and `@deny` denies. Numbers and numeric text (Decimal and Long travel as t
 ## 4. Pushdown
 
 A policy that references only `viewer`, `args`, literals and scalar fields of `this` is **pushable**: the
-runtime hands it to the loader as a filter predicate (`ctx.policy.filter`) so that list queries never fetch
-rows the viewer cannot see. Loaders that do not implement pushdown get the runtime's post-filter, which is
+runtime hands it to the loader as a filter predicate on the context so that list queries never fetch rows the viewer
+cannot see. Where on the context is the runtime's own business — the TypeScript runtime uses `ctx.policy.filter`, the
+Kotlin one `ctx.policy`. Loaders that do not implement pushdown get the runtime's post-filter, which is
 correct but pays the cost. `rayfold explain` reports which policies were pushed down.
 
 ## 5. Cost budgets
@@ -59,9 +61,10 @@ by the page sizes that enclose it. A field's base defaults to 1 when it returns 
 or a list of them) and to 0 when it returns scalars or enums, which arrive with the row already loaded. The perItem of
 a page, whether an op or a field returns it, defaults to 1, so every row a page can return is charged. The budget
 measures rows and loads, not columns.
-The viewer's budget (server-configured, default 1 000 per batch and 10 000 per minute) is checked before
-execution; exceeding it is `resource_exhausted` with `data: { cost, budget }`. Actual cost is reported in
-`meta.cost`.
+The viewer's budget (server-configured, default 1 000 per batch) is checked before execution; exceeding it is
+`resource_exhausted` with `data: { cost, budget }`. Actual cost is reported in `meta.cost`. Every op that is estimated
+costs at least 1, however cheap its parts; an op refused before it is estimated, such as one whose arguments do not
+validate, costs nothing and is not counted against the batch. Rate limiting over time is left to the deployment.
 
 ## 6. Capability tokens (extension `cap`)
 
@@ -86,5 +89,6 @@ which the schema's policies read as `viewer.caps.*`, and the runtime MUST refuse
 holder and is governed by the schema's policies alone.
 
 **Attenuation only narrows.** A token derived from another MAY drop operations and shorten the life; it MUST NOT add
-an operation or extend `exp` beyond the token it came from. A derived token is a token in its own right and may be
-narrowed again, so a chain of delegations can only ever lose authority.
+an operation, extend `exp` beyond the token it came from, or carry a fact in `caps` that its parent did not.
+A derived token is a token in its own right and may be narrowed again, so a chain of delegations can only ever lose
+authority.

@@ -26,13 +26,15 @@ that runs Rayfold in your browser.
 | You build | Install | Guide |
 |---|---|---|
 | A Node.js server | `npm install @rayfold/server` | [Quickstart](docs/guide/quickstart.md) |
+| A server on Workers, Deno, Bun or Hono | `npm install @rayfold/server` | [Runtimes](docs/guide/runtimes.md) |
 | A web or Node.js client | `npm install @rayfold/client` | [Quickstart](docs/guide/quickstart.md#4-call-it) |
 | A React app | `npm install @rayfold/react @rayfold/client` | [React](docs/guide/react.md) |
 | Resolvers over Postgres | `npm install @rayfold/postgres` | [Postgres](docs/guide/postgres.md) |
 | OpenTelemetry tracing | `npm install @rayfold/otel` | [Tracing](docs/guide/tracing.md) |
 | An explorer next to the endpoint | `npm install @rayfold/explorer` | [Explorer](docs/guide/explorer.md) |
 | Editor support for `.rayfold` | `npm install --save-dev @rayfold/lsp` | [Editors](docs/guide/editors.md) |
-| Schema tooling: check, lock, explain, gen | `npm install --save-dev @rayfold/cli` | [CLI](packages/cli/README.md) |
+| Schemas written in TypeScript | `npm install @rayfold/builder` | [TypeScript](docs/guide/typescript.md) |
+| Schema tooling: check, lock, explain, gen, import, mock | `npm install --save-dev @rayfold/cli` | [CLI](packages/cli/README.md) |
 | A Kotlin server | `dev.rayfold:rayfold-core` | [Kotlin](docs/guide/kotlin.md) |
 | A Kotlin or Android client | `dev.rayfold:rayfold-client` (and `rayfold-client-okhttp` on Android) | [Kotlin client](docs/guide/kotlin.md#a-client) |
 | A Java server | `dev.rayfold:rayfold-java` | [Java](docs/guide/java-spring.md) |
@@ -103,7 +105,7 @@ npm test                                   # the TypeScript suite: packages, con
 npm run typecheck
 npm run build                              # the npm packages into packages/*/dist
 npm run smoke:packages                     # install the packed packages in a fresh project and use them there
-npm run docs:dev                           # the documentation site and playground at http://localhost:5173/rayfold/
+npm run docs:dev                           # the documentation site and playground at http://localhost:5173/
 npm run rayfold -- dev examples/bookstore-ts   # explorer http://localhost:4400, /rayfold, /rayfold/ws, /mcp
 npm run bench                              # REST vs GraphQL vs Rayfold (JSON, RB) -> bench/results/latest.md
 npm run e2e && npm run e2e:html            # the comparison suite -> e2e/report.html
@@ -114,24 +116,25 @@ npm run smoke:maven                        # publish the JVM modules locally and
 
 | Path | What |
 |---|---|
-| [`spec/`](spec/00-overview.md) | The protocol: schema, shapes, batches, frames, errors, auth, cache (Core); live, RB, MCP (extensions); evolution; security; ADRs |
+| [`spec/`](spec/00-overview.md) | The protocol: schema, shapes, batches, frames, errors, auth, cache (Core); live, RB, MCP, REST bindings, uploads, capability tokens (extensions); evolution; security; ADRs |
 | [`docs/`](docs/index.md) | User guides and background; [`docs/releasing.md`](docs/releasing.md) is the release checklist |
-| [`packages/schema`](packages/schema) | `.rayfold` parser, validator, shapes, policy expressions, breaking-change diff, TypeScript/Kotlin/Java generators |
+| [`packages/schema`](packages/schema) | `.rayfold` parser, validator, shapes, policy expressions, breaking-change diff, TypeScript/Kotlin/Java/GraphQL generators |
 | [`packages/builder`](packages/builder) | code-first TypeScript schemas with inferred types |
-| [`packages/server`](packages/server) | the Node.js server: executor, batches, idempotency, policies, cost, cache headers, live queries, HTTP, `@http` bindings, OpenAPI, WebSocket, MCP |
-| [`packages/client`](packages/client) | normalized cache with patches, batches with `$ref`, watch/live, fetch and WebSocket transports, RB |
+| [`packages/server`](packages/server) | the server runtime: executor, batches, idempotency, policies, cost, cache headers, live queries, uploads, `@http` bindings, OpenAPI, WebSocket, MCP; a fetch handler with a Node adapter over it, a relay to join a fleet, and drain and readiness for a rolling deploy |
+| [`packages/client`](packages/client) | normalized cache with patches, batches with `$ref`, watch/live, uploads, an offline queue, fetch and WebSocket transports, RB |
 | [`packages/react`](packages/react) | `useQuery`, `useLive`, `useCommand` |
 | [`packages/rb`](packages/rb) | Rayfold Binary codec |
-| [`packages/cli`](packages/cli) | `rayfold check | lock | hash | explain | gen ts|kotlin|java | shapes | dev` |
+| [`packages/cli`](packages/cli) | `rayfold check \| lock \| hash \| explain \| gen ts\|kotlin\|java\|graphql \| shapes \| import openapi\|graphql \| mock \| lsp \| dev` |
 | [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass |
 | [`kotlin/`](kotlin) | JVM modules: `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`, `rayfold-jdbc` |
-| [`examples/`](examples) | the bookstore used by tests, explorer and bench; the web demo; `workspace-ts`, a multi-tenant issue tracker that exercises every part of the protocol at once |
+| [`examples/`](examples) | the bookstore used by tests, explorer and bench; the same bookshop per stack (`typescript`, `react`, `kotlin`, `java`, `spring-boot`) that the get-started guides are written from; the web demo; `workspace-ts`, a multi-tenant issue tracker that exercises every part of the protocol at once |
 | [`e2e/`](e2e/report.md) | the same flows over REST, GraphQL and Rayfold, every report cell asserted |
 | [`scripts/`](scripts) | build, publish, set-version, smoke tests, docs site, oracles for the Kotlin tests |
 | [`data/`](data) | the Project Gutenberg catalogue used by the real-data tests and the demo (see its README for attribution) |
 
 Status: **Core 0.1 is frozen**: it changes only by errata. Core is deliberately small; live queries, the binary format,
-the MCP bridge and REST routes are extensions, and those are still drafts. [ROADMAP.md](ROADMAP.md) says what comes next.
+the MCP bridge, REST routes, uploads and capability tokens are extensions, and those are still drafts.
+[ROADMAP.md](ROADMAP.md) says what comes next.
 
 The protocol and the schema language are the standard; the packages in this repository are reference libraries built
 on them. Batch loaders, the normalized client cache, React hooks and the offline queue are their design, not

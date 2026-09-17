@@ -97,8 +97,9 @@ Fields that hold other entities are resolved by loaders, and a loader receives e
 :::
 
 The server resolves a shape level by level. For a page of 20 books, `Book.author` is called once with all 20 books
-and returns their authors in the same order, `null` where there is none. You get one lookup per level however many
-rows there are, without writing a DataLoader.
+and returns their authors in the same order — one entry per book, `null` only where the field's type allows it
+(`author: Author?`). On a non-null field a `null` is an `internal` error naming the field, not a missing value. You
+get one lookup per level however many rows there are, without writing a DataLoader.
 
 `rayfold explain` shows the plan for a query before you run it:
 

@@ -16,6 +16,8 @@ This document is the entry point; the numbered documents are normative.
 | 09 | [Binary format (RB)](09-binary-format.md) | Extension `rb` |
 | 10 | [MCP bridge](10-mcp-bridge.md) | Extension `mcp` |
 | 04 §8 | [HTTP bindings and OpenAPI](04-frames-and-transport.md#8-http-bindings-extension-http) | Extension `http` |
+| 04 §9 | [Uploads](04-frames-and-transport.md#9-uploads-extension-upload) | Extension `upload` |
+| 06 §6 | [Capability tokens](06-auth.md) | Extension `cap` |
 | 11 | [Evolution](11-evolution.md) | Core (tooling) |
 | 12 | [Security](12-security.md) | Core |
 
@@ -26,10 +28,10 @@ are drafts. [process.md](process.md) says what may change in each part and how c
 
 ## Model in one paragraph
 
-A **schema** declares types and four kinds of operation: `query` (safe, cacheable, shapeable, may be
+A **schema** declares types and three kinds of operation: `query` (safe, cacheable, shapeable, may be
 live), `command` (state-changing, idempotency key required, typed errors, returns a result **and cache
-patches**), `stream` (a sequence of typed items with backpressure) and `event` (a published fact that can
-be subscribed to and replayed). A client sends a **batch** of operations; later operations may reference
+patches**) and `stream` (a sequence of typed items). It also declares `event` types, published facts a stream can
+deliver. A client sends a **batch** of operations; later operations may reference
 results of earlier ones. The server answers with a stream of **frames**, one or more per operation, on any
 transport that can carry ordered chunks. Every **entity** has a global identity `Type:id`, which is what
 patches, caches and ETags are keyed on. JSON and the binary RB format encode the same model; a server MUST
@@ -61,4 +63,5 @@ all of the above enforceable before deployment.
 ## Conformance
 
 An implementation is *Core-conformant* when it passes every fixture in `conformance/fixtures/core/`.
-Extension conformance is per extension directory. See [`conformance/README.md`](../conformance/README.md).
+Extension conformance would be per extension directory; none is published yet, so `core/` is the whole suite today.
+See [`conformance/README.md`](../conformance/README.md).

@@ -30,5 +30,6 @@ these pages.
   </tbody>
 </table>
 
-Commands can always be sent again with the same idempotency key: if the first attempt went through, the server
-answers with its original result instead of running the command twice.
+A command can be sent again with the same idempotency key: if the first attempt went through, the server answers with
+its original result instead of running the command twice. The key has to name the same command — reused for another
+operation, or the same one with different arguments, it answers `already_exists`.

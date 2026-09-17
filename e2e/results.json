@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-15T19:55:32.930Z",
+  "generatedAt": "2026-09-17T10:08:10.534Z",
   "rows": [
     {
       "aspect": "Product page (book + author + 3 reviews)",
@@ -1486,7 +1486,7 @@
                 "authorization": "Bearer u1",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"178ec82ade7946a9b55792c7793e5f16\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"9fc626a759574d1bb66eecc60c8df13f\"}]}"
             },
             "response": {
               "status": 200,
@@ -1620,7 +1620,7 @@
                 "authorization": "Bearer admin",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"f8af882525954dc19fded720df98513d\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"c92237067ca14796a3a711545548dfdd\"}]}"
             },
             "response": {
               "status": 200,
@@ -1908,7 +1908,7 @@
       "better": "higher",
       "metric": "mechanism",
       "REST": "the book carries only authorId; the bio takes a second request to /authors/a4",
-      "GraphQL": "one JSON body: the whole page waits for the bio (@defer is not in graphql-js 16)",
+      "GraphQL": "one JSON body: the whole page waits for the bio (@defer is not in graphql-js 17)",
       "Rayfold": "`@lazy` bio arrives in a later frame at path `author`, same request",
       "verdict": "lead",
       "examples": {

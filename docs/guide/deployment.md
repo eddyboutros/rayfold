@@ -6,7 +6,7 @@ it.
 
 ## What the servers share
 
-Behind a load balancer a request can land on any server, and a retry on a different one from the first attempt. Three
+Behind a load balancer a request can land on any server, and a retry on a different one from the first attempt. Four
 things must therefore be shared, or the guarantees a single server gives stop holding:
 
 | What | Without sharing | Share it with |
@@ -14,6 +14,7 @@ things must therefore be shared, or the guarantees a single server gives stop ho
 | The data | a command on one server is invisible to the others | one database, which you already have |
 | Idempotency records | a retry that lands on another server runs the command a second time | [`PgIdempotencyStore`](postgres.md#idempotency-records-for-more-than-one-server) on Node, [`JdbcIdempotencyStore`](jdbc.md#idempotency-records-for-more-than-one-server) on the JVM |
 | Changes and events | a live query or a stream open on another server never hears the command | [`PgRelay`](postgres.md#live-updates-across-servers) |
+| Uploads, if you serve them | a command naming a file that landed on another server finds nothing | [`PgUploadStore`](uploads.md#a-store-that-writes-them-down) on Node, `JdbcUploadStore` on the JVM |
 
 ```ts
 import pg from "pg";
@@ -62,9 +63,9 @@ Two routes beside the endpoint, for whatever probes your platform runs:
 | `GET /rayfold/ready` | `200 {"ready":true,"reasons":[]}`, or `503` with every reason it should not take traffic | the readiness probe: route traffic only while it answers 200 |
 
 A server is not ready while it is still connecting to the relay (`relay: not listening yet`), when that failed
-(`relay: LISTEN failed`), once it is shutting down (`shutting down`), and when a check you configured fails or does not
-answer within `readinessTimeoutMs` (default 2 seconds): `db: connection refused`, `db: no answer within 2000 ms`. The
-body says which, so a pod that never becomes ready explains itself.
+(`relay:` followed by whatever stopped it), once it is shutting down (`shutting down`), and when a check you configured
+fails or does not answer within `readinessTimeoutMs` (default 2 seconds): `db: connection refused`, `db: no answer
+within 2000 ms`. The body says which, so a pod that never becomes ready explains itself.
 
 ```yaml
 livenessProbe:

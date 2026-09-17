@@ -6,8 +6,9 @@ description: Build a small bookshop API with Rayfold in TypeScript, React, Kotli
 # Get started
 
 Pick the stack you work in. Each guide builds the same bookshop: books with an author and a stock count, a cost
-price only staff can see, and two commands, `buy` and `restock`. Every server listens on port 4000 and speaks the
-same protocol, so the React app works just as well against the Kotlin server as against the TypeScript one.
+price only staff can see, and two commands, `buy` and `restock`. Every server listens on port 4000, serves the same
+schema byte for byte, and speaks the same protocol, so the React app works just as well against the Kotlin, Java or
+Spring server as against the TypeScript one.
 
 <div class="home-stacks">
   <a href="./typescript"><strong>TypeScript</strong><span>Server and client on Node.js</span></a>
@@ -31,4 +32,5 @@ what they can ask for.
 - Fields are required unless they end in `?`.
 - `@allow` says who may read `costPrice` or run `restock`, and the server enforces it on every request.
 - `buy` declares that it can fail with `OutOfStock`, so clients can handle that case by name.
-- `Page<Book>` gives `books` a cursor, a total and a `hasMore` flag without any extra code.
+- `Page<Book>` gives `books` a cursor, a total and a `hasMore` flag without declaring a wrapper type of your own;
+  the resolver fills those fields in.

@@ -8,8 +8,8 @@ place; this page explains how they fit together.
 - Node.js 22 or 24, and a JDK 21 or newer.
 - `npm ci`, then `npm test` (TypeScript: every package, the conformance suite, the end-to-end comparisons) and
   `npm run typecheck`.
-- `cd kotlin && ./gradlew test` runs the JVM modules: the Kotlin runtime, the Java API, the Spring Boot starter and
-  the Kotlin client.
+- `cd kotlin && ./gradlew test` runs every JVM module: the Kotlin runtime, the Java API, the Spring Boot starter, the
+  Kotlin client and its OkHttp transport, OpenTelemetry, and the JDBC stores.
 - `npm run e2e:html` renders the comparison report from the last test run; `npm run docs:dev` serves the docs site
   with the playground, and `npm run docs:build` builds it (a broken link fails the build).
 - The code on the site comes from `examples/`. Change an example, and its tests and the pages that show it change
@@ -41,8 +41,9 @@ runner) rather than only a helper.
 ## Pull requests
 
 - Keep a pull request to one change, and say in the description what it changes for a user.
-- CI must pass: TypeScript on Node 22 and 24, the JVM modules, the oracle check, the package smoke test, and the
-  dependency and secret scans.
+- CI must pass: TypeScript on Node 22 and 24, the JVM modules, the oracle check, the package smoke test, the two-server
+  fleet against a real Postgres, the docs build, the JVM examples, the browser runs (Chromium, Firefox, WebKit), the
+  nginx shared-cache check, and the dependency and secret scans.
 - By contributing you agree that your contribution is licensed under the [Apache License 2.0](LICENSE), the project's
   license.
 

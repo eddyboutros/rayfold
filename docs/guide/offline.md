@@ -87,6 +87,13 @@ A client picks this up on its own, as long as it was given the schema:
 const client = new RayfoldClient({ transport, schema });
 ```
 
+The Kotlin client takes the policies rather than the schema, which keeps it free of the schema types — a
+`rayfold-core` server can produce the map from its IR:
+
+```kotlin
+val client = RayfoldClient(transport, ClientOptions(mergePolicies = mapOf("Doc.title" to "serverWins")))
+```
+
 `@merge(crdtText)` and `@merge(custom)` are declared in the specification but not implemented here. A client refuses
 to predict such a field, with a message naming it, rather than merge it wrongly.
 
@@ -96,5 +103,5 @@ to predict such a field, with a message naming it, rather than merge it wrongly.
 - Commands are ordered by when they were made. A command made while an earlier one is still on its way is not held
   back for it: when the network drops, both queue in order, but a command that reaches the server may overtake one that
   did not.
-- Sync sessions (resuming a set of live queries from a server cursor) and per-field merge policies are still drafts in
-  spec 08 and not implemented.
+- Sync sessions (resuming a set of live queries from a server cursor) are still a draft in spec 08 and not
+  implemented.

@@ -8,16 +8,24 @@ Rayfold: if something here would unblock you, or something you need is missing, 
 
 - Keep what is published correct: the docs, the spec (errata only for Core 0.1), and the rough edges filed as issues.
 - Hear from people trying it: what they build, and where they get stuck.
-- `rayfold gen graphql`: a GraphQL schema from a Rayfold schema, with what GraphQL cannot express listed beside it.
+- Read what people say about it, and fix what they are right about.
 
 ## Next, when someone needs it
 
 | If you need | What gets built |
 |---|---|
-| Hono, Next.js, Bun, Deno or Cloudflare Workers | A fetch `Request`/`Response` handler next to the Node one |
-| A fleet of TypeScript and JVM servers on one relay | Both runtimes speak the same relay format and each is proven against a real Postgres; a mixed fleet in the same CI job is what would prove them together |
 | Results typed to the shape you asked for | `rayfold gen ts --client` with typed hooks, and a published VS Code extension that runs the language server |
-| A Rayfold service inside an Apollo supergraph | A GraphQL endpoint and Federation subgraph answered by the Rayfold engine |
+| A Rayfold service inside an Apollo supergraph | `rayfold gen graphql` already prints the SDL, and says what it could not carry; the endpoint that answers GraphQL queries from the Rayfold engine, and the Federation directives, do not exist |
+| To move an API you already have | Readers exist for OpenAPI and GraphQL SDL (`rayfold import`); running the old and the new side by side, and gRPC, do not |
+
+## Waiting for Core 0.2
+
+Core 0.1 is frozen, which means errata only ([spec/process.md](spec/process.md)); a change that is not an erratum
+waits here rather than being made quietly. These are worth doing together, when there is enough to justify a version:
+
+- **An `Upload` scalar.** A file argument is an `ID` naming an upload today ([04 §9](spec/04-frames-and-transport.md)),
+  so nothing in the schema says it is a file, and code generation, OpenAPI (`format: binary`), the MCP bridge and the
+  explorer cannot show it as one.
 
 ## Known gaps in 0.1
 
@@ -26,6 +34,9 @@ Rayfold: if something here would unblock you, or something you need is missing, 
   own, so a retry reaching another one runs the command again and a live query there never hears it. Shapes a server
   learned from requests are its own; shapes registered in code have the same id everywhere
   ([Deployment](docs/guide/deployment.md)).
+- Uploads live in a database row ([04 §9](spec/04-frames-and-transport.md)), which suits the sizes the extension is
+  for and not a file server: `PgUploadStore` and `JdbcUploadStore` hold the bytes whole on the way out, and pgjdbc
+  holds them whole on the way in. For hundreds of megabytes, hand the client a URL from object storage instead.
 - Credit-based flow control on streams (spec 04, section 5) is not implemented in either runtime.
 - Not yet tested on Safari itself (WebKit stands in for it), a real Android device, a commercial CDN, or load across
   several machines.
@@ -34,5 +45,6 @@ Rayfold: if something here would unblock you, or something you need is missing, 
 ## Not planned for now
 
 - More language runtimes. The conformance suite (`@rayfold/conformance`) is there for anyone who wants to write one.
-- HTTP/3 and WebTransport.
+- HTTP/3 and WebTransport in the runtimes. The spec already allows both as transports
+  ([04 §6](spec/04-frames-and-transport.md)); what is not planned is implementing them here.
 - CRDT text merging and sync sessions (spec 08).

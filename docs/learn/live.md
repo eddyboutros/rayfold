@@ -20,7 +20,6 @@ wiring on the server, and no refetching on the client.
 ```http [HTTP]
 POST /rayfold
 Content-Type: application/rayfold+json
-Rayfold-Safe: true
 
 {"rayfold":"0.1","ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ title stock }","live":true}]}
 ```
@@ -66,6 +65,11 @@ That makes live queries correct by default: the same policies apply to every upd
 query can never show a field its viewer may not read. A server can also put changes from elsewhere, such as rows
 written by another system, onto the same bus.
 
+The bus belongs to one server. Behind a load balancer that is silently wrong: a command that runs on the second
+server never reaches a live query held by the first, and the screen sits there showing stale data with no error to
+say so. Give every server the same `relay` and the changes cross between them — `MemoryRelay` for servers sharing a
+process, `PgRelay` over Postgres `LISTEN`/`NOTIFY` for separate ones ([Deployment](../guide/deployment.md)).
+
 ## On the client
 
 The client applies `patch` frames to its cache exactly as it applies a command's patch. Every other query showing
@@ -75,8 +79,14 @@ that book updates too, not only the live one. In React, only the components show
 
 - Over HTTP, a live query is a response that stays open. The TypeScript server sends an empty line when nothing has
   happened for 15 seconds (`keepAliveMs`), so proxies do not close an idle connection.
+- A live op cannot be a safe request: `Rayfold-Safe: true` (and `GET`, and `QUERY`) makes the server buffer the whole
+  answer so it can compute cache headers for it, which is the opposite of staying open. Send live ops over a plain
+  `POST` or the WebSocket transport.
 - To share one connection between many live queries, give the TypeScript client
   `createWebSocketTransport({ url: "wss://example.com/rayfold/ws" })`.
+- A dropped connection is not the end of the subscription. The TypeScript client reopens it after half a second,
+  doubling to thirty, so a screen survives a deploy; `onError(e, { retrying })` says whether it is coming back, and
+  only an error that would recur ends it. The Kotlin client does not retry yet: reopen it yourself.
 - Stop by calling the function `live` returned, by unmounting the component, or by aborting the request.
 
 ## Next

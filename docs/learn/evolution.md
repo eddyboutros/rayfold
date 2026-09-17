@@ -195,7 +195,9 @@ Clients name themselves with the `Rayfold-Client` header, or the `client` option
 { "op": "book", "path": "Book.costPrice", "client": "admin/0.9.2", "lastSeen": "2026-09-15T08:21:51.201Z", "count": 1 }
 ```
 
-After a web client read `{ title stock author { name } }` and a staff tool read `{ title costPrice }`:
+After a web client read `{ title stock author { name } }` and a staff tool read `{ title costPrice }`, run it against
+the schema from the section above — the one where `costPrice` carries `@deprecated`, since that is what the
+`still used` line reports on:
 
 ```sh
 npx rayfold check src/bookshop.rayfold --unused usage.json --since 30d

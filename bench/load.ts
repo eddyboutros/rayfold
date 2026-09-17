@@ -4,7 +4,11 @@
  * batch, a command, and a cacheable GET. Every request is checked, not just counted.
  *
  *   npm run bench:load                      (LOAD_SECONDS=10 LOAD_CONCURRENCY=64 by default)
- *   node --expose-gc ... makes the memory figure exact; without it the heap is sampled as the collector left it.
+ *
+ * The script runs with `--expose-gc`, which is what makes the memory column mean anything: each workload's heap is
+ * measured after a forced collection, so what is left is what the run actually retained. Run it without that flag
+ * and the column is whenever the collector last happened to run, which moves by tens of megabytes between runs and
+ * says nothing about retention.
  *
  * One machine plays both sides, so the numbers are a floor for a real deployment, not a forecast of one.
  */
@@ -101,10 +105,13 @@ for (const w of workloads) {
 http.closeAllConnections();
 http.close();
 
+const generatedAt = new Date().toISOString();
 const lines = [
   "# Load results",
   "",
-  `Node ${process.version}, loopback HTTP/1.1, ${concurrency} concurrent clients for ${seconds} s per workload on one machine (client and server share it), bookstore with the real catalogue slice. Memory is heap growth across the run${gc ? " after a forced collection" : ", sampled without forcing a collection"}.`,
+  `Node ${process.version} on ${process.platform}/${process.arch}, loopback HTTP/1.1, ${concurrency} concurrent clients for ${seconds} s per workload on one machine (client and server share it), bookstore with the real catalogue slice. Memory is heap growth across the run${gc ? " after a forced collection" : ", sampled without forcing a collection"}.`,
+  "",
+  `Run ${generatedAt}. Regenerate with \`npm run bench:load\`.`,
   "",
   "| Workload | requests | per second | p50 ms | p99 ms | max ms | failed | heap growth MB |",
   "|---|---:|---:|---:|---:|---:|---:|---:|",
@@ -115,6 +122,6 @@ const lines = [
 ];
 mkdirSync("bench/results", { recursive: true });
 writeFileSync("bench/results/load.md", lines.join("\n"));
-writeFileSync("bench/results/load.json", JSON.stringify({ generatedAt: new Date().toISOString(), node: process.version, seconds, concurrency, forcedGc: !!gc, rows }, null, 2) + "\n");
+writeFileSync("bench/results/load.json", JSON.stringify({ generatedAt, node: process.version, seconds, concurrency, forcedGc: !!gc, rows }, null, 2) + "\n");
 console.log("wrote bench/results/load.md and load.json");
 process.exit(rows.some((r) => Number(r.failed) > 0) ? 1 : 0);

@@ -20,6 +20,7 @@ dependencies {
 ```kotlin
 import dev.rayfold.core.*
 import kotlinx.serialization.json.*
+import java.io.File
 
 val books = mutableMapOf("b1" to buildJsonObject { put("id", "b1"); put("title", "Dune"); put("stock", 3); put("authorId", "a1") })
 val authors = mapOf("a1" to buildJsonObject { put("id", "a1"); put("name", "Frank Herbert") })

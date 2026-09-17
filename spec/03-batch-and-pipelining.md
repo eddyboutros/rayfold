@@ -16,6 +16,10 @@ other's results, so a create-then-read flow is one round trip (promise pipelinin
 }
 ```
 
+The envelope's own `rayfold` member names the protocol version. It is optional and advisory: a server MUST NOT refuse
+a batch for omitting it, and MUST NOT refuse one for carrying a version it does not know, because the version that
+governs is the schema the manifest publishes. The remaining members are per-op:
+
 | Field | Required | Meaning |
 |---|---|---|
 | `id` | yes | Positive integer, unique within the batch. Frames are addressed by it. |
@@ -23,12 +27,12 @@ other's results, so a create-then-read flow is one round trip (promise pipelinin
 | `args` | no | Object matching the operation's declared arguments. Missing args with defaults take the default. An absent argument or input field without a default stays **absent** in the resolver. An explicit `null` stays `null` and is never replaced by a default; on a non-null argument it is rejected with `invalid_argument`. Partial updates depend on the difference. |
 | `shape` | no | Inline shape text or `sha256:` id ([02](02-shapes.md)). Absent = default view. |
 | `vars` | no | Values for `$name` references inside the shape. |
-| `key` | commands | Idempotency key, 16-128 bytes, chosen by the client. |
+| `key` | commands | Idempotency key, 16-128 characters, chosen by the client. Not required when the command declares `@idempotent(false)`, or when it is reached through a `PUT`, `PATCH` or `DELETE` binding ([04 §8](04-frames-and-transport.md)). |
 | `live` | no | `true` to keep a query subscribed (`live` extension). |
 | `deadline` | no | Milliseconds; overrides `meta.deadline` for this op. |
 | `simulate` | no | `true` runs a command without committing; result and patches describe what would happen. Only for commands that declare `@simulate` ([12 §6](12-security.md)). |
 | `ifVersion` | no | Conditional command: the version of the target entity the client last saw ([§4a](#4a-conditional-commands)). |
-| `compact` | no | `true` asks for compact frames: `$type` is omitted wherever the schema already fixes the type (kept on union members) and `meta` is omitted unless it carries `replay`. Only for schema-aware clients; frames are otherwise identical. |
+| `compact` | no | `true` asks for compact frames: `$type` is omitted wherever the schema already fixes the type (kept on union members), `meta` is omitted unless it carries `replay`, and a command's patch drops the `set` entries a normalizing client can derive from `ok` ([04 §2](04-frames-and-transport.md)). Only for schema-aware clients. |
 
 `meta.client` SHOULD be `name/version` and is recorded for field-usage telemetry ([11](11-evolution.md)).
 `meta.deadline` is the whole-batch deadline in milliseconds; the server MUST cancel work past it and answer
@@ -37,15 +41,16 @@ other's results, so a create-then-read flow is one round trip (promise pipelinin
 ## 2. References
 
 Any value inside `args` MAY be the object `{ "$ref": "<id>.<path>" }`. It is replaced by the value at
-`<path>` in the referenced op's result (`data` for queries and streams' first item, `ok` for commands).
+`<path>` in the referenced op's result (`data` for queries, `ok` for commands; a stream records no result, so a
+reference to one never resolves).
 `<path>` is dot-separated; list indices are integers (`1.items.0.id`).
 
 Rules:
 
 * A reference may only point to an op with a smaller `id`. Forward or self references are `invalid_argument`
   for the whole batch (nothing executes).
-* If the referenced op ends in an error, every dependent op answers `{ "error": { "code": "failed_precondition",
-  "type": "DependencyFailed", "data": { "op": 1 } }, "fin": true }` without executing.
+* If the referenced op ends in an error, every dependent op answers `{ "id": 2, "error": { "code":
+  "failed_precondition", "type": "DependencyFailed", "data": { "op": 1 } }, "fin": true }` without executing.
 * If the path resolves to `undefined`, the dependent op is `invalid_argument`.
 
 ## 3. Execution order

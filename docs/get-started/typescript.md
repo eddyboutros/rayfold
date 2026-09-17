@@ -55,7 +55,8 @@ What this returns is `viewer` in the schema's `@allow` rules. The resolvers neve
 
 ## 5. Start the server
 
-`src/bookshop.ts` serves the endpoint at `/rayfold`, with the explorer beside it:
+`src/bookshop.ts` builds the server from the schema and the resolvers, then serves it at `/rayfold` with the explorer
+beside it:
 
 <<< @/../examples/typescript/src/bookshop.ts#server{ts}
 
@@ -67,9 +68,9 @@ What this returns is `viewer` in the schema's `@allow` rules. The resolvers neve
 npx tsx src/server.ts
 ```
 
-Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. Paste `Bearer customer` or
-`Bearer staff` as the token to try the commands. Or call it with curl, marking the request as a read with
-`rayfold-safe`:
+Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. Type `customer` or `staff` in
+the auth field to try the commands; the explorer adds the `Bearer` itself. Or call it with curl, marking the request
+as a read with `rayfold-safe`:
 
 ```sh
 curl -s localhost:4000/rayfold -H 'content-type: application/rayfold+json' -H 'rayfold-safe: true' \

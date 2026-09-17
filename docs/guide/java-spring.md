@@ -129,6 +129,10 @@ IdempotencyStore idempotency(DataSource dataSource) {
 Declare a `Relay` bean as well and live queries and streams on every instance hear the commands run on the others;
 `PgRelay` from `rayfold-jdbc` carries them over Postgres `LISTEN`/`NOTIFY` ([JDBC](jdbc.md#live-updates-across-servers)).
 
+If you serve uploads, the store has to be shared for the same reason: an `UploadStore` bean turns the route on, and
+`JdbcUploadStore` puts the bytes where every instance can find them ([Uploads](uploads.md)). Without a bean there is no
+upload route at all.
+
 ### Who is asking
 
 With Spring Security on the classpath, the viewer is the signed-in user: `id` is the user name, `roles` the `ROLE_`

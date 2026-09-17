@@ -42,7 +42,7 @@ allows unpublishing only within 72 hours, and Maven Central not at all.
 | POM details | `kotlin/gradle.properties` |
 | The documentation site | `.github/workflows/docs.yml` deploys rayfold.dev on every push to `main`. Settings > Pages holds the custom domain with Enforce HTTPS ticked; DNS has four A records on `@` for GitHub Pages and a CNAME `www` |
 
-To publish the JVM artifacts from a machine instead, put the same four values in `~/.gradle/gradle.properties`
+To publish the JVM artifacts from a machine instead, put the same four secrets, plus `signAllPublications=true`, in `~/.gradle/gradle.properties`
 (`mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyPassword`, and
 `signAllPublications=true`), then run `./gradlew publishAndReleaseToMavenCentral` in `kotlin/`.
 

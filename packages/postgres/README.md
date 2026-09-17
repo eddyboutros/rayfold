@@ -10,10 +10,11 @@ npm install @rayfold/postgres pg
 
 ```ts
 import pg from "pg";
-import { createRayfoldServer } from "@rayfold/server";
+import { createRayfoldServer, listen } from "@rayfold/server";
 import { createPgStore } from "@rayfold/postgres";
 
-const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const connectionString = process.env.DATABASE_URL;
+const db = new pg.Pool({ connectionString });
 const schema = `
   entity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }
   entity Book { id: ID title: String author: Author }
@@ -25,7 +26,12 @@ const server = createRayfoldServer({ schema, resolvers: {} }); // for its IR; se
 const store = createPgStore(db, {
   ir: server.ir,
   naming: "snake", // authorId -> author_id
-  tables: { Author: { table: "authors" }, Book: { table: "books", columns: { authorId: "author_id" } }, Order: { table: "orders" } },
+  tables: {
+    // `relations` is what `screen` follows; the batch loaders below do not need it
+    Author: { table: "authors", relations: { books: { type: "Book", kind: "page", key: "authorId" } } },
+    Book: { table: "books", columns: { authorId: "author_id" }, relations: { author: { type: "Author", kind: "one", key: "authorId" } } },
+    Order: { table: "orders" },
+  },
 });
 
 export const resolvers = {
@@ -49,6 +55,7 @@ wrapper (for logging or transactions).
 | `find(type, where, ctx)` | one `SELECT ... WHERE field = $n ... ORDER BY id` | a short list |
 | `page(type, { first, after }, where, ctx)` | one query with `count(*) OVER ()` | a `Page<T>` in key order: `items`, `cursor`, `hasMore`, `total` |
 | `pagesByField(type, field, parents, { first, after }, ctx)` | one query with window functions | a paged one-to-many field for a whole level of parents at once |
+| `screen(type, shape, { first, after }, where, ctx)` | one query, nested levels by correlated subquery | a whole nested screen at once; depth costs no extra round trip and each level's policy is pushed into its own `WHERE`. Every selected field must be a mapped column or a declared `relation` |
 
 ## Read policies in SQL
 
@@ -82,6 +89,23 @@ command and the other waits, then replays its answer. The running server renews 
 stops, the lease runs out and the next retry takes the key over. Records last 24 hours and the table is bounded
 (`ttlMs`, `maxRecords`, `table`).
 
+## Uploads a fleet shares
+
+`PgUploadStore` keeps uploaded files in Postgres, so a file sent to one server is there for the command that runs on
+another (extension `upload`). Kept in memory, an upload belongs to the process that received it.
+
+```ts
+import { PgUploadStore } from "@rayfold/postgres";
+
+const uploads = new PgUploadStore(db);
+await uploads.migrate();
+
+await listen(server, 4000, { viewer, uploads: { store: uploads } });
+```
+
+Expired uploads go on every write and the table is bounded (`ttlMs`, `maxBytes`, `table`). The JVM's
+`JdbcUploadStore` creates the same columns, so servers of both runtimes can share one table.
+
 ## Live updates across servers
 
 Each server hears only the commands it ran itself, so a live query or a stream open on another server stays stale.
@@ -92,7 +116,7 @@ import { PgRelay, pgNotifications } from "@rayfold/postgres";
 
 const listener = new pg.Client({ connectionString }); // LISTEN belongs to one connection: not the pool
 await listener.connect();
-const relay = new PgRelay(pgNotifications(listener), pool);
+const relay = new PgRelay(pgNotifications(listener), db);
 await relay.migrate();
 
 const server = createRayfoldServer({ schema, resolvers, idempotency, relay });

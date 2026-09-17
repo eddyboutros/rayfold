@@ -5,6 +5,33 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **Uploads, as the extension `upload`.** `POST /rayfold/uploads` takes bytes on a route of their own and answers with
+  a handle; the command that uses them names the handle in its arguments. It is a route rather than a multipart batch
+  because a browser may send multipart to any origin without a preflight, which is exactly what the batch endpoint's
+  JSON-only rule prevents (spec 12 §2.1) — `application/octet-stream` is not safelisted either, so the protection is
+  unchanged — and because bytes that travel as bytes cost what they weigh instead of a third more as base64. The size
+  bound is enforced as the bytes arrive, not from a `Content-Length` a client may understate; an upload needs an
+  identified sender unless you say otherwise; ids are unguessable, since holding one is what lets a command read those
+  bytes. `MemoryUploadStore` is for tests and one small server, and `UploadStore` is three methods for S3, a Postgres
+  large object or a disk. Spec 04 §9; a server serving the route says `upload` in its manifest.
+  On the client, `client.upload(file)` sends it through the transport that sends everything else — so the headers that
+  authorise a request authorise an upload — and answers with the handle; a `File` carries its own name and type, and a
+  refusal arrives as a `RayfoldClientError` with the server's code.
+  `PgUploadStore` (`@rayfold/postgres`) and `JdbcUploadStore` (`dev.rayfold:rayfold-jdbc`) keep uploads in the database
+  so a fleet shares them: a file sent to one server is there for the command that runs on another, which an in-memory
+  store cannot do. Both create the same columns, so either runtime may make the table; both expire what nobody used and
+  stay inside a byte bound, oldest first. The bytes live in a row, so at hundreds of megabytes a storage URL is still
+  the better answer.
+
+- **Rayfold runs wherever a `Request` becomes a `Response`.** `createFetchHandler(server, options)` is the endpoint as
+  a fetch handler, for Cloudflare Workers, Hono, Bun, Deno and a Next.js route handler: batches, live queries, uploads,
+  the manifest, caching and the health and readiness routes, all of it, with nothing from Node in its import graph. The
+  Node transport is now that handler with an adapter in front rather than a second implementation of the same rules, so
+  a fix reaches every runtime at once. `@http` REST bindings are the one thing that does not come with it:
+  `createBindingHandler` is still written against Node's `req`/`res`, so a schema's REST routes are served on Node
+  only. A fetch runtime has no socket to read, so say `loopback: true` for a development server on localhost;
+  `allowedHosts` works everywhere. [Guide](docs/guide/runtimes.md).
+
 - **A live query outlives the server it was opened on.** When a server going away or a dropped connection ends a
   `client.live()` subscription with a retryable error, the client opens the query again after half a second, doubling
   to thirty, through whatever is in front of the servers, so a rolling deploy is invisible to a screen. `onError` now
@@ -22,7 +49,10 @@ packages and the Maven artifacts share one version number.
   the JVM could not take over a key another runtime had finished, since it matched the row on a token that is null
   there; and the two hashed a record's binding differently (`sha256(op + "\n" + args)` on the JVM against the
   canonical JSON of `{op, args}` in TypeScript), so each answered the other's retries with `already_exists` instead
-  of replaying. Spec 12 §4.2 now states the hash, since a shared store needs every implementation to agree on it.
+  of replaying. Spec 12 §4.2 now states the hash, since a shared store needs every implementation to agree on it,
+  including the form a number takes in it: `2.50` and `2.5` are one number and hash alike, which the JVM now honours
+  for this hash and the viewer scope while leaving the wire, the ETags and the schema hash exactly as they were.
+  A record written by an earlier build is not replayed after this change; it expires on its own.
 - **A server tells its load balancer when to send traffic, and stops without dropping anyone.** `GET /rayfold/health`
   says the process runs. `GET /rayfold/ready` says whether this server should receive traffic and every reason it
   should not: still connecting to the relay, shutting down, or a check you configured (`db: () => pool.query("select

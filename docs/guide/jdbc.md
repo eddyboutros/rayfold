@@ -2,7 +2,9 @@
 
 `dev.rayfold:rayfold-jdbc` puts a SQL database behind Kotlin resolvers the way the protocol wants: batch loads, one
 query per nesting level, keyset pages, and read policies pushed into the `WHERE` clause. It is the JVM counterpart of
-[`@rayfold/postgres`](postgres.md) and needs nothing but JDBC.
+[`@rayfold/postgres`](postgres.md) and needs nothing but JDBC. One thing has not crossed over yet: the Node store's
+`screen()`, which compiles a whole nested screen into a single statement. Here a screen is one query per level, which
+is still one round trip per level rather than per row.
 
 ```kotlin
 val store = JdbcStore({ dataSource.connection }, JdbcStoreOptions(
@@ -38,7 +40,7 @@ time. `JdbcIdempotencyStore` keeps the records in the database, so every process
 
 ```kotlin
 val idempotency = JdbcIdempotencyStore(dataSource::getConnection)
-dataSource.connection.use { it.createStatement().execute(idempotency.schema()) } // or your own migrations
+idempotency.migrate() // the table and its index; run schema() and index() yourself if you keep your own migrations
 
 val server = RayfoldServer(ir, resolvers, idempotency = idempotency)
 ```
@@ -72,6 +74,21 @@ driver serialises everything on one connection, so a `notify` sent on the listen
 poll to end; give `PgNotifications` a second connection for sending to avoid that. A message too large for one
 notification goes through the `rayfold_relay` table. A server never hears its own message back; a refused message is
 reported through `onRelayError` and `relayFailure`, and the command that made the change still succeeds.
+
+## Uploads a fleet shares
+
+An upload kept in memory belongs to the process that received it, which is wrong as soon as the command naming it may
+run somewhere else. `JdbcUploadStore` keeps the bytes in the database, in the same table and columns
+[`PgUploadStore`](uploads.md) creates, so a fleet of both runtimes shares one:
+
+```kotlin
+val uploads = JdbcUploadStore(dataSource::getConnection)
+uploads.migrate() // safe from every server at once
+
+val http = RayfoldHttp(server, HttpOptions(uploads = UploadOptions(uploads))) { viewerFrom(it) }.start(4000)
+```
+
+Expired uploads go on every write and the table is bounded, oldest first ([Uploads](uploads.md)).
 
 ## Why pass `ctx`
 

@@ -39,7 +39,13 @@ through it is exactly what the endpoint's own policies allow for the token they 
 deployment, mount it behind the same authentication as the rest of your administration pages, or only in development:
 
 ```ts
-if (process.env.NODE_ENV !== "production") app.use(createExplorerHandler());
+// The handler answers its own path and returns false for anything else, so pass the rest along yourself.
+if (process.env.NODE_ENV !== "production") {
+  const explorer = createExplorerHandler();
+  app.use((req, res, next) => {
+    if (!explorer(req, res)) next();
+  });
+}
 ```
 
 `explorerHtml(options)` returns the same page as a string, for serving it from a framework of your own.

@@ -11,12 +11,18 @@ shape      := "{" item* "}"
 item       := field | spread | defer
 field      := (alias ":")? name args? shape? modifier*
 args       := "(" (name ":" value)* ")"
-value      := literal | "$" name                     // $name resolves from the op's `vars`
+value      := scalar | list | object | "$" name      // $name resolves from the op's `vars`, at any depth
+scalar     := string | number | "true" | "false" | "null"
+list       := "[" value* "]"
+object     := "{" (name ":" value)* "}"
 spread     := "..." Type "." viewName                // named view of that type
             | "..." "on" Type shape                  // type condition (unions, interfaces)
 defer      := "@defer" ("(" "label" ":" string ")")? shape
 modifier   := "@eager" | "@partial"
 ```
+
+Commas are whitespace: a parser MUST accept them between items and between arguments, and the canonical form
+([§3](#3-canonical-form-and-hashing)) drops them.
 
 Example:
 
@@ -54,16 +60,21 @@ Example:
 The canonical text of a shape is produced by:
 
 1. Expanding named-view spreads (type-condition spreads stay).
-2. Sorting items at each level by output name (alias or field name), then by canonical args.
+2. Sorting items at each level by kind first — fields, then type conditions (`...on`), then `@defer` blocks, then
+   named-view spreads — and within a kind: fields by output name (alias or field name) then canonical args, type
+   conditions by type name, defers by label, spreads by `Type.view`.
 3. Sorting args by name; encoding literal values as canonical JSON; keeping `$name` references verbatim.
-4. Emitting with single spaces, no newlines, no commas: `{ author { id name } id title }`.
+4. Emitting with single spaces, no newlines, and no commas between items: `{ author { id name } id title }`. A
+   composite argument value is canonical JSON, which does have commas and quoted keys:
+   `{ reviews(page: {"after":"r1","first":2}) { items { id rating } } }`.
 
 The **shape id** is `sha256:` + lowercase hex SHA-256 of the canonical UTF-8 text.
 
 An operation refers to its shape either inline (`"shape": "{ id title }"`) or by id
 (`"shape": "sha256:..."`). Servers MUST accept inline shapes in development mode and MAY refuse them in
-production (**trusted shapes**): the allowlist is the set of shape ids registered by `rayfold shapes` at client
-build time and shipped alongside the schema.
+production (**trusted shapes**): with that mode on, the allowlist is the set of shapes the application registered,
+one at a time, before serving. `rayfold shapes` prints the id of every shape in a file so a build can collect them;
+registering each one is what puts it on the list.
 
 ## 4. Variables
 

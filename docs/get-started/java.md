@@ -13,7 +13,7 @@ builds the same server with annotated beans.
 
 ## 1. Create the project
 
-A Maven project with one dependency:
+A Maven project with one Rayfold dependency, plus JUnit for the tests:
 
 <<< @/../examples/java/pom.xml#deps{xml}
 
@@ -54,8 +54,8 @@ What this returns is `viewer` in the schema's `@allow` rules. The resolvers neve
 ./mvnw compile exec:java
 ```
 
-Open http://localhost:4000/rayfold/explorer to browse the operations and send requests; paste `Bearer customer` or
-`Bearer staff` as the token to try the commands. Or call it with curl:
+Open http://localhost:4000/rayfold/explorer to browse the operations and send requests; type `customer` or `staff` in
+the auth field to try the commands, as the explorer adds the `Bearer` itself. Or call it with curl:
 
 ```sh
 curl -s localhost:4000/rayfold -H 'content-type: application/rayfold+json' -H 'authorization: Bearer customer' \

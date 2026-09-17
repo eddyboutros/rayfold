@@ -3,6 +3,10 @@
 The shared test cases that every Rayfold implementation must pass. The TypeScript and Kotlin runtimes both run them.
 If you write a Rayfold server in another language, run these and you can show it behaves like the reference.
 
+```sh
+npm install --save-dev @rayfold/conformance
+```
+
 What the package contains:
 
 - `fixtures/core/*.json`: one file per topic (default views, shapes, pipelining, commands, errors, auth, defer,

@@ -12,10 +12,10 @@ the client's normalized entity cache, and the server's own result cache. The dec
 * `scope`: `public` may be stored by shared caches; `private` only by the client.
 * `swr`: stale-while-revalidate window.
 
-**Derived scope:** any entity or field that carries a read policy referencing `viewer`, and any query whose
-result touches such a field, is `private` regardless of what `@cache` says. The runtime computes this from
-the IR and `rayfold check` reports it. Private data can therefore never leak through a shared cache by
-misconfiguration.
+**Derived scope:** any entity or field carrying a policy that references `viewer`, and any query whose result touches
+such a field, is `private` regardless of what `@cache` says; so is any response produced for an identified viewer,
+whatever the schema declares. The runtime computes this from the IR and from the request. Private data can therefore
+never leak through a shared cache by misconfiguration.
 
 ## 2. Effective freshness of a response
 
@@ -25,11 +25,15 @@ present in the results; the scope is `public` only if all are public. The server
 ```
 Cache-Control: public, max-age=60, stale-while-revalidate=300
 ETag: "sha256-..."         (hash of the frame payload, excluding meta.ms)
-Vary: Rayfold-Client, Accept
+Vary: Rayfold-Client, Accept, Authorization
 ```
 
-Conditional requests (`If-None-Match`) answer `304` with no body. `POST` batches are never cached by shared
-caches; clients that want shared caching for a read use `QUERY` (or `POST` + `Rayfold-Safe: true` where `QUERY`
+When neither `maxAge` nor `swr` survives the minimum — the case for a schema with no `@cache` at all — the header
+carries `no-cache` as well: `public, max-age=0, no-cache`, or `private, max-age=0, no-cache` for an identified
+viewer.
+
+Conditional requests (`If-None-Match`) answer `304` with no body. A `POST` batch that is not marked safe MUST carry
+`Cache-Control: no-store`, so it is never held by a shared cache; clients that want shared caching for a read use `QUERY` (or `POST` + `Rayfold-Safe: true` where `QUERY`
 is unavailable) or `GET`. Because a whole batch of queries is one safe request, a complete screen (for
 example book + author + reviews) is one cache entry and one `304`, where resource-per-URL designs need one
 revalidation per resource and query-in-POST designs cannot use shared caches at all.
@@ -41,12 +45,13 @@ A client is not required to keep a cache: a script or a service calling another 
 `data`, `item`, `defer` and `patch` frame. Query results are stored as references (lists of keys plus scalar
 payload) so that a later patch to an entity is visible in every query that contained it. Each entity records
 `maxAge` from the schema (shipped in the manifest); how a read of a stale entity is revalidated is the client's
-choice (the reference clients serve stale, refetch in the background when `swr` allows, and otherwise block).
+choice. The reference clients do not do this yet: they mark a result stale when an `inv` or `invOp` patch says so,
+and have no time-based expiry or `swr` refetch.
 
 Optimistic updates, offline queues and live invalidation are defined in [08](08-live-and-sync.md).
 
 ## 4. Server result cache
 
 A server MAY cache canonical (op, args, vars, shape, viewer-scope) -> frames for `maxAge`. Cache hits report
-`meta.cache: "hit"`. Any command that emits a patch touching an entity MUST invalidate cached results that
+`meta.cache: "hit"`. No runtime implements this yet, so `meta.cache` is reserved rather than sent. Any command that emits a patch touching an entity MUST invalidate cached results that
 contain it; servers that cannot track containment MUST invalidate by op name (`invOp`).

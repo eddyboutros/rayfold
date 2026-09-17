@@ -9,7 +9,7 @@ import { RbCodec } from "@rayfold/rb";
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
 import { bookstoreSchemaText } from "../examples/bookstore-ts/src/index.ts";
 import { BreakingChangeType, buildSchema, findBreakingChanges } from "graphql";
-import { CachingClient, GRAPHQL_SDL, GqlNormalizedCache, Recorder, Report, exchange, freshStore, startGraphQL, startRayfold, startRest, type Stack } from "./harness.ts";
+import { CachingClient, GRAPHQL_MAJOR, GRAPHQL_SDL, GqlNormalizedCache, Recorder, Report, exchange, freshStore, startGraphQL, startRayfold, startRest, type Stack } from "./harness.ts";
 import { Signal, openSse } from "./wait.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,7 +45,14 @@ afterEach(async () => {
 afterAll(() => {
   recorder.uninstall();
   mkdirSync("e2e", { recursive: true });
-  writeFileSync("e2e/report.md", report.markdown());
+  writeFileSync(
+    "e2e/report.md",
+    report.markdown({
+      title: "End-to-end comparison: REST vs GraphQL vs Rayfold",
+      dataset: "Same bookstore, same data, same flows",
+      assertedBy: "e2e/comparison.test.ts",
+    }),
+  );
   writeFileSync("e2e/results.json", report.json());
 });
 
@@ -495,7 +502,7 @@ describe("12. Incremental delivery and streaming", () => {
       better: "higher",
       metric: "mechanism",
       REST: "the book carries only authorId; the bio takes a second request to /authors/a4",
-      GraphQL: "one JSON body: the whole page waits for the bio (@defer is not in graphql-js 16)",
+      GraphQL: `one JSON body: the whole page waits for the bio (@defer is not in graphql-js ${GRAPHQL_MAJOR})`,
       Rayfold: "`@lazy` bio arrives in a later frame at path `author`, same request",
     });
   });

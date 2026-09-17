@@ -2,6 +2,8 @@
 
 Same bookstore, same data, same flows, each stack behind real HTTP with good-practice implementations (ETags, DataLoader-style batching, Idempotency-Key convention, SSE subscriptions). Every cell is asserted by `e2e/comparison.test.ts`.
 
+This table compares the three stacks on one workload. The rest of the end-to-end suite lives beside it: `methods.test.ts` (every HTTP method a binding serves), `security.test.ts` (the attacks of spec 12), `realdata.test.ts` (the Project Gutenberg catalogue), and `fleet.test.ts` (two servers and a real Postgres).
+
 | Aspect | Metric | REST | GraphQL | Rayfold | Note |
 |---|---|---|---|---|---|
 | Product page (book + author + 3 reviews) | requests and bytes for the page | 3 requests in 2 waves, 466 B | 1 request, 332 B as JSON | 1 request, 177 B in binary, 328 B as JSON | The same data on all three; each count is the URL path plus the request and the response. GraphQL sends 123 B and gets 209 B back, as JSON. Rayfold in its binary format sends 60 B and gets 117 B back; as JSON it would be 99 B and 229 B, no more than GraphQL. Most of the saving is the binary format; the request is also shorter because it names a view the server defines (Book.card) instead of listing every field. |
@@ -18,4 +20,4 @@ Same bookstore, same data, same flows, each stack behind real HTTP with good-pra
 | Removing a field | what the tooling decides | no field-level contract to diff: every removal ships, announced or not | graphql-js findBreakingChanges flags every removal; @deprecated has no date, so a finished deprecation is flagged too | `rayfold check` blocks unannounced and early removals and allows them after @deprecated(sunset:) | Removing Review.body. rayfold check: breaking:field-removed / breaking:field-removed / compatible:field-removed-after-sunset. graphql-js: "Field Review.body was removed." in all three cases. |
 | Abusive query (200 x 200 x 200 nested) | rejected before execution? | n/a (no query language) | no, unless a cost plugin is added | yes: static cost vs budget, from @cost and page sizes |  |
 | Exposing the API to an AI agent | extra work for tools with typed input/output | hand-written OpenAPI + adapter; no dry-run | introspection + custom glue; no dry-run | none: /mcp lists tools with JSON Schema, `.simulate` dry-runs, typed errors |  |
-| Deferring a slow field | mechanism | the book carries only authorId; the bio takes a second request to /authors/a4 | one JSON body: the whole page waits for the bio (@defer is not in graphql-js 16) | `@lazy` bio arrives in a later frame at path `author`, same request |  |
+| Deferring a slow field | mechanism | the book carries only authorId; the bio takes a second request to /authors/a4 | one JSON body: the whole page waits for the bio (@defer is not in graphql-js 17) | `@lazy` bio arrives in a later frame at path `author`, same request |  |

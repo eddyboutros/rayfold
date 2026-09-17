@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T10:05:59.959Z",
+  "generatedAt": "2026-09-17T10:02:31.032Z",
   "node": "v24.8.0",
   "seconds": 10,
   "concurrency": 64,
@@ -7,31 +7,31 @@
   "rows": [
     {
       "workload": "read batch (product page)",
-      "requests": 44162,
-      "perSecond": 4416,
-      "p50": 13.24,
-      "p99": 30.87,
-      "max": 67.49,
+      "requests": 16985,
+      "perSecond": 1699,
+      "p50": 34.91,
+      "p99": 72.13,
+      "max": 82.71,
       "failed": 0,
-      "heapGrowthMb": 2.3
+      "heapGrowthMb": 2
     },
     {
       "workload": "command (placeOrder)",
-      "requests": 44876,
-      "perSecond": 4488,
-      "p50": 13.51,
-      "p99": 24.34,
-      "max": 40.84,
+      "requests": 14759,
+      "perSecond": 1476,
+      "p50": 42.01,
+      "p99": 75.41,
+      "max": 111.68,
       "failed": 0,
-      "heapGrowthMb": 72.3
+      "heapGrowthMb": 24.9
     },
     {
       "workload": "GET read (cacheable)",
-      "requests": 68432,
-      "perSecond": 6843,
-      "p50": 8.16,
-      "p99": 18.25,
-      "max": 26.89,
+      "requests": 22802,
+      "perSecond": 2280,
+      "p50": 25.63,
+      "p99": 57.29,
+      "max": 79.71,
       "failed": 0,
       "heapGrowthMb": 1.5
     }

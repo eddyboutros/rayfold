@@ -26,7 +26,9 @@ In development the page comes from Vite on port 5173 and the API from port 4000.
 <<< @/../examples/react/vite.config.ts
 
 The browser still names the page's origin on every command, and a Rayfold server refuses commands from origins it
-does not know, which is what stops other websites from acting for your users. On the server, allow Vite's origin:
+does not know, which is what stops other websites from acting for your users. Behind the proxy above the request
+arrives looking same-origin, so it is allowed whatever the server is written in; name the origin anyway, so the app
+keeps working the day you point it straight at port 4000:
 
 <<< @/../examples/react/src/bookshop.ts#origins{ts}
 

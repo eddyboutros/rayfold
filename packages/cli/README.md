@@ -12,6 +12,7 @@ npx rayfold check schema.rayfold
 |---|---|
 | `check <schema> [--against <old schema or lock file>] [--strict]` | Validates the schema. With `--against`, lists every change and fails on breaking ones (a removed field before its sunset date, a narrowed type, ...). |
 | `check <schema> --resolvers <module>` | Do the resolvers cover the schema? Every operation wired, a loader for every field that takes arguments, and a warning for a resolver the schema no longer has. |
+| `check <schema> --unused <usage.json> [--since 30d]` | Reads a usage snapshot from a running server and lists the operations and fields no client asked for in the window. "Unused" means no traffic was seen, never that nothing can reach it. |
 | `lock <schema> [--out rayfold.lock.json]` | Records field ordinals and the schema hash. Commit it and check later versions against it. |
 | `hash <schema>` | Prints the schema hash. |
 | `explain <schema> <op> [--shape "{...}"] [--args '{...}']` | Shows the plan: cost, depth, one loader call per level, and which policies push down to the data source. |

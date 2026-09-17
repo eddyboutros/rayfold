@@ -25,7 +25,7 @@
     "conform": "vitest run --project conformance",
     "rayfold": "tsx packages/cli/src/main.ts",
     "bench": "tsx bench/run.ts",
-    "bench:load": "tsx bench/load.ts",
+    "bench:load": "tsx --expose-gc bench/load.ts",
     "e2e": "vitest run e2e",
     "e2e:html": "tsx e2e/report-html.ts",
     "test:browsers": "playwright test",

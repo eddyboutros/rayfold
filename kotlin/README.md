@@ -1,16 +1,17 @@
 # Rayfold on the JVM
 
-Six modules, all tested against the same conformance fixtures as the TypeScript reference
+Seven modules, all tested against the same conformance fixtures as the TypeScript reference
 (`../conformance/fixtures`):
 
 | Module | What | Guide |
 |---|---|---|
-| `rayfold-core` | The server runtime. Reads `.rayfold` schema files itself (`SchemaText`), runs batches, serves HTTP and WebSocket, live queries, MCP and REST bindings. kotlinx.serialization and kotlinx.coroutines, no framework. Java 21. | [Kotlin](../docs/guide/kotlin.md) |
+| `rayfold-core` | The server runtime. Reads `.rayfold` schema files itself (`SchemaText`), runs batches, serves HTTP and WebSocket, live queries, uploads, MCP and REST bindings, and joins a fleet through a relay. kotlinx.serialization and kotlinx.coroutines, no framework. Java 21. | [Kotlin](../docs/guide/kotlin.md) |
 | `rayfold-java` | The server with a Java API: `Rayfold.server(schema).query(...)`, functional resolver interfaces, records and maps as results. | [Java](../docs/guide/java-spring.md) |
 | `rayfold-spring-boot-starter` | Spring Boot 4: annotated resolver methods on beans, Spring MVC endpoint, the viewer from Spring Security. | [Spring Boot](../docs/guide/java-spring.md#spring-boot) |
 | `rayfold-client` | The client for Kotlin and Android: normalized cache kept current by patches, batches, `watch`/`live`/`stream` flows, typed results, optimistic commands and an offline queue. Java 17 bytecode, no server code; checked against Android API level 26. | [Kotlin client](../docs/guide/kotlin.md#a-client) |
 | `rayfold-client-okhttp` | The WebSocket transport on OkHttp, for Android. | [Android](../docs/guide/kotlin.md#android) |
 | `rayfold-opentelemetry` | OpenTelemetry spans for batches, ops and loader calls. | [Tracing](../docs/guide/tracing.md) |
+| `rayfold-jdbc` | What a fleet shares over JDBC: `JdbcIdempotencyStore`, `JdbcUploadStore` and `PgRelay`, in the same tables the TypeScript runtime creates. | [JDBC](../docs/guide/jdbc.md) |
 
 ```
 ./gradlew check                       # every module's tests, and the Android API check of the client modules
@@ -36,6 +37,8 @@ node ../scripts/smoke-maven.mjs       # publish locally, then build and run a se
 | `Bindings.kt`, `OpenApi.kt`, `JsonSchema.kt` | REST-style `@http` bindings, their cache headers, and the OpenAPI 3.2 document |
 | `Mcp.kt` | MCP bridge (2026-07-28, stateless Streamable HTTP) |
 | `Live.kt`, `RayfoldWebSocket.kt`, `WsSession.kt` | change bus and live-query diffs; the RFC 6455 WebSocket transport on its own listener, and the per-connection protocol the Spring starter reuses on the application's port |
+| `Relay.kt` | carries one server's changes and events to the others, so a live query or stream hears a command that ran elsewhere |
+| `Uploads.kt` | the `upload` extension: the `POST /rayfold/uploads` route, `UploadStore` and the in-memory one |
 | `Rb.kt` | the RB binary encoding, byte for byte the TypeScript codec's (`RbTest` checks it against a seeded corpus) |
 | `Instrumentation.kt` | hooks around batches, ops and loaders, for tracing |
 
@@ -50,7 +53,7 @@ val server = RayfoldServer(
         fields = mapOf("Book" to mapOf("author" to { parents, _, _ -> parents.map { store.author(it["authorId"]) } })),
     ),
 )
-val http = RayfoldHttp(server) { viewerFrom(it) }.start(4400)   // /rayfold, /rayfold/manifest, /rayfold/openapi.json
+val http = RayfoldHttp(server) { viewerFrom(it) }.start(4400)   // /rayfold + /manifest, /openapi.json, /health, /ready
 RayfoldBindings(server) { viewerFrom(it) }.mount(http)           // @http routes
 RayfoldMcp(server) { viewerFrom(it) }.mount(http)                // POST /mcp
 RayfoldWebSocket(server) { req -> viewerFrom(req) }.start(4401)  // /rayfold/ws, live queries

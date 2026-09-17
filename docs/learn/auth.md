@@ -55,12 +55,13 @@ command restock(bookId: ID, qty: Int @range(min: 1, max: 1000)): Book
   @allow(write: viewer.role == "staff")
 ```
 
-- `read` governs queries and the reading of fields, including fields of a command's result. `write` governs
-  commands.
+- `read` governs queries, streams, and the reading of fields inside any result, including a command's. `write`
+  governs commands.
 - A rule can sit on an operation, a type or a field. A field is readable only if every level allows it, and `@deny`
   overrides `@allow`.
-- Rules are expressions over `viewer`, `this` (the object being read) and `args`, with `==`, `!=`, `<`, `>`, `in`,
-  `&&`, `||` and `!`. That makes rules about rows natural:
+- Rules are expressions over `viewer`, `this` (the object being read) and `args`, with `==`, `!=`, `<`, `<=`, `>`,
+  `>=`, `in`, `&&`, `||` and `!`, and the built-in functions `has()`, `len()` and `now()`. That makes rules about rows
+  natural:
 
 ```rayfold
 entity Order @allow(read: viewer.id == customerId || viewer.role == "admin") {
@@ -82,6 +83,7 @@ An expression that cannot be evaluated, such as comparing text with a boolean, f
 | A field the shape asks for, marked `@partial` | `null` for that field, and an entry in the frame's `errors` |
 | A field that is only in the default view | the field is left out, with no error |
 | An entity at a position that may be `null` | `null`, exactly as if it did not exist |
+| An entity at a position that may not be `null`, or an element of a list | `permission_denied` with a `path`, and the operation fails as a whole |
 
 The last row matters: a caller cannot find out that an order exists by being refused it.
 
@@ -108,8 +110,9 @@ the format.
 - A Rayfold server refuses commands sent by a browser from an origin it does not know, which stops another website
   from acting for your users. List your web app's origin in `allowedOrigins`; the [React guide](../get-started/react.md#2-send-api-calls-to-the-server)
   shows it.
-- It reads only JSON and its binary format as request bodies, so a plain HTML form on another site cannot submit to
-  it.
+- The batch endpoint reads only JSON and its binary format as request bodies, and the uploads route only
+  `application/octet-stream`. None of those is a type a plain HTML form on another site can send without asking
+  permission first.
 
 The [security chapter](../../spec/12-security.md) lists every default.
 

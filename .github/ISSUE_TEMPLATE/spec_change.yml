@@ -12,6 +12,8 @@ body:
         - Extension rb
         - Extension mcp
         - Extension http
+        - Extension upload
+        - Extension cap
         - A new extension
     validations:
       required: true

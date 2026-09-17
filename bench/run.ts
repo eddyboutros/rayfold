@@ -9,17 +9,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { buildSchema, graphql } from "graphql";
 import { createHttpHandler } from "@rayfold/server";
 import { RbCodec } from "@rayfold/rb";
-import { createBookstore, seed, withCatalogue, type Store } from "../examples/bookstore-ts/src/index.ts";
+import { CATALOGUE_SIZE, createBookstore, seed, withCatalogue, type Store } from "../examples/bookstore-ts/src/index.ts";
 
 const ITER = Number(process.env["BENCH_ITER"] ?? 300);
 
 // ---------------------------------------------------------------- shared data
-// a real catalogue: 36 books by 12 authors
 const store: Store = withCatalogue(seed());
-for (let i = 0; i < 0; i++) {
-  store.books.set(`b${i}`, { id: `b${i}`, title: `Book ${i}`, format: i % 2 ? "PAPERBACK" : "EBOOK", price: (5 + (i % 7)).toFixed(2), stock: 10, authorId: `a${(i % 3) + 1}`, costPrice: "1.00", ownerId: "u1" });
-  store.reviews.set(`r${i}`, { id: `r${i}`, rating: (i % 5) + 1, body: `Review ${i} lorem ipsum dolor sit amet`, bookId: `b${(i % 4) + 1}`, reviewerId: `u${(i % 3) + 1}`, version: 1 });
-}
 const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : 1);
 const bookView = (b: NonNullable<ReturnType<Store["books"]["get"]>>) => ({ id: b.id, title: b.title, format: b.format, price: b.price, stock: b.stock, authorId: b.authorId });
 
@@ -276,7 +271,15 @@ async function main(): Promise<void> {
     rayfold: `http://127.0.0.1:${(rayfold.address() as AddressInfo).port}/rayfold`,
   };
   const jsonOut: Array<{ flow: string; impl: string; roundTrips: number; bytesDown: number; bytesUp: number; p50: number; p99: number }> = [];
-  const lines: string[] = ["# Bench results", "", `Node ${process.version}, loopback HTTP/1.1, ${ITER} iterations per cell, interleaved, in-memory data (40 books). Latency includes client fetch overhead.`, ""];
+  const generatedAt = new Date().toISOString();
+  const lines: string[] = [
+    "# Bench results",
+    "",
+    `Node ${process.version} on ${process.platform}/${process.arch}, loopback HTTP/1.1, ${ITER} iterations per cell, interleaved, in-memory data (${CATALOGUE_SIZE.books} books by ${CATALOGUE_SIZE.authors} authors). Latency includes client fetch overhead.`,
+    "",
+    `Run ${generatedAt}. Regenerate with \`npm run bench\`.`,
+    "",
+  ];
   for (const [flowName, impls] of Object.entries(flows)) {
     lines.push(`## ${flowName}`, "", "| Implementation | round trips | bytes down | bytes up | p50 ms | p99 ms |", "|---|---:|---:|---:|---:|---:|");
     const entries = Object.entries(impls);

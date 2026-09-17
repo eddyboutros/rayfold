@@ -46,7 +46,7 @@ Everything it had to assume is listed on stderr, so the schema on stdout stays a
 4. **Move one screen.** Replace its requests with one batch through `@rayfold/client` (or the Kotlin client). Its data
    now lands in the normalized cache, so other screens reading the same books stay current.
 5. **Retire routes by usage, not by version.** Mark what is going away with `@deprecated(sunset: 2027-06-30)`;
-   `rayfold check` refuses removing it before that date.
+   `rayfold check new.rayfold --against old.rayfold` refuses removing it before that date.
 
 ## What to watch for
 

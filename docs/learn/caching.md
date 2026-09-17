@@ -37,7 +37,8 @@ entity Book @cache(maxAge: 60s, scope: public) {
 The server works out the headers from the queries in the request and the entity types in their results:
 
 1. `max-age` is the smallest `maxAge` among them. Types and queries without `@cache` do not count. When nothing in
-   the response declares one, the answer is `max-age=0, no-cache`.
+   the response declares one, the answer is `public, max-age=0, no-cache` — or `private, max-age=0, no-cache` when
+   the request carried a viewer.
 2. The scope is `public` unless something makes it `private`: a `scope: private`, a request that carries a viewer
    (the bookshop's viewer comes from `Authorization`), or a type or field in the result whose policy mentions
    `viewer`.
@@ -97,8 +98,9 @@ Rayfold-Schema: 683ba13db1697a2f4714aac7338e87d0f0120aaddd9a5a93ed1dc91283ff2d38
 ```
 
 Without `s` you get the default view. `s` takes shape text, URL-encoded (`s=%7B%20title%20stock%20%7D`), or a shape
-id, which keeps URLs short. A server learns an id when it runs that shape as text, and forgets it when it restarts, so
-register the shapes your pages use when it starts:
+id, which keeps URLs short. A server learns an id when it runs that shape as text, and forgets it when it restarts —
+or sooner, since learned ids are held in an LRU of 10,000 and the oldest fall out. Register the shapes your pages use
+when it starts and they are pinned instead:
 
 ```ts
 const id = server.registerShape("{ title stock }");

@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { RbCodec } from "@rayfold/rb";
 import { loadSchema } from "@rayfold/schema";
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
-import { Recorder, Report } from "./harness.ts";
+import { GRAPHQL_MAJOR, Recorder, Report } from "./harness.ts";
 import { Signal, openSse } from "./wait.ts";
 import { freshWorkspace, startWorkspaceRest, type WorkspaceStack } from "./workspace-rest.ts";
 import { startWorkspaceGraphQL } from "./workspace-gql.ts";
@@ -120,7 +120,14 @@ afterAll(() => {
   mkdirSync("e2e", { recursive: true });
   const size = sizes(freshWorkspace());
   writeFileSync("e2e/workspace.json", JSON.stringify({ generatedAt: new Date().toISOString(), dataset: size, rows: report.rows }, null, 2) + "\n");
-  writeFileSync("e2e/workspace.md", report.markdown());
+  writeFileSync(
+    "e2e/workspace.md",
+    report.markdown({
+      title: "End-to-end comparison on a workspace: REST vs GraphQL vs Rayfold",
+      dataset: `Same workspace (${size.orgs} organisations, ${size.projects} projects, ${size.issues} issues), same data, same flows`,
+      assertedBy: "e2e/workspace.test.ts",
+    }),
+  );
 });
 
 // The fields the board shows, asked for identically on each stack, so the byte counts compare like with like.
@@ -776,7 +783,7 @@ describe("13. A large field nobody reads first", () => {
       better: "higher",
       metric: "delivery of a slow field",
       REST: "the description is part of the issue resource, so it is sent every time, even to a list that never shows it",
-      GraphQL: "one body: the client waits for the slowest field it asked for (`@defer` is still not in graphql-js 16)",
+      GraphQL: `one body: the client waits for the slowest field it asked for (\`@defer\` is still not in graphql-js ${GRAPHQL_MAJOR})`,
       Rayfold: "`@lazy` on the field: the frame with the page comes first, the description follows at its path in the same response",
     });
   });

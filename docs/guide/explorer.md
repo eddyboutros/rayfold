@@ -35,7 +35,13 @@ they paste into it, and no more. On a public deployment, mount it behind the sam
 administration pages, or only in development:
 
 ```ts
-if (process.env.NODE_ENV !== "production") app.use(createExplorerHandler());
+// The handler answers its own path and returns false for anything else, so pass the rest along yourself.
+if (process.env.NODE_ENV !== "production") {
+  const explorer = createExplorerHandler();
+  app.use((req, res, next) => {
+    if (!explorer(req, res)) next();
+  });
+}
 ```
 
 `explorerHtml(options)` returns the same page as a string, for serving it from a framework of your own.

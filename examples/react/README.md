@@ -6,7 +6,10 @@ fetching again.
 
 - `src/App.tsx`: the components
 - `src/main.tsx`: the client and the provider
+- `src/bookshop.rayfold`: the schema, the same one every stack uses
+- `src/resolvers.ts`: the data, the resolvers, and who the caller is
 - `src/server.ts` and `src/bookshop.ts`: the same bookshop server as in `examples/typescript`
+- `src/app.test.ts`: the components against a real server
 - `vite.config.ts`: sends `/rayfold` from the Vite dev server to the Rayfold server
 
 ## Run it

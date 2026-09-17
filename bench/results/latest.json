@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-13T00:31:19.541Z",
+  "generatedAt": "2026-09-17T09:57:07.060Z",
   "node": "v24.8.0",
   "iterations": 300,
   "rows": [
@@ -9,8 +9,8 @@
       "roundTrips": 2,
       "bytesDown": 405,
       "bytesUp": 0,
-      "p50": 0.513,
-      "p99": 2.843
+      "p50": 0.508,
+      "p99": 2.049
     },
     {
       "flow": "A. product page (book + author + 3 reviews)",
@@ -18,8 +18,8 @@
       "roundTrips": 1,
       "bytesDown": 282,
       "bytesUp": 157,
-      "p50": 0.556,
-      "p99": 1.994
+      "p50": 0.586,
+      "p99": 2.489
     },
     {
       "flow": "A. product page (book + author + 3 reviews)",
@@ -27,8 +27,8 @@
       "roundTrips": 1,
       "bytesDown": 302,
       "bytesUp": 182,
-      "p50": 0.484,
-      "p99": 1.072
+      "p50": 0.604,
+      "p99": 2.104
     },
     {
       "flow": "A. product page (book + author + 3 reviews)",
@@ -36,8 +36,8 @@
       "roundTrips": 1,
       "bytesDown": 177,
       "bytesUp": 143,
-      "p50": 0.515,
-      "p99": 1.734
+      "p50": 0.617,
+      "p99": 2.442
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
@@ -45,8 +45,8 @@
       "roundTrips": 2,
       "bytesDown": 2810,
       "bytesUp": 0,
-      "p50": 0.886,
-      "p99": 4.565
+      "p50": 0.925,
+      "p99": 2.326
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
@@ -54,8 +54,8 @@
       "roundTrips": 1,
       "bytesDown": 2074,
       "bytesUp": 89,
-      "p50": 0.526,
-      "p99": 3.378
+      "p50": 0.543,
+      "p99": 4.511
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
@@ -63,8 +63,8 @@
       "roundTrips": 1,
       "bytesDown": 2083,
       "bytesUp": 142,
-      "p50": 0.422,
-      "p99": 1.065
+      "p50": 0.535,
+      "p99": 1.588
     },
     {
       "flow": "B. catalogue list (20 books with author names)",
@@ -72,8 +72,8 @@
       "roundTrips": 1,
       "bytesDown": 1080,
       "bytesUp": 95,
-      "p50": 0.478,
-      "p99": 0.983
+      "p50": 0.579,
+      "p99": 2.122
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -81,8 +81,8 @@
       "roundTrips": 3,
       "bytesDown": 327,
       "bytesUp": 35,
-      "p50": 0.501,
-      "p99": 1.807
+      "p50": 0.521,
+      "p99": 4.472
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -90,8 +90,8 @@
       "roundTrips": 2,
       "bytesDown": 157,
       "bytesUp": 204,
-      "p50": 0.773,
-      "p99": 2.058
+      "p50": 0.865,
+      "p99": 3.443
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -99,8 +99,8 @@
       "roundTrips": 1,
       "bytesDown": 220,
       "bytesUp": 279,
-      "p50": 0.438,
-      "p99": 1.023
+      "p50": 0.564,
+      "p99": 2.763
     },
     {
       "flow": "C. place order then read it back with book stock",
@@ -108,8 +108,8 @@
       "roundTrips": 1,
       "bytesDown": 101,
       "bytesUp": 172,
-      "p50": 0.459,
-      "p99": 0.987
+      "p50": 0.579,
+      "p99": 2.317
     }
   ]
 }

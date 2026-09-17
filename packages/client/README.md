@@ -41,9 +41,14 @@ console.log(await reread.promise);
 | `query(op, args, { shape })` | Runs a query. `shape` picks fields, e.g. `"{ id title author { name } }"`; without it the type's default view is used. |
 | `command(op, args)` | Runs a command with an idempotency key, so a retry never runs it twice. Failures throw `RayfoldClientError`; `error.is("OutOfStock")` checks for a typed error. |
 | `watch(op, args, options, fn)` | Calls `fn` now and whenever the cached result changes. Returns a stop function. |
-| `live(op, args, options, fn)` | A live query: the server pushes changes made by anyone. Returns a stop function. |
+| `live(op, args, options, fn, onError)` | A live query: the server pushes changes made by anyone. A dropped connection is reopened after a short wait, so the subscription outlives a deploy; `onError(e, { retrying })` says whether it is coming back. Returns a stop function. |
 | `stream(op, args)` | An async iterable over a stream op. |
+| `upload(body, { name, type })` | Sends a `File`, `Blob`, bytes or a stream to the server's upload route and answers with the handle a later command names. |
 | `createWebSocketTransport({ url })` | One socket for many batches, with per-op cancel. |
+
+Pass `offline: { storage, drainOnReconnect }` and a command made while the server is unreachable is queued and
+replayed in order once it is back, under its original idempotency key so it still runs once. `memoryQueue()` keeps
+the queue for the life of the tab and `localStorageQueue()` across reloads.
 
 For React, use `@rayfold/react`.
 

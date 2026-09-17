@@ -9,6 +9,7 @@ string at the call site - exactly the fields a shape asks for.
 ```ts
 import { defineSchema, entity, query, t, type Infer, type InferArgs, type InferResult } from "@rayfold/builder";
 
+const Author = entity("Author", { id: t.id(), name: t.string() });
 const Book = entity("Book", { id: t.id(), title: t.string(), stock: t.int(), author: t.ref("Author") });
 const schema = defineSchema({ types: [Author, Book], ops: { book: query({ id: t.id() }, t.ref("Book").nullable()) } });
 

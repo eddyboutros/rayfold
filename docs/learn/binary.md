@@ -38,6 +38,7 @@ Over HTTP, two headers decide, independently of each other:
 | `Content-Type` | `application/rayfold` | the request body is RB |
 | `Content-Type` | `application/rayfold+json` | the request body is JSON |
 | `Accept` | `application/rayfold` | answer with RB frames |
+| `Accept` | `application/json`, one op that ends in one frame | answer with that frame as a single JSON document, the HTTP status derived from its error code |
 | `Accept` | anything else | answer with JSON frames, one per line |
 
 A JSON body sent with `Accept: application/rayfold` gets an RB answer. An `Accept` that lists RB and a JSON type as

@@ -81,7 +81,9 @@ Authorization: Bearer customer
 
 ## Safe to retry
 
-Every command carries a `key` of 16 to 128 characters. Without one the server refuses it:
+Every command carries a `key` of 16 to 128 characters, unless the schema marks it `@idempotent(false)` or it arrives
+through a `PUT`, `PATCH` or `DELETE` REST binding, whose method is already idempotent. Without one the server refuses
+it:
 
 ```json
 {"id":1,"error":{"code":"invalid_argument","message":"buy(): commands require an idempotency key of 16-128 characters"},"fin":true}
@@ -96,10 +98,21 @@ the original result instead of running it a second time. `meta.replay` says so:
 
 The client libraries create a key for each call and keep it when they retry or replay a command queued offline.
 
+A record belongs to the caller who made it and to the exact command it answered. Send a key with no viewer and the
+server answers `unauthenticated`: a replay scope needs someone to scope it to. Send a key that was used for another
+operation, or the same operation with different arguments, and it answers `already_exists` rather than handing back an
+answer to a question you did not ask.
+
 Records live in the server's memory by default, which holds for one server. Point every instance at a shared store
 ([`PgIdempotencyStore`](../guide/postgres.md) on Node, `JdbcIdempotencyStore` on the JVM) and the guarantee holds across
 a fleet: a retry that lands on another instance replays the first answer, and two retries that arrive together take the
-key with one statement, so one of them runs the command and the other waits for it.
+key with one statement, so one of them runs the command and the other waits for it. A fleet needs a
+[`relay`](../guide/deployment.md) too, or the patch a command produced on one instance never reaches the live queries
+held by the others.
+
+There is one case where a command can still run twice: a server that dies between making the change and writing the
+record leaves a lease that eventually expires, and the next retry takes the key over and runs it again
+([spec 12 §4.6](../../spec/12-security.md)).
 
 A command that failed before it changed anything leaves no record, so a retry runs it. When the caller goes away or the
 deadline passes *after* the command committed, the record says exactly that:

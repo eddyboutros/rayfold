@@ -4,6 +4,10 @@ Rayfold Binary (RB), the compact wire encoding for Rayfold. It carries exactly t
 field names come from a dictionary built from the schema, repeated strings go into a string table, and frames are
 length-prefixed so a stream can be decoded as it arrives.
 
+```sh
+npm install @rayfold/rb
+```
+
 You rarely use it directly: `@rayfold/server` answers `application/rayfold` requests with it, and
 `@rayfold/client` speaks it when given the server's manifest (`createFetchTransport({ url, binary: manifest })`), once
 the server's schema hash shows both sides hold the same schema.

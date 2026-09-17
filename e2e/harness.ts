@@ -6,7 +6,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createHash } from "node:crypto";
-import { buildSchema, graphql, parse, subscribe, type ExecutionResult } from "graphql";
+import { buildSchema, graphql, parse, subscribe, version as graphqlVersion, type ExecutionResult } from "graphql";
 import { createHttpHandler, attachWebSocket, createMcpHandler, createBindingHandler } from "@rayfold/server";
 import { seed, createBookstore, withCatalogue, bookPage, authorBookPages, type Store, type AuthorRow, type BookRow, type BookFilter, type Page, type ReviewRow } from "../examples/bookstore-ts/src/index.ts";
 import { EventEmitter } from "node:events";
@@ -614,12 +614,25 @@ export class Report {
     const methods = [...this.methods].sort((a, b) => order.indexOf(a.method) - order.indexOf(b.method));
     return JSON.stringify({ generatedAt: new Date().toISOString(), rows: this.rows, methods }, null, 2) + "\n";
   }
-  markdown(): string {
-    const lines = ["# End-to-end comparison: REST vs GraphQL vs Rayfold", "", "Same bookstore, same data, same flows, each stack behind real HTTP with good-practice implementations (ETags, DataLoader-style batching, Idempotency-Key convention, SSE subscriptions). Every cell is asserted by `e2e/comparison.test.ts`.", "", "| Aspect | Metric | REST | GraphQL | Rayfold | Note |", "|---|---|---|---|---|---|"];
+  /** `about` names the dataset and the file that asserts these rows, since two suites share this writer. */
+  markdown(about: { title: string; dataset: string; assertedBy: string }): string {
+    const lines = [
+      `# ${about.title}`,
+      "",
+      `${about.dataset}, each stack behind real HTTP with good-practice implementations (ETags, DataLoader-style batching, Idempotency-Key convention, SSE subscriptions). Every cell is asserted by \`${about.assertedBy}\`.`,
+      "",
+      "This table compares the three stacks on one workload. The rest of the end-to-end suite lives beside it: `methods.test.ts` (every HTTP method a binding serves), `security.test.ts` (the attacks of spec 12), `realdata.test.ts` (the Project Gutenberg catalogue), and `fleet.test.ts` (two servers and a real Postgres).",
+      "",
+      "| Aspect | Metric | REST | GraphQL | Rayfold | Note |",
+      "|---|---|---|---|---|---|",
+    ];
     for (const r of this.rows) lines.push(`| ${r.aspect} | ${r.metric} | ${r.REST} | ${r.GraphQL} | ${r.Rayfold} | ${r.note ?? ""} |`);
     return lines.join("\n") + "\n";
   }
 }
+
+/** The graphql-js major actually under test, so a report never names a version the suite did not run. */
+export const GRAPHQL_MAJOR = graphqlVersion.split(".")[0];
 
 export const sseFrames = (chunk: string): unknown[] => chunk.split("\n\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)));
 

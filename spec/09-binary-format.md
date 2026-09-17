@@ -21,11 +21,11 @@ One tag byte, then payload:
 | `0x01` / `0x02` | false / true |
 | `0x03` + zigzag varint | integer (up to ±2^53) |
 | `0x04` + 8 bytes | IEEE 754 double, little-endian (only for non-integers) |
-| `0x05` + varint length + UTF-8 | string; appended to the per-message **string table** |
-| `0x06` + varint index | reference to an earlier string in this message |
+| `0x05` + varint length + UTF-8 | string; appended to the per-frame **string table** |
+| `0x06` + varint index | reference to an earlier string in this frame |
 | `0x07` + varint count + values | list |
 | `0x08` + varint count + (key, value)* | object |
-| `0x09` + varint length + bytes | bytes (`Bytes` scalar) |
+| `0x09` + varint length + bytes | raw bytes. Optional: the `Bytes` scalar travels as base64url text, so a codec may never produce this tag, and one that does is read by both reference codecs. |
 | `0x80`-`0xFF` | small integer 0-127 inline |
 
 Object keys are a varint `k`: even `k` is a **dictionary id** `k/2`; odd `k` is an inline UTF-8 key of
@@ -33,13 +33,16 @@ length `(k-1)/2`. Undefined members are omitted, as in JSON.
 
 ## 3. Key dictionary
 
-Ids 0-37 are the protocol keys (`id`, `op`, `args`, `shape`, `vars`, `key`, `live`, `deadline`, `simulate`,
+Ids 0-39 are the protocol keys (`id`, `op`, `args`, `shape`, `vars`, `key`, `live`, `deadline`, `simulate`,
 `ops`, `meta`, `rayfold`, `data`, `ok`, `item`, `patch`, `at`, `error`, `fin`, `errors`, `code`, `type`,
 `message`, `path`, `retryable`, `set`, `value`, `del`, `inv`, `invOp`, `cost`, `cache`, `$type`, `$ref`,
-`client`, `replay`, `cursor`, `ms`), in that order. After them come every field name, argument name, enum
+`client`, `replay`, `cursor`, `ms`, `list`, `ins`), in that order. The count is load-bearing: every
+schema-derived id is offset by it, so an implementation that stops at 37 disagrees with both reference codecs about
+the meaning of every key. After them come every field name, argument name, enum
 value and operation name of the schema, deduplicated and **sorted**, so both sides derive the identical
-table from the IR. A client learns the schema hash from `Rayfold-Schema` / the manifest; on a hash mismatch it
-MUST fall back to JSON for that request.
+table from the IR. A client learns the schema hash from `Rayfold-Schema` / the manifest; on a hash mismatch the
+request in flight fails with `unavailable`, because its answer is already encoded against a dictionary the client
+cannot build, and the client falls back to JSON for later requests.
 
 Field ordinals from `rayfold.lock.json` are reserved for a future compact-struct encoding; the dictionary
 approach was chosen for 0.1 because it keeps unknown keys (extensions, `JSON` scalars, `$vendor` metadata)
@@ -54,7 +57,7 @@ representable without a schema round trip.
 ## 5. Compression
 
 Optional and orthogonal: `Content-Encoding: zstd` or `br`; with RFC 9842 dictionary transport a server MAY
-advertise a schema-derived dictionary. Neither changes the RB byte stream.
+advertise a schema-derived dictionary. Neither changes the RB byte stream, and neither runtime wires either today.
 
 ## 6. Measured
 

@@ -7,6 +7,8 @@ on a bean, and Spring Security supplies the viewer. Built with Maven.
 |---|---|
 | `src/main/resources/bookshop.rayfold` | The schema |
 | `src/main/resources/application.properties` | Where the schema is, the port, the explorer |
+| `src/main/java/com/example/bookshop/BookshopApplication.java` | The entry point `./mvnw spring-boot:run` starts |
+| `src/main/java/com/example/bookshop/Book.java`, `Author.java`, `Store.java` | The records and the shelves, in memory |
 | `src/main/java/com/example/bookshop/BookResolvers.java` | `@RayfoldQuery`, `@RayfoldCommand` and the batched `@RayfoldField` loader |
 | `src/main/java/com/example/bookshop/SecurityConfig.java` | Two demo bearer tokens, checked by Spring Security |
 | `src/test/java/com/example/bookshop/BookshopApplicationTests.java` | Tests over HTTP against the application on a free port |

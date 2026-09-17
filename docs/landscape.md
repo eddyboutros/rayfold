@@ -73,5 +73,5 @@ Verified state of the incumbents Rayfold draws from, with sources. Compiled 2026
 7. Error model: RFC 9457 body for batch-level failures, Connect's 16 codes as the protocol code set, HTTP 200 for frame streams (05).
 8. GET for single idempotent queries with base64url-encoded args, like Connect (04 §4). Rayfold defines its own incremental delivery (defer frames) rather than waiting on GraphQL's.
 9. Trusted shapes (SHA-256 allowlist) are in Core now; GraphQL's persisted-documents appendix is still unmerged (02 §3).
-10. `RateLimit` headers are emitted but marked provisional (04 §4).
-11. WebTransport is Baseline, so it is the bidirectional transport tier; compression dictionaries are an opt-in optimisation in the RB extension (09).
+10. `RateLimit` headers are named by the draft but neither runtime emits them yet (04 §4).
+11. WebTransport is Baseline, so the spec names it as the bidirectional transport tier (04 §6); neither runtime implements it. Compression dictionaries are an opt-in optimisation in the RB extension (09).

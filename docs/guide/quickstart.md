@@ -124,10 +124,11 @@ npx tsx client.ts
   When something is wrong, `npx rayfold check schema.rayfold` points at the line and says what it probably should be.
 - **Are the resolvers complete?** `npx rayfold check schema.rayfold --resolvers ./src/resolvers.ts` checks that every
   operation is wired and that every field taking arguments has a loader, so a missing one is a failed build rather
-  than a failed request. `checkWiring(schema.ir, resolvers)` from `@rayfold/server` is the same check, for your own
+  than a failed request. `checkWiring(server.ir, resolvers)` from `@rayfold/server` is the same check, for your own
   test suite.
 - **Before production.** Serve over TLS, list your web app's origin in `allowedOrigins`, turn on `trustedShapes` to
   accept only registered shapes, and put rate limits in front. The [security chapter](../../spec/12-security.md)
-  lists every default.
+  lists every default. Running more than one server takes a few shared stores: [Deployment](deployment.md).
 - **React:** [React guide](react.md). **Kotlin or Android:** [Kotlin guide](kotlin.md). **Java or Spring Boot:**
-  [Java guide](java-spring.md).
+  [Java guide](java-spring.md). **Workers, Hono, Bun, Deno or Next.js:** [Runtimes](runtimes.md).
+- **Sending files.** A file goes up its own route and a command names what arrived: [Uploads](uploads.md).
