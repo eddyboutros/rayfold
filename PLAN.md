@@ -92,8 +92,12 @@ Order chosen so the early ones have a source of truth outside Rayfold:
       both defensible and would give different ids — spec 02 §3 now gives every separator in a table. (2) Kotlin
       accepted `@defer(foo: "x")` and turned `@defer(label: 5)` into a null label, where the grammar admits neither;
       its parser is now strict. All 9 valid cases already produced identical canonical text and ids in both runtimes.
-- [ ] **`binary/`** — the RB dictionary (40 keys, the count is load-bearing), tag bytes, per-frame string table,
-      the `0x09` raw-bytes case TS emits and Kotlin does not.
+- [x] **`binary/`** — 18 cases plus a check that encodes all 40 protocol keys and asserts each id, written from
+      spec 09 §2/§3 by hand (tag, then payload). **Both runtimes already agreed with every byte**, which is the
+      result worth having: the dictionary that spec 09 got wrong is now pinned by a vector and cannot drift again
+      without a test saying so. One ambiguity closed on the way: §2 listed both an inline and a tagged form for a
+      small integer without saying which an encoder must use, so RB bytes were not a function of the value. An
+      encoder now MUST pick the shortest form.
 - [ ] **`manifest/`** — the document now defined in spec 04 §4a. TS serves `schemaHash` and `limits`; Kotlin does not.
 - [ ] **`errors/`** — problem documents vs error frames, the lower-case title, the op-rooted detail path.
 - [ ] **`idempotency/`** — viewer scope, binding hash, `already_exists` on reuse, the lease/takeover rules.

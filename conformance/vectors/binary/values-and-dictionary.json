@@ -1,0 +1,41 @@
+{
+  "name": "binary/values-and-dictionary",
+  "about": "RB's tag bytes and its key dictionary. The dictionary is the part with history: spec 09 listed 38 protocol keys while both codecs held 40, so every schema-derived id was two out from what the document described. Nothing failed, because each runtime only ever spoke to itself. A third implementation built from the text would have disagreed with both about the meaning of every key, and had nothing to check itself against - which is what these vectors are for.",
+  "source": "spec 09 §2 for the tags and §3 for the dictionary. Every byte string below was written out by hand from those tables - the tag, then the payload - rather than captured from a codec.",
+  "rule": [
+    "One tag byte, then payload. Integers 0-127 are the single byte 0x80|n; anything else is 0x03 and a zigzag varint.",
+    "A double is 0x04 and eight little-endian IEEE 754 bytes, used only when the value is not an integer.",
+    "A string is 0x05, a varint length, UTF-8; it joins the per-frame string table. 0x06 and a varint index refers back to one.",
+    "A list is 0x07 and a varint count, then values. An object is 0x08 and a varint count, then key/value pairs.",
+    "An object key is a varint k: even k is the dictionary id k/2, odd k is an inline UTF-8 key of length (k-1)/2.",
+    "Ids 0-39 are the protocol keys, in the order given below; schema names follow, sorted."
+  ],
+  "dictionary": [
+    "id", "op", "args", "shape", "vars", "key", "live", "deadline", "simulate", "ops",
+    "meta", "rayfold", "data", "ok", "item", "patch", "at", "error", "fin", "errors",
+    "code", "type", "message", "path", "retryable", "set", "value", "del", "inv", "invOp",
+    "cost", "cache", "$type", "$ref", "client", "replay", "cursor", "ms", "list", "ins"
+  ],
+  "values": [
+    { "name": "null", "json": "null", "bytes": "00" },
+    { "name": "false", "json": "false", "bytes": "01" },
+    { "name": "true", "json": "true", "bytes": "02" },
+
+    { "name": "zero is inline", "json": "0", "bytes": "80", "why": "0x80 | 0" },
+    { "name": "a small integer is inline", "json": "5", "bytes": "85" },
+    { "name": "the largest inline integer", "json": "127", "bytes": "ff", "why": "0x80 | 127, the last value the one-byte form reaches" },
+    { "name": "one past it needs the tagged form", "json": "128", "bytes": "038002", "why": "zigzag(128) = 256, and 256 as a varint is 0x80 0x02" },
+    { "name": "a negative integer zigzags", "json": "-1", "bytes": "0301", "why": "zigzag(-1) = 1" },
+    { "name": "a non-integer is a double, little-endian", "json": "2.5", "bytes": "040000000000000440", "why": "2.5 is 0x4004000000000000, written low byte first" },
+
+    { "name": "a string carries its length", "json": "\"hi\"", "bytes": "05026869" },
+    { "name": "a repeated string is a reference into the frame's table", "json": "[\"hi\",\"hi\"]", "bytes": "0702050268690600", "why": "list of 2, the string at index 0, then 0x06 and that index" },
+    { "name": "an empty list", "json": "[]", "bytes": "0700" },
+    { "name": "an empty object", "json": "{}", "bytes": "0800" },
+
+    { "name": "a protocol key is a dictionary id", "json": "{\"id\":1}", "bytes": "08010081", "why": "id is dictionary 0, so the key varint is 0; the value 1 is inline" },
+    { "name": "the second-to-last protocol key", "json": "{\"list\":1}", "bytes": "08014c81", "why": "list is dictionary 38, so k = 76 = 0x4c. A codec whose dictionary stops at 38 keys has no id for this and writes it inline instead" },
+    { "name": "the last protocol key", "json": "{\"ins\":1}", "bytes": "08014e81", "why": "ins is dictionary 39, so k = 78 = 0x4e. These two are the keys spec 09 omitted, and they are why the count is load-bearing" },
+    { "name": "a key the dictionary does not have is inline", "json": "{\"zz\":1}", "bytes": "0801057a7a81", "why": "k = 2*2+1 = 5 for a two-byte key, then its UTF-8" }
+  ]
+}

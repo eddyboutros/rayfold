@@ -3,7 +3,10 @@ package dev.rayfold.core
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.DynamicTest
@@ -84,4 +87,46 @@ class VectorsTest {
         assertTrue(out.size > 5, "no shape vectors were found under ${root.absolutePath}")
         return out
     }
+
+    @TestFactory
+    fun binary(): List<DynamicTest> {
+        val out = mutableListOf<DynamicTest>()
+        for ((file, doc) in area("binary")) {
+            // no schema, so the dictionary is exactly the protocol keys the vector lists
+            val codec = RbCodec()
+            val dictionary = doc["dictionary"]?.jsonArray ?: error("$file has no dictionary")
+
+            out.add(
+                DynamicTest.dynamicTest("binary/$file: the protocol keys are those, in that order") {
+                    assertEquals(40, dictionary.size, "the count is load-bearing: every schema name is offset by it")
+                    dictionary.forEachIndexed { i, key ->
+                        val name = key.jsonPrimitive.content
+                        // encoding { key: 1 } puts the key's id on the wire as the varint 2*i, which is the id's only
+                        // observable effect and the thing an independent codec has to agree about
+                        val bytes = codec.encode(buildJsonObject { put(name, JsonPrimitive(1)) })
+                        assertEquals("0801%02x81".format(2 * i), hex(bytes), "$name should be dictionary id $i")
+                    }
+                },
+            )
+
+            for (case in doc["values"]?.jsonArray ?: error("$file has no values")) {
+                val c = case.jsonObject
+                val name = c["name"]?.jsonPrimitive?.content ?: error("$file has a case without a name")
+                val json = c["json"]?.jsonPrimitive?.content ?: error("$name has no json")
+                val expected = c["bytes"]?.jsonPrimitive?.content ?: error("$name has no bytes")
+                val why = c["why"]?.jsonPrimitive?.content ?: name
+                out.add(
+                    DynamicTest.dynamicTest("binary/$file: $name") {
+                        val value = Json.parseToJsonElement(json)
+                        assertEquals(expected, hex(codec.encode(value)), why)
+                        assertEquals(value, codec.decode(codec.encode(value)), "reads back as what went in")
+                    },
+                )
+            }
+        }
+        assertTrue(out.size > 5, "no binary vectors were found under ${root.absolutePath}")
+        return out
+    }
+
+    private fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
 }

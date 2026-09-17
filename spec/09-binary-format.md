@@ -31,6 +31,11 @@ One tag byte, then payload:
 Object keys are a varint `k`: even `k` is a **dictionary id** `k/2`; odd `k` is an inline UTF-8 key of
 length `(k-1)/2`. Undefined members are omitted, as in JSON.
 
+Where more than one encoding would carry a value, an encoder MUST choose the shortest: an integer in 0-127 is the
+one-byte inline form rather than `0x03`, a key the dictionary has is its id rather than an inline key, and a string
+already in this frame's table is a `0x06` reference rather than a second copy. A decoder MUST accept any of them, so
+this costs nothing to read — it is what makes the bytes a function of the value, and so something a vector can pin.
+
 ## 3. Key dictionary
 
 Ids 0-39 are the protocol keys (`id`, `op`, `args`, `shape`, `vars`, `key`, `live`, `deadline`, `simulate`,
