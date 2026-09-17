@@ -20,8 +20,10 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     systemProperty("rayfold.fixtures", rootProject.projectDir.resolve("../conformance/fixtures").absolutePath)
+    systemProperty("rayfold.vectors", rootProject.projectDir.resolve("../conformance/vectors").absolutePath)
     // the JDK HTTP server reads its request timeout once per JVM; short here so the slow-loris test ends quickly
     systemProperty("sun.net.httpserver.maxReqTime", "2")
     inputs.dir(rootProject.projectDir.resolve("../conformance/fixtures"))
+    inputs.dir(rootProject.projectDir.resolve("../conformance/vectors"))
     testLogging { events("failed"); showStandardStreams = false; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }

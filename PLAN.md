@@ -77,8 +77,12 @@ Traps that have actually bitten, in order of how much time each cost:
 
 Order chosen so the early ones have a source of truth outside Rayfold:
 
-- [ ] **`numbers/`** — ECMAScript `Number::toString` is the external authority. Hand-write the vectors from the
-      algorithm (`-0`, `1e21`, `1e-7`, `0.1+0.2`, max safe integer, exponent boundaries), not from either runtime.
+- [x] **`numbers/`** — 21 vectors written from ECMA-262 `Number::toString`, run by both runtimes
+      (`packages/schema/src/vectors.test.ts`, `VectorsTest.kt`). **Found a real divergence on the first run:** Kotlin
+      wrote `4.9e-324` for the minimum denormal because Java's `Double.toString` must emit a digit after the point,
+      where ECMAScript asks only for the fewest digits that read back — `5e-324`. Fixed by shortening while the value
+      still round-trips. Neither runtime's existing tests covered a denormal, so they had agreed with each other and
+      not with the spec: the method working exactly as intended, on day one.
 - [ ] **`canonicalization/`** — key ordering, escaping, unicode, duplicate keys, nesting depth. RFC 8785 is the
       reference point for what canonical JSON usually means; document where Rayfold differs and why.
 - [ ] **`hashing/`** — schema hash and binding hash over the above. Expected hash written into the fixture.

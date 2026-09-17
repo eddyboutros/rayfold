@@ -726,7 +726,17 @@ object Canonical {
         if (d == 0.0) return "0" // ECMAScript writes negative zero as "0" too
         // Java's own shortest round-trip digits, read back as digits and a decimal exponent: the value is
         // `digits * 10^(point - digits.length)`, which is what the ECMAScript rules below are written against.
-        val decimal = java.math.BigDecimal(d.toString()).stripTrailingZeros()
+        //
+        // Java is not quite ECMAScript here. `Double.toString` must emit at least one digit after the point, so where
+        // a single digit would read back exactly it still writes two: Double.MIN_VALUE comes out as 4.9E-324 where
+        // ECMAScript, which asks only for the fewest digits that round-trip, writes 5e-324. Shortening while the value
+        // still reads back as the same double is that rule, and it leaves every other number alone.
+        var decimal = java.math.BigDecimal(d.toString()).stripTrailingZeros()
+        while (decimal.precision() > 1) {
+            val shorter = decimal.round(java.math.MathContext(decimal.precision() - 1)).stripTrailingZeros()
+            if (shorter.toDouble() != d) break
+            decimal = shorter
+        }
         val digits = decimal.unscaledValue().abs().toString()
         val point = digits.length - decimal.scale()
         val sign = if (d < 0) "-" else ""

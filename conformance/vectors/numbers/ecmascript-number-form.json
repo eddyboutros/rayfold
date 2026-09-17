@@ -1,0 +1,41 @@
+{
+  "name": "numbers/ecmascript-number-form",
+  "about": "How a number is written when it is hashed (spec 12 §4.2). Two servers that scope an idempotency record differently answer each other's retries with already_exists instead of the first attempt's result, so this is the form both runtimes must agree on, and it is the one a third implementation has to reproduce without reading either.",
+  "source": "ECMA-262, Number::toString(x, 10). Every expectation below is derived from that algorithm, not captured from a Rayfold runtime: a vector written down from an implementation only proves the implementations agree, which was true the whole time the RB dictionary in spec 09 was wrong.",
+  "rule": [
+    "Let n, k and s be integers such that k >= 1, 10^(k-1) <= s < 10^k, s x 10^(n-k) = x, and k is as small as it can be.",
+    "k <= n <= 21: the k digits of s, then n-k zeros. No decimal point, no exponent.",
+    "0 < n <= 21: the k digits of s with a decimal point after the first n of them.",
+    "-6 < n <= 0: '0.', then -n zeros, then the k digits of s.",
+    "otherwise: exponential. One digit, then '.' and the rest when k > 1, then 'e', then the sign of n-1, then |n-1|.",
+    "Negative zero is written '0': the sign of zero is not information a hash should carry."
+  ],
+  "cases": [
+    { "name": "zero", "literal": "0", "canonical": "0" },
+    { "name": "negative zero is written as zero", "literal": "-0", "canonical": "0", "why": "String(-0) is '0' in ECMAScript; a scope must not depend on how a client spelled nothing" },
+    { "name": "an integer keeps no decimal point", "literal": "1.0", "canonical": "1", "why": "JSON parsing gives the value, so the literal 1.0 and the literal 1 are one number" },
+    { "name": "a trailing zero is not part of the number", "literal": "2.50", "canonical": "2.5" },
+    { "name": "negative", "literal": "-2.5", "canonical": "-2.5" },
+    { "name": "three digits", "literal": "100", "canonical": "100" },
+    { "name": "the same value written with an exponent", "literal": "1e2", "canonical": "100", "why": "n = 3, so k <= n <= 21 and the exponent form is not used" },
+
+    { "name": "binary floating point is not hidden", "literal": "0.30000000000000004", "canonical": "0.30000000000000004", "why": "the value of 0.1 + 0.2; canonicalisation rounds nothing" },
+    { "name": "four decimal places", "literal": "0.0001", "canonical": "0.0001", "why": "n = -3, inside -6 < n <= 0" },
+
+    { "name": "the last magnitude written in full, small end", "literal": "1e-6", "canonical": "0.000001", "why": "n = -5, so -6 < n <= 0 holds and the plain form is used" },
+    { "name": "the first magnitude written as an exponent, small end", "literal": "1e-7", "canonical": "1e-7", "why": "n = -6, so -6 < n is false: this is the boundary, and it is exclusive" },
+    { "name": "several digits just inside the small boundary", "literal": "0.0000015", "canonical": "0.0000015", "why": "n = -5 with k = 2" },
+    { "name": "several digits just outside it", "literal": "1.5e-7", "canonical": "1.5e-7" },
+
+    { "name": "the last magnitude written in full, large end", "literal": "1e20", "canonical": "100000000000000000000", "why": "n = 21, so k <= n <= 21 holds: 1 followed by twenty zeros" },
+    { "name": "the first magnitude written as an exponent, large end", "literal": "1e21", "canonical": "1e+21", "why": "n = 22 leaves the plain range; note the '+' on a positive exponent, which the small end does not have" },
+    { "name": "many digits just inside the large boundary", "literal": "123456789012345680000", "canonical": "123456789012345680000", "why": "n = 21; the digits beyond what a double holds are already lost by parsing" },
+
+    { "name": "the largest exact integer", "literal": "9007199254740991", "canonical": "9007199254740991", "why": "2^53 - 1" },
+    { "name": "one past it is not representable and rounds", "literal": "9007199254740993", "canonical": "9007199254740992", "why": "the nearest double to 2^53 + 1 is 2^53; a client cannot send the odd number at all" },
+    { "name": "more digits than a double carries", "literal": "123456789012345678901234567890", "canonical": "1.2345678901234568e+29" },
+
+    { "name": "the smallest positive number", "literal": "5e-324", "canonical": "5e-324", "why": "the minimum denormal" },
+    { "name": "the largest", "literal": "1.7976931348623157e308", "canonical": "1.7976931348623157e+308" }
+  ]
+}
