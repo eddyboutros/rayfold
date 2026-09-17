@@ -389,7 +389,23 @@ class RayfoldHttp(
             ManifestMode.FULL -> server.ir
         }
         json(call, 200, buildJsonObject {
-            put("rayfold", "0.1"); put("extensions", JsonArray(extensions().map { JsonPrimitive(it) }))
+            put("rayfold", "0.1")
+            // The hash of the IR this server holds, bare lower-case hex as the Rayfold-Schema header carries it, and
+            // not recomputable from `schema` below, which is redacted by default (spec 04 section 4a).
+            put("schemaHash", server.hash)
+            put("extensions", JsonArray(extensions().map { JsonPrimitive(it) }))
+            // Named one at a time: this document is served without a viewer to anyone who can reach the endpoint, so
+            // what goes in it is chosen rather than whatever the server happens to be configured with.
+            put(
+                "limits",
+                buildJsonObject {
+                    put("budget", server.options.budget)
+                    put("maxOps", server.options.maxOps)
+                    put("maxDepth", server.options.maxDepth)
+                    put("maxFields", server.options.maxFields)
+                    put("trustedShapes", server.options.trustedShapes)
+                },
+            )
             put("schema", RayfoldSchemaIR.json.encodeToJsonElement(RayfoldSchemaIR.serializer(), ir))
         })
     }

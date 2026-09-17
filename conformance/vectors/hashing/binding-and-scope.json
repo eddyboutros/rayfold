@@ -1,0 +1,76 @@
+{
+  "name": "hashing/binding-and-scope",
+  "about": "The two hashes a shared idempotency store makes cross-runtime: the scope a record is kept under, and the binding that says which command it answers. Servers of different implementations sharing one table must agree on both, or each answers the other's retries with already_exists instead of the first attempt's result - a fleet that looks healthy and quietly runs commands twice.",
+  "source": "spec 12 §4.2 for the two hashes, spec 01 §9 for canonical JSON, and the numbers/ area for the number form. Each digest below was taken over the canonical text in the same case with a general-purpose SHA-256, not read out of a runtime.",
+  "rule": [
+    "binding = SHA-256, lower-case hex, of the canonical JSON of { \"op\": <operation name>, \"args\": <coerced arguments> }.",
+    "scope = the same hash, of the viewer.",
+    "In both, a number is written as ECMAScript writes it (numbers/), so 2.50 and 2.5 are one number and hash alike.",
+    "Elsewhere canonical JSON keeps a number as it was written: an implementation that normalises only here changes none of its other hashes."
+  ],
+  "bindings": [
+    {
+      "name": "an operation and its arguments",
+      "op": "restock",
+      "args": { "id": "b1", "qty": 2 },
+      "canonical": "{\"args\":{\"id\":\"b1\",\"qty\":2},\"op\":\"restock\"}",
+      "hash": "bd294d093f831f9662639b10a635d2b922e985d8fe3b2e35f73b2b15b664c4f4",
+      "why": "keys sort at every level: args before op, and id before qty inside it"
+    },
+    {
+      "name": "a decimal argument",
+      "op": "restock",
+      "args": { "id": "b1", "qty": 2.5 },
+      "canonical": "{\"args\":{\"id\":\"b1\",\"qty\":2.5},\"op\":\"restock\"}",
+      "hash": "c3a798f6ee29dd08612660fc7b227a6cdc93efc9df9fb30638e91718931c01d2"
+    },
+    {
+      "name": "the same command with the arguments written in another order",
+      "op": "restock",
+      "args": { "qty": 2.5, "id": "b1" },
+      "canonical": "{\"args\":{\"id\":\"b1\",\"qty\":2.5},\"op\":\"restock\"}",
+      "hash": "c3a798f6ee29dd08612660fc7b227a6cdc93efc9df9fb30638e91718931c01d2",
+      "why": "same binding: a client that serialises its arguments differently must still get its own retry replayed"
+    },
+    {
+      "name": "a command with no arguments",
+      "op": "ping",
+      "args": {},
+      "canonical": "{\"args\":{},\"op\":\"ping\"}",
+      "hash": "7fdc31bb0a2cd45ca1e657f7d452fa7d0c87fe1ac683b8f43b4b935a3b04fc2b"
+    },
+    {
+      "name": "nested arguments take the number rule too",
+      "op": "x",
+      "args": { "a": { "b": 1.0 } },
+      "canonical": "{\"args\":{\"a\":{\"b\":1}},\"op\":\"x\"}",
+      "hash": "4569c5c07906d16c0205955e4f20da6a33cdb3a24f34a0b4db6d2b3b2ad7536a",
+      "why": "1.0 is the number 1, at any depth"
+    }
+  ],
+  "scopes": [
+    {
+      "name": "a viewer object",
+      "viewer": { "id": "u1", "tier": 2 },
+      "canonical": "{\"id\":\"u1\",\"tier\":2}",
+      "hash": "e779509076f090fa2c72f7c489668c5723811a96cdfeacc9ea1e8c3f949e3d5e"
+    },
+    {
+      "name": "the same viewer with the members in another order",
+      "viewer": { "tier": 2.0, "id": "u1" },
+      "canonical": "{\"id\":\"u1\",\"tier\":2}",
+      "hash": "e779509076f090fa2c72f7c489668c5723811a96cdfeacc9ea1e8c3f949e3d5e",
+      "why": "one viewer, one scope, however the server that holds it spells it"
+    },
+    {
+      "name": "no viewer at all",
+      "viewer": null,
+      "canonical": "null",
+      "hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "why": "the scope still exists as a value; a keyed command from an anonymous caller is refused for a different reason (§4.1)"
+    }
+  ],
+  "notSpecifiedYet": {
+    "schemaHash": "The third hash the protocol depends on cannot be given a vector yet. It is SHA-256 of the canonical IR, and spec 01 §9 gives the IR's top-level shape and then says the canonical definition is `packages/schema/src/ir.ts`. So the structure the protocol's identity is computed over is defined by pointing at one implementation, and an independent implementer cannot reproduce the hash without reading that file. Writing the IR out normatively is the prerequisite for a `hashing/schema.json`, and is tracked in PLAN.md."
+  }
+}

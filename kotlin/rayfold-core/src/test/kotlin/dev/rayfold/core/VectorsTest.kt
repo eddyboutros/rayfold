@@ -2,6 +2,7 @@ package dev.rayfold.core
 
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -11,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -54,6 +56,75 @@ class VectorsTest {
             }
         }
         assertTrue(out.size > 10, "no number vectors were found under ${root.absolutePath}")
+        return out
+    }
+
+    /**
+     * The manifest contract (spec 04 section 4a), against a real server. The document is not a pure function, so the
+     * vector pins which members exist and the rules relating them; the values depend on the schema.
+     */
+    @Test
+    fun manifest() {
+        val contract = Json.parseToJsonElement(File(File(root, "manifest"), "document.json").readText()).jsonObject
+        val named = (contract["members"] ?: error("no members")).jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }
+
+        val schema = """
+            entity Book { id: ID title: String costPrice: Decimal? @allow(read: viewer.role == "admin") }
+            query book(id: ID): Book?
+        """.trimIndent()
+        val server = RayfoldServer(SchemaText.load(schema).ir, Resolvers(queries = mapOf("book" to { _, _ -> null })))
+        val http = RayfoldHttp(server) { JsonNull }.start(0)
+        try {
+            val port = http.address.port
+            val text = java.net.URI("http://127.0.0.1:$port/rayfold/manifest").toURL().readText()
+            val body = Json.parseToJsonElement(text).jsonObject
+
+            assertEquals(named.sorted(), body.keys.sorted(), "the manifest must serve exactly the members spec 04 section 4a names")
+            val hash = body["schemaHash"]?.jsonPrimitive?.content
+            assertTrue(hash != null && Regex("^[0-9a-f]{64}$").matches(hash), "schemaHash is bare lower-case hex, not a prefixed shape id: was $hash")
+            val limits = body["limits"]?.jsonObject ?: error("no limits")
+            val keys = (contract["members"]!!.jsonArray.first { it.jsonObject["name"]!!.jsonPrimitive.content == "limits" }).jsonObject["keys"]!!.jsonArray
+            for (k in keys) assertTrue(limits.containsKey(k.jsonPrimitive.content), "limits.${k.jsonPrimitive.content} is missing")
+        } finally {
+            http.stop(0)
+        }
+    }
+
+    @TestFactory
+    fun hashing(): List<DynamicTest> {
+        val out = mutableListOf<DynamicTest>()
+        for ((file, doc) in area("hashing")) {
+            for (case in doc["bindings"]?.jsonArray ?: error("$file has no bindings")) {
+                val c = case.jsonObject
+                val name = c["name"]?.jsonPrimitive?.content ?: error("$file has a binding without a name")
+                val why = c["why"]?.jsonPrimitive?.content ?: name
+                out.add(
+                    DynamicTest.dynamicTest("hashing/$file: binding: $name") {
+                        val bound = buildJsonObject {
+                            put("op", c["op"]!!.jsonPrimitive.content)
+                            put("args", c["args"]!!)
+                        }
+                        // Canonical.hashed is the number-normalising form spec 12 section 4.2 requires here, and
+                        // only here; the canonical text is asserted too, so a mismatch says which half is wrong
+                        assertEquals(c["canonical"]?.jsonPrimitive?.content, Canonical.hashed(bound), why)
+                        assertEquals(c["hash"]?.jsonPrimitive?.content, sha256(Canonical.hashed(bound)), why)
+                    },
+                )
+            }
+            for (case in doc["scopes"]?.jsonArray ?: error("$file has no scopes")) {
+                val c = case.jsonObject
+                val name = c["name"]?.jsonPrimitive?.content ?: error("$file has a scope without a name")
+                val why = c["why"]?.jsonPrimitive?.content ?: name
+                out.add(
+                    DynamicTest.dynamicTest("hashing/$file: scope: $name") {
+                        val viewer = c["viewer"] ?: JsonNull
+                        assertEquals(c["canonical"]?.jsonPrimitive?.content, Canonical.hashed(viewer), why)
+                        assertEquals(c["hash"]?.jsonPrimitive?.content, sha256(Canonical.hashed(viewer)), why)
+                    },
+                )
+            }
+        }
+        assertTrue(out.size > 5, "no hashing vectors were found under ${root.absolutePath}")
         return out
     }
 
@@ -151,4 +222,7 @@ class VectorsTest {
     }
 
     private fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
+
+    /** A general-purpose digest, so the vector checks the runtime rather than the runtime checking itself. */
+    private fun sha256(s: String): String = hex(java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray()))
 }

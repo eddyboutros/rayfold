@@ -1,7 +1,8 @@
 # Working plan — towards 0.2.0
 
-Tracking file for the current block of work. Not part of the published docs; delete before release or keep as a
-contributor note.
+Tracking file for the current block of work. Not part of the published docs; decide before release whether it stays
+as a contributor note — it is candid about defects and about my own mistakes, which suits a contributor and may not
+suit a shop window.
 
 ## Where this plan came from
 
@@ -17,10 +18,6 @@ with the rule that makes it worth anything:
 > The fixtures must not be generated exclusively from the TypeScript implementation… Otherwise the two
 > implementations can agree on the same wrong answer.
 
-That is the correction. Vectors captured *from* a runtime prove the runtimes agree — which was true the whole time
-the RB dictionary was wrong. Expectations have to be written from the spec, then run at both runtimes, and every
-disagreement is a finding.
-
 **The one-sentence goal:** don't prove TypeScript and Kotlin agree with each other; prove both agree with a protocol
 that exists independently of either.
 
@@ -28,7 +25,7 @@ that exists independently of either.
 
 ## Verification gate (run ALL of these before any push)
 
-I have shipped three CI failures by running a subset. The full local equivalent of the `typescript` job:
+Three CI failures so far, each from running a subset. The full local equivalent:
 
 ```sh
 npm run typecheck
@@ -40,127 +37,123 @@ npm run docs:build
 cd kotlin && ./gradlew check                # count JUnit XML; "up-to-date" means it did NOT run
 ```
 
-Traps that have actually bitten, in order of how much time each cost:
+Traps that have actually bitten, worst first:
 
-- **`npm run typecheck` is not `npm run build`.** The root tsconfig has node types; per-package build configs set
-  `"types": []`. `Buffer` in `packages/postgres` passed typecheck and failed the build. → CI failure.
-- **The oracle files are generated and committed.** Changing any string the TS runtime emits into
-  `kotlin/rayfold-core/src/test/resources/oracle` requires regenerating them *and* changing the Kotlin side to match.
-  → CI failure, twice.
-- **Gradle "up-to-date" means nothing ran.** Count `tests=` from the JUnit XML, don't trust `BUILD SUCCESSFUL`.
-  Also `./gradlew` lives in `kotlin/`, not the repo root — running it from the root exits 0 having done nothing.
-- **The fleet suite is skipped locally** (needs Postgres + the built JVM member) and several of its tests are
+- **`typecheck` is not `build`.** Root tsconfig has node types; per-package build configs set `"types": []`.
+  `Buffer` in `packages/postgres` passed typecheck, failed the build. → CI failure.
+- **The oracle files are generated *and* committed.** Changing any string the TS runtime emits into
+  `kotlin/.../resources/oracle` needs them regenerated *and* the Kotlin side changed to match. → CI failure, twice.
+- **Gradle "up-to-date" means nothing ran.** Count `tests=` from the JUnit XML. `./gradlew` lives in `kotlin/`;
+  from the repo root it exits 0 having done nothing.
+- **The fleet suite is skipped locally** (needs Postgres + the built JVM member) and several tests are
   `skipIf(win32)`. Anything touching drain, live queries or the relay is effectively untested here.
-- **`e2e/*.json` churn on every test run** (timestamps, random idempotency keys). Restore them before committing.
-- **A property test you have not seen fail proves nothing.** Run new properties against the pre-fix code.
+- **`e2e/*.json` churn on every run** (timestamps, random keys). Restore before committing.
+- **A property test you have not seen fail proves nothing.** Run new properties against the pre-fix code. One of
+  mine passed against the vulnerable code because its URLs used the wrong argument names.
 
 ---
 
-## Done
+## 1. The conformance vector pack — 6 of 10 areas
 
-- [x] **Security: capability attenuation cannot widen.** Facts may be dropped, not changed or added; the token's own
-      `ops`/`exp`/`jti`/`iss` applied last so a fact cannot shadow the authorisation gate. (`6e8f637`)
-- [x] **Security: MCP serves the redacted IR by default**, `schema: "full" | "off"` to choose. (`6e8f637`)
-- [x] **Security: `resources/read` cannot run a command** — the op's kind decides, not the URI. (`6e8f637`)
-- [x] **Both invariants as properties**, verified to fail against the pre-fix code. (`4730edd`)
-- [x] **Status vocabulary** in `spec/process.md`: normative / implemented / reserved / experimental / informative,
-      with "a reference implementation MUST NOT silently implement less than the normative specification". (`4730edd`)
-- [x] **Live-query guarantee stated**: eventual re-establishment by refetch, not exactly-once delivery. Resume named
-      as a different guarantee rather than the next step. (`4730edd`)
-- [x] Kotlin MCP description aligned + oracle regenerated (CI fix).
+`conformance/vectors/`, run by `packages/schema/src/vectors.test.ts`, `packages/rb/src/vectors.test.ts`,
+`packages/server/src/manifest-vectors.test.ts` and `VectorsTest.kt`.
 
-## Next: the conformance fixture pack
+**Method:** write the expectation from the spec, *then* run both runtimes. Every disagreement is a finding. Where a
+vector cannot be written because the spec does not say, that is the most valuable output — it is the ambiguity an
+independent implementer would have hit.
 
-`conformance/fixtures/` gains the directories he named. Each fixture carries `input`, `expected canonical form`,
-`expected hash`, `expected error`, `protocol version`; and where it is a state machine, `initial state`,
-`operations`, `expected final state`.
+- [x] **`numbers/`** — 21 cases from ECMA-262 `Number::toString`. Found: Kotlin wrote `4.9e-324` for the minimum
+      denormal where the rule gives `5e-324`, because Java's `Double.toString` must emit a digit after the point.
+      Fixed by shortening while the value still round-trips.
+- [x] **`canonicalization/`** — 15 cases. Found: spec 01 §9 defined canonical JSON — what the **schema hash** is
+      taken over — in one sentence, never saying key order or escaping. Now specifies UTF-16 code-unit ordering, the
+      escape set and the unpaired-surrogate rule. And Kotlin wrote unpaired surrogates through literally, which has
+      no UTF-8 encoding, so the hash stopped being a function of the value. Fixed.
+- [x] **`shapes/`** — 11 cases, text → canonical → id. Found: §3 never said how *arguments* separate, so two
+      readings gave different ids for one shape; now a table of every separator. And Kotlin's `@defer` parser
+      accepted what the grammar refuses. Fixed.
+- [x] **`binary/`** — 18 cases plus all 40 dictionary ids. Both runtimes already correct; the count spec 09 got
+      wrong is now pinned. Found: §2 never said which encoding form an encoder must use, so RB bytes were not a
+      function of the value. Now shortest-form.
+- [x] **`manifest/`** — the contract, not values. Found: Kotlin served 3 of 5 members; my own §4a had two errors (a
+      `sha256:` prefix that does not exist, and calling the hash recomputable from a document that is redacted); and
+      `manifest()` published every server option except `now` — a denylist where a public document needs an
+      allowlist. All fixed. **UNCOMMITTED as of now.**
+- [x] **`hashing/`** — 8 cases for the idempotency binding and viewer scope, each digest taken over the canonical
+      text with a general-purpose SHA-256. Both runtimes agreed. **The finding is what could not be written:** the
+      *schema hash* has no vector, because spec 01 §9 gives the IR's top-level shape and then defers to
+      `packages/schema/src/ir.ts` for the canonical definition. The structure the protocol's identity is computed
+      over is defined by pointing at one implementation — the reviewer's central warning, at the centre of the
+      protocol. See the new task below.
 
-Order chosen so the early ones have a source of truth outside Rayfold:
-
-- [x] **`numbers/`** — 21 vectors written from ECMA-262 `Number::toString`, run by both runtimes
-      (`packages/schema/src/vectors.test.ts`, `VectorsTest.kt`). **Found a real divergence on the first run:** Kotlin
-      wrote `4.9e-324` for the minimum denormal because Java's `Double.toString` must emit a digit after the point,
-      where ECMAScript asks only for the fewest digits that read back — `5e-324`. Fixed by shortening while the value
-      still round-trips. Neither runtime's existing tests covered a denormal, so they had agreed with each other and
-      not with the spec: the method working exactly as intended, on day one.
-- [x] **`canonicalization/`** — 15 cases. **The biggest spec finding so far:** spec 01 §9 defined canonical JSON,
-      which the *schema hash* is taken over, in one sentence — "keys sorted, no insignificant whitespace, UTF-8" —
-      never saying what order keys sort in or how strings escape. Three implementations could satisfy it three ways
-      and get three different schema hashes. §9 now specifies UTF-16 code-unit ordering (with the astral-vs-U+FFFD
-      case that separates it from code-point ordering), the exact escape set, and the unpaired-surrogate rule.
-      **And a code finding:** Kotlin wrote an unpaired surrogate through literally, which has no UTF-8 encoding — the
-      JVM substitutes `?` on the way to bytes, so the hash stopped being a function of the value. Now escaped.
-- [ ] **`hashing/`** — schema hash and binding hash over the above. Expected hash written into the fixture.
-- [x] **`shapes/`** — 11 vectors: text → canonical form → id, each id the SHA-256 of the canonical text in the same
-      case taken with a general-purpose digest. **Two findings.** (1) Writing them exposed a spec gap: §3 never said
-      how *arguments* are separated, so `reviews(after: "r1" first: 2)` and `reviews(after: "r1", first: 2)` were
-      both defensible and would give different ids — spec 02 §3 now gives every separator in a table. (2) Kotlin
-      accepted `@defer(foo: "x")` and turned `@defer(label: 5)` into a null label, where the grammar admits neither;
-      its parser is now strict. All 9 valid cases already produced identical canonical text and ids in both runtimes.
-- [x] **`binary/`** — 18 cases plus a check that encodes all 40 protocol keys and asserts each id, written from
-      spec 09 §2/§3 by hand (tag, then payload). **Both runtimes already agreed with every byte**, which is the
-      result worth having: the dictionary that spec 09 got wrong is now pinned by a vector and cannot drift again
-      without a test saying so. One ambiguity closed on the way: §2 listed both an inline and a tagged form for a
-      small integer without saying which an encoder must use, so RB bytes were not a function of the value. An
-      encoder now MUST pick the shortest form.
-- [ ] **`manifest/`** — the document now defined in spec 04 §4a. TS serves `schemaHash` and `limits`; Kotlin does not.
+- [ ] **Write the IR out normatively** (spec 01 §9): `TypeDef`, `OpDef`, `ViewDef`, which members appear when, and
+      the rule that optional members appear only when set and flags only when true. Prerequisite for a
+      `hashing/schema.json`, and the single biggest remaining "the implementation is the spec" gap. Should also
+      settle the Kotlin `extensions` divergence, since the question "is `extensions` in the hashed projection?"
+      currently has no answer outside the two codebases.
 - [ ] **`errors/`** — problem documents vs error frames, the lower-case title, the op-rooted detail path.
-- [ ] **`idempotency/`** — viewer scope, binding hash, `already_exists` on reuse, the lease/takeover rules.
+- [ ] **`idempotency/`** — viewer scope, binding hash, `already_exists` on reuse, lease and takeover.
 - [ ] **`authorization/`** — the denial table of spec 06, including the list-element case the runtimes disagree on.
-- [ ] **`patch/`** — last, because it needs the chapter below first.
+- [ ] **`patch/`** — blocked on the chapter below.
 
-**Method:** write the expectation from the spec, then run both runtimes. Every disagreement is a finding, and the
-13 known divergences should surface here rather than being fixed pairwise. Where a fixture cannot be written because
-the spec does not say, that is the most valuable output of the exercise — it is the ambiguity an independent
-implementer would have hit.
+**Scoreboard: 6 spec gaps, 4 code defects.** Five of the six gaps were found before running any code — including the
+biggest, which is a vector that could not be written at all.
 
-## Then: the patch chapter
+## 2. The patch chapter — largest piece, not started
 
-Not a formalism — an executable model. The reviewer's framing: the question stops being "can Rayfold send a patch?"
-and becomes "can a client maintain a correct representation of server state over time?"
+The reviewer's framing: the question stops being "can Rayfold send a patch?" and becomes **"can a client maintain a
+correct representation of server state over time?"** Not a formalism — an executable model.
 
-- [ ] State machine: client state at revision N, patch N+1 arrives, contiguous → apply, gap → resync.
+- [ ] State machine: client at revision N, patch N+1 arrives, contiguous → apply, gap → resync.
+- [ ] **Entity revisions, which do not exist today.**
+- [ ] Patch ordering, atomicity, replay.
 - [ ] Deterministic answers for: authorization change, entity deletion, collection membership change, pagination
       boundary change, reconnect, duplicate patch, old patch.
-- [ ] Entity revisions (do not exist today), patch ordering, replay.
-- [ ] Property test, the invariant he proposed:
-      `apply(all patches, initial state) == fresh query(final server state)`
-      over generated sequences of insert/update/delete/invalidate/reorder/pagination/authorization change.
+- [ ] Property test: `apply(all patches, initial state) == fresh query(final server state)` over generated sequences
+      of insert/update/delete/invalidate/reorder/pagination/authorization change.
+- [ ] Then `patch/` vectors, with `initial state` / `operations` / `expected final state`.
 
-## Then: Rayfold Commerce
+## 3. Rayfold Commerce, then an independent implementation
 
-The reference application, deliberately exercising the hard combinations at once: multi-tenant + authorization +
-pagination + live orders + nested entities + idempotency + reconnect + multiple servers + cache. Then break it
-on purpose — his Tests A–D (authorization change, collection mutation across a page boundary, reconnect, kill a
-server mid-flight).
+- [ ] The reference app: multi-tenant + authorization + pagination + live orders + nested entities + idempotency +
+      reconnect + multiple servers + cache, all at once. Then broken on purpose — his Tests A–D (authorization
+      change mid-subscription, collection mutation across a page boundary, reconnect, kill a server mid-flight).
+- [ ] An independent implementation, by someone given only the spec, the vectors and examples. Where they ask
+      "what does this mean?" is the specification's remaining ambiguity.
 
-## Then: an independent implementation
+## 4. Open defects from the documentation audit — 22 of 28
 
-Someone who has not read either runtime, given only the spec, the fixture pack and examples. Where they ask "what
-does this mean?" is the specification's remaining ambiguity.
+Full list with file:line in `scratchpad/code-bugs-next-phase.md`. Six are closed: the three security defects, and
+Kotlin's number form, `@defer` parser, unpaired surrogate and manifest members — **the last four closed by the vector
+pack rather than individually**, which is the point of building it.
 
----
+**Pull forward regardless of the pack:**
+- [ ] **Kotlin's IR omits `extensions`** (`Ir.kt`), and `IrJson.of` leaves it out of the hash input — a genuine
+      schema-hash divergence. `hashing/` should catch it.
+- [ ] **TS live query loses changes committed during its first run** (`batch.ts:475` awaits `collect()`, subscribes
+      at `:493`). Kotlin subscribes first and treats an unset read set as dirty. A silent data-correctness race.
 
-## Open defects from the documentation audit (25 of 28 remain)
+**Remaining cross-runtime (~8):** list-element policy denial (TS returns null, Kotlin fails the op — spec says
+Kotlin); Kotlin drops stream-item `errors`; `isCancelled` never wired, so `Values.isCancelled()` is always false;
+no `meta` on the Kotlin context, so `traceparent` never reaches resolvers; ETag does not strip `meta.ms`; 501
+without `Allow`; `cap` in neither manifest, so by process.md no client may use capability tokens; Kotlin client has
+no RB and no `upload()`; `maxRecords` counts in-flight claims on memory/JDBC but not on Postgres.
 
-Full list with file:line in `scratchpad/code-bugs-next-phase.md`. Most should be closed *by the fixture pack*
-rather than individually — that is the point of writing the expectations from the spec.
+**Remaining correctness (~12):** post-`fin` frames reachable on a throwing idempotency `put`; `@live(false)`
+enforced nowhere; unsafe `POST` single-frame response carries no `Cache-Control`; `@range` on a default never
+checked; `@page` on a query has no return-type check; reachability never seeds from `ir.views`;
+`createBindingHandler` is Node-only so REST bindings cannot be served on a fetch runtime; `client.upload()` is
+fetch-transport only; `JdbcStore` has no `screen()`; credit-based flow control implemented nowhere (now Reserved);
+misleading WebSocket error strings; `errorType` vs `type`/`title` between `fetch.ts` and `bindings.ts`.
 
-**13 cross-runtime divergences.** Kotlin IR omits `extensions` (different schema hash); Kotlin's shape `@defer`
-parser is lax (different shape ids); policy denial on a list element (TS returns null, Kotlin fails the op — spec
-says Kotlin); Kotlin drops stream-item `errors`; Kotlin `isCancelled` never wired; Kotlin context has no `meta` so
-`traceparent` never reaches resolvers; Kotlin ETag does not strip `meta.ms`; Kotlin 501 sends no `Allow`; manifests
-differ; `cap` in neither manifest; Kotlin client has no RB and no `upload()`; `maxRecords` counts in-flight claims
-on memory/JDBC but not on Postgres; `errorType` vs `type`/`title` between `fetch.ts` and `bindings.ts`.
-
-**12 correctness.** TS live query loses changes committed during its first run; post-`fin` frames reachable on a
-throwing idempotency `put`; `@live(false)` enforced nowhere; unsafe `POST` single-frame response carries no
-`Cache-Control`; `@range` on a default never checked; `@page` on a query has no return-type check; reachability
-never seeds from `ir.views`; `createBindingHandler` is Node-only so REST bindings cannot be served on a fetch
-runtime; `client.upload()` is fetch-transport only; `JdbcStore` has no `screen()`; credit-based flow control
-implemented nowhere (now Reserved); misleading WebSocket error strings.
-
-## Not doing yet, and why
+## 5. Not doing yet, and why
 
 GraphQL endpoint, hosted registry, more runtimes. Every new surface multiplies the compatibility matrix, and the
 reviewer and I agree the protocol should be reproducible by a third party before it grows another face.
+
+## 6. Owner's own list
+
+- [ ] Reply to the reviewer — he asked for the fixture pack when it exists, and there is now a concrete result to
+      send: five spec gaps and four code defects, four of the gaps found before running any code.
+- [ ] `rayfold check --strict` wording; "Enforce HTTPS" in the Pages settings.
+- [ ] Decide whether `PLAN.md` and `engineer-response.md` belong in a public repo.

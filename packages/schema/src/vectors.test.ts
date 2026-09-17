@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { canonicalJson } from "./canonical.ts";
+import { canonicalJson, hashJson } from "./canonical.ts";
 import { canonicalShape, parseShapeText, shapeIdOf } from "./shape.ts";
 
 /**
@@ -59,6 +59,35 @@ describe("conformance vectors: numbers", () => {
           // what is under test, since it is where 2.50 and 2.5 become one number
           const value = JSON.parse(c.literal) as number;
           expect(canonicalJson(value), c.why ?? c.name).toBe(c.canonical);
+        });
+      }
+    });
+  }
+});
+
+describe("conformance vectors: hashing", () => {
+  const docs = load<never>("hashing").map((f) => ({
+    file: f.file,
+    doc: JSON.parse(readFileSync(join(ROOT, "hashing", f.file), "utf8")) as {
+      bindings: Array<{ name: string; op: string; args: Record<string, unknown>; canonical: string; hash: string; why?: string }>;
+      scopes: Array<{ name: string; viewer: unknown; canonical: string; hash: string; why?: string }>;
+    },
+  }));
+
+  for (const { file, doc } of docs) {
+    describe(file, () => {
+      for (const c of doc.bindings) {
+        it(`binding: ${c.name}`, () => {
+          // the canonical text is checked as well as the digest: when a hash disagrees, the text says whether the
+          // canonicaliser or the hashing is at fault, which is the difference between a five-minute fix and a day
+          expect(canonicalJson({ op: c.op, args: c.args }), c.why ?? c.name).toBe(c.canonical);
+          expect(hashJson({ op: c.op, args: c.args })).toBe(c.hash);
+        });
+      }
+      for (const c of doc.scopes) {
+        it(`scope: ${c.name}`, () => {
+          expect(canonicalJson(c.viewer), c.why ?? c.name).toBe(c.canonical);
+          expect(hashJson(c.viewer)).toBe(c.hash);
         });
       }
     });

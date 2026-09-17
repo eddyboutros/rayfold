@@ -1,0 +1,26 @@
+{
+  "name": "manifest/document",
+  "about": "The manifest is the first thing a client reads and the only thing it can read before it knows anything: which extensions it may use, what bounds a batch is judged against, and the identity of the schema. Until spec 04 §4a was written the document was not specified at all, and the two runtimes had drifted into serving different members - which a client discovers by finding a member missing, at runtime, in production.",
+  "source": "spec 04 §4a. The member set and the shape of each member come from that section. The values here are not pinned - they depend on the schema and on how the server is configured - so what a runtime is checked against is the contract: which members exist, what kind of thing each is, and the two rules relating them.",
+  "rule": [
+    "The document has exactly these members: rayfold, schemaHash, extensions, limits, schema.",
+    "rayfold is the protocol version, a string.",
+    "schemaHash is SHA-256 of the canonical IR in lower-case hexadecimal, 64 characters, NOT prefixed - unlike a shape id, which carries 'sha256:'. It is the same value the Rayfold-Schema response header carries.",
+    "schemaHash is not recomputable from the schema member, which is redacted by default: it is an identity to compare, not a checksum of what was sent.",
+    "extensions is an array of strings, and a client must not use an extension that is not in it.",
+    "limits defines budget, maxOps, maxDepth and maxFields; a server may name others it enforces.",
+    "schema is the IR, with policy expressions redacted unless the server is configured otherwise."
+  ],
+  "members": [
+    { "name": "rayfold", "type": "string", "required": true },
+    { "name": "schemaHash", "type": "hex64", "required": true, "why": "a client cannot tell a schema change from a network change without it, and it is what the RB dictionary agreement is keyed on" },
+    { "name": "extensions", "type": "string[]", "required": true },
+    { "name": "limits", "type": "object", "required": true, "keys": ["budget", "maxOps", "maxDepth", "maxFields"], "why": "so a client can size a batch rather than discover a refusal" },
+    { "name": "schema", "type": "object", "required": true }
+  ],
+  "rules": [
+    { "name": "schemaHash is bare lower-case hex, not prefixed", "check": "hex64" },
+    { "name": "schemaHash matches the Rayfold-Schema header", "check": "matchesHeader" },
+    { "name": "the redacted schema carries no policy expression", "check": "redacted" }
+  ]
+}

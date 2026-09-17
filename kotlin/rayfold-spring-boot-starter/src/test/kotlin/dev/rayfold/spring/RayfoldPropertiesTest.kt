@@ -1,5 +1,6 @@
 package dev.rayfold.spring
 
+import dev.rayfold.core.BatchOptions
 import dev.rayfold.core.RayfoldSchemaIR
 import dev.rayfold.core.RayfoldServer
 import dev.rayfold.core.SchemaText
@@ -33,7 +34,16 @@ private const val BOOK_ID = """{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"m
 /** What `GET {path}/manifest` serves for [ir]. */
 private fun manifestOf(ir: RayfoldSchemaIR): JsonObject = buildJsonObject {
     put("rayfold", "0.1")
+    put("schemaHash", SchemaText.hash(ir))
     put("extensions", JsonArray(listOf(JsonPrimitive("live"), JsonPrimitive("rb"))))
+    put(
+        "limits",
+        buildJsonObject {
+            val d = BatchOptions()
+            put("budget", d.budget); put("maxOps", d.maxOps); put("maxDepth", d.maxDepth)
+            put("maxFields", d.maxFields); put("trustedShapes", d.trustedShapes)
+        },
+    )
     put("schema", RayfoldSchemaIR.json.encodeToJsonElement(RayfoldSchemaIR.serializer(), ir))
 }
 

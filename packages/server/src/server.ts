@@ -206,9 +206,21 @@ export class RayfoldServer {
     return this.shapes.register(typeof shape === "string" ? parseShapeText(shape) : shape, true);
   }
 
-  /** Discovery document (spec 10 outline). */
-  manifest(): { rayfold: string; schemaHash: string; extensions: string[]; limits: Omit<BatchOptions, "now"> } {
-    const { now: _now, ...limits } = this.options;
+  /**
+   * Discovery document (spec 04 §4a). Served without a viewer to anyone who can reach the endpoint, so what goes in
+   * it is named here rather than taken from whatever the server happens to be configured with: an option added for
+   * some unrelated reason must not find its way into a public document by default.
+   */
+  manifest(): { rayfold: string; schemaHash: string; extensions: string[]; limits: Record<string, number | boolean> } {
+    const o = this.options;
+    const limits: Record<string, number | boolean> = {
+      budget: o.budget,
+      maxOps: o.maxOps,
+      maxDepth: o.maxDepth,
+      maxFields: o.maxFields,
+      // whether inline shape text is refused, which decides how a client sends a shape at all
+      trustedShapes: !!o.trustedShapes,
+    };
     const extensions = ["live", "rb"];
     if (Object.values(this.ir.ops).some((o) => o.annotations.some((a) => a.name === "http"))) extensions.push("http");
     if (this.mounted.has("mcp")) extensions.push("mcp");

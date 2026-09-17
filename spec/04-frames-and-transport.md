@@ -134,9 +134,9 @@ Headers:
 ```json
 {
   "rayfold": "0.1",
-  "schemaHash": "sha256:...",
+  "schemaHash": "a7178902819ae544d6de0d1e099df33720cbe7abd5070aba79bbfcee33e3ae49",
   "extensions": ["live", "rb", "http", "mcp", "upload"],
-  "limits": { "maxOps": 50, "maxDepth": 8, "budget": 1000 },
+  "limits": { "budget": 1000, "maxOps": 50, "maxDepth": 8, "maxFields": 500 },
   "schema": { "rayfold": "0.1", "types": {}, "ops": {}, "views": {} }
 }
 ```
@@ -144,10 +144,20 @@ Headers:
 | Member | Meaning |
 |---|---|
 | `rayfold` | the protocol version this server speaks |
-| `schemaHash` | the hash of the IR below, so a client can tell a schema change from a network change |
+| `schemaHash` | SHA-256 of the canonical IR ([01 §9](01-schema.md)), lower-case hexadecimal and **not** prefixed — unlike a shape id ([02 §3](02-shapes.md)), which is. The same value the `Rayfold-Schema` response header carries. |
 | `extensions` | exactly the extensions this server serves. A client MUST NOT use an extension that is not listed ([process.md](process.md)). |
-| `limits` | the bounds a batch is judged against ([06 §5](06-auth.md), [12 §3](12-security.md)), so a client can size a batch rather than discover a refusal |
+| `limits` | the bounds a batch is judged against ([06 §5](06-auth.md), [12 §3](12-security.md)), so a client can size a batch rather than discover a refusal. `budget`, `maxOps`, `maxDepth` and `maxFields` are defined; a server MAY name others it enforces. |
 | `schema` | the IR ([01 §9](01-schema.md)), with policy expressions redacted unless the server is configured to serve them ([12 §5.6](12-security.md)) |
+
+**`schemaHash` is not recomputable from `schema`.** It is taken over the IR the server holds, and what it serves here
+is redacted by default, so hashing the `schema` member gives a different value. The hash is an identity to compare
+against — the one in this document, the one in the `Rayfold-Schema` header on every response — and not a checksum of
+what was sent. A client detects drift by noticing the two stop matching, and a client that needs to verify the hash
+itself has to be served the full IR.
+
+A server MUST NOT put anything in this document that it would not publish. It is served without a viewer, to anyone
+who can reach the endpoint, so a member is added to it deliberately rather than by exposing whatever configuration
+happens to exist.
 
 ## 4b. Health and readiness
 

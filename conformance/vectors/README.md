@@ -47,6 +47,15 @@ Each file is one area:
 | `shapes/` | `shape`, `canonical`, `id`, or `rejected` | Text → canonical form → shape id (spec 02 §3). The id is the SHA-256 of the canonical text in the same case, taken with a general-purpose digest, so a runtime is checked against the text *and* against the identity rather than only against itself. A `rejected` case is a shape the grammar does not admit. |
 | `binary/` | `dictionary`, and `values` of `json` → `bytes` | RB tag bytes and the protocol key dictionary (spec 09 §2, §3). `dictionary` is the ordered list of 40 keys; the runner encodes `{key: 1}` for each and checks the id it lands on, since that is the id's only observable effect. Byte strings are hex. |
 | `canonicalization/` | `json`, `canonical` | Canonical JSON (spec 01 §9) — the form the schema hash is taken over. Key ordering by UTF-16 code unit, the escape set, and the unpaired-surrogate rule. |
+| `manifest/` | `members`, `rules` | The discovery document (spec 04 §4a). A document rather than a pure function, so this file pins the *contract* — which members exist, what kind of thing each is, and the rules relating them — and leaves the values free, since they depend on the schema and the configuration. Run against a live server on both sides. |
+| `hashing/` | `bindings`, `scopes` | The idempotency binding and viewer scope (spec 12 §4.2): `SHA-256(canonical JSON)`, with the number rule. Each case carries the canonical text as well as the digest, so a failure says whether the canonicaliser or the hashing is at fault. |
+
+**What `hashing/` cannot cover yet.** The third hash the protocol depends on — the **schema hash** — has no vector,
+because spec 01 §9 gives the IR's top-level shape and then says the canonical definition is
+`packages/schema/src/ir.ts`. The structure the protocol's identity is computed over is therefore defined by pointing
+at one implementation, and an independent implementer cannot reproduce the hash without reading that file. That is
+the reviewer's central warning sitting at the centre of the protocol, and writing the IR out normatively is the
+prerequisite for closing it.
 
 ## Still to come
 
