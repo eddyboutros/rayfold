@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { loadSchema } from "./load.ts";
+import { loadSchema, schemaHash } from "./load.ts";
 import { parseSchemaText } from "./parser.ts";
 import { validateIR } from "./validate.ts";
 import { RayfoldSyntaxError, tokenize } from "./lexer.ts";
@@ -148,6 +148,26 @@ describe("validation", () => {
     // guard: a type reached through a field, an argument or a declared error is not reported
     const reached = validateIR(parseSchemaText(`entity A { id: ID b: B } entity B { id: ID } input F { q: String } error Gone { id: ID } query a(f: F): A command c: A throws Gone`));
     expect(reached.filter((x) => x.code === "unreachable")).toEqual([]);
+  });
+});
+
+describe("the schema hash", () => {
+  const SCHEMA = `entity Book { id: ID title: String } query book(id: ID): Book?`;
+
+  it("does not move when vendor data is added, because vendor data is not part of the conversation", () => {
+    const { ir, hash } = loadSchema(SCHEMA);
+    // spec 01 §9: `extensions` is the one member excluded from the hashed form. An implementation that does not know
+    // a vendor's data ignores it, so an identity that moved with it would make two servers offering the same
+    // conversation look different, and a gateway that strips vendor metadata look like a schema change.
+    expect(schemaHash({ ...ir, extensions: { "vendor.build": "2026-09-17", "vendor.team": "platform" } })).toBe(hash);
+    expect(schemaHash({ ...ir, extensions: {} })).toBe(hash);
+  });
+
+  it("guard: it does move when anything a client can see changes", () => {
+    const { hash } = loadSchema(SCHEMA);
+    expect(loadSchema(`entity Book { id: ID title: String pages: Int } query book(id: ID): Book?`).hash).not.toBe(hash);
+    expect(loadSchema(`entity Book { id: ID title: String? } query book(id: ID): Book?`).hash).not.toBe(hash);
+    expect(loadSchema(`entity Book { id: ID title: String } query book(id: ID): Book`).hash).not.toBe(hash);
   });
 });
 

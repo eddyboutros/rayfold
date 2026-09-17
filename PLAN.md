@@ -86,11 +86,17 @@ independent implementer would have hit.
       over is defined by pointing at one implementation — the reviewer's central warning, at the centre of the
       protocol. See the new task below.
 
-- [ ] **Write the IR out normatively** (spec 01 §9): `TypeDef`, `OpDef`, `ViewDef`, which members appear when, and
-      the rule that optional members appear only when set and flags only when true. Prerequisite for a
-      `hashing/schema.json`, and the single biggest remaining "the implementation is the spec" gap. Should also
-      settle the Kotlin `extensions` divergence, since the question "is `extensions` in the hashed projection?"
-      currently has no answer outside the two codebases.
+- [x] **The IR is written out normatively** (spec 01 §9): document, TypeRef, TypeDef by kind, OpDef, ViewDef and
+      Shape, FieldDef/ArgDef/EnumValueDef, Annotation and the four tagged values (`$ident`, `$duration`, `$expr`,
+      `$type`), plus the two rules that make the hash stable — an optional member appears only when set, a flag only
+      when true. §9 no longer says "canonical definition in `packages/schema/src/ir.ts`".
+      **This settles the `extensions` divergence rather than picking a winner:** the hashed form now excludes
+      `extensions`, because vendor data is ignored by implementations that do not know it, so an identity that moved
+      with it would make two servers offering the same conversation look different and a gateway that strips vendor
+      metadata look like a schema change. Kotlin already projected it out; TypeScript hashed the whole object and
+      now does not. No published hash moves — nothing populates `extensions` today.
+- [ ] **`hashing/schema.json`** — now unblocked. Hand-derive the IR for a tiny schema from §9 and hash it, which is
+      the end-to-end check that a third party can reproduce a schema hash from the document alone.
 - [ ] **`errors/`** — problem documents vs error frames, the lower-case title, the op-rooted detail path.
 - [ ] **`idempotency/`** — viewer scope, binding hash, `already_exists` on reuse, lease and takeover.
 - [ ] **`authorization/`** — the denial table of spec 06, including the list-element case the runtimes disagree on.

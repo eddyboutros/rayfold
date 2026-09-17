@@ -220,21 +220,119 @@ An IR is valid when:
 
 ## 9. IR
 
-The IR is a JSON document with this top-level shape (TypeScript notation, canonical definition in
-`packages/schema/src/ir.ts`):
+The IR is a JSON document: the schema after parsing, with every default resolved and every reference checked. It is
+what the manifest serves, what RB derives its key dictionary from, and what the schema hash is taken over — so it is
+given here in full rather than by reference to any implementation. An implementation that produces this structure
+from the same schema text produces the same hash, which is the only way a third party can join a fleet.
 
-```ts
-interface RayfoldSchemaIR {
-  rayfold: "0.1";
-  types: Record<string, TypeDef>;      // entity | object | input | enum | union | scalar | error | event
-  ops: Record<string, OpDef>;          // query | command | stream
-  views: Record<string, ViewDef>;      // key "Type.name"
-  extensions?: Record<string, unknown>;
-}
-```
+**Two rules apply throughout**, and they are what make the hash stable:
 
-`TypeDef.fields[].ordinal` and `enum.values[].ordinal` are stable integers assigned at first publication
-and recorded in `rayfold.lock.json`; they are what RB uses on the wire and what `rayfold check` protects.
+* An **optional member appears only when it has a value.** A `description` nobody wrote is absent, not `null` or `""`.
+* A **flag appears only when true.** `builtin`, `interface`, `eager` and `partial` are present-and-`true` or absent.
+
+### 9.1 Document
+
+| Member | Always | Meaning |
+|---|---|---|
+| `rayfold` | yes | `"0.1"` |
+| `types` | yes | type name → [TypeDef](#93-typedef) |
+| `ops` | yes | operation name → [OpDef](#94-opdef) |
+| `views` | yes | `"Type.name"` → [ViewDef](#95-viewdef-and-shape) |
+| `extensions` | no | vendor data, namespaced by the vendor |
+
+**`extensions` is excluded from the hashed form.** Everything else is included. A conformant implementation ignores
+vendor data it does not know ([§4](#4-annotations)), so an identity that moved with it would make two servers
+offering the same conversation look different, and a gateway that strips vendor metadata look like a schema change.
+
+### 9.2 TypeRef
+
+A reference to a type, at a field, an argument or a return position.
+
+| Member | Always | Meaning |
+|---|---|---|
+| `kind` | yes | `"named"` or `"list"` |
+| `nullable` | yes | whether `null` is a value here |
+| `name` | on `named` | the type's name |
+| `args` | no | type arguments, a list of TypeRef — `Page<Book>` is `{kind:"named", name:"Page", args:[Book]}` |
+| `of` | on `list` | the element's TypeRef |
+
+### 9.3 TypeDef
+
+Every type carries `kind`, `name` and `annotations`; `description` when written; `builtin` when true. The rest is
+by kind:
+
+| `kind` | Also carries |
+|---|---|
+| `entity` | `fields` ([FieldDef](#96-fielddef-argdef-and-enumvaluedef)), `implements` (interface names, possibly empty) |
+| `object` | `fields`; `typeParams` when the type is generic; `interface` when true |
+| `input` | `fields` |
+| `error` | `fields` |
+| `event` | `fields` |
+| `enum` | `values` ([EnumValueDef](#96-fielddef-argdef-and-enumvaluedef)) |
+| `union` | `members`, the member type names |
+| `scalar` | nothing further |
+
+### 9.4 OpDef
+
+| Member | Always | Meaning |
+|---|---|---|
+| `kind` | yes | `"query"`, `"command"` or `"stream"` |
+| `name` | yes | |
+| `description` | no | |
+| `args` | yes | a list of ArgDef, possibly empty |
+| `returns` | yes | TypeRef |
+| `throws` | yes | declared error type names, possibly empty |
+| `emits` | yes | declared event type names, possibly empty |
+| `annotations` | yes | possibly empty |
+
+### 9.5 ViewDef and Shape
+
+A ViewDef is `type`, `name` and `shape`. A Shape is one member, `items`, a list of shape items. Each item carries
+`kind` and then:
+
+| `kind` | Also carries |
+|---|---|
+| `field` | `name`; `alias`, `args`, `shape` when present; `eager`, `partial` when true |
+| `spread` | `type`, `view` |
+| `on` | `type`, `shape` |
+| `defer` | `shape`; `label` when present |
+
+A shape item's `args` is an object of argument name → value, where a variable reference is `{"$var": "name"}`.
+Shape *text* and its canonical form are [02 §3](02-shapes.md); this is the parsed form the IR carries.
+
+### 9.6 FieldDef, ArgDef and EnumValueDef
+
+| Member | FieldDef | ArgDef | EnumValueDef |
+|---|---|---|---|
+| `name` | yes | yes | yes |
+| `description` | when written | when written | when written |
+| `type` | yes | yes | — |
+| `args` | yes, possibly empty | — | — |
+| `default` | when the field is an `input` field with one | when declared | — |
+| `annotations` | yes, possibly empty | yes, possibly empty | yes, possibly empty |
+| `ordinal` | yes | — | yes |
+
+`ordinal` is a stable integer assigned at first publication and recorded in `rayfold.lock.json`; ordinals are
+reserved for a future compact-struct encoding ([09 §3](09-binary-format.md)) and are what `rayfold check` protects
+against changing.
+
+### 9.7 Annotation and its values
+
+An annotation is `name` and `args`, an object of argument name → value. Values are JSON, except that four things
+which are not JSON are carried as single-member tagged objects:
+
+| Tag | Carries |
+|---|---|
+| `{"$ident": "..."}` | a bare identifier, such as `cursor` in `@page(cursor)` |
+| `{"$duration": 60000}` | a duration, in **milliseconds** — the schema's `60s` and `60000` are one value |
+| `{"$expr": ...}` | a policy expression, as the AST of [§5](#5-policy-expressions) |
+| `{"$type": ...}` | a TypeRef, such as the argument of `@input(Type)` |
+
+A policy expression node is one of: `{"k":"lit","v":...}`; `{"k":"path","root":"viewer"\|"args"\|"this","path":[...]}`;
+`{"k":"bin","op":...,"l":...,"r":...}`; `{"k":"not","e":...}`; `{"k":"call","fn":...,"args":[...]}`;
+`{"k":"list","items":[...]}`. A redacted manifest ([12 §5.6](12-security.md)) replaces an `allow` or `deny`
+annotation's `args` with `{}` and leaves the annotation itself in place, so a reader still learns that a policy
+exists without learning what it tests.
 
 ### Canonical JSON
 

@@ -18,6 +18,14 @@ export function loadSchema(text: string): LoadedSchema {
   return { ir, hash: schemaHash(ir), warnings: diags };
 }
 
+/**
+ * SHA-256 of the canonical IR (spec 01 §9), which is every member but `extensions`.
+ *
+ * Vendor data is ignored by implementations that do not know it, so an identity that moved with it would make two
+ * servers offering the same conversation look different to a client, and a gateway that strips vendor metadata look
+ * like a schema change. The JVM has always projected it out; this is the same rule written down.
+ */
 export function schemaHash(ir: RayfoldSchemaIR): string {
-  return hashJson(ir);
+  const { extensions: _vendor, ...hashed } = ir;
+  return hashJson(hashed);
 }
