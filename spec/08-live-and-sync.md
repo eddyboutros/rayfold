@@ -71,7 +71,7 @@ a load balancer should send the traffic elsewhere.
 ## 4. Client behaviour
 
 The client applies `patch` frames to its normalized cache exactly as it does for command patches, and
-treats a new `data` frame as a replacement of the stored result. `at` and `list` operations are applied to the
+treats a new `data` frame as a replacement of the stored result ([13](13-patches.md) is the whole rule). `at` and `list` operations are applied to the
 stored result of the operation whose frame carried them, so a list that gained or lost rows costs the rows that
 moved rather than the whole page. Because every query result is normalized,
 a live query keeps *every* view of the affected entities coherent, not only its own.

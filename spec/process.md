@@ -7,7 +7,7 @@ Rayfold. That only works if the documents change slowly and in the open.
 
 | Part | Status | What may change |
 |---|---|---|
-| Core 0.1 (documents 01 to 07, 12) | **Frozen** with the 0.1.0 release | Errata and clarifications that no conformant implementation fails. Anything else waits for Core 0.2. |
+| Core 0.1 (documents 01 to 07, 12, 13) | **Frozen** with the 0.1.0 release | Errata and clarifications that no conformant implementation fails. Anything else waits for Core 0.2. |
 | Core tooling 0.1 (document 11) | **Frozen** with the 0.1.0 release | As above. Evolution binds the `rayfold` CLI rather than a server, so an implementation is conformant without it. |
 | Extension `live` (08) | Draft | Anything, announced in the changelog, with the fixtures updated in the same change. |
 | Extension `rb` (09) | Draft | As above. The byte format keeps decoding what earlier 0.1 encoders wrote. |

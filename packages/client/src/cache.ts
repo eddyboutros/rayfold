@@ -166,7 +166,9 @@ export class RayfoldCache {
   denormalize(data: unknown, maxDepth = 16): unknown {
     const walk = (v: unknown, sel: Sel | undefined, depth: number): unknown => {
       if (v === null || typeof v !== "object") return v;
-      if (Array.isArray(v)) return v.map((x) => walk(x, sel, depth));
+      // a deleted entity leaves a gap in the list it was in; the gap is the cache's business, not the caller's
+      if (Array.isArray(v)) return v.filter((x) => !isGone(x)).map((x) => walk(x, sel, depth));
+      if (isGone(v)) return null;
       if (isRef(v)) {
         const e = this.entities.get(v.$ref);
         if (!e) return { $ref: v.$ref };
@@ -431,9 +433,26 @@ function containsRef(data: unknown, key: EntityKey): boolean {
   return Object.values(data as Record<string, unknown>).some((x) => containsRef(x, key));
 }
 
+/**
+ * What a deleted entity leaves behind in a list.
+ *
+ * Removing the element outright would be simpler and is wrong: a live query's `list` operations are positional and
+ * are computed against the list the server last sent (spec 04 §2b). A `del` from a command's own patch reaches only
+ * the client that ran the command, so if that client shortened its list, the `list del: [0]` that follows would take
+ * out whatever moved into the slot — one removal, two rows gone. Holding the position keeps the client's list the
+ * length the server believes it to be; `denormalize` hides the gap, so nothing observes it.
+ */
+interface Gone {
+  $gone: EntityKey;
+}
+function isGone(v: unknown): v is Gone {
+  return !!v && typeof v === "object" && !Array.isArray(v) && typeof (v as Record<string, unknown>)["$gone"] === "string";
+}
+
 function dropRef(data: unknown, key: EntityKey): unknown {
   if (data === null || typeof data !== "object") return data;
-  if (Array.isArray(data)) return data.filter((x) => !(isRef(x) && x.$ref === key)).map((x) => dropRef(x, key));
+  // in a list the reference becomes a gap rather than going away, so later positions still line up
+  if (Array.isArray(data)) return data.map((x) => (isRef(x) && x.$ref === key ? { $gone: key } : dropRef(x, key)));
   if (isRef(data)) return data.$ref === key ? null : data;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data as Record<string, unknown>)) out[k] = dropRef(v, key);

@@ -21,6 +21,7 @@ This document is the entry point; the numbered documents are normative.
 | 06 §6 | [Capability tokens](06-auth.md) | Extension `cap` |
 | 11 | [Evolution](11-evolution.md) | Core (tooling) |
 | 12 | [Security](12-security.md) | Core |
+| 13 | [Patches and client state](13-patches.md) | Core |
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 

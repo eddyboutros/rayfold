@@ -48,7 +48,8 @@ payload) so that a later patch to an entity is visible in every query that conta
 choice. The reference clients do not do this yet: they mark a result stale when an `inv` or `invOp` patch says so,
 and have no time-based expiry or `swr` refetch.
 
-Optimistic updates, offline queues and live invalidation are defined in [08](08-live-and-sync.md).
+What a client holds and how a patch changes it are defined in [13](13-patches.md). Optimistic updates, offline
+queues and live invalidation are defined in [08](08-live-and-sync.md).
 
 ## 4. Server result cache
 

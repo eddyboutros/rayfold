@@ -126,19 +126,37 @@ independent implementer would have hit.
 running any code, including the two biggest: a vector that could not be written at all (the IR defined by pointing at
 a file), and the built-in definitions the rewritten §9 still omitted.
 
-## 2. The patch chapter — largest piece, not started
+## 2. The patch chapter — `spec/13-patches.md` written; the 0.2 half is not
 
-The reviewer's framing: the question stops being "can Rayfold send a patch?" and becomes **"can a client maintain a
-correct representation of server state over time?"** Not a formalism — an executable model.
+Structured on the reviewer's §8 advice: make refetch deterministic *first*, and do not let resume inherit an
+ambiguity. So 13 specifies what 0.1 actually guarantees, and names the rest Reserved rather than designing it.
 
-- [ ] State machine: client at revision N, patch N+1 arrives, contiguous → apply, gap → resync.
-- [ ] **Entity revisions, which do not exist today.**
-- [ ] Patch ordering, atomicity, replay.
-- [ ] Deterministic answers for: authorization change, entity deletion, collection membership change, pagination
-      boundary change, reconnect, duplicate patch, old patch.
-- [ ] Property test: `apply(all patches, initial state) == fresh query(final server state)` over generated sequences
-      of insert/update/delete/invalidate/reorder/pagination/authorization change.
-- [ ] Then `patch/` vectors, with `initial state` / `operations` / `expected final state`.
+- [x] **The chapter exists.** Patches were spread across 04 §2, 07 §3 and 08 and stated nowhere in one place, which
+      is a large part of why the semantics were never pinned. 13 is Core, as a *clarification*: it adds no
+      requirement a conformant 0.1 implementation does not already meet.
+- [x] **The client model**: entities, results-as-references, staleness. Every operation, precisely — `set` is
+      field-level, `del` removes every reference including a result's root (verified: that result holds `null`).
+- [x] **Idempotence, and the one exception.** `set`, `del`, `inv`, `invOp` and `at` are all idempotent; **`list` is
+      positional and corrupts if applied twice**. That single fact is why a resume cursor cannot be bolted on, and
+      it had never been written down.
+- [x] **Deterministic answers** for deletion, membership change, pagination boundary (a fresh `data` frame — there
+      is no patch for a window that shifted), authorization change (nothing special: a denial is a change in the
+      answer), a patch for a dropped result, and reconnect.
+- [x] **What 0.1 does not guarantee**, said plainly: no cross-response ordering. `set` carries absolute values, so
+      two patches for one entity racing on different connections settle by arrival order. Converges in practice
+      because the live query re-executes after the command; not guaranteed. That is the honest case for revisions.
+- [ ] **Reserved → 0.2: entity revisions.** Would turn the ordering caveat into a rule and make a duplicate `list`
+      detectable, which is the precondition for any replay.
+- [ ] **Reserved → 0.2: resume.** Needs retention, a revision to count from, and an answer for a cursor that is too
+      old. Deliberately after the above.
+- [x] **The property test** (`packages/client/src/patch-invariant.test.ts`): a live query open throughout, a
+      generated sequence of adds, stock changes and removals, then the client's own view compared against a fresh
+      execution. **It found a data-loss bug on the first sequence, in both clients.** A command deleting an entity
+      while a live query held a list containing it removed *two* rows: `del` is cache-wide and shortened the
+      client's list, then the positional `list del: [0]` computed against the list the server had last sent took out
+      whatever moved into the slot. Fixed in both caches — a deleted entity now leaves a gap that holds its position
+      and is hidden when materialising, so the server's positional information stays true. 250 sequences clean.
+- [ ] **`patch/` vectors**, with `initial state` / `operations` / `expected final state`.
 
 ## 3. Rayfold Commerce, then an independent implementation
 

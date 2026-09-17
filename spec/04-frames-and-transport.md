@@ -30,7 +30,9 @@ When a `data` frame omits `fin`, it means more frames follow (defer, live).
 
 ## 2. Patches
 
-A patch is a list of operations on the client's normalized cache, keyed by global identity `Type:id`.
+A patch is a list of operations on the client's normalized cache, keyed by global identity `Type:id`. This section
+defines what a server sends; [13](13-patches.md) defines what a client does with it, and which of these operations
+may safely be applied twice.
 
 ```json
 [

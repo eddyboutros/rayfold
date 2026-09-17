@@ -142,8 +142,8 @@ class RayfoldCache(
     fun denormalize(data: JsonElement, maxDepth: Int = 16): JsonElement = synchronized(lock) { walk(data, null, 0, maxDepth) }
 
     private fun walk(v: JsonElement, sel: JsonElement?, depth: Int, maxDepth: Int): JsonElement = when (v) {
-        is JsonArray -> JsonArray(v.map { walk(it, sel, depth, maxDepth) })
-        is JsonObject -> {
+        is JsonArray -> JsonArray(v.filterNot { isGone(it) }.map { walk(it, sel, depth, maxDepth) })
+        is JsonObject -> if (isGone(v)) JsonNull else {
             val ref = refKey(v)
             if (ref != null) {
                 val e = entities[ref]
@@ -452,8 +452,20 @@ class RayfoldCache(
             else -> false
         }
 
+        /**
+         * What a deleted entity leaves behind in a list. Splicing the element out would be simpler and is wrong: a
+         * live query's `list` operations are positional and computed against the list the server last sent
+         * (spec 04 section 2b). A `del` from a command's own patch reaches only the client that ran the command, so a
+         * client that shortened its list would then apply `list del: [0]` to the wrong element - one removal, two
+         * rows gone. Holding the position keeps the list the length the server believes it to be, and [walk] hides
+         * the gap so nothing observes it.
+         */
+        private fun gone(key: String) = JsonObject(mapOf("\$gone" to JsonPrimitive(key)))
+
+        internal fun isGone(v: JsonElement): Boolean = v is JsonObject && (v["\$gone"] as? JsonPrimitive)?.isString == true
+
         private fun dropRef(v: JsonElement, key: String): JsonElement = when (v) {
-            is JsonArray -> JsonArray(v.filterNot { it is JsonObject && refKey(it) == key }.map { dropRef(it, key) })
+            is JsonArray -> JsonArray(v.map { if (it is JsonObject && refKey(it) == key) gone(key) else dropRef(it, key) })
             is JsonObject -> when (refKey(v)) {
                 null -> JsonObject(v.mapValues { dropRef(it.value, key) })
                 key -> JsonNull
