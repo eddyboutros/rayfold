@@ -58,6 +58,28 @@ class VectorsTest {
     }
 
     @TestFactory
+    fun canonicalization(): List<DynamicTest> {
+        val out = mutableListOf<DynamicTest>()
+        for ((file, doc) in area("canonicalization")) {
+            for (case in doc["cases"]?.jsonArray ?: error("$file has no cases")) {
+                val c = case.jsonObject
+                val name = c["name"]?.jsonPrimitive?.content ?: error("$file has a case without a name")
+                val json = c["json"]?.jsonPrimitive?.content ?: error("$name has no json")
+                val expected = c["canonical"]?.jsonPrimitive?.content ?: error("$name has no canonical form")
+                out.add(
+                    DynamicTest.dynamicTest("canonicalization/$file: $name") {
+                        // Canonical.json is the form the schema hash is taken over (spec 01 section 9); the number
+                        // normalisation of spec 12 section 4.2 is Canonical.hashed, and numbers/ covers that
+                        assertEquals(expected, Canonical.json(Json.parseToJsonElement(json)), c["why"]?.jsonPrimitive?.content ?: name)
+                    },
+                )
+            }
+        }
+        assertTrue(out.size > 10, "no canonicalization vectors were found under ${root.absolutePath}")
+        return out
+    }
+
+    @TestFactory
     fun shapes(): List<DynamicTest> {
         // no vector uses a named-view spread, so an empty schema is enough to expand against
         val empty = RayfoldSchemaIR(rayfold = "0.1", types = emptyMap(), ops = emptyMap())

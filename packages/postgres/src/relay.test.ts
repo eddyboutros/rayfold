@@ -117,7 +117,9 @@ describe("the relay over Postgres", () => {
     expect(stream.frames.items[0]).toEqual({ id: 1, item: { bookId: "b1", stock: 5 } });
     expect(await rows()).toEqual([]); // both messages fit a payload: nothing went through the table
     await Promise.all([live.stop(), stream.stop(), a.close(), b.close()]);
-  });
+    // two servers over a WASM Postgres with LISTEN/NOTIFY between them: the default bound is the suite's, not this
+    // test's, and under the whole suite it loses that race
+  }, 20_000);
 
   it("puts exactly this on the wire, so a server in the other runtime can share the channel", async () => {
     const sent: Array<[string, string]> = [];

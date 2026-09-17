@@ -83,8 +83,13 @@ Order chosen so the early ones have a source of truth outside Rayfold:
       where ECMAScript asks only for the fewest digits that read back — `5e-324`. Fixed by shortening while the value
       still round-trips. Neither runtime's existing tests covered a denormal, so they had agreed with each other and
       not with the spec: the method working exactly as intended, on day one.
-- [ ] **`canonicalization/`** — key ordering, escaping, unicode, duplicate keys, nesting depth. RFC 8785 is the
-      reference point for what canonical JSON usually means; document where Rayfold differs and why.
+- [x] **`canonicalization/`** — 15 cases. **The biggest spec finding so far:** spec 01 §9 defined canonical JSON,
+      which the *schema hash* is taken over, in one sentence — "keys sorted, no insignificant whitespace, UTF-8" —
+      never saying what order keys sort in or how strings escape. Three implementations could satisfy it three ways
+      and get three different schema hashes. §9 now specifies UTF-16 code-unit ordering (with the astral-vs-U+FFFD
+      case that separates it from code-point ordering), the exact escape set, and the unpaired-surrogate rule.
+      **And a code finding:** Kotlin wrote an unpaired surrogate through literally, which has no UTF-8 encoding — the
+      JVM substitutes `?` on the way to bytes, so the hash stopped being a function of the value. Now escaped.
 - [ ] **`hashing/`** — schema hash and binding hash over the above. Expected hash written into the fixture.
 - [x] **`shapes/`** — 11 vectors: text → canonical form → id, each id the SHA-256 of the canonical text in the same
       case taken with a general-purpose digest. **Two findings.** (1) Writing them exposed a spec gap: §3 never said

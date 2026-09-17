@@ -236,10 +236,26 @@ object Shapes {
     object Json {
         fun quote(s: String): String = buildString {
             append('"')
-            for (c in s) when (c) {
-                '"' -> append("\\\""); '\\' -> append("\\\\"); '\n' -> append("\\n"); '\r' -> append("\\r"); '\t' -> append("\\t")
-                '\b' -> append("\\b"); '\u000c' -> append("\\f") // JSON.stringify's short forms
-                else -> if (c < ' ') append(String.format("\\u%04x", c.code)) else append(c)
+            var i = 0
+            while (i < s.length) {
+                val c = s[i]
+                when {
+                    c == '"' -> append("\\\"")
+                    c == '\\' -> append("\\\\")
+                    c == '\n' -> append("\\n")
+                    c == '\r' -> append("\\r")
+                    c == '\t' -> append("\\t")
+                    c == '\b' -> append("\\b")
+                    c == '\u000c' -> append("\\f") // JSON.stringify's short forms
+                    c < ' ' -> append(String.format("\\u%04x", c.code))
+                    // A surrogate that is not half of a pair has no UTF-8 encoding, so writing it through would
+                    // contradict the encoding canonical JSON is defined in (spec 01 section 9): the JVM puts a '?'
+                    // in its place on the way to bytes, and the hash stops being a function of the value.
+                    c.isHighSurrogate() && i + 1 < s.length && s[i + 1].isLowSurrogate() -> { append(c); append(s[++i]) }
+                    c.isHighSurrogate() || c.isLowSurrogate() -> append(String.format("\\u%04x", c.code))
+                    else -> append(c)
+                }
+                i++
             }
             append('"')
         }

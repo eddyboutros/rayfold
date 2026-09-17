@@ -236,5 +236,24 @@ interface RayfoldSchemaIR {
 `TypeDef.fields[].ordinal` and `enum.values[].ordinal` are stable integers assigned at first publication
 and recorded in `rayfold.lock.json`; they are what RB uses on the wire and what `rayfold check` protects.
 
-Canonical JSON: keys sorted, no insignificant whitespace, UTF-8. The **schema hash** is the SHA-256 of the
-canonical IR and is exposed in the manifest so clients can detect drift.
+### Canonical JSON
+
+The **schema hash** is the SHA-256 of the canonical IR, exposed in the manifest so clients can detect drift, and
+the same form is what an idempotency record is scoped and bound by ([12 §4.2](12-security.md)). Two implementations
+that write it differently do not fail loudly — they simply stop recognising each other's schemas and each other's
+retries — so it is given exactly:
+
+* **Object keys** are sorted ascending by **UTF-16 code unit**. Not by code point: an astral character is a surrogate
+  pair beginning `0xD800`-`0xDBFF`, so it sorts *before* `U+E000`-`U+FFFF` rather than after. Not by any locale's
+  collation either.
+* **No insignificant whitespace**: nothing between a key and its `:`, its value, or the `,` that follows.
+* **A member whose value is undefined is omitted**, as JSON has no such value. Null is a value and is kept.
+* **Strings** carry `\"` and `\\`; the short forms `\b`, `\f`, `\n`, `\r`, `\t` for `U+0008`, `U+000C`, `U+000A`,
+  `U+000D`, `U+0009`; and `\u00xx` in **lower-case** hexadecimal for any other character below `U+0020`. Every other
+  character is written literally, `U+007F` and `U+2028`/`U+2029` included.
+* **An unpaired surrogate** is written `\udxxx` in lower-case hexadecimal. It has no UTF-8 encoding, so writing it
+  literally would contradict the encoding this form is defined in; escaping it keeps the text both valid JSON and
+  encodable, and keeps the hash a function of the value.
+* **Numbers** are as written, except where [12 §4.2](12-security.md) applies, which writes them in the one form
+  every implementation derives from the value.
+* The text is encoded as **UTF-8** before hashing.

@@ -65,6 +65,24 @@ describe("conformance vectors: numbers", () => {
   }
 });
 
+describe("conformance vectors: canonicalization", () => {
+  const files = load<{ name: string; json: string; canonical: string; why?: string }>("canonicalization");
+
+  it("there are vectors to run", () => {
+    expect(files.flatMap((f) => f.cases).length).toBeGreaterThan(10);
+  });
+
+  for (const { file, cases } of files) {
+    describe(file, () => {
+      for (const c of cases) {
+        it(c.name, () => {
+          expect(canonicalJson(JSON.parse(c.json)), c.why ?? c.name).toBe(c.canonical);
+        });
+      }
+    });
+  }
+});
+
 describe("conformance vectors: shapes", () => {
   const files = load<ShapeCase>("shapes");
   // no vector uses a named-view spread, so nothing should ask to resolve one

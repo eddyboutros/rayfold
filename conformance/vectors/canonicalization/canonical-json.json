@@ -1,0 +1,75 @@
+{
+  "name": "canonicalization/canonical-json",
+  "about": "Canonical JSON is what the schema hash is taken over, and what an idempotency record is scoped and bound by. Two implementations that write it differently do not fail loudly: they stop recognising each other's schemas and each other's retries, and each one goes on believing it is right. Until this file existed the specification said only 'keys sorted, no insignificant whitespace, UTF-8', which three implementations could satisfy three different ways.",
+  "source": "spec 01 §9. The cases below were written from that definition; where the definition had nothing to say, the definition was fixed first - that is what writing them was for.",
+  "rule": [
+    "Object keys sort ascending by UTF-16 code unit, not by code point and not by any locale's collation.",
+    "No whitespace anywhere outside a string.",
+    "A member whose value is undefined is dropped; null is a value and is kept.",
+    "Strings escape '\"' and '\\'; use \\b \\f \\n \\r \\t for U+0008, U+000C, U+000A, U+000D, U+0009; and \\u00xx in lower-case hex below U+0020. Everything else is literal, U+007F and U+2028/U+2029 included.",
+    "An unpaired surrogate is escaped \\udxxx in lower-case hex: it has no UTF-8 encoding, so it cannot be written literally in a form defined to be UTF-8."
+  ],
+  "cases": [
+    { "name": "keys sort", "json": "{\"b\":1,\"a\":2}", "canonical": "{\"a\":2,\"b\":1}" },
+    { "name": "nested objects sort at every level", "json": "{\"b\":{\"d\":1,\"c\":2},\"a\":3}", "canonical": "{\"a\":3,\"b\":{\"c\":2,\"d\":1}}" },
+    { "name": "list order is data, not something to sort", "json": "[3,1,2]", "canonical": "[3,1,2]" },
+    { "name": "no whitespace survives", "json": "{ \"a\" : [ 1 , 2 ] }", "canonical": "{\"a\":[1,2]}" },
+    { "name": "null is a value", "json": "{\"a\":null}", "canonical": "{\"a\":null}" },
+    { "name": "an empty object and an empty list", "json": "{\"a\":{},\"b\":[]}", "canonical": "{\"a\":{},\"b\":[]}" },
+
+    {
+      "name": "uppercase sorts before lowercase",
+      "json": "{\"a\":1,\"B\":2}",
+      "canonical": "{\"B\":2,\"a\":1}",
+      "why": "U+0042 before U+0061: code units, not a dictionary's idea of alphabetical"
+    },
+    {
+      "name": "a non-ASCII key sorts by its code unit",
+      "json": "{\"z\":1,\"\u00e9\":2,\"a\":3}",
+      "canonical": "{\"a\":3,\"z\":1,\"\u00e9\":2}",
+      "why": "U+00E9 is above every ASCII letter"
+    },
+    {
+      "name": "an astral character sorts before U+FFFD, because a surrogate pair starts at U+D800",
+      "json": "{\"\ufffd\":1,\"\ud83d\ude00\":2}",
+      "canonical": "{\"\ud83d\ude00\":2,\"\ufffd\":1}",
+      "why": "this is the case that separates the two readings: by code point U+1F600 (128512) would come after U+FFFD (65533), and an implementation sorting that way produces a different hash for the same schema"
+    },
+
+    {
+      "name": "quotes and backslashes",
+      "json": "{\"a\":\"he said \\\"hi\\\" \\\\ ok\"}",
+      "canonical": "{\"a\":\"he said \\\"hi\\\" \\\\ ok\"}"
+    },
+    {
+      "name": "the five control characters with short forms",
+      "json": "{\"a\":\"\\b\\f\\n\\r\\t\"}",
+      "canonical": "{\"a\":\"\\b\\f\\n\\r\\t\"}",
+      "why": "the short form is the shorter text, and a canonical form takes the shorter"
+    },
+    {
+      "name": "other control characters are \\u00xx in lower-case hex",
+      "json": "{\"a\":\"\\u0000\\u0001\\u001f\"}",
+      "canonical": "{\"a\":\"\\u0000\\u0001\\u001f\"}",
+      "why": "lower case: \\u001F and \\u001f are different bytes and so a different hash"
+    },
+    {
+      "name": "DEL and the line separators are written literally",
+      "json": "{\"a\":\"\\u007f\\u2028\\u2029\"}",
+      "canonical": "{\"a\":\"\u007f\u2028\u2029\"}",
+      "why": "JSON allows them raw inside a string; escaping them would be a second valid encoding of one value, which is what a canonical form exists to prevent"
+    },
+    {
+      "name": "an unpaired surrogate is escaped",
+      "json": "{\"a\":\"\\ud800\"}",
+      "canonical": "{\"a\":\"\\ud800\"}",
+      "why": "it has no UTF-8 encoding. Written literally it is either replaced by U+FFFD or emitted as invalid bytes, and either way the hash stops being a function of the value"
+    },
+    {
+      "name": "a paired surrogate is one character and stays literal",
+      "json": "{\"a\":\"\ud83d\ude00\"}",
+      "canonical": "{\"a\":\"\ud83d\ude00\"}",
+      "why": "guard: the rule above must not catch well-formed astral characters"
+    }
+  ]
+}
