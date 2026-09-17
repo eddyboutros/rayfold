@@ -2,7 +2,7 @@
 
 Status: part of Rayfold Core 0.1, frozen with the 0.1.0 release ([process.md](process.md)). Every conforming server
 MUST meet the requirements marked MUST. The reference
-runtimes enforce them by default, and `e2e/security.test.ts` sends each attack below to a running server.
+runtimes enforce them by default, and `e2e/security.test.ts` sends most of the attacks below to a running server.
 
 No protocol can make an API impossible to attack. What Rayfold can do is make the safe behaviour the default, put it in
 the contract instead of in each handler, and test it on every change. This chapter lists the threats Rayfold Core
@@ -64,8 +64,9 @@ handshakes:
    values nested deeper than 64 levels MUST be refused while decoding, and an RB length prefix larger than the
    remaining input MUST be refused before allocating.
 3. **Cost.** The batch budget (spec 06 section 5) is computed as follows:
-   - Each op's arguments are coerced first. An op whose arguments fail validation never runs and costs 0; it reports
-     its error when its turn comes.
+   - Each op's arguments are coerced first. An op whose arguments fail validation never runs and is not counted
+     against the batch at all; it reports its error when its turn comes. The floor of 1 below applies to the ops that
+     are actually estimated.
    - Arguments containing `$ref` cannot be coerced before earlier ops run. For those, any page size that is not a
      whole number from 0 to 200 counts as 200.
    - Every op costs at least 1, and arithmetic MUST NOT wrap.
@@ -96,7 +97,10 @@ handshakes:
    arguments". A store shared by servers of more than one implementation needs them to agree on what the binding is,
    so it MUST be the SHA-256, in lower-case hexadecimal, of the canonical JSON ([01 §9](01-schema.md): keys sorted,
    no insignificant whitespace, UTF-8) of `{ "op": <operation name>, "args": <coerced arguments> }`. The scope is the
-   same hash of the viewer.
+   same hash of the viewer. In both, a number MUST be written in the form ECMAScript writes it: the shortest decimal
+   that reads back as the same value, with no trailing `.0`, in exponent form only below `1e-6` or from `1e21` up
+   (`2.50` and `2.5` are one number and hash alike). Elsewhere canonical JSON keeps the number as it was written, so
+   an implementation that normalises only here changes none of its other hashes.
 3. **Authorization first.** The operation's write policy MUST be checked before a replay is served.
 4. **One execution.** Two requests with the same scope and key that arrive together MUST execute once. The later
    request waits for the first, then replays its result. A command that failed before it changed anything leaves no

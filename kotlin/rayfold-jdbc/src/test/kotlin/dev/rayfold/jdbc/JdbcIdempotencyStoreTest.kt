@@ -382,6 +382,47 @@ class JdbcIdempotencyStoreTest {
         }
     }
 
+    /**
+     * A connection on which the holder renews its lease in the moment between another server reading the row and
+     * writing its takeover: the interleaving that decides whether a renewal actually defends a claim.
+     */
+    private fun renewedBeforeTakeover(holder: JdbcIdempotencyStore, scope: String, token: String, renewals: AtomicInteger): Connection =
+        intercept(Connection::class.java, DriverManager.getConnection(url)) { name, args, result ->
+            val sql = args.getOrNull(0) as? String
+            if (name == "prepareStatement" && sql != null && sql.contains("SET \"args_hash\" = NULL") && renewals.get() == 0) {
+                renewals.incrementAndGet()
+                assertTrue(holder.renew(scope, key, token, 60_000L), "the holder's renewal should have landed")
+            }
+            result
+        }
+
+    @Test
+    fun `a lease renewed between another server's read and its takeover keeps the key, so the command runs once`() {
+        val scope = scopeOf(u1)
+        clock.set(1_000)
+        val holder = store()
+        val owned = holder.claim(scope, key, 1_000L)
+        val token = (owned as IdempotencyClaim.Owned).token
+
+        // the lease has just run out, so another server reads the row meaning to take it over; the holder renews in between
+        clock.set(2_000)
+        val renewals = AtomicInteger()
+        val other = store(connection = { renewedBeforeTakeover(holder, scope, token, renewals) })
+        val answer = other.claim(scope, key, 1_000L)
+        assertEquals(1, renewals.get(), "the renewal landed between the read and the takeover")
+        assertTrue(
+            answer is IdempotencyClaim.InFlight,
+            "before: the renewal moved only held_until, the takeover matched on at and token alone, and a live claim was stolen as ${answer::class.simpleName}",
+        )
+        assertEquals(62_000L, (answer as IdempotencyClaim.InFlight).heldUntil, "it waits for the lease the holder renewed")
+        assertTrue(holder.renew(scope, key, token, 1_000L), "the holder still owns the key it never lost")
+
+        // guard: once the renewed lease itself runs out, the next server takes the key over
+        clock.set(3_001)
+        assertTrue(store().claim(scope, key, 1_000L) is IdempotencyClaim.Owned)
+        assertFalse(holder.renew(scope, key, token, 1_000L), "the key changed hands, so the old token renews nothing")
+    }
+
     @Test
     fun `a claim that loses every race gives up as unavailable, and the command never runs`() {
         val scope = scopeOf(u1)

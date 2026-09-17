@@ -32,11 +32,13 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
     private val table = opts.table.split(".").joinToString(".") { quote(it) }
 
     /**
-     * The DDL for the table this store reads, for Postgres, H2 and anything close to them. It matches what
-     * `PgIdempotencyStore` in `@rayfold/postgres` creates, column for column: either runtime may create the table and
-     * the other goes on using it, since a fleet can hold servers of both. Every column but the key is nullable
-     * because a finished record has no claim on it, and the frames are text rather than `jsonb` so that one statement
-     * works on both databases.
+     * The DDL for the table this store reads, for Postgres, H2 and anything close to them. The columns are the ones
+     * `PgIdempotencyStore` in `@rayfold/postgres` creates, so either runtime may create the table and the other goes
+     * on using it: a fleet can hold servers of both. Every column but the key is nullable, because a finished record
+     * holds no claim, and the frames are text rather than `jsonb` so that one statement works on both databases.
+     *
+     * [index] is created beside it. The TypeScript store's is partial (`WHERE frame IS NOT NULL`), which Postgres has
+     * and H2 does not; this one covers the whole column. Either serves the sweep, and neither conflicts with the other.
      */
     fun schema(): String =
         "CREATE TABLE IF NOT EXISTS $table (" +
@@ -50,9 +52,21 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
             "\"at\" bigint not null, " +
             "primary key (\"scope\", \"key\"))"
 
-    /** Runs [schema] if the table is not there yet. Safe to call from every server as it starts, at the same instant included. */
+    /**
+     * The index the sweep reads: without it every put scans the table to find what to evict. Named after the table, so
+     * one in another schema gets its own.
+     */
+    fun index(): String {
+        val name = opts.table.replace(Regex("[^A-Za-z0-9_]"), "_") + "_at"
+        return "CREATE INDEX IF NOT EXISTS \"$name\" ON $table (\"at\")"
+    }
+
+    /** Runs [schema] and [index] if they are not there yet. Safe to call from every server as it starts, at the same instant included. */
     fun migrate() {
-        connections().use { ensure(it, schema()) }
+        connections().use {
+            ensure(it, schema())
+            ensure(it, index())
+        }
     }
 
     override fun get(scope: String, key: String): IdempotencyRecord? = connections().use { c ->
@@ -74,7 +88,7 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
             val row = read(c, scope, key) ?: return@repeat
             val record = row.record
             if (record != null && t - row.at < opts.ttlMs) return IdempotencyClaim.Done(record)
-            if (record == null && row.heldUntil > t) return IdempotencyClaim.InFlight(row.heldUntil)
+            if (record == null && row.leaseEnds > t) return IdempotencyClaim.InFlight(row.leaseEnds)
             if (takeOver(c, scope, key, row, token, t + leaseMs, t)) return IdempotencyClaim.Owned(token)
         }
         // every attempt lost a race, which means other processes are making progress on this key: the caller retries
@@ -106,7 +120,10 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
     // ------------------------------------------------------------------ rows
 
     /** `token` and `heldUntil` are null on a row another runtime finished: its put clears them rather than zeroing them. */
-    private class Row(val record: IdempotencyRecord?, val token: String?, val heldUntil: Long, val at: Long)
+    private class Row(val record: IdempotencyRecord?, val token: String?, val heldUntil: Long?, val at: Long) {
+        /** When the lease on this row ends; a row nobody holds is one whose lease ended at the beginning of time. */
+        val leaseEnds: Long get() = heldUntil ?: 0
+    }
 
     private fun read(c: Connection, scope: String, key: String): Row? {
         val sql = "SELECT \"args_hash\", \"frame\", \"compact_frame\", \"token\", \"held_until\", \"at\" FROM $table WHERE \"scope\" = ? AND \"key\" = ?"
@@ -117,9 +134,12 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
                 if (!rows.next()) return null
                 val hash = rows.getString(1)
                 val frame = rows.getString(2)
-                val compact = rows.getString(3)
-                val record = if (hash == null || frame == null || compact == null) null else IdempotencyRecord(hash, json(frame), json(compact))
-                Row(record, rows.getString(4), rows.getLong(5), rows.getLong(6))
+                // A stored frame is what makes a row finished, as it does in the TypeScript store. The compact form is
+                // optional there, and a record written without one replays its full frame to a compact retry.
+                val compact = rows.getString(3) ?: frame
+                val record = if (hash == null || frame == null) null else IdempotencyRecord(hash, json(frame), json(compact))
+                val heldUntil = rows.getLong(5).let { if (rows.wasNull()) null else it }
+                Row(record, rows.getString(4), heldUntil, rows.getLong(6))
             }
         }
     }
@@ -140,12 +160,15 @@ class JdbcIdempotencyStore @JvmOverloads constructor(
      * [read] returned, so of two processes taking the same key over, exactly one wins.
      */
     private fun takeOver(c: Connection, scope: String, key: String, row: Row, token: String, heldUntil: Long, at: Long): Boolean {
-        // `at` moves on every claim, takeover and put, so it is the row's version: of two processes taking the same key
-        // over, the second finds it changed. The token is matched null-safely, since a row another runtime finished
-        // holds none, and `=` would never match it.
+        // The row must still be exactly the one [read] returned, in all three of the columns a claim moves: `at` and
+        // `token` change when a key is claimed, taken over or recorded, and `held_until` alone changes when the holder
+        // renews its lease. Leaving the lease out would let this take a key over between another server's read and its
+        // renewal, and both would run the command. Both are compared through COALESCE rather than IS NOT DISTINCT
+        // FROM, which several databases do not have: a row another runtime finished holds no token and no lease, and
+        // `=` never matches a null.
         val sql = "UPDATE $table SET \"args_hash\" = NULL, \"frame\" = NULL, \"compact_frame\" = NULL, \"token\" = ?, \"held_until\" = ?, \"at\" = ? " +
-            "WHERE \"scope\" = ? AND \"key\" = ? AND \"at\" = ? AND \"token\" IS NOT DISTINCT FROM ?"
-        return update(c, sql, listOf(token, heldUntil, at, scope, key, row.at, row.token)) == 1
+            "WHERE \"scope\" = ? AND \"key\" = ? AND \"at\" = ? AND COALESCE(\"token\", '') = COALESCE(?, '') AND COALESCE(\"held_until\", -1) = COALESCE(?, -1)"
+        return update(c, sql, listOf(token, heldUntil, at, scope, key, row.at, row.token, row.heldUntil)) == 1
     }
 
     /**

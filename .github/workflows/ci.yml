@@ -92,6 +92,8 @@ jobs:
         run: npx vitest run e2e/fleet.test.ts
         env:
           DATABASE_URL: postgres://postgres:rayfold@localhost:5432/rayfold
+          # the cross-runtime suite is skipped when the JVM member is missing, so here it must be there
+          FLEET_JVM: "1"
 
   docs:
     name: Docs site and web example

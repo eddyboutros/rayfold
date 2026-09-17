@@ -40,20 +40,22 @@ private const val SCHEMA = """
   stream stockUpdates(bookIds: [ID]): StockChanged
 """
 
-/** `postgres://user:password@host:port/db` as JDBC wants it, or a `jdbc:` URL unchanged. */
-private fun jdbcUrl(url: String): Pair<String, Array<String>> {
-    if (url.startsWith("jdbc:")) return url to emptyArray()
+/** `postgres://user:password@host:port/db` as JDBC wants it, with the user and password beside it. */
+private class Database(val url: String, val user: String, val password: String)
+
+private fun database(url: String): Database {
+    if (url.startsWith("jdbc:")) return Database(url, System.getenv("PGUSER") ?: "postgres", System.getenv("PGPASSWORD") ?: "")
     val uri = java.net.URI(url)
     val credentials = uri.userInfo?.split(":", limit = 2) ?: emptyList()
     val port = if (uri.port == -1) 5432 else uri.port
-    return "jdbc:postgresql://${uri.host}:$port${uri.path}" to arrayOf(credentials.getOrElse(0) { "postgres" }, credentials.getOrElse(1) { "" })
+    return Database("jdbc:postgresql://${uri.host}:$port${uri.path}", credentials.getOrElse(0) { "postgres" }, credentials.getOrElse(1) { "" })
 }
 
 fun main() = runBlocking {
-    val (url, credentials) = jdbcUrl(requireNotNull(System.getenv("DATABASE_URL")) { "DATABASE_URL is required" })
+    val db = database(requireNotNull(System.getenv("DATABASE_URL")) { "DATABASE_URL is required" })
     val port = requireNotNull(System.getenv("PORT")) { "PORT is required" }.toInt()
     val name = System.getenv("NAME") ?: "jvm"
-    val connect: () -> Connection = { DriverManager.getConnection(url, credentials[0], credentials[1]) }
+    val connect: () -> Connection = { DriverManager.getConnection(db.url, db.user, db.password) }
 
     val idempotency = JdbcIdempotencyStore(connect)
     val relay = PgRelay(PgNotifications(connect(), connect), connect)
@@ -93,10 +95,11 @@ fun main() = runBlocking {
                         s.setString(2, id)
                         s.executeQuery().use { rows ->
                             if (!rows.next()) throw RayfoldException(Code.NOT_FOUND, "no book $id")
-                            val book = buildJsonObject { put("id", rows.getString(1)); put("stock", rows.getInt(2)) }
+                            val bookId = rows.getString(1)
+                            val stock = rows.getInt(2)
                             CommandResult(
-                                book,
-                                emit = listOf("StockChanged" to buildJsonObject { put("bookId", book["id"]!!); put("stock", book["stock"]!!) }),
+                                buildJsonObject { put("id", bookId); put("stock", stock) },
+                                emit = listOf("StockChanged" to buildJsonObject { put("bookId", bookId); put("stock", stock) }),
                             )
                         }
                     }

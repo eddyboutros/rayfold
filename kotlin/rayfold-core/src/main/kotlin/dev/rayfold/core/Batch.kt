@@ -308,7 +308,7 @@ class BatchRunner(
         val done = planned.associate { it.req.id to CompletableDeferred<Unit>() }
         // canonical JSON, as the TypeScript runtime's hashJson: the same viewer built with its keys in another order (a
         // Map's iteration order, another instance sharing the store) must land in the same scope
-        val viewerScope = sha256(Canonical.json(viewer))
+        val viewerScope = sha256(Canonical.hashed(viewer))
         val deadline = deadlineOf(envelope.meta["deadline"])
 
         val all: suspend () -> Unit = {
@@ -515,7 +515,7 @@ class BatchRunner(
         if (ctx.viewer is JsonNull) throw RayfoldException(Code.UNAUTHENTICATED, "${op.name}(): idempotency keys need an identified caller")
         // The binding a record carries (spec 12 section 4.2). Every runtime hashes it the same way, so a server of
         // either can replay a record the other wrote when they share a store.
-        val hash = sha256(Canonical.json(buildJsonObject { put("op", JsonPrimitive(op.name)); put("args", args) }))
+        val hash = sha256(Canonical.hashed(buildJsonObject { put("op", JsonPrimitive(op.name)); put("args", args) }))
         var wait = FIRST_WAIT_MS
         while (true) {
             when (val c = idempotency.claim(viewerScope, key, options.idempotencyLeaseMs)) {
@@ -699,6 +699,48 @@ object Canonical {
         is JsonPrimitive -> if (v.isString) Shapes.Json.quote(v.content) else v.content
         is JsonArray -> "[" + v.joinToString(",") { json(it) } + "]"
         is JsonObject -> "{" + v.keys.sorted().joinToString(",") { Shapes.Json.quote(it) + ":" + json(v.getValue(it)) } + "}"
+    }
+
+    /**
+     * Canonical JSON for the two hashes servers of different implementations must agree on: the scope a record is kept
+     * under and the binding it carries (spec 12 section 4). It differs from [json] in one way, and only here: a number
+     * is written in the one form every implementation can produce from the value, rather than as the sender wrote it,
+     * so that `2.50` and `2.5` - the same number, two literals - hash alike. [json] itself is left as it is because it
+     * writes the wire, the ETags and the schema hash, where the bytes are already settled.
+     */
+    fun hashed(v: JsonElement): String = when (v) {
+        is JsonNull -> "null"
+        is JsonPrimitive -> if (v.isString) Shapes.Json.quote(v.content) else number(v.content)
+        is JsonArray -> "[" + v.joinToString(",") { hashed(it) } + "]"
+        is JsonObject -> "{" + v.keys.sorted().joinToString(",") { Shapes.Json.quote(it) + ":" + hashed(v.getValue(it)) } + "}"
+    }
+
+    /**
+     * A JSON number as ECMAScript writes it, which is the form the specification names: the shortest decimal that reads
+     * back as the same value, without a trailing `.0`, in exponent form only below 1e-6 or from 1e21 up. Anything that
+     * is not a number in double range (`true`, or a value too large to be one) is left as it stands.
+     */
+    fun number(literal: String): String {
+        val d = literal.toDoubleOrNull() ?: return literal
+        if (d.isNaN() || d.isInfinite()) return literal
+        if (d == 0.0) return "0" // ECMAScript writes negative zero as "0" too
+        // Java's own shortest round-trip digits, read back as digits and a decimal exponent: the value is
+        // `digits * 10^(point - digits.length)`, which is what the ECMAScript rules below are written against.
+        val decimal = java.math.BigDecimal(d.toString()).stripTrailingZeros()
+        val digits = decimal.unscaledValue().abs().toString()
+        val point = digits.length - decimal.scale()
+        val sign = if (d < 0) "-" else ""
+        val body = when {
+            point in digits.length..21 -> digits + "0".repeat(point - digits.length)
+            point in 1..21 -> digits.substring(0, point) + "." + digits.substring(point)
+            point in -5..0 -> "0." + "0".repeat(-point) + digits
+            else -> {
+                val exponent = point - 1
+                val mantissa = if (digits.length == 1) digits else digits[0] + "." + digits.substring(1)
+                mantissa + "e" + (if (exponent < 0) "-" else "+") + kotlin.math.abs(exponent)
+            }
+        }
+        return sign + body
     }
 }
 

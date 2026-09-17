@@ -19,6 +19,9 @@ const url = process.env["DATABASE_URL"];
 const KEY = "0123456789abcdef";
 const JVM_LIB = fileURLToPath(new URL("./fleet/jvm/build/install/fleet-member/lib", import.meta.url));
 const jvmBuilt = existsSync(JVM_LIB);
+// CI builds the JVM member and sets this, so a build whose output moved fails the job instead of quietly skipping the
+// one suite that holds the two runtimes together. Locally the suite is skipped until you build it (see the guide).
+if (process.env["FLEET_JVM"] === "1" && !jvmBuilt) throw new Error(`the JVM fleet member was required but is not built: ${JVM_LIB} does not exist`);
 
 interface Member {
   name: string;
@@ -40,22 +43,34 @@ class Cluster {
       env: { ...process.env, DATABASE_URL: url, PORT: String(port), NAME: name },
       stdio: ["ignore", "pipe", "inherit"],
     });
+    const member = { name, base: `http://127.0.0.1:${port}`, child, exited: Promise.resolve<number | null>(null) };
+    // recorded before it is listening, so a member that started while another failed is still stopped afterwards
+    this.members.push(member);
+    // `error` is how a missing `java` arrives, and `exit` never follows it: without both, a start that cannot happen
+    // waits out the bound and then takes the worker down with an unhandled event
+    const failed = new Promise<never>((_resolve, reject) => child.on("error", (e) => reject(new Error(`${name} could not start: ${e.message}`))));
     const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
+    member.exited = Promise.race([exited, failed.catch(() => null)]);
     const lines = new Signal<string>();
     child.stdout?.on("data", (chunk: Buffer) => {
       for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) lines.push(line.trim());
     });
     // a member that dies while starting (a port in use, a database that refuses it) says so now, rather than at the bound
     const listening = lines.until((ls) => ls.some((l) => l.includes("listening")), `${name} starting`, 60_000);
-    await Promise.race([listening, exited.then((code) => Promise.reject(new Error(`${name} exited with ${code} before it was listening`)))]);
-    const member = { name, base: `http://127.0.0.1:${port}`, child, exited };
-    this.members.push(member);
+    await Promise.race([listening, failed, exited.then((code) => Promise.reject(new Error(`${name} exited with ${code} before it was listening`)))]);
     return member;
   }
 
   async stopAll(): Promise<void> {
-    for (const m of this.members) if (m.child.exitCode === null) m.child.kill(process.platform === "win32" ? undefined : "SIGTERM");
-    await Promise.all(this.members.map((m) => m.exited));
+    for (const m of this.members) {
+      if (m.child.exitCode !== null) continue;
+      // SIGTERM is what a platform sends and what the members drain on. Windows has no such signal, and a JVM there
+      // outlives child.kill() often enough to hold its port against the next run, so it is taken down by pid.
+      if (process.platform === "win32" && m.child.pid) spawn("taskkill", ["/pid", String(m.child.pid), "/f", "/t"], { stdio: "ignore" });
+      else m.child.kill("SIGTERM");
+    }
+    // bounded: a member whose shutdown stalls fails the run with its name instead of hanging it
+    await Promise.all(this.members.map((m) => bounded(m.exited, `${m.name} exiting`, 20_000)));
   }
 }
 
@@ -188,26 +203,39 @@ describe.skipIf(!url || !jvmBuilt)("a TypeScript server and a JVM server in one 
     expect(await runsOf(pool)).toEqual(["node", "jvm"]);
   }, 30_000);
 
+  it("a keyed command sent to both runtimes at once runs on one of them, and the other replays its answer", async () => {
+    // the sequential tests above always meet a finished record; this is the contended path, where one runtime reads
+    // the other's claim while it is still in flight and has to wait for it
+    const [fromNode, fromJvm] = await Promise.all([restock(node.base, KEY + "x"), restock(jvm.base, KEY + "x")]);
+    const answers = [await frames(fromNode), await frames(fromJvm)];
+    const stock = (a: Array<Record<string, unknown>>) => (a[0] as { ok?: { stock?: number } }).ok?.stock;
+    expect(stock(answers[0]!)).toBe(stock(answers[1]!));
+    expect(answers.filter(([f]) => (f as { meta?: { replay?: boolean } }).meta?.replay)).toHaveLength(1);
+    const ran = await runsOf(pool);
+    expect(ran.filter((r) => r === "node" || r === "jvm")).toHaveLength(ran.length); // whichever ran it, it ran once
+  }, 30_000);
+
   it("a live query on the JVM server hears a command run on the TypeScript one, and a stream hears its event", async () => {
     const live = await stream(jvm.base, liveBook);
     const updates = await stream(jvm.base, { op: "stockUpdates", args: { bookIds: ["b1"] } });
     await live.atLeast(1, "the JVM server's live query answering");
-    expect(live.items[0]).toMatchObject({ id: 1, data: { id: "b1", stock: 5 } });
+    // taken from what the query answered rather than counted from the tests before it, so the order they run in is theirs
+    const before = ((live.items[0] as { data: { stock: number } }).data).stock;
 
-    expect((await frames(await restock(node.base, KEY + "3")))[0]).toMatchObject({ ok: { stock: 6 } });
+    expect((await frames(await restock(node.base, KEY + "3")))[0]).toMatchObject({ ok: { stock: before + 1 } });
     await live.atLeast(2, "the JVM server hearing the TypeScript server's change");
     await updates.atLeast(1, "the JVM server hearing the TypeScript server's event");
-    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 6 } }] });
-    expect(updates.items[0]).toEqual({ id: 1, item: { bookId: "b1", stock: 6 } });
+    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: before + 1 } }] });
+    expect(updates.items[0]).toEqual({ id: 1, item: { bookId: "b1", stock: before + 1 } });
   }, 30_000);
 
   it("and the other way: a live query on the TypeScript server hears a command run on the JVM one", async () => {
     const live = await stream(node.base, liveBook);
     await live.atLeast(1, "the TypeScript server's live query answering");
-    expect(live.items[0]).toMatchObject({ id: 1, data: { id: "b1", stock: 6 } });
+    const before = ((live.items[0] as { data: { stock: number } }).data).stock;
 
-    expect((await frames(await restock(jvm.base, KEY + "4")))[0]).toMatchObject({ ok: { stock: 7 } });
+    expect((await frames(await restock(jvm.base, KEY + "4")))[0]).toMatchObject({ ok: { stock: before + 1 } });
     await live.atLeast(2, "the TypeScript server hearing the JVM server's change");
-    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 7 } }] });
+    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: before + 1 } }] });
   }, 30_000);
 });
