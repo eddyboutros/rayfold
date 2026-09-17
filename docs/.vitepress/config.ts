@@ -134,6 +134,8 @@ export default defineConfig({
             { text: "JDBC", link: "/guide/jdbc" },
             { text: "Tracing", link: "/guide/tracing" },
             { text: "Deployment", link: "/guide/deployment" },
+            { text: "Hono, Workers, Bun, Deno, Next", link: "/guide/runtimes" },
+            { text: "Uploads", link: "/guide/uploads" },
           ],
         },
         {

@@ -11,55 +11,16 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { annotation, type OpDef, type RayfoldSchemaIR } from "@rayfold/schema";
+import { COMMAND_METHODS, IDEMPOTENT_METHODS, QUERY_METHODS, bindingsOf, type Binding } from "./routes.ts";
 import type { RayfoldServer } from "./server.ts";
 import { HTTP_STATUS, RayfoldError, type Frame, type RequestEnvelope, type RequestOp, type WireError } from "./protocol.ts";
-import { applyCacheHeaders } from "./http.ts";
+// from fetch.ts, not http.ts: openapi.ts reads `bindingsOf` from here, and going through the Node transport for it
+// would pull node:http into every runtime that imports the endpoint
+import { cacheHeadersFor } from "./fetch.ts";
 import { BodyTooLarge, PROBLEM_TYPE_BASE, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
 
-export const QUERY_METHODS = ["GET", "QUERY"] as const;
-export const COMMAND_METHODS = ["POST", "PUT", "PATCH", "DELETE"] as const;
-/** Methods whose HTTP semantics are idempotent: a command bound to them may run without an Idempotency-Key. */
-const IDEMPOTENT_METHODS = new Set(["PUT", "PATCH", "DELETE"]);
-
-export interface Binding {
-  op: OpDef;
-  method: string;
-  path: string;
-  /** name of the argument that receives the JSON body, or "*" to spread the body into the arguments */
-  body?: string;
-  /** Location template for 201 responses, filled from the result, e.g. "/orders/{id}" */
-  location?: string;
-  params: string[];
-  regex: RegExp;
-}
-
-export function bindingsOf(ir: RayfoldSchemaIR): Binding[] {
-  const out: Binding[] = [];
-  for (const op of Object.values(ir.ops)) {
-    const a = annotation(op, "http");
-    if (!a) continue;
-    const method = identOrString(a.args["method"])?.toUpperCase();
-    const path = typeof a.args["path"] === "string" ? a.args["path"] : undefined;
-    if (!method || !path) continue;
-    const params: string[] = [];
-    const pattern = path.replace(/[.*+?^()|[\]\\]/g, "\\$&").replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => {
-      params.push(name);
-      return "([^/]+)";
-    });
-    const b: Binding = { op, method, path, params, regex: new RegExp(`^${pattern}$`) };
-    const body = identOrString(a.args["body"]);
-    if (body) b.body = body;
-    if (typeof a.args["location"] === "string") b.location = a.args["location"];
-    out.push(b);
-  }
-  return out;
-}
-
-function identOrString(v: unknown): string | undefined {
-  if (typeof v === "string") return v;
-  if (v && typeof v === "object" && "$ident" in v) return String((v as { $ident: string }).$ident);
-  return undefined;
-}
+// where the route model lived before the OpenAPI document needed it without a transport
+export { COMMAND_METHODS, QUERY_METHODS, bindingsOf, type Binding };
 
 export interface BindingOptions extends OriginOptions {
   /** Mount prefix, default "" (routes are served exactly as declared). */
@@ -151,7 +112,7 @@ export function createBindingHandler(server: RayfoldServer, opts: BindingOptions
       }
       const result = folded.result;
       if (b.op.kind === "query") {
-        applyCacheHeaders(server, envelope, frames, viewer, res);
+        for (const [name, value] of Object.entries(cacheHeadersFor(server, envelope, frames, viewer))) res.setHeader(name, value);
         if (header(req, "if-none-match") && header(req, "if-none-match") === res.getHeader("ETag")) {
           res.removeHeader("X-Content-Type-Options"); // no body to sniff; the cached response keeps its headers
           res.writeHead(304).end();

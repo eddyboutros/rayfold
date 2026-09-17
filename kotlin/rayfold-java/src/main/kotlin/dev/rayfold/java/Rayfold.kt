@@ -19,6 +19,8 @@ import dev.rayfold.core.Relay
 import dev.rayfold.core.Resolvers
 import dev.rayfold.core.RootResolver
 import dev.rayfold.core.SchemaText
+import dev.rayfold.core.UploadOptions
+import dev.rayfold.core.UploadStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -259,6 +261,14 @@ class HttpBuilder internal constructor(private val server: RayfoldServer) {
     }
 
     fun readinessTimeout(millis: Long): HttpBuilder = apply { options = options.copy(readinessTimeoutMs = millis) }
+
+    /**
+     * Serves `POST {path}/uploads` (spec 04 section 9) with [store] behind it: bytes arrive on their own route and a
+     * command names what arrived. Without a store that route is not there at all.
+     */
+    @JvmOverloads
+    fun uploads(store: UploadStore, maxBytes: Long = 25L * 1024 * 1024, viewerRequired: Boolean = true): HttpBuilder =
+        apply { options = options.copy(uploads = UploadOptions(store, maxBytes, viewerRequired)) }
 
     /** Turns a request into the viewer the schema's policies see (a map or a record), or null when anonymous. */
     fun viewer(resolve: Function<HttpExchange, Any?>): HttpBuilder = apply { viewer = { ex -> JavaJson.toJson(resolve.apply(ex)) } }

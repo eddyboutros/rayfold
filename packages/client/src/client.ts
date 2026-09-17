@@ -4,7 +4,7 @@ import type { RayfoldSchemaIR } from "@rayfold/schema";
 import { annotation } from "@rayfold/schema";
 import { RayfoldCache, type CacheListener, type CachedResult, type MergePolicy, type OptimisticOp } from "./cache.ts";
 import { OfflineQueue, isUnreachable, memoryQueue, type QueueEvent, type QueueStorage, type QueuedCommand } from "./offline.ts";
-import type { Transport } from "./transport.ts";
+import type { Transport, UploadBody, UploadHandle } from "./transport.ts";
 import { restoreTypes, typeAtPath } from "./types.ts";
 
 export class RayfoldClientError extends Error {
@@ -258,6 +258,28 @@ export class RayfoldClient {
         } else if ("fin" in f && f.fin) return;
       }
     })();
+  }
+
+  /**
+   * Sends bytes to the server's upload route (extension `upload`) and answers with the handle a command then names:
+   *
+   *     const kept = await client.upload(file);
+   *     await client.command("setAvatar", { userId, upload: kept.id });
+   *
+   * A `File` says what it is called and what type it is, so those travel unless you say otherwise. Nothing is cached:
+   * an upload is bytes going one way, and the command that uses them is what changes anything.
+   */
+  async upload(body: UploadBody, meta: { name?: string; type?: string } = {}, opts: { signal?: AbortSignal } = {}): Promise<UploadHandle> {
+    if (!this.opts.transport.upload) {
+      throw new RayfoldClientError({ code: "unimplemented", message: "This transport cannot upload; use a fetch transport, or send the bytes yourself" });
+    }
+    const named = body as { name?: unknown; type?: unknown };
+    const describe = {
+      ...(typeof named.name === "string" && named.name ? { name: named.name } : {}),
+      ...(typeof named.type === "string" && named.type ? { type: named.type } : {}),
+      ...meta,
+    };
+    return this.opts.transport.upload(body, describe, opts);
   }
 
   /**

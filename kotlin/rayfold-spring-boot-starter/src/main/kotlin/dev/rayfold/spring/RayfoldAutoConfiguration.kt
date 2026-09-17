@@ -11,6 +11,8 @@ import dev.rayfold.core.RayfoldSchemaIR
 import dev.rayfold.core.RayfoldServer
 import dev.rayfold.core.Relay
 import dev.rayfold.core.SchemaText
+import dev.rayfold.core.UploadOptions
+import dev.rayfold.core.UploadStore
 import dev.rayfold.java.Rayfold
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -138,11 +140,13 @@ class RayfoldAutoConfiguration {
         return builder.build()
     }
 
+    /** An [UploadStore] bean serves `{path}/uploads` (spec 04 section 9); without one the route is not there at all. */
     @Bean
     @ConditionalOnMissingBean
-    fun rayfoldHttp(server: RayfoldServer, properties: RayfoldProperties): RayfoldHttp = RayfoldHttp(
+    fun rayfoldHttp(server: RayfoldServer, properties: RayfoldProperties, uploads: ObjectProvider<UploadStore>): RayfoldHttp = RayfoldHttp(
         server,
         HttpOptions(
+            uploads = uploads.getIfAvailable()?.let { UploadOptions(it) },
             allowedOrigins = properties.allowedOrigins.toSet(),
             allowedHosts = properties.allowedHosts?.toSet(),
             manifest = properties.manifest,

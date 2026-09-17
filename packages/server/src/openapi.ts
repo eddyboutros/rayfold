@@ -4,8 +4,8 @@
  * 3.2 is required for the QUERY operation.
  */
 import { annotation, baseName, type Annotation, type ArgDef, type OpDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
-import { bindingsOf } from "./bindings.ts";
-import { jsonSchemaFor, withRange } from "./mcp.ts";
+import { bindingsOf } from "./routes.ts";
+import { jsonSchemaFor, withRange } from "./json-schema.ts";
 
 export function openApiFor(ir: RayfoldSchemaIR, opts: { title?: string; version?: string; prefix?: string } = {}): Record<string, unknown> {
   const defs: Record<string, unknown> = {};

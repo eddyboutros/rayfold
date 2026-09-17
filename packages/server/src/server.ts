@@ -212,6 +212,7 @@ export class RayfoldServer {
     const extensions = ["live", "rb"];
     if (Object.values(this.ir.ops).some((o) => o.annotations.some((a) => a.name === "http"))) extensions.push("http");
     if (this.mounted.has("mcp")) extensions.push("mcp");
+    if (this.mounted.has("upload")) extensions.push("upload");
     return { rayfold: "0.1", schemaHash: this.hash, extensions, limits };
   }
 }

@@ -14,6 +14,8 @@ export { decide, decisionError, pushableFilter, hasPolicy, type Decision } from 
 export { checkWiring } from "./wiring.ts";
 export { ChangeBus, changeFromPatch, diffResults, normalizeResult, readSetOf, type Change } from "./live.ts";
 export { MemoryRelay, type Relay, type RelayMessage } from "./relay.ts";
+export { createFetchHandler, cacheHeadersFor, codecFor, publicIR, readinessOf, BodyOverLimit, type FetchOptions } from "./fetch.ts";
+export { MemoryUploadStore, type Upload, type UploadMeta, type UploadOptions, type UploadStore } from "./uploads.ts";
 export type { Instrumentation, BatchInfo, OpInfo, LoaderInfo, Outcome } from "./instrumentation.ts";
 export { MemoryUsage, type UsageSink, type UsageEvent, type UsageEntry } from "./usage.ts";
 export { capabilityAllows } from "./capability-scope.ts";

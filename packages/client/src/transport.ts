@@ -1,10 +1,28 @@
 /** Transports deliver a batch and yield frames. Spec: spec/04. */
-import type { Frame, RequestEnvelope } from "@rayfold/server/protocol";
+import type { ErrorCode, Frame, RequestEnvelope } from "@rayfold/server/protocol";
 import { RbCodec, RB_CONTENT_TYPE } from "@rayfold/rb";
 import { schemaHash, type RayfoldSchemaIR } from "@rayfold/schema";
+// client.ts takes only the `Transport` type from here, so this edge runs one way
+import { RayfoldClientError } from "./client.ts";
 
 export interface Transport {
   send(envelope: RequestEnvelope, opts?: { signal?: AbortSignal; safe?: boolean }): AsyncIterable<Frame>;
+  /**
+   * Sends bytes to the server's upload route (extension `upload`, spec 04 §9) and answers with the handle a command
+   * then names. A transport that has nowhere to send them leaves this out, and `client.upload` says so.
+   */
+  upload?(body: UploadBody, meta?: { name?: string; type?: string }, opts?: { signal?: AbortSignal }): Promise<UploadHandle>;
+}
+
+/** What a runtime lets you hand to `fetch` as a body: a file, bytes, or a stream of them. */
+export type UploadBody = Blob | ArrayBuffer | ArrayBufferView | ReadableStream<Uint8Array> | string;
+
+/** What the server kept: the id a command names, and what it knows about the bytes. */
+export interface UploadHandle {
+  id: string;
+  size: number;
+  name?: string;
+  type?: string;
 }
 
 /** A schema with the hash the server gives it, as GET /rayfold/manifest serves them. */
@@ -40,6 +58,20 @@ export function createFetchTransport(o: FetchTransportOptions): Transport {
   // the hash the server's last response reported; RB waits until it is known to match the codec's schema
   let serverHash: string | null = null;
   return {
+    async upload(body, meta = {}, opts = {}) {
+      const headers: Record<string, string> = { "content-type": "application/octet-stream", ...(await o.headers?.()) };
+      if (meta.name !== undefined) headers["rayfold-upload-name"] = meta.name;
+      if (meta.type !== undefined) headers["rayfold-upload-type"] = meta.type;
+      const init: RequestInit & { duplex?: "half" } = { method: "POST", headers, body: body as BodyInit };
+      if (opts.signal) init.signal = opts.signal;
+      if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) init.duplex = "half";
+      const res = await f(`${o.url.replace(/\/+$/, "")}/uploads`, init as RequestInit);
+      if (!res.ok) {
+        const problem = (res.headers.get("content-type") ?? "").includes("json") ? ((await res.json().catch(() => ({}))) as { code?: ErrorCode; detail?: string }) : {};
+        throw new RayfoldClientError({ code: problem.code ?? "unavailable", message: problem.detail ?? `HTTP ${res.status}` });
+      }
+      return (await res.json()) as UploadHandle;
+    },
     send(envelope, opts = {}) {
       return (async function* () {
         const codec = rb !== null && serverHash === rb.hash ? rb.codec : null;

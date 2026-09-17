@@ -1,339 +1,96 @@
-/** HTTP transport for Node. Spec: spec/04-frames-and-transport.md §4. */
+/**
+ * HTTP transport for Node. The rules live in `fetch.ts`, which speaks the web standard and needs no Node; this turns a
+ * Node request into a `Request`, hands it there, and writes the `Response` back. One implementation serves both, so a
+ * fix to caching, guards or framing reaches every runtime at once.
+ *
+ * What stays here is what owns a socket: reading a body with the drain-then-drop behaviour a stream gives us, deciding
+ * from the socket whether the server is loopback-bound, and the listener itself. Spec: spec/04-frames-and-transport.md §4.
+ */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { canonicalJson, fieldsOf, fromBase64url, sha256Hex, annotation, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
+import { Readable } from "node:stream";
 import type { RayfoldServer } from "./server.ts";
-import { HTTP_STATUS, RayfoldError, type ErrorCode, type Frame, type RequestEnvelope, type WireError } from "./protocol.ts";
-import { referencesViewer, type Expr } from "@rayfold/schema";
-import { RbCodec, RB_CONTENT_TYPE } from "@rayfold/rb";
-import { openApiFor } from "./openapi.ts";
-import { BodyTooLarge, PROBLEM_TYPE_BASE, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
+import { RayfoldError, type Frame, type RequestEnvelope } from "./protocol.ts";
+import { cacheHeadersFor, codecFor, createFetchHandler, publicIR, readinessOf, type FetchOptions } from "./fetch.ts";
+import { BodyTooLarge, hostProblem, isLoopbackAddress, refuse, refuseBody, type OriginOptions } from "./guard.ts";
 
-export interface HttpOptions extends OriginOptions {
-  /** What GET {path}/manifest serves: the schema without policy expressions (default), the full IR, or nothing. */
-  manifest?: "redacted" | "full" | "off";
-  /** Path prefix, default "/rayfold". */
-  path?: string;
+export { codecFor, publicIR };
+
+export interface HttpOptions extends Omit<FetchOptions, "viewer" | "loopback">, OriginOptions {
   /** Turn the incoming request into a viewer (e.g. parse a Bearer token). */
   viewer?: (req: IncomingMessage) => unknown | Promise<unknown>;
-  /** Max request body in bytes, default 1 MiB. */
-  maxBody?: number;
-  /** Extra CORS origin to allow (development). */
-  cors?: string;
-  /**
-   * When a whole interval of this many milliseconds passes without a frame, a streaming response gets a keep-alive: an
-   * empty line, or a zero-length RB frame (spec 04 section 4), so proxies do not close an idle live query. Default 15 000.
-   */
-  keepAliveMs?: number;
-  /**
-   * What `GET {path}/ready` checks besides the server itself, by name: each resolves when its dependency answers and
-   * rejects when it does not, such as `{ db: () => pool.query("select 1") }`. A rejection, or no answer within
-   * `readinessTimeoutMs`, makes the server not ready and names the check.
-   */
-  readiness?: Record<string, () => Promise<unknown>>;
-  /** How long a readiness check may take before it counts as failed. Default 2000. */
-  readinessTimeoutMs?: number;
 }
 
-const FRAMES_TYPE = "application/rayfold-frames+json";
-const codecs = new WeakMap<RayfoldServer, RbCodec>();
-/** One RB codec per server: its key dictionary comes from the schema. */
-export function codecFor(server: RayfoldServer): RbCodec {
-  let c = codecs.get(server);
-  if (!c) codecs.set(server, (c = new RbCodec(server.ir)));
-  return c;
-}
-const PROBLEM_TYPE = "application/problem+json";
-const KEEP_ALIVE_RB = Uint8Array.of(0);
-const BODY_TYPES = new Set(["application/rayfold+json", "application/json", RB_CONTENT_TYPE]);
-
-/** The IR without policy expressions: clients need names and types, not how access is decided. */
-export function publicIR(ir: RayfoldSchemaIR): RayfoldSchemaIR {
-  return JSON.parse(JSON.stringify(ir), (_k, v: unknown) => {
-    if (!v || typeof v !== "object" || Array.isArray(v)) return v;
-    const o = v as Record<string, unknown>;
-    const isPolicy = (o["name"] === "allow" || o["name"] === "deny") && !("type" in o) && !!o["args"] && typeof o["args"] === "object" && !Array.isArray(o["args"]);
-    return isPolicy ? { ...o, args: {} } : v;
-  }) as RayfoldSchemaIR;
-}
+/** The Node request each `Request` was built from, so a viewer written against Node still gets one. */
+const sources = new WeakMap<Request, IncomingMessage>();
 
 export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {}): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
-  const base = opts.path ?? "/rayfold";
   const maxBody = opts.maxBody ?? 1_048_576;
+  const { viewer, ...rest } = opts;
+  const handle = createFetchHandler(server, {
+    ...rest,
+    ...(viewer ? { viewer: (request: Request) => viewer(sources.get(request)!) } : {}),
+  });
 
   return async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    res.setHeader("Rayfold-Schema", server.hash);
-    res.setHeader("X-Content-Type-Options", "nosniff");
+    // The socket is the only place that says whether this server is loopback-bound, so the host rule is applied here;
+    // the handler applies `allowedHosts` again, which agrees with this one.
     const badHost = hostProblem(req, opts);
     if (badHost) return refuse(res, 403, "permission_denied", badHost);
-    if (opts.cors) {
-      res.setHeader("Access-Control-Allow-Origin", opts.cors);
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, QUERY, OPTIONS");
-      if (req.method === "OPTIONS") {
-        res.writeHead(204).end();
-        return;
-      }
-    }
-    if (!url.pathname.startsWith(base)) {
-      problem(res, "not_found", `No route for ${url.pathname}`);
-      return;
-    }
-    const sub = url.pathname.slice(base.length);
-    try {
-      if (sub === "/manifest" && req.method === "GET") {
-        if (opts.manifest === "off") throw new RayfoldError("not_found", `No route for ${url.pathname}`);
-        json(res, 200, { ...server.manifest(), schema: opts.manifest === "full" ? server.ir : publicIR(server.ir) });
-        return;
-      }
-      if (sub === "/openapi.json" && req.method === "GET") {
-        json(res, 200, openApiFor(server.ir));
-        return;
-      }
-      if (sub === "/health" && req.method === "GET") {
-        res.setHeader("Cache-Control", "no-store");
-        json(res, 200, { status: "ok" });
-        return;
-      }
-      if (sub === "/ready" && req.method === "GET") {
-        const status = await readiness(server, opts);
-        res.setHeader("Cache-Control", "no-store");
-        json(res, status.ready ? 200 : 503, status);
-        return;
-      }
-      if (server.draining.aborted) {
-        // the balancer has been told through /ready; a request that still arrives is sent elsewhere
-        res.setHeader("Retry-After", "1");
-        throw new RayfoldError("unavailable", "The server is shutting down");
-      }
-      let envelope: RequestEnvelope;
-      let safe = false;
-      if (sub === "" || sub === "/") {
-        if (req.method === "POST" || req.method === "QUERY") {
-          // JSON-only bodies force browsers into a CORS preflight, so a cross-site form or text/plain post cannot run anything.
-          const ct = mediaType(req);
-          if (!BODY_TYPES.has(ct)) return refuse(res, 415, "invalid_argument", `Content-Type ${ct || "(none)"} is not accepted; send application/rayfold+json`, "unsupported_media_type", { "Accept-Post": [...BODY_TYPES].join(", ") });
-          // Safe requests (QUERY, or POST with Rayfold-Safe, which may hold only queries) cannot change data. A foreign page
-          // cannot send them without a CORS preflight and cannot read the answer, so only data-changing requests need the
-          // Origin check. This keeps reads working behind proxies that rewrite Host.
-          const declaredSafe = req.method === "QUERY" || req.headers["rayfold-safe"] === "true";
-          const badOrigin = declaredSafe ? null : originProblem(req, opts);
-          if (badOrigin) return refuse(res, 403, "permission_denied", badOrigin);
-          const body = await readBody(req, maxBody);
-          if (ct === RB_CONTENT_TYPE) {
-            try {
-              envelope = codecFor(server).decode(new Uint8Array(body)) as RequestEnvelope;
-            } catch {
-              throw new RayfoldError("invalid_argument", "Body is not valid RB");
-            }
-          } else {
-            try {
-              envelope = JSON.parse(body.toString("utf8")) as RequestEnvelope;
-            } catch {
-              throw new RayfoldError("invalid_argument", "Body is not valid JSON");
-            }
-          }
-          safe = req.method === "QUERY" || req.headers["rayfold-safe"] === "true";
-        } else {
-          res.setHeader("Allow", "POST, QUERY");
-          res.setHeader("Accept-Query", "application/rayfold+json");
-          throw new RayfoldError("unimplemented", `Method ${req.method} not allowed on ${base}`);
-        }
-      } else if (req.method === "GET") {
-        // GET /rayfold/{op}?a=<b64url json>&s=<shape id>&v=<b64url json>
-        const op = sub.slice(1);
-        const a = url.searchParams.get("a");
-        const s = url.searchParams.get("s");
-        const v = url.searchParams.get("v");
-        const one: RequestEnvelope["ops"][number] = { id: 1, op };
-        if (a) one.args = parseB64(a, "a") as Record<string, unknown>;
-        if (s) one.shape = s;
-        if (v) one.vars = parseB64(v, "v") as Record<string, never>;
-        envelope = { ops: [one] };
-        safe = true;
-      } else {
-        throw new RayfoldError("not_found", `No route for ${req.method} ${url.pathname}`);
-      }
 
-      // a body that parses but is no envelope (null, a number, ops that are not a list) is the client's error, not a 500
-      if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) throw new RayfoldError("invalid_argument", "Body must be { ops: [...] }");
-      if (safe && Array.isArray(envelope.ops) && envelope.ops.some((o) => server.ir.ops[(o as { op?: string } | null)?.op ?? ""]?.kind !== "query")) {
-        throw new RayfoldError("invalid_argument", "Safe requests (GET/QUERY) may only contain queries");
-      }
-      const client = req.headers["rayfold-client"];
-      const deadline = req.headers["rayfold-deadline"];
-      const traceparent = req.headers["traceparent"];
-      const tracestate = req.headers["tracestate"];
-      if (typeof client === "string" || typeof deadline === "string" || typeof traceparent === "string") {
-        envelope.meta = { ...(envelope.meta ?? {}) };
-        if (typeof client === "string") envelope.meta.client = client;
-        if (typeof deadline === "string" && /^\d+$/.test(deadline)) envelope.meta.deadline = Number(deadline);
-        if (typeof traceparent === "string") {
-          envelope.meta.traceparent = traceparent;
-          if (typeof tracestate === "string") envelope.meta.tracestate = tracestate;
-        }
-      }
-
-      const viewer = opts.viewer ? await opts.viewer(req) : null;
-      const ac = new AbortController();
-      req.on("close", () => ac.abort());
-
-      const accepted = new Set((req.headers["accept"] ?? "").split(",").map((t) => t.split(";")[0]!.trim().toLowerCase()));
-      const wantsRb = accepted.has(RB_CONTENT_TYPE) && !accepted.has(FRAMES_TYPE) && !accepted.has("application/json") && !accepted.has("application/rayfold+json");
-      const wantsSingle = !wantsRb && accepted.has("application/json") && Array.isArray(envelope.ops) && envelope.ops.length === 1;
-      if (wantsSingle || safe) {
-        // Buffer so we can set status / cache headers from the complete result.
-        const frames: Frame[] = [];
-        for await (const f of server.execute(envelope, { viewer, signal: ac.signal })) frames.push(f);
-        if (safe) applyCacheHeaders(server, envelope, frames, viewer, res);
-        if (wantsSingle && frames.length === 1) {
-          const f = frames[0]!;
-          const status = "error" in f ? HTTP_STATUS[f.error.code] : 200;
-          const body = canonicalJson(f);
-          if (safe && req.headers["if-none-match"] && req.headers["if-none-match"] === res.getHeader("ETag")) {
-            res.removeHeader("X-Content-Type-Options"); // no body to sniff; the cached response keeps its headers
-          res.writeHead(304).end();
-            return;
-          }
-          res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" }).end(body);
-          return;
-        }
-        if (safe && req.headers["if-none-match"] && req.headers["if-none-match"] === res.getHeader("ETag")) {
-          res.removeHeader("X-Content-Type-Options"); // no body to sniff; the cached response keeps its headers
-          res.writeHead(304).end();
-          return;
-        }
-        if (wantsRb) {
-          res.writeHead(200, { "Content-Type": RB_CONTENT_TYPE }).end(Buffer.from(codecFor(server).encodeFrames(frames)));
-          return;
-        }
-        const body = frames.map((f) => JSON.stringify(f)).join("\n") + "\n";
-        res.writeHead(200, { "Content-Type": FRAMES_TYPE }).end(body);
-        return;
-      }
-
-      res.writeHead(200, { "Content-Type": wantsRb ? RB_CONTENT_TYPE : FRAMES_TYPE, "Cache-Control": "no-store", "X-Accel-Buffering": "no" });
-      res.flushHeaders();
-      const codec = wantsRb ? codecFor(server) : null;
-      let quiet = true;
-      const keepAlive = setInterval(() => {
-        if (quiet) res.write(codec ? KEEP_ALIVE_RB : "\n");
-        quiet = true;
-      }, opts.keepAliveMs ?? 15_000);
+    // An upload is bounded by its own limit, not the envelope's, so its body travels as a stream rather than being
+    // read whole here; everything else is read with the drain-then-drop behaviour only a socket can give.
+    const path = new URL(req.url ?? "/", "http://localhost").pathname;
+    const uploading = !!opts.uploads && path === `${opts.path ?? "/rayfold"}/uploads`;
+    let body: Buffer | undefined;
+    if (!uploading && (req.method === "POST" || req.method === "QUERY")) {
       try {
-        for await (const f of server.execute(envelope, { viewer, signal: ac.signal })) {
-          res.write(codec ? Buffer.from(codec.encodeFrames([f])) : JSON.stringify(f) + "\n");
-          quiet = false;
-        }
-      } finally {
-        clearInterval(keepAlive);
+        body = await readBody(req, maxBody);
+      } catch (e) {
+        if (e instanceof BodyTooLarge) return refuseBody(res, e);
+        throw e;
       }
-      res.end();
-    } catch (e) {
-      if (e instanceof BodyTooLarge && !res.headersSent) return refuseBody(res, e);
-      if (res.headersSent) {
-        res.end();
-        return;
-      }
-      const code: ErrorCode = e instanceof RayfoldError ? e.code : "internal";
-      problem(res, code, e instanceof RayfoldError ? e.message : "Internal error", e instanceof RayfoldError ? e.toWire() : undefined);
     }
-  };
-}
 
-/** Cache-Control/ETag for safe requests (spec 07 §2): min over @cache of ops and entity types touched. */
-export function applyCacheHeaders(server: RayfoldServer, envelope: RequestEnvelope, frames: Frame[], viewer: unknown, res: ServerResponse): void {
-  let maxAge = Number.POSITIVE_INFINITY;
-  let swr = 0;
-  let scope: "public" | "private" = "public";
-  const consider = (annotations: { name: string; args: Record<string, unknown> }[]) => {
-    const c = annotations.find((a) => a.name === "cache");
-    if (c) {
-      const ma = c.args["maxAge"];
-      if (ma && typeof ma === "object" && "$duration" in ma) maxAge = Math.min(maxAge, (ma as { $duration: number }).$duration / 1000);
-      const sw = c.args["swr"];
-      if (sw && typeof sw === "object" && "$duration" in sw) swr = Math.max(swr, (sw as { $duration: number }).$duration / 1000);
-      const sc = c.args["scope"];
-      if (sc && typeof sc === "object" && "$ident" in sc && (sc as { $ident: string }).$ident === "private") scope = "private";
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(req.headers)) {
+      if (typeof value === "string") headers.set(name, value);
+      else if (Array.isArray(value)) for (const v of value) headers.append(name, v);
     }
-    for (const a of annotations) {
-      if ((a.name === "allow" || a.name === "deny") && Object.values(a.args).some((v) => v && typeof v === "object" && "$expr" in v && referencesViewer((v as { $expr: Expr }).$expr))) scope = "private";
-    }
-  };
-  for (const o of Array.isArray(envelope.ops) ? envelope.ops : []) {
-    const op = o && typeof o === "object" ? server.ir.ops[o.op] : undefined;
-    if (op) consider(op.annotations);
-  }
-  // Only types and fields actually present in the response count (spec 07 s1: "touches such a field"). A compact frame
-  // leaves out `$type` wherever the schema fixes it, so the walk follows each op's return type, and reads `$type` only
-  // where it is still there, as on a union member.
-  const seen = new Set<string>();
-  const walk = (v: unknown, t: TypeRef | undefined): void => {
-    if (!v || typeof v !== "object") return;
-    if (Array.isArray(v)) {
-      for (const x of v) walk(x, t?.kind === "list" ? t.of : undefined);
+    const ac = new AbortController();
+    res.on("close", () => ac.abort());
+    const init: RequestInit & { duplex?: "half" } = { method: req.method ?? "GET", headers, signal: ac.signal };
+    if (uploading && req.method === "POST") {
+      init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+      init.duplex = "half"; // the body is still arriving when the request is made
+    } else if (body && body.length) init.body = new Uint8Array(body);
+    const request = new Request(`http://${req.headers.host ?? "localhost"}${req.url ?? "/"}`, init as RequestInit);
+    sources.set(request, req);
+
+    const response = await handle(request);
+    if (res.headersSent) return;
+    res.writeHead(response.status, Object.fromEntries(response.headers));
+    if (!response.body) {
+      res.end();
       return;
     }
-    const o = v as Record<string, unknown>;
-    const tn = o["$type"];
-    const ref: TypeRef | undefined = typeof tn === "string" ? { kind: "named", name: tn, nullable: false } : t?.kind === "named" ? t : undefined;
-    const def = ref ? server.ir.types[ref.name] : undefined;
-    if (def && !seen.has(def.name)) {
-      seen.add(def.name);
-      consider(def.annotations);
+    res.flushHeaders(); // a live query may say nothing for a while; its headers should not wait with it
+    try {
+      for await (const chunk of Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0])) res.write(chunk as Buffer);
+    } catch {
+      /* the op failed after its frames began, or the client went away: the response ends either way */
     }
-    const fields = ref ? (fieldsOf(server.ir, ref) ?? []) : [];
-    for (const [k, x] of Object.entries(o)) {
-      if (k === "$type") continue;
-      const fd = fields.find((field) => field.name === k);
-      if (fd && (annotation(fd, "allow") || annotation(fd, "deny"))) consider(fd.annotations);
-      walk(x, fd?.type);
-    }
+    res.end();
   };
-  // the static type at a deferred frame's path, such as "items.0.author"
-  const typeAt = (root: TypeRef | undefined, path: string): TypeRef | undefined => {
-    let t = root;
-    for (const seg of path === "" ? [] : path.split(".")) {
-      if (!t) return undefined;
-      if (/^\d+$/.test(seg)) {
-        if (t.kind === "list") t = t.of;
-        continue;
-      }
-      while (t.kind === "list") t = t.of;
-      t = (fieldsOf(server.ir, t) ?? []).find((field) => field.name === seg)?.type;
-    }
-    return t;
-  };
-  const opNames = new Map<unknown, string>();
-  for (const o of Array.isArray(envelope.ops) ? envelope.ops : []) if (o && typeof o === "object") opNames.set(o.id, o.op);
-  for (const f of frames) {
-    if (!("data" in f)) continue;
-    const returns = server.ir.ops[opNames.get(f.id) ?? ""]?.returns;
-    walk(f.data, "at" in f ? typeAt(returns, f.at) : returns);
-  }
-  if (viewer !== null && viewer !== undefined) scope = "private";
-  if (!Number.isFinite(maxAge)) maxAge = 0;
-  const directives = [scope, `max-age=${Math.floor(maxAge)}`];
-  if (swr > 0) directives.push(`stale-while-revalidate=${Math.floor(swr)}`);
-  if (maxAge === 0 && swr === 0) directives.push("no-cache");
-  res.setHeader("Cache-Control", directives.join(", "));
-  res.setHeader("Vary", "Rayfold-Client, Accept, Authorization");
-  const payload = frames.map((f) => {
-    if ("meta" in f && f.meta) {
-      const { ms: _ms, ...rest } = f.meta;
-      return { ...f, meta: rest };
-    }
-    return f;
-  });
-  res.setHeader("ETag", `"sha256-${sha256Hex(canonicalJson(payload))}"`);
 }
 
-function parseB64(v: string, name: string): unknown {
-  try {
-    return JSON.parse(fromBase64url(v));
-  } catch {
-    throw new RayfoldError("invalid_argument", `Query parameter ${name} is not base64url JSON`);
-  }
+/** Cache-Control/ETag for safe requests (spec 07 §2), applied to a Node response. */
+export function applyCacheHeaders(server: RayfoldServer, envelope: RequestEnvelope, frames: Frame[], viewer: unknown, res: ServerResponse): void {
+  for (const [name, value] of Object.entries(cacheHeadersFor(server, envelope, frames, viewer))) res.setHeader(name, value);
+}
+
+/** The server's own readiness and the configured checks, each given `readinessTimeoutMs` to answer. */
+export async function readiness(server: RayfoldServer, opts: HttpOptions = {}): Promise<{ ready: boolean; reasons: string[] }> {
+  return readinessOf(server, opts);
 }
 
 /** How much of an over-limit body is drained (so the refusal can be read) before the socket is dropped. */
@@ -360,56 +117,22 @@ function readBody(req: IncomingMessage, max: number): Promise<Buffer> {
       }
       chunks.push(c);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("end", () => {
+      if (!over) resolve(Buffer.concat(chunks));
+    });
     req.on("error", reject);
   });
-}
-
-function json(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(body));
-}
-
-function problem(res: ServerResponse, code: ErrorCode, detail: string, wire?: WireError): void {
-  const status = HTTP_STATUS[code];
-  const body = {
-    type: PROBLEM_TYPE_BASE + code,
-    title: code.replace(/_/g, " "),
-    status,
-    detail,
-    code,
-    ...(wire?.data !== undefined ? { data: wire.data } : {}),
-  };
-  res.writeHead(status, { "Content-Type": PROBLEM_TYPE, "Cache-Control": "no-store" }).end(JSON.stringify(body));
-}
-
-/** The server's own readiness and the configured checks, each given `readinessTimeoutMs` to answer. */
-export async function readiness(server: RayfoldServer, opts: HttpOptions = {}): Promise<{ ready: boolean; reasons: string[] }> {
-  const own = server.readiness().reasons;
-  const limit = opts.readinessTimeoutMs ?? 2_000;
-  const checks = await Promise.all(
-    Object.entries(opts.readiness ?? {}).map(async ([name, check]): Promise<string | undefined> => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const late = new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`no answer within ${limit} ms`)), limit);
-      });
-      try {
-        await Promise.race([check(), late]);
-        return undefined;
-      } catch (e) {
-        return `${name}: ${e instanceof Error ? e.message : String(e)}`;
-      } finally {
-        clearTimeout(timer);
-      }
-    }),
-  );
-  const reasons = [...own, ...checks.filter((c): c is string => c !== undefined)];
-  return { ready: reasons.length === 0, reasons };
 }
 
 /** Start a Node HTTP server hosting the Rayfold endpoint. */
 export function listen(server: RayfoldServer, port: number, opts: HttpOptions = {}): Promise<Server> {
   const handler = createHttpHandler(server, opts);
-  const http = createServer((req, res) => void handler(req, res));
+  const http = createServer((req, res) => {
+    void handler(req, res).catch(() => {
+      if (!res.headersSent) refuse(res, 500, "internal", "Internal error");
+      else res.end();
+    });
+  });
   return new Promise((resolve) => http.listen(port, () => resolve(http)));
 }
 
@@ -427,3 +150,6 @@ export async function shutdown(server: RayfoldServer, http: Server, opts: { time
   });
   await server.close();
 }
+
+export { isLoopbackAddress };
+export type { RayfoldError };

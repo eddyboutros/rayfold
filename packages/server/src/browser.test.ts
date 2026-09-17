@@ -93,6 +93,15 @@ describe("the server core in a browser", () => {
     expect(result.narrowed).toMatchObject([{ id: 1, error: { code: "permission_denied" } }]);
   });
 
+  it("the fetch handler bundles for a runtime with no Node at all", async () => {
+    // what a Worker, Deno or Bun imports: the endpoint itself, not only the executor
+    const { inputs } = await bundle(`import { createFetchHandler } from "./fetch.ts"; export const main = () => createFetchHandler;`);
+    const ours = inputs.filter((p) => !p.endsWith(ENTRY_NAME) && !p.includes("node_modules"));
+    expect(ours).toEqual(expect.arrayContaining([expect.stringMatching(/server\/src\/fetch\.ts$/)]));
+    const nodeOnly = ours.filter((p) => /\bBuffer\b|\bprocess\.|from "node:/.test(stripComments(readFileSync(p, "utf8"))));
+    expect(nodeOnly).toEqual([]);
+  });
+
   it("guard: the checks do fail for Node-only code, so passing them means something", async () => {
     await expect(bundle(`import { listen } from "./http.ts"; export const main = () => listen;`)).rejects.toThrow(/node:http/);
     expect(() => runInNewContext(`Buffer.from("x")`, browserGlobals())).toThrow(/Buffer is not defined/);

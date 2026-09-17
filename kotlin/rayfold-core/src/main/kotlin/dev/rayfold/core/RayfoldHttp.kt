@@ -80,6 +80,8 @@ data class HttpOptions(
     val readiness: Map<String, suspend () -> Unit> = emptyMap(),
     /** How long a readiness check may take before it counts as failed. */
     val readinessTimeoutMs: Long = 2_000,
+    /** Serves `POST {path}/uploads` (extension `upload`, spec 04 section 9). Without it, that route is not there at all. */
+    val uploads: UploadOptions? = null,
 )
 
 /**
@@ -135,6 +137,9 @@ class RayfoldHttp(
     /** The viewer as the second argument, as before [HttpOptions] existed; `RayfoldHttp(server) { exchange -> ... }` still works. */
     constructor(server: RayfoldServer, viewer: (HttpExchange) -> JsonElement) : this(server, HttpOptions(), viewer)
 
+    // the manifest says which extensions are served beside the endpoint
+    init { if (options.uploads != null) server.mounted.add("upload") }
+
     private val STATUS = mapOf(
         Code.INVALID_ARGUMENT to 400, Code.FAILED_PRECONDITION to 400, Code.OUT_OF_RANGE to 400, Code.UNAUTHENTICATED to 401,
         Code.PERMISSION_DENIED to 403, Code.NOT_FOUND to 404, Code.ALREADY_EXISTS to 409, Code.ABORTED to 409,
@@ -153,7 +158,8 @@ class RayfoldHttp(
     private val routes = server.ir.ops.values.any { o -> o.annotations.any { it.name == "http" } }
 
     /** Read on every request: an MCP endpoint may be mounted after this one. */
-    private fun extensions() = listOf("live", "rb") + (if (routes) listOf("http") else emptyList()) + (if ("mcp" in server.mounted) listOf("mcp") else emptyList())
+    private fun extensions() = listOf("live", "rb") + (if (routes) listOf("http") else emptyList()) +
+        (if ("mcp" in server.mounted) listOf("mcp") else emptyList()) + (if ("upload" in server.mounted) listOf("upload") else emptyList())
 
     /** An HTTP-level refusal whose status or problem type has no protocol code of its own (415, 413). */
     private class HttpProblem(val status: Int, val code: Code, val detail: String, val type: String = code.wire) : RuntimeException(detail)
@@ -210,6 +216,7 @@ class RayfoldHttp(
                 call.setHeader("Retry-After", "1")
                 throw RayfoldException(Code.UNAVAILABLE, "The server is shutting down")
             }
+            options.uploads?.let { if (sub == "/uploads" && call.method == "POST") return upload(call, it, viewer) }
             val envelope: JsonObject
             var safe = false
             if (sub.isEmpty() || sub == "/") {
@@ -275,6 +282,48 @@ class RayfoldHttp(
                 return
             }
             problem(call, e)
+        }
+    }
+
+    /**
+     * `POST {path}/uploads`: the bytes go to the store and the client gets the handle a command will name. Every check
+     * the batch endpoint applies to a write applies here too, because this is one: the Host and Origin rules (above,
+     * for every request), a content type a foreign page cannot send without asking, an identified sender unless the
+     * server says otherwise, and a size bound enforced while reading rather than from a `Content-Length` a client may
+     * understate.
+     */
+    private fun upload(call: HttpCall, uploads: UploadOptions, viewer: () -> JsonElement) {
+        val media = call.header("Content-Type")?.substringBefore(';')?.trim()?.lowercase()
+        if (media != UPLOAD_TYPE) {
+            call.setHeader("Accept-Post", UPLOAD_TYPE)
+            throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${media ?: "(none)"} is not accepted; send $UPLOAD_TYPE", "unsupported_media_type")
+        }
+        val v = viewer()
+        if (uploads.viewerRequired && v is JsonNull) throw RayfoldException(Code.UNAUTHENTICATED, "An upload needs an identified caller")
+        val max = uploads.maxBytes
+        fun tooLarge() = HttpProblem(413, Code.RESOURCE_EXHAUSTED, "Upload exceeds $max bytes", "payload_too_large")
+        call.header("Content-Length")?.toLongOrNull()?.let { if (it > max) throw tooLarge() }
+        val kept = runBlocking {
+            uploads.store.put(Bounded(call.body, max, ::tooLarge), call.header("Rayfold-Upload-Name"), call.header("Rayfold-Upload-Type"), v)
+        }
+        json(call, 201, buildJsonObject {
+            put("id", kept.id); put("size", kept.size)
+            kept.name?.let { put("name", it) }
+            kept.type?.let { put("type", it) }
+        })
+    }
+
+    /** The request body, counted as it is read: a body that understates its length is stopped at the bound, not after it. */
+    private class Bounded(private val source: InputStream, private val max: Long, private val tooLarge: () -> Throwable) : InputStream() {
+        private var count = 0L
+
+        override fun read(): Int = source.read().also { if (it >= 0) count(1) }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int = source.read(b, off, len).also { if (it > 0) count(it.toLong()) }
+
+        private fun count(n: Long) {
+            count += n
+            if (count > max) throw tooLarge()
         }
     }
 
@@ -482,6 +531,9 @@ class RayfoldHttp(
         val log: System.Logger = System.getLogger(RayfoldHttp::class.java.name)
         const val MAX_REQ_TIME = "sun.net.httpserver.maxReqTime"
         const val FRAMES_TYPE = "application/rayfold-frames+json"
+
+        /** The media type an upload arrives as: not one a browser may send cross-site without a preflight (spec 12 section 2). */
+        const val UPLOAD_TYPE = "application/octet-stream"
         val BODY_TYPES = setOf("application/rayfold+json", "application/json", RbCodec.CONTENT_TYPE)
         val KEEP_ALIVE_JSON = byteArrayOf('\n'.code.toByte())
         val KEEP_ALIVE_RB = byteArrayOf(0)

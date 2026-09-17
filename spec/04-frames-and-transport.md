@@ -12,17 +12,18 @@ except batch-level frames, which have no `id`.
 | Frame | Shape | Produced by |
 |---|---|---|
 | data | `{ id, data, meta?, errors?, fin? }` | query result, default `fin: true` |
-| ok | `{ id, ok, patch?, meta?, errors?, fin: true }` | command result |
-| item | `{ id, item, meta? }` | one stream element |
+| ok | `{ id, ok, patch, meta?, errors?, fin: true }` | command result; `patch` is always present, empty when the command touched nothing |
+| item | `{ id, item, meta?, errors? }` | one stream element |
 | patch | `{ id, patch, meta? }` | live-query update ([08](08-live-and-sync.md)) |
 | defer | `{ id, at, data, errors? }` | a `@defer` block or `@lazy` field, `at` is the result path |
 | error | `{ id, error, fin: true }` | terminal failure of the op ([05](05-errors.md)) |
 | fin | `{ id, fin: true }` | end of a stream/live/deferred op with nothing else to say |
 | batch error | `{ error, fin: true }` | the whole batch failed |
 
-`meta` is an open object; Core defines `cost` (integer), `cache` (`"hit"`, `"miss"`, `"stale"`), `ms`
-(server time), `replay` (boolean) and `cursor` (string). `errors` is the list of non-fatal `@partial` errors
-([05 §4](05-errors.md)).
+`meta` is an open object; Core defines `cost` (integer) and `replay` (boolean), which servers send, and `ms` (server
+time), which a server MAY send when it is built to report timings. `cache` (`"hit"`, `"miss"`, `"stale"`) is reserved
+for the server result cache of [07 §4](07-cache.md), which no runtime implements yet, so nothing sends it today.
+`errors` is the list of non-fatal `@partial` errors ([05 §4](05-errors.md)).
 
 A frame with `fin: true` is the last frame for that id. Servers MUST NOT send frames for an id after `fin`.
 When a `data` frame omits `fin`, it means more frames follow (defer, live).
@@ -59,8 +60,9 @@ result of that operation ignores them.
 | `at` | `{ "at": "columns.2", "value": { "count": 9 } }` merges these fields into the plain object at this path of the result. The path is dotted, array positions included; `""` is the result itself. |
 | `list` | `{ "list": "items", "del": [3], "ins": [{ "at": 0, "value": { ... } }] }` removes those positions of the list at that path, then inserts those elements at those positions. `del` names positions in the list as the client currently holds it; `ins` positions are in the list after the removals, applied in order. |
 
-An `ins` carries the projected element exactly as a `data` frame would carry it, so the client stores its
-entities and records which fields the result selected. A server MUST NOT also send those entities as `set`
+An `ins` carries the projected element in full form — `$type` retained even when the op asked for compact frames,
+because a patch is applied to the cache rather than read as a result — so the client stores its entities and records
+which fields the result selected. A server MUST NOT also send those entities as `set`
 operations in the same patch. A server MUST NOT describe a change it cannot express this way (a reordering, a
 different set of fields): it sends a fresh `data` frame instead.
 
@@ -83,10 +85,17 @@ dots and integer indices. Deferred frames arrive after the op's first `data` fra
 |---|---|---|
 | `POST /rayfold` | batch envelope | anything |
 | `QUERY /rayfold` | batch envelope | batches containing only queries ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)); cacheable by body |
-| `GET /rayfold/{op}?a=...&s=...&v=...` | none | one query; `a` = base64url canonical-JSON args, `s` = shape id, `v` = base64url vars |
+| `GET /rayfold/{op}?a=...&s=...&v=...` | none | one query; `a` = base64url canonical-JSON args, `s` = shape text or `sha256:` id, `v` = base64url vars |
 
-Request content type `application/rayfold+json`. Clients that cannot send `QUERY` (browsers today) send `POST`
-with header `Rayfold-Safe: true`; servers treat it as `QUERY` for caching purposes.
+These sub-paths of the endpoint are reserved and are never treated as an operation name: `manifest`,
+`openapi.json`, `health`, `ready`, `uploads`, `ws` and `explorer`. An operation whose name collides with one of them
+is still reachable by `POST`, but not by `GET /rayfold/{op}`.
+
+A request body MUST carry one of three content types: `application/rayfold+json`, `application/json`, or the binary
+`application/rayfold` ([09](09-binary-format.md)). Accepting no others is half of what stops a page on another origin
+writing to the endpoint ([12 §2.1](12-security.md)); the uploads route of [§9](#9-uploads-extension-upload) accepts
+`application/octet-stream` and nothing else, for the same reason. Clients that cannot send `QUERY` (browsers today)
+send `POST` with header `Rayfold-Safe: true`; servers treat it as `QUERY` for caching purposes.
 
 **Response:** status `200`, content type `application/rayfold-frames+json`: newline-delimited JSON, one frame per
 line, flushed as produced. When the request carries `Accept: application/json` and the batch has exactly one
@@ -99,20 +108,64 @@ SHOULD write a keep-alive at least every 30 seconds: an empty line in NDJSON, a 
 and they are how a server notices a client that went away, since many HTTP servers only see a closed connection
 when they write to it.
 
-Batch-level failures (malformed body, unauthenticated, too large, over budget) use the derived status and an
-RFC 9457 `application/problem+json` body whose `code` member is the Rayfold error code.
+Failures the server refuses before it parses a batch — a malformed body, a media type it does not read, a bad Origin
+or Host, a body over the limit — use the derived status and an RFC 9457 `application/problem+json` body whose `code`
+member is the Rayfold error code. A batch that parses and then fails as a whole, such as one over budget, is an
+`error` frame on the frame channel rather than a problem document ([05 §5](05-errors.md)).
 
 Headers:
 
 | Header | Direction | Meaning |
 |---|---|---|
-| `Rayfold-Client` | request | same as `meta.client` |
-| `Rayfold-Deadline` | request | milliseconds, same as `meta.deadline` |
-| `traceparent` / `tracestate` | request | W3C trace context, propagated to loaders |
+| `Rayfold-Client` | request | same as `meta.client`, for a client that cannot set it in the envelope; Rayfold clients use `meta` |
+| `Rayfold-Deadline` | request | milliseconds, same as `meta.deadline`, on the same terms |
+| `traceparent` / `tracestate` | request | W3C trace context, carried into the batch's `meta` |
 | `Rayfold-Schema` | response | schema hash; clients detect drift |
-| `ETag`, `Cache-Control`, `Vary` | response | per [07](07-cache.md), on `GET`/`QUERY` only |
-| `Server-Timing` | response | `rayfold;dur=...`, per-op timings in debug mode |
-| `RateLimit`, `RateLimit-Policy` | response | per draft-ietf-httpapi-ratelimit-headers (provisional) |
+| `ETag`, `Cache-Control`, `Vary` | response | per [07](07-cache.md), on safe requests: `GET`, `QUERY`, and `POST` with `Rayfold-Safe: true` |
+| `X-Content-Type-Options: nosniff` | response | on every response |
+| `Cache-Control: no-store` | response | on a streaming response and on every problem document |
+| `Retry-After` | response | on `503` while the server is draining ([§4b](#4b-health-and-readiness)) |
+| `Accept-Post`, `Accept-Query`, `Allow` | response | on `415` and on a method the endpoint does not serve |
+
+## 4a. Manifest
+
+`GET {path}/manifest` is how a client learns what it is talking to, before it sends anything:
+
+```json
+{
+  "rayfold": "0.1",
+  "schemaHash": "sha256:...",
+  "extensions": ["live", "rb", "http", "mcp", "upload"],
+  "limits": { "maxOps": 50, "maxDepth": 8, "budget": 1000 },
+  "schema": { "rayfold": "0.1", "types": {}, "ops": {}, "views": {} }
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `rayfold` | the protocol version this server speaks |
+| `schemaHash` | the hash of the IR below, so a client can tell a schema change from a network change |
+| `extensions` | exactly the extensions this server serves. A client MUST NOT use an extension that is not listed ([process.md](process.md)). |
+| `limits` | the bounds a batch is judged against ([06 §5](06-auth.md), [12 §3](12-security.md)), so a client can size a batch rather than discover a refusal |
+| `schema` | the IR ([01 §9](01-schema.md)), with policy expressions redacted unless the server is configured to serve them ([12 §5.6](12-security.md)) |
+
+## 4b. Health and readiness
+
+Two routes beside the endpoint, so a load balancer can tell a process that is alive from one that should be sent
+traffic:
+
+| Route | Answers |
+|---|---|
+| `GET {path}/health` | `200 {"status":"ok"}` for as long as the process runs. `Cache-Control: no-store`. |
+| `GET {path}/ready` | `200 {"ready":true,"reasons":[]}`, or `503 {"ready":false,"reasons":[...]}` naming every reason it should not take traffic. |
+
+A server MAY be unready for reasons of its own; it MUST be unready while it is draining. **Draining** is what a
+rolling deploy needs: readiness turns false so the balancer stops choosing this server, batches already in flight are
+allowed to finish, long-lived operations (streams and live queries) end with a retryable `unavailable`, and any new
+request is refused `503` with `Retry-After`. A WebSocket connection closes with code `1001`.
+
+Preflight is answered by the endpoint: an `OPTIONS` request gets `204` with the `Access-Control-Allow-*` headers the
+configured origins imply ([12 §2.1](12-security.md)).
 
 ## 5. WebSocket transport
 
@@ -122,26 +175,31 @@ Client-to-server messages:
 
 | Message | Meaning |
 |---|---|
-| batch envelope | as in HTTP; ids MUST be unique for the lifetime of the socket |
-| `{ "cancel": id }` | stop an op; the server answers `{ id, fin: true }` (or nothing more if already finished) |
-| `{ "id": id, "item": ... }` | an item on a bidirectional stream |
-| `{ "id": id, "fin": true }` | client side of a bidirectional stream is done |
-| `{ "credit": id, "n": N }` | flow control: allow N more items on stream `id` |
+| batch envelope | as in HTTP; ids MUST be unique among the ops currently open on the socket. An id is free again as soon as the client has seen that op's `fin`. |
+| `{ "cancel": id }` | stop an op. The op ends as any cancelled op does, with `{ id, error: { "code": "canceled" }, fin: true }` ([§7](#7-cancellation-and-deadlines)); a server that has already finished the op sends nothing more. |
 
-Server-to-client messages are frames. Initial credit per stream is 32 items; a server MUST NOT exceed
-outstanding credit.
+Server-to-client messages are frames.
+
+Three further client messages are reserved and not part of 0.1: `{ "id": id, "item": ... }` and
+`{ "id": id, "fin": true }` belong to the unshipped `@input` extension for bidirectional streams, and
+`{ "credit": id, "n": N }` to credit-based flow control. A server that does not implement them refuses them as
+`invalid_argument`. Until flow control is specified as a requirement, a server emits stream items as its resolver
+yields them, bounded by its own per-stream item limit.
 
 ## 6. Other transports
 
-Any transport that delivers ordered chunks can carry Rayfold: HTTP/2 and HTTP/3 (identical to §4 with real
-multiplexing), Server-Sent Events (frames as `data:` lines, queries only), WebTransport (one bidirectional
-stream per batch, RB frames). None of these change frame semantics.
+Any transport that delivers ordered chunks can carry Rayfold, and this section sketches how rather than defining
+bindings: HTTP/2 and HTTP/3 (identical to §4 with real multiplexing), Server-Sent Events (frames as `data:` lines,
+queries only), WebTransport (one bidirectional stream per batch, RB frames). None of these change frame semantics,
+none is required for conformance, and no runtime implements them today.
 
 ## 7. Cancellation and deadlines
 
-A cancelled or expired op MUST stop calling loaders; in-flight loader calls receive an abort signal.
-The op ends with `{ id, error: { code: "canceled" | "deadline_exceeded" }, fin: true }` unless it had
-already finished.
+A cancelled or expired op MUST stop calling loaders, and a resolver already running MUST be given a way to notice:
+cancellation is cooperative, so the runtime offers the signal and the resolver is expected to observe it. How it is
+offered is the runtime's own business — an `AbortSignal` on the context, a cancelled coroutine — but a resolver that
+never looks will run to completion, and only its result is discarded. The op ends with
+`{ id, error: { code: "canceled" | "deadline_exceeded" }, fin: true }` unless it had already finished.
 
 ## 8. HTTP bindings (extension `http`)
 
@@ -166,6 +224,52 @@ curl scripts, webhooks, gateways and teams that expect resources.
 * A path that matches with another method answers `405` with `Allow`.
 
 `GET /rayfold/openapi.json` returns an **OpenAPI 3.2** document generated from the IR and the bindings (3.2 is the
-first version with a `query` operation): parameters, request bodies, result schemas, `@range` as JSON Schema
-keywords, the `Idempotency-Key` and `If-Match` headers, and one `422` schema per declared error. The published
-contract and the enforced rules come from the same source and cannot drift.
+first version with a `query` operation): parameters, request bodies, result schemas, the `Idempotency-Key` and
+`If-Match` headers, and one `422` schema per declared error. `@range` becomes `minimum`/`maximum` on `Int`, `Long` and
+`Float`, and `minLength`/`maxLength` on `String`; on a `Decimal` or a list, where JSON Schema's keywords do not carry
+the same meaning, it becomes the extension `x-rayfold-range`. The published contract and the enforced rules come from
+the same source and cannot drift.
+
+## 9. Uploads (extension `upload`)
+
+Bytes that are awkward as an argument arrive on a route of their own, and the command that uses them names what
+arrived rather than carrying it:
+
+```
+POST /rayfold/uploads
+Content-Type: application/octet-stream
+Rayfold-Upload-Name: avatar.png          (optional, a label; never a path)
+Rayfold-Upload-Type: image/png           (optional, what the client claims it is)
+
+<bytes>
+
+201 { "id": "d9f1…", "size": 20481, "name": "avatar.png", "type": "image/png" }
+```
+
+```json
+{ "ops": [{ "id": 1, "op": "setAvatar", "args": { "userId": "u1", "upload": "d9f1…" }, "key": "…" }] }
+```
+
+A server that serves this route lists `upload` in its manifest's `extensions` ([§4a](#4a-manifest)).
+
+**Why a route and not a multipart batch.** A browser may send `multipart/form-data`, `text/plain` and
+`application/x-www-form-urlencoded` to any origin without a preflight, which is why the batch endpoint takes JSON only
+([12 §2.1](12-security.md)). `application/octet-stream` is not one of those, so this route keeps that protection, and
+bytes travelling as bytes cost what they weigh rather than a third more as base64.
+
+Requirements:
+
+1. The route MUST accept `application/octet-stream` only, and MUST apply the Origin rule as for any write
+   ([12 §2](12-security.md)): an upload changes what the server holds.
+2. A server MUST bound one upload's size and MUST enforce that bound as the bytes arrive, not from `Content-Length`
+   alone, which a client may understate. Over it: `413` with problem type `payload_too_large`.
+3. An upload SHOULD need an identified viewer, since an open upload route fills a server's storage with nothing to
+   trace it to. A server MAY allow anonymous uploads where that is what it wants.
+4. An id MUST be unguessable: holding one is what lets a command read those bytes.
+5. Stored bytes MUST expire, and the store MUST be bounded, as idempotency records are ([12 §3.6](12-security.md)).
+6. `name` and `type` are what the client said. A server MUST NOT treat `name` as a path, and SHOULD check the type
+   itself where it matters rather than believe it.
+
+For files measured in hundreds of megabytes, a command that answers with a URL from the application's own storage,
+which the client then uploads to, costs the protocol nothing and the server less; this extension is for the sizes
+where a round trip through the API is the simpler thing.

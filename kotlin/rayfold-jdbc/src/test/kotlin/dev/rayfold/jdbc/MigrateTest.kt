@@ -84,8 +84,9 @@ class MigrateTest {
 
             executed.clear()
             store(ArrayDeque(listOf(state))).migrate()
-            assertEquals(2, executed.size, "state $state: the idempotency store does the same")
-            assertEquals(setOf(JdbcIdempotencyStore({ keepAlive }).schema()), executed.toSet())
+            val reference = JdbcIdempotencyStore({ keepAlive })
+            assertEquals(3, executed.size, "state $state: the table was refused once and run again, then the index")
+            assertEquals(listOf(reference.schema(), reference.schema(), reference.index()), executed.toList())
         }
         keepAlive.createStatement().use { s ->
             s.executeQuery("SELECT COUNT(*) FROM rayfold_relay").use { r -> r.next(); assertEquals(0, r.getInt(1), "the relay table exists") }
@@ -104,14 +105,14 @@ class MigrateTest {
     }
 
     @Test
-    fun `guard - a migration nobody refuses runs once`() {
+    fun `guard - a migration nobody refuses runs each statement once`() {
         relay(ArrayDeque()).migrate()
-        assertEquals(1, executed.size)
+        assertEquals(1, executed.size, "the relay has only its table")
         executed.clear()
         store(ArrayDeque()).migrate()
-        assertEquals(1, executed.size)
+        assertEquals(2, executed.size, "the idempotency store has its table and the index the sweep reads")
         executed.clear()
         store(ArrayDeque()).migrate()
-        assertEquals(1, executed.size, "and once more when it already exists: IF NOT EXISTS, nothing refused")
+        assertEquals(2, executed.size, "and again when both already exist: IF NOT EXISTS, nothing refused")
     }
 }
