@@ -306,7 +306,11 @@ export class Executor {
       } else if (isScalarLike(this.ir, t.of)) {
         return value.map((v) => (v === null ? null : serializeScalar(this.ir, t.of, v)));
       } else {
-        await this.projectMany(slots, t.of, shape, st);
+        // A denied entity in a list fails the operation whatever the element type says (spec 06 §3): an element is a
+        // non-null position for this purpose, because a list is read as "these are all of them" and nulling one
+        // silently changes an answer the caller is counting. An element that is genuinely null is already handled
+        // above, against the real element type, so this affects only the denial decision.
+        await this.projectMany(slots, { ...t.of, nullable: false }, shape, st);
       }
       return outs;
     }
@@ -472,7 +476,10 @@ export class Executor {
         }
       });
       if (childSlots.length) {
-        const childType: TypeRef = field.type.kind === "list" ? field.type.of : field.type;
+        // A list element is a non-null position as far as a denial is concerned (spec 06 §3), whatever the element
+        // type says: nulling one silently changes a list the caller reads as "these are all of them". An element
+        // that is genuinely null was handled above against the real type, so this moves only the denial decision.
+        const childType: TypeRef = field.type.kind === "list" ? { ...field.type.of, nullable: false } : field.type;
         const sub = g.shape ?? defaultShape(this.ir, childType);
         children.push({ slots: childSlots, type: childType, shape: sub, explicit: g.shape ? st.explicit : false });
       }

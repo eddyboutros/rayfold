@@ -1,0 +1,101 @@
+{
+  "name": "authorization/denial-outcomes",
+  "about": "What a caller gets when a policy refuses. This is the table where a disagreement is a confidentiality bug rather than an inconvenience: one implementation returning null where another fails the operation is the difference between 'this entity is hidden from you' and 'this entity exists and is hidden from you', and the second tells an attacker something the first does not.",
+  "source": "spec 06 §3, row for row. The expectation is the table, not either runtime - the two are known to disagree on one row, which is why the file exists.",
+  "schema": "entity Secret @allow(read: viewer.role == \"admin\") { id: ID code: String }\nentity Note { id: ID title: String secret: Secret? mustHave: Secret owner: String @allow(read: viewer.role == \"admin\") sometimes: String? @partial @allow(read: viewer.role == \"admin\") }\nentity Box { id: ID items: [Secret] maybe: [Secret?] }\nquery note(id: ID): Note?\nquery box(id: ID): Box?\nquery boxWithGap(id: ID): Box?\nquery adminOnly(id: ID): Note? @allow(read: viewer.role == \"admin\")",
+  "viewer": {
+    "id": "u1",
+    "role": "customer"
+  },
+  "cases": [
+    {
+      "name": "an operation the viewer may not call",
+      "op": "adminOnly",
+      "shape": "{ id }",
+      "expect": "error",
+      "code": "permission_denied",
+      "why": "no execution at all: the resolver is never reached"
+    },
+    {
+      "name": "an operation whose policy references a viewer that is null",
+      "op": "adminOnly",
+      "shape": "{ id }",
+      "viewer": null,
+      "expect": "error",
+      "code": "unauthenticated",
+      "why": "the distinction matters to a client: sign in and try again, rather than you may not do this"
+    },
+    {
+      "name": "a field the shape asked for",
+      "op": "note",
+      "shape": "{ id owner }",
+      "expect": "error",
+      "code": "permission_denied",
+      "path": "owner",
+      "why": "atomic: asking for something you may not read fails the operation rather than quietly dropping it"
+    },
+    {
+      "name": "a field the shape asked for, marked @partial",
+      "op": "note",
+      "shape": "{ id sometimes }",
+      "expect": "partial",
+      "field": "sometimes",
+      "why": "the one way an explicit field degrades instead of failing, and the schema has to say so"
+    },
+    {
+      "name": "an entity at a nullable position",
+      "op": "note",
+      "shape": "{ id secret { id } }",
+      "expect": "null",
+      "at": "secret",
+      "why": "exactly what a caller sees for an entity that is not there. A denial must not be distinguishable from absence, or it answers the question 'does this exist?'"
+    },
+    {
+      "name": "an entity at a non-null position",
+      "op": "note",
+      "shape": "{ id mustHave { id } }",
+      "expect": "error",
+      "code": "permission_denied",
+      "path": "mustHave",
+      "why": "there is no null to return, so the operation fails rather than inventing one"
+    },
+    {
+      "name": "an entity as a list element",
+      "op": "box",
+      "shape": "{ id items { id } }",
+      "expect": "error",
+      "code": "permission_denied",
+      "why": "a list element is a non-null position twice over: the element type forbids null, and the list would silently change meaning. Both runtimes agree here; the disagreement is the next case."
+    },
+    {
+      "name": "an entity as a list element whose type admits null",
+      "op": "box",
+      "shape": "{ id maybe { id } }",
+      "expect": "error",
+      "code": "permission_denied",
+      "why": "**the row the two runtimes disagree on.** [Secret?] says an element may be null, so returning null here leaks nothing - and TypeScript does exactly that. But spec 06 section 3 says a list element fails whatever its nullability, and a list is usually read as 'these are all of them': silently nulling one changes an answer the caller is counting. The spec is the authority and it already decided; if the other reading is better it is a Core 0.2 question, not something to settle by rewriting the rule to match whichever runtime was looked at last."
+    },
+    {
+      "name": "guard: an element that is genuinely null still reads as null",
+      "op": "boxWithGap",
+      "shape": "{ id maybe { id } }",
+      "expect": "nullElement",
+      "at": "maybe",
+      "why": "the rule above must catch a denial, not every null in a list. [Secret?] still means an element may be absent, and an implementation that fails here has turned an authorisation rule into a data rule."
+    },
+    {
+      "name": "a field only in the default view",
+      "op": "note",
+      "expect": "omitted",
+      "field": "owner",
+      "why": "a default view never leaks and never fails: the caller did not ask for this field by name, so it is simply not there"
+    },
+    {
+      "name": "guard: what the viewer may read still arrives",
+      "op": "note",
+      "shape": "{ id title }",
+      "expect": "ok",
+      "why": "or every row above would pass against a server that refuses everything"
+    }
+  ]
+}

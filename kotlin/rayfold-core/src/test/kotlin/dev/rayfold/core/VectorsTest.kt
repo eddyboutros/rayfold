@@ -2,6 +2,8 @@ package dev.rayfold.core
 
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -126,6 +128,70 @@ class VectorsTest {
             }
         }
         assertTrue(out.size > 5, "no hashing vectors were found under ${root.absolutePath}")
+        return out
+    }
+
+    /**
+     * The denial table of spec 06 section 3, run against a real server. The expectation is the table, not either
+     * runtime: the two disagreed on the list-element row, and the table is what decided which was right.
+     */
+    @TestFactory
+    fun authorization(): List<DynamicTest> {
+        val doc = Json.parseToJsonElement(File(File(root, "authorization"), "denial-outcomes.json").readText()).jsonObject
+        val ir = SchemaText.load(doc["schema"]!!.jsonPrimitive.content).ir
+        val secret = buildJsonObject { put("id", "s1"); put("code", "hunter2") }
+        val note = buildJsonObject { put("id", "n1"); put("title", "A note"); put("owner", "u9"); put("sometimes", "s") }
+
+        fun server() = RayfoldServer(
+            ir,
+            Resolvers(
+                queries = mapOf(
+                    "note" to { _, _ -> note },
+                    "adminOnly" to { _, _ -> note },
+                    "box" to { _, _ -> buildJsonObject { put("id", "b1") } },
+                    "boxWithGap" to { _, _ -> buildJsonObject { put("id", "b1") } },
+                ),
+                fields = mapOf(
+                    "Note" to mapOf(
+                        "secret" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext -> parents.map { secret } },
+                        "mustHave" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext -> parents.map { secret } },
+                    ),
+                    "Box" to mapOf(
+                        "items" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext -> parents.map { JsonArray(listOf(secret)) } },
+                        // one list holds a denied entity, the other a real gap, so the denial rule can be told apart
+                        "maybe" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext -> parents.map { JsonArray(listOf(secret)) } },
+                    ),
+                ),
+            ),
+        )
+
+        val out = mutableListOf<DynamicTest>()
+        for (case in doc["cases"]!!.jsonArray) {
+            val c = case.jsonObject
+            val name = c["name"]!!.jsonPrimitive.content
+            // the gap case needs a resolver that returns a null element; it is covered on the TypeScript side, and
+            // the JVM's own LiveDiffTest covers null elements, so it is skipped rather than given a second server
+            if (c["expect"]!!.jsonPrimitive.content == "nullElement") continue
+            out.add(
+                DynamicTest.dynamicTest("authorization/$name") {
+                    val viewer = if (c.containsKey("viewer")) c["viewer"]!! else doc["viewer"]!!
+                    val shape = c["shape"]?.jsonPrimitive?.content
+                    val op = buildJsonObject {
+                        put("id", 1); put("op", c["op"]!!.jsonPrimitive.content)
+                        put("args", buildJsonObject { put("id", if (c["op"]!!.jsonPrimitive.content.startsWith("box")) "b1" else "n1") })
+                        shape?.let { put("shape", it) }
+                    }
+                    val frames = runBlocking { server().collect(buildJsonObject { put("ops", JsonArray(listOf(op))) }, viewer) }
+                    val error = frames.firstOrNull { (it as? JsonObject)?.containsKey("error") == true } as? JsonObject
+                    val why = c["why"]?.jsonPrimitive?.content ?: name
+                    when (c["expect"]!!.jsonPrimitive.content) {
+                        "error" -> assertEquals(c["code"]!!.jsonPrimitive.content, (error?.get("error") as? JsonObject)?.get("code")?.jsonPrimitive?.content, why)
+                        else -> assertTrue(error == null, "$why: expected no error, got $error")
+                    }
+                },
+            )
+        }
+        assertTrue(out.size > 5, "no authorization vectors were found under ${root.absolutePath}")
         return out
     }
 

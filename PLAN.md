@@ -53,7 +53,7 @@ Traps that have actually bitten, worst first:
 
 ---
 
-## 1. The conformance vector pack — 6 of 10 areas (hashing/ now complete)
+## 1. The conformance vector pack — 7 of 10 areas
 
 `conformance/vectors/`, run by `packages/schema/src/vectors.test.ts`, `packages/rb/src/vectors.test.ts`,
 `packages/server/src/manifest-vectors.test.ts` and `VectorsTest.kt`.
@@ -104,12 +104,19 @@ independent implementer would have hit.
       An implementer would have hashed only their own declarations and matched nobody. Now §9.1a.
 - [ ] **`errors/`** — problem documents vs error frames, the lower-case title, the op-rooted detail path.
 - [ ] **`idempotency/`** — viewer scope, binding hash, `already_exists` on reuse, lease and takeover.
-- [ ] **`authorization/`** — the denial table of spec 06, including the list-element case the runtimes disagree on.
+- [x] **`authorization/`** — 11 cases, the denial table row for row. **The first vector to fault TypeScript.** A
+      denied entity in a `[Secret?]` list read as `null` there and failed the operation on the JVM; spec 06 §3 says a
+      list element fails whatever its nullability, so TypeScript was wrong and is fixed. Two call sites needed it —
+      the nested-field path (`executor.ts:479`) as well as the top-level list path — and only the second showed up
+      first, so the fix looked applied while the vector stayed red.
+      Worth noting what was *not* done: the other reading is defensible — `[Secret?]` does admit null, so returning
+      one leaks nothing — but rewriting a frozen Core rule to match whichever runtime was looked at last is the exact
+      failure this pack exists to prevent. If the rule is wrong it is a Core 0.2 question.
 - [ ] **`patch/`** — blocked on the chapter below.
 
-**Scoreboard: 8 spec gaps, 4 code defects.** Six of the eight were found before running any code, including the two
-biggest: a vector that could not be written at all (the IR defined by pointing at a file), and the built-in
-definitions that the rewritten §9 still omitted.
+**Scoreboard: 8 spec gaps, 5 code defects** — 4 in Kotlin, 1 in TypeScript. Six of the eight gaps were found before
+running any code, including the two biggest: a vector that could not be written at all (the IR defined by pointing at
+a file), and the built-in definitions the rewritten §9 still omitted.
 
 ## 2. The patch chapter — largest piece, not started
 
