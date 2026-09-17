@@ -78,9 +78,22 @@ a live query keeps *every* view of the affected entities coherent, not only its 
 
 A subscription outlives the connection that carried it. When a live op ends with a retryable error — the connection
 dropped, or the server it was on drained for a deploy — a client SHOULD open it again after a short, growing wait
-rather than surfacing it as a failure, and SHOULD tell the caller that it is doing so. Reopening re-runs the query,
-so the client receives a fresh `data` frame and nothing is silently missed; there is no resume cursor in 0.1. Only an
-error that would recur — the query is invalid, the viewer may not read it — ends the subscription for good.
+rather than surfacing it as a failure, and SHOULD tell the caller that it is doing so. Only an error that would recur
+— the query is invalid, the viewer may not read it — ends the subscription for good.
+
+**What that guarantees, exactly.** Reopening re-runs the query and delivers a fresh `data` frame, which the client
+takes as a replacement for the stored result. So the guarantee Rayfold offers today is:
+
+> Eventual re-establishment of query state by refetch — **not** exactly-once delivery of live updates.
+
+The difference is worth being plain about. A client that was disconnected across a change does not receive the patch
+it missed; it receives the current answer, which already reflects it. Nothing is silently lost, and a `patch` a client
+never saw is not a patch it has to reconcile. What a client cannot do is reconstruct the sequence of changes, or
+observe a change that happened and was undone while it was away.
+
+A **resume** — reconnecting with a cursor and receiving the patches since it — is a different guarantee needing
+different machinery: server-side retention, revisions, and a defined answer when the cursor is too old. It is not in
+0.1, and refetch being deterministic is the precondition for it rather than a step towards it.
 
 ## 5. Optimistic commands, offline queue, sync sessions
 

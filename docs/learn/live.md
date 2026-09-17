@@ -87,6 +87,10 @@ that book updates too, not only the live one. In React, only the components show
 - A dropped connection is not the end of the subscription. The TypeScript client reopens it after half a second,
   doubling to thirty, so a screen survives a deploy; `onError(e, { retrying })` says whether it is coming back, and
   only an error that would recur ends it. The Kotlin client does not retry yet: reopen it yourself.
+- Reopening re-runs the query, so what comes back is the current answer rather than the changes you missed. The
+  guarantee is that the screen catches up, not that you see every step it took to get there: a value that changed and
+  changed back while you were away leaves no trace. If you need the steps, an event stream is the right shape for it,
+  not a live query.
 - Stop by calling the function `live` returned, by unmounting the component, or by aborting the request.
 
 ## Next

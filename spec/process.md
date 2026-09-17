@@ -19,6 +19,31 @@ Rayfold. That only works if the documents change slowly and in the open.
 A server says which extensions it serves in the manifest (`GET /rayfold/manifest`, `extensions`), and a client uses an
 extension only when it is listed there.
 
+## What a requirement's status means
+
+The table above says how fast a document may change. This one says what a requirement inside it obliges, because the
+two are different questions and conflating them is how a specification comes to describe something nothing does.
+
+| Status | Meaning |
+|---|---|
+| **Normative** | Required for conformance. An implementation that does not do it is not conformant. |
+| **Implemented** | Normative, and done by both reference runtimes today. |
+| **Reserved** | Specified so the shape is fixed and the name is taken, but not usable yet. A server refuses it; a client must not send it. |
+| **Experimental** | Usable, and subject to change without waiting for the next Core version. |
+| **Informative** | Explanation. Nothing is obliged by it. |
+
+Unmarked text in a Core document is normative. The rule that matters:
+
+> A reference implementation MUST NOT silently implement less than the normative specification.
+
+Where an implementation falls short, one of two things happens and both are visible: the requirement is demoted to
+**Reserved** in the same change, or the gap is recorded as a known defect. What must not happen is a MUST sitting in a
+document that neither runtime honours — a reader has no way to tell that from a MUST that works, and an implementer
+building from the text will get it wrong in a way the reference implementations never will.
+
+Credit-based flow control ([04 §5](04-frames-and-transport.md)) is the worked example: it was written as a MUST,
+implemented nowhere, and is now Reserved.
+
 ## Proposing a change
 
 1. Open an issue with the "Specification change" template: the problem, who it affects, and the change you suggest.
