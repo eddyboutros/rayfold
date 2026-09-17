@@ -53,7 +53,7 @@ Traps that have actually bitten, worst first:
 
 ---
 
-## 1. The conformance vector pack — 9 of 10 areas (only `patch/` left, behind the chapter)
+## 1. The conformance vector pack — **complete, 10 of 10 areas**
 
 `conformance/vectors/`, run by `packages/schema/src/vectors.test.ts`, `packages/rb/src/vectors.test.ts`,
 `packages/server/src/manifest-vectors.test.ts` and `VectorsTest.kt`.
@@ -119,10 +119,14 @@ independent implementer would have hit.
       Worth noting what was *not* done: the other reading is defensible — `[Secret?]` does admit null, so returning
       one leaks nothing — but rewriting a frozen Core rule to match whichever runtime was looked at last is the exact
       failure this pack exists to prevent. If the rule is wrong it is a Core 0.2 question.
-- [ ] **`patch/`** — blocked on the chapter below.
+- [x] **`patch/`** — 10 cases: `set` field-level and idempotent, ordering, `del` keeping later positions, `list`
+      del-then-ins positions, an insertion storing the row it carries, and **a regression case for the two-row
+      deletion bug**, so that fix cannot be undone quietly. Both runtimes agree. The JVM runner lives in
+      `rayfold-client` rather than `VectorsTest`, because the cache does.
 
-**Scoreboard: 8 spec gaps, 5 code defects** — 4 in Kotlin, 1 in TypeScript. The last three areas (`errors/`,
-`authorization/` bar one row, `idempotency/`) found nothing new, which is the shape you want at the end of a sweep. Six of the eight gaps were found before
+**Scoreboard: 8 spec gaps, 6 code defects** — 4 in Kotlin, 1 in TypeScript, 1 in both clients (the two-row
+deletion, which the property test in §2 found and `patch/` now guards). `errors/` and `idempotency/` found nothing
+new and `authorization/` found one row, which is the shape you want near the end of a sweep. Six of the eight gaps were found before
 running any code, including the two biggest: a vector that could not be written at all (the IR defined by pointing at
 a file), and the built-in definitions the rewritten §9 still omitted.
 
@@ -156,7 +160,7 @@ ambiguity. So 13 specifies what 0.1 actually guarantees, and names the rest Rese
       client's list, then the positional `list del: [0]` computed against the list the server had last sent took out
       whatever moved into the slot. Fixed in both caches — a deleted entity now leaves a gap that holds its position
       and is hidden when materialising, so the server's positional information stays true. 250 sequences clean.
-- [ ] **`patch/` vectors**, with `initial state` / `operations` / `expected final state`.
+- [x] **`patch/` vectors** — see the pack above.
 
 ## 3. Rayfold Commerce, then an independent implementation
 
@@ -199,6 +203,6 @@ reviewer and I agree the protocol should be reproducible by a third party before
 ## 6. Owner's own list
 
 - [ ] Reply to the reviewer — he asked for the fixture pack when it exists, and there is now a concrete result to
-      send: five spec gaps and four code defects, four of the gaps found before running any code.
+      send: eight spec gaps and six code defects, six of the gaps found before running any code.
 - [ ] `rayfold check --strict` wording; "Enforce HTTPS" in the Pages settings.
 - [ ] Decide whether `PLAN.md` and `engineer-response.md` belong in a public repo.

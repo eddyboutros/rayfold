@@ -1,0 +1,111 @@
+{
+  "name": "patch/apply",
+  "about": "Applying a patch to a client's cache. Every other area in this pack is about what a server produces; this one is about what a client does with it, which is where the protocol's promise about screens staying current is actually kept or broken. A client that applies these differently does not fail loudly - it shows the wrong data.",
+  "source": "spec 13, which states the rules, and 04 §2/§2b, which define the operations. Each case is an initial result, a patch, and the result a client must hold afterwards, materialised - so the expectation is readable and says nothing about how a cache stores anything.",
+  "op": "books",
+  "cases": [
+    {
+      "name": "set merges the fields it names and leaves the rest",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "patch": [{ "set": "Book:b1", "value": { "stock": 5 } }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 5 }],
+      "why": "field-level, not a replacement: a patch that named only `stock` must not lose the title"
+    },
+    {
+      "name": "set applied twice is set applied once",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "patch": [
+        { "set": "Book:b1", "value": { "stock": 5 } },
+        { "set": "Book:b1", "value": { "stock": 5 } }
+      ],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 5 }],
+      "why": "spec 13 §4: a merge of the same fields is the same merge, which is what makes `set` safe to receive twice"
+    },
+    {
+      "name": "operations apply in order",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "patch": [
+        { "set": "Book:b1", "value": { "stock": 5 } },
+        { "set": "Book:b1", "value": { "stock": 9 } }
+      ],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 9 }],
+      "why": "a patch is a sequence, not a set"
+    },
+    {
+      "name": "del removes the row and leaves the others where they were",
+      "result": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma" },
+        { "$type": "Book", "id": "b3", "title": "Ubik" }
+      ],
+      "patch": [{ "del": "Book:b2" }],
+      "expect": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b3", "title": "Ubik" }
+      ]
+    },
+    {
+      "name": "a del and the list operation for the same removal together remove one row",
+      "result": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma" },
+        { "$type": "Book", "id": "b3", "title": "Ubik" }
+      ],
+      "patch": [{ "del": "Book:b1" }, { "list": "", "del": [0] }],
+      "expect": [
+        { "$type": "Book", "id": "b2", "title": "Emma" },
+        { "$type": "Book", "id": "b3", "title": "Ubik" }
+      ],
+      "why": "**the case that matters most, and the one that was wrong.** A command's `del` and its live query's positional `list` operation describe one removal and both reach the client that ran the command. `list` positions name the list as the server last sent it, so a client that shortens its list on `del` then applies `del: [0]` to whatever moved into the slot - one removal, two rows gone. A deleted row has to keep its position until the positional operation has been applied."
+    },
+    {
+      "name": "del twice is del once",
+      "result": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma" }
+      ],
+      "patch": [{ "del": "Book:b1" }, { "del": "Book:b1" }],
+      "expect": [{ "$type": "Book", "id": "b2", "title": "Emma" }],
+      "why": "removing what is gone removes nothing"
+    },
+    {
+      "name": "list removes the named positions, then inserts at the new ones",
+      "result": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma" }
+      ],
+      "patch": [{ "list": "", "del": [0], "ins": [{ "at": 1, "value": { "$type": "Book", "id": "b9", "title": "Solaris" } }] }],
+      "expect": [
+        { "$type": "Book", "id": "b2", "title": "Emma" },
+        { "$type": "Book", "id": "b9", "title": "Solaris" }
+      ],
+      "why": "`del` names positions in the list the client holds; `ins` names positions after those removals. Reading either against the wrong list puts the row in the wrong place"
+    },
+    {
+      "name": "an insertion carries the row, so it is stored as well as placed",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune" }],
+      "patch": [
+        { "list": "", "ins": [{ "at": 0, "value": { "$type": "Book", "id": "b9", "title": "Solaris" } }] },
+        { "set": "Book:b9", "value": { "title": "Solaris (1961)" } }
+      ],
+      "expect": [
+        { "$type": "Book", "id": "b9", "title": "Solaris (1961)" },
+        { "$type": "Book", "id": "b1", "title": "Dune" }
+      ],
+      "why": "the `set` afterwards reaches it, which it only can if the insertion stored the entity rather than just placing a value in a list"
+    },
+    {
+      "name": "a set of a row in the list reaches it wherever the list holds it",
+      "result": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma" }
+      ],
+      "patch": [{ "set": "Book:b2", "value": { "title": "Emma (1815)" } }],
+      "expect": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma (1815)" }
+      ],
+      "why": "normalisation is the point: one entity, however many results mention it"
+    }
+  ]
+}

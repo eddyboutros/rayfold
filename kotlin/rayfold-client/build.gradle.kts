@@ -38,5 +38,7 @@ animalsniffer {
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("rayfold.vectors", rootProject.projectDir.resolve("../conformance/vectors").absolutePath)
+    inputs.dir(rootProject.projectDir.resolve("../conformance/vectors"))
     testLogging { events("failed"); showStandardStreams = false; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }

@@ -4,9 +4,11 @@ A **vector** is a pure function and the answer the specification says it has: an
 the hash it produces, or the error it must raise. A **fixture** (`../fixtures`) is a different artifact — a request
 and the frames a server must answer it with.
 
-Both runtimes run these files. `packages/schema/src/vectors.test.ts` and
-`kotlin/rayfold-core/src/test/kotlin/dev/rayfold/core/VectorsTest.kt` read exactly what is here, so a change to
-either runtime's canonicaliser fails a test rather than quietly parting two fleets.
+Both runtimes run these files, so a change to either one fails a test rather than quietly parting two fleets. The
+runners sit next to what they check: `packages/schema/src/vectors.test.ts` and `VectorsTest.kt` for the pure
+functions, `packages/rb/src/vectors.test.ts` for the codec, `packages/server/src/{manifest,error,idempotency,
+authorization}-vectors.test.ts` for the areas that need a server, and `patch-vectors.test.ts` / `PatchVectorsTest.kt`
+for the client cache.
 
 ## The rule that makes them worth having
 
@@ -48,17 +50,23 @@ Each file is one area:
 | `binary/` | `dictionary`, and `values` of `json` → `bytes` | RB tag bytes and the protocol key dictionary (spec 09 §2, §3). `dictionary` is the ordered list of 40 keys; the runner encodes `{key: 1}` for each and checks the id it lands on, since that is the id's only observable effect. Byte strings are hex. |
 | `canonicalization/` | `json`, `canonical` | Canonical JSON (spec 01 §9) — the form the schema hash is taken over. Key ordering by UTF-16 code unit, the escape set, and the unpaired-surrogate rule. |
 | `manifest/` | `members`, `rules` | The discovery document (spec 04 §4a). A document rather than a pure function, so this file pins the *contract* — which members exist, what kind of thing each is, and the rules relating them — and leaves the values free, since they depend on the schema and the configuration. Run against a live server on both sides. |
+| `patch/` | `result`, `patch`, `expect` | Applying a patch to a client's cache (spec 13 §3). An initial result, a patch, and the result a client must hold afterwards, materialised — so the expectation says nothing about how a cache stores anything, which is what lets one file check both. |
+| `errors/` | `statuses`, `cases` | Which HTTP status each code derives (spec 05 §3), and the rule that decides *how* a refusal arrives: a problem document before a batch is parsed, an error frame once it has been. |
+| `idempotency/` | `ops`, `expect` | What a key promises and to whom (spec 12 §4): replay against re-run counted at the resolver, `already_exists` on reuse, the key bounds, and that two viewers choosing one key do not collide. |
+| `authorization/` | `cases` | The denial table of spec 06 §3, row for row — including the list-element row the two runtimes disagreed on. |
 | `hashing/` | `bindings`, `scopes` | The idempotency binding and viewer scope (spec 12 §4.2): `SHA-256(canonical JSON)`, with the number rule. Each case carries the canonical text as well as the digest, so a failure says whether the canonicaliser or the hashing is at fault. |
 
-**What `hashing/` cannot cover yet.** The third hash the protocol depends on — the **schema hash** — has no vector,
-because spec 01 §9 gives the IR's top-level shape and then says the canonical definition is
-`packages/schema/src/ir.ts`. The structure the protocol's identity is computed over is therefore defined by pointing
-at one implementation, and an independent implementer cannot reproduce the hash without reading that file. That is
-the reviewer's central warning sitting at the centre of the protocol, and writing the IR out normatively is the
-prerequisite for closing it.
+`hashing/schema.json` is the one worth reading first. Writing it was blocked, because spec 01 §9 gave the IR's
+top-level shape and then deferred to `packages/schema/src/ir.ts` for the rest — so the structure the protocol's
+identity is computed over was defined by pointing at one implementation, and nobody outside could reproduce a schema
+hash. §9 now carries the whole structure, and that file is the evidence it worked: both hashes in it were produced by
+building the IR by hand from the document, with a canonicaliser written for the purpose and a general-purpose digest,
+and both matched the runtime exactly.
 
-## Still to come
+## What each area has found
 
-`canonicalization/`, `hashing/`, `shapes/` (input → canonical text → shape id), `binary/` (the RB dictionary, whose
-key count is load-bearing), `manifest/`, `errors/`, `idempotency/`, `authorization/`, and `patch/` last, since it
-needs semantics that are not yet written down. See `PLAN.md`.
+Writing these produced **8 specification gaps and 6 implementation defects**, and six of the gaps were found before
+any code ran — by trying to state the answer and discovering the document could not. The largest were canonical JSON
+defined in one sentence (spec 01 §9), the IR defined by pointing at a TypeScript file, and the built-in definitions
+that the rewritten §9 still omitted. The defects were four in Kotlin, one in TypeScript, and one in both clients: a
+deletion under a live list removing two rows, which the `patch/` area now has a regression case for.
