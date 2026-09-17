@@ -1,0 +1,89 @@
+{
+  "name": "idempotency/keys-and-replays",
+  "about": "What a key promises, and to whom. This is the area where a disagreement charges someone twice or hands one caller another caller's answer, so the rules are worth being exact about: a record belongs to a viewer, is bound to one command with one set of arguments, and is only consulted after the write policy has been checked.",
+  "source": "spec 12 §4 for the rules and spec 03 §1 for the key itself. Written from those sections. The cross-runtime hashes that make a record portable between implementations are in hashing/binding-and-scope.json; this file is about the behaviour built on them.",
+  "schema": "entity Book { id: ID stock: Int }\ncommand restock(id: ID, qty: Int): Book\ncommand other(id: ID): Book\ncommand free(id: ID): Book @idempotent(false)",
+  "cases": [
+    {
+      "name": "a retry with the same key replays instead of running again",
+      "ops": [
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef" },
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef" }
+      ],
+      "expect": "replay",
+      "runs": 1,
+      "why": "the point of the whole mechanism: the second answer is the first answer, and the command ran once"
+    },
+    {
+      "name": "a replay says so",
+      "ops": [
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef" },
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef" }
+      ],
+      "expect": "replayMeta",
+      "why": "meta.replay is how a client tells a retry that worked from a first attempt, which matters when it is deciding whether to show a confirmation"
+    },
+    {
+      "name": "the same key for a different operation is refused",
+      "ops": [
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef" },
+        { "op": "other", "args": { "id": "b1" }, "key": "0123456789abcdef" }
+      ],
+      "expect": "error",
+      "code": "already_exists",
+      "why": "a record is bound to its command. Replaying a restock's answer to a caller asking for something else would be worse than refusing"
+    },
+    {
+      "name": "the same key with different arguments is refused",
+      "ops": [
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef" },
+        { "op": "restock", "args": { "id": "b1", "qty": 9 }, "key": "0123456789abcdef" }
+      ],
+      "expect": "error",
+      "code": "already_exists",
+      "why": "bound to the arguments too: a client that reuses a key for a changed request has a bug, and answering it with the old result would hide it"
+    },
+    {
+      "name": "one viewer's key is not another's",
+      "ops": [
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "viewer": { "id": "u1" } },
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "viewer": { "id": "u2" } }
+      ],
+      "expect": "bothRan",
+      "runs": 2,
+      "why": "**the row that matters most.** Records are scoped to the viewer, so two callers who happen to choose the same key do not collide. An implementation that scopes globally hands one caller the other's answer, which is a confidentiality failure dressed as a cache hit"
+    },
+    {
+      "name": "a keyed command from nobody is refused",
+      "ops": [{ "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "viewer": null }],
+      "expect": "error",
+      "code": "unauthenticated",
+      "why": "anonymous callers cannot be told apart, so they would share one replay scope. A guest needs a viewer of its own, not no viewer"
+    },
+    {
+      "name": "a command that opts out needs no key, even from nobody",
+      "ops": [{ "op": "free", "args": { "id": "b1" }, "viewer": null }],
+      "expect": "ok",
+      "why": "guard: the refusal above is about keys, not about anonymous callers running commands"
+    },
+    {
+      "name": "a key shorter than sixteen characters is refused",
+      "ops": [{ "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "tooshort" }],
+      "expect": "error",
+      "code": "invalid_argument"
+    },
+    {
+      "name": "a key longer than a hundred and twenty-eight is refused",
+      "ops": [{ "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk" }],
+      "expect": "error",
+      "code": "invalid_argument",
+      "why": "129 characters. The bound exists so a store cannot be filled with keys rather than records"
+    },
+    {
+      "name": "guard: a key of exactly sixteen is accepted",
+      "ops": [{ "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef" }],
+      "expect": "ok",
+      "why": "or every bound above would pass against a server that refuses every key"
+    }
+  ]
+}

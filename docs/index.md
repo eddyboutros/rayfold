@@ -5,8 +5,8 @@ titleTemplate: One protocol for your app's API
 
 hero:
   name: Rayfold
-  text: One protocol for your app's API
-  tagline: Describe the API once. Screens ask for exactly the data they show, stay current without fetching again, and the schema decides who can do what. For TypeScript, React, Kotlin, Java and Spring Boot.
+  text: The rules live in the schema
+  tagline: An API protocol that carries not just the shape of a request, but who may make it, what may be cached, how clients stay consistent, and what may change later. Describe the API once, in one place. For TypeScript, React, Kotlin, Java and Spring Boot.
   image:
     light: /logo.svg
     dark: /logo-dark.svg

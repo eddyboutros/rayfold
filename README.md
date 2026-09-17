@@ -5,8 +5,8 @@
 
 # Rayfold
 
-Rayfold is an API protocol for web apps, mobile apps and services. You describe your API once, in a schema, and
-Rayfold gives you:
+Rayfold is an API protocol where the rules live in the schema: not just the shape of a request, but who may make it,
+what may be cached, how clients stay consistent, and what may change later. Describe your API once and you get:
 
 - **One request per screen.** Several operations travel in one batch, and a later one can use an earlier one's result.
 - **Screens that stay current.** Commands return patches for what they changed; the client's cache applies them, so

@@ -1,0 +1,130 @@
+{
+  "name": "errors/statuses-and-problems",
+  "about": "How a refusal reaches a caller: which HTTP status a code derives, when a failure is an RFC 9457 problem document and when it is an error frame, and what a problem document actually contains. A client branches on these, and a proxy or gateway routes on the status, so two implementations that differ here are not interchangeable even when both 'work'.",
+  "source": "spec 05 §3 for the status table, §5 for problem documents, and 04 §4 for the split between a pre-parse refusal and a batch that fails after parsing. Written from those sections, not from either runtime.",
+  "statuses": [
+    {
+      "code": "invalid_argument",
+      "status": 400
+    },
+    {
+      "code": "failed_precondition",
+      "status": 400
+    },
+    {
+      "code": "out_of_range",
+      "status": 400
+    },
+    {
+      "code": "unauthenticated",
+      "status": 401
+    },
+    {
+      "code": "permission_denied",
+      "status": 403
+    },
+    {
+      "code": "not_found",
+      "status": 404
+    },
+    {
+      "code": "already_exists",
+      "status": 409
+    },
+    {
+      "code": "aborted",
+      "status": 409
+    },
+    {
+      "code": "resource_exhausted",
+      "status": 429
+    },
+    {
+      "code": "canceled",
+      "status": 499,
+      "why": "nginx's code for a client that went away; there is no registered status for it"
+    },
+    {
+      "code": "unimplemented",
+      "status": 501
+    },
+    {
+      "code": "unavailable",
+      "status": 503
+    },
+    {
+      "code": "deadline_exceeded",
+      "status": 504
+    },
+    {
+      "code": "internal",
+      "status": 500,
+      "why": "and everything else the table does not name"
+    },
+    {
+      "code": "unknown",
+      "status": 500
+    },
+    {
+      "code": "data_loss",
+      "status": 500
+    }
+  ],
+  "problemShape": {
+    "about": "A problem document is answered for a refusal a server makes before it parses a batch, and by every HTTP binding. It is NOT how a batch that parsed and then failed is reported - that is an error frame on the frame channel, because by then there is a frame channel to put it on.",
+    "members": [
+      "type",
+      "title",
+      "status",
+      "detail",
+      "code"
+    ],
+    "rules": [
+      "`type` is the base URI plus the problem type; `title` is the problem type with underscores replaced by spaces, in LOWER case - 'invalid argument', not 'Invalid argument'.",
+      "`code` is the Rayfold protocol code, which is not always the same word as the problem type.",
+      "A declared domain error identifies itself by its own name: `type` is the base URI plus the error's name and `title` is that name, with `code` still the protocol code and `data` carrying the declared payload.",
+      "`detail` for an argument that failed coercion is rooted at the operation, not at the envelope index: `placeOrder().input.qty: expected Int`."
+    ]
+  },
+  "cases": [
+    {
+      "name": "a media type the endpoint does not read",
+      "request": {
+        "contentType": "text/plain"
+      },
+      "expect": "problem",
+      "status": 415,
+      "type": "unsupported_media_type",
+      "code": "invalid_argument",
+      "why": "refused before the body is understood, so there is no frame channel yet"
+    },
+    {
+      "name": "a body over the limit",
+      "request": {
+        "oversize": true
+      },
+      "expect": "problem",
+      "status": 413,
+      "type": "payload_too_large",
+      "code": "resource_exhausted"
+    },
+    {
+      "name": "a batch that parses and then fails as a whole",
+      "request": {
+        "overBudget": true
+      },
+      "expect": "frame",
+      "code": "resource_exhausted",
+      "why": "the batch was understood, so the failure goes on the frame channel. This is the row most likely to be got wrong, because the same code arrives two different ways depending on when the refusal happens"
+    },
+    {
+      "name": "an operation that does not exist",
+      "request": {
+        "op": "nope"
+      },
+      "expect": "frame",
+      "code": "invalid_argument",
+      "why": "an op-level failure is a frame, not a status: the rest of the batch may still have work to do"
+    }
+  ]
+}

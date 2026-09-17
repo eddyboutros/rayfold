@@ -1,6 +1,7 @@
 # Rayfold 0.1 overview
 
-Rayfold is an application protocol for typed, client-shaped, streaming, cache-coherent APIs.
+Rayfold is an API protocol where the rules live in the schema: the shape of a request, who may make it, what may be
+cached, how a client's state stays true, and what may change later.
 This document is the entry point; the numbered documents are normative.
 
 | # | Document | Profile |

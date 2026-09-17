@@ -195,6 +195,101 @@ class VectorsTest {
         return out
     }
 
+    /**
+     * The status each error code derives (spec 05 section 3). A proxy routes on this and a client branches on it, so
+     * two runtimes that map a code differently are not interchangeable. The problem-document-or-frame half of the
+     * area needs a server and is covered by the TypeScript runner and by HttpTest here.
+     */
+    @TestFactory
+    fun errors(): List<DynamicTest> {
+        val doc = Json.parseToJsonElement(File(File(root, "errors"), "statuses-and-problems.json").readText()).jsonObject
+        val out = mutableListOf<DynamicTest>()
+        for (case in doc["statuses"]!!.jsonArray) {
+            val c = case.jsonObject
+            val name = c["code"]!!.jsonPrimitive.content
+            val expected = c["status"]!!.jsonPrimitive.content.toInt()
+            out.add(
+                DynamicTest.dynamicTest("errors/$name is $expected") {
+                    val code = Code.entries.first { it.wire == name }
+                    assertEquals(expected, Guard.status(code), c["why"]?.jsonPrimitive?.content ?: name)
+                },
+            )
+        }
+        assertTrue(out.size > 10, "no error vectors were found under ${root.absolutePath}")
+        return out
+    }
+
+    /**
+     * The published idempotency vectors, against a real server. Each operation is a separate batch, because a retry
+     * is a second request; `runs` is what separates a replay from a command that ran twice and answered the same.
+     */
+    @TestFactory
+    fun idempotency(): List<DynamicTest> {
+        val doc = Json.parseToJsonElement(File(File(root, "idempotency"), "keys-and-replays.json").readText()).jsonObject
+        val ir = SchemaText.load(doc["schema"]!!.jsonPrimitive.content).ir
+        val defaultViewer = buildJsonObject { put("id", "u1") }
+
+        val out = mutableListOf<DynamicTest>()
+        for (case in doc["cases"]!!.jsonArray) {
+            val c = case.jsonObject
+            val name = c["name"]!!.jsonPrimitive.content
+            val why = c["why"]?.jsonPrimitive?.content ?: name
+            out.add(
+                DynamicTest.dynamicTest("idempotency/$name") {
+                    var runs = 0
+                    val stock = java.util.concurrent.atomic.AtomicInteger(3)
+                    val bump = command { args: JsonObject, _: RayfoldContext ->
+                        runs++
+                        val qty = args["qty"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1
+                        CommandResult(buildJsonObject { put("id", "b1"); put("stock", stock.addAndGet(qty)) })
+                    }
+                    val server = RayfoldServer(ir, Resolvers(commands = mapOf("restock" to bump, "other" to bump, "free" to bump)))
+
+                    val answers = mutableListOf<List<JsonObject>>()
+                    for (o in c["ops"]!!.jsonArray) {
+                        val op = o.jsonObject
+                        val viewer = if (op.containsKey("viewer")) op["viewer"]!! else defaultViewer
+                        val env = buildJsonObject {
+                            put(
+                                "ops",
+                                JsonArray(listOf(buildJsonObject {
+                                    put("id", 1); put("op", op["op"]!!.jsonPrimitive.content); put("args", op["args"]!!)
+                                    op["key"]?.let { put("key", it.jsonPrimitive.content) }
+                                })),
+                            )
+                        }
+                        answers.add(runBlocking { server.collect(env, viewer) })
+                    }
+                    val last = answers.last()
+                    val error = last.firstOrNull { it.containsKey("error") }?.get("error") as? JsonObject
+                    val okFrame = last.firstOrNull { it.containsKey("ok") }
+                    val replayed = ((okFrame?.get("meta") as? JsonObject)?.get("replay") as? JsonPrimitive)?.content == "true"
+
+                    when (c["expect"]!!.jsonPrimitive.content) {
+                        "error" -> assertEquals(c["code"]!!.jsonPrimitive.content, error?.get("code")?.jsonPrimitive?.content, why)
+                        "replay" -> {
+                            assertTrue(error == null, "$why: $error")
+                            assertEquals(answers.first().firstOrNull { it.containsKey("ok") }?.get("ok"), okFrame?.get("ok"), why)
+                            assertEquals(c["runs"]!!.jsonPrimitive.content.toInt(), runs, "$why: the resolver ran $runs times")
+                        }
+                        "replayMeta" -> assertTrue(replayed, "$why: meta.replay was not set on the retry")
+                        "bothRan" -> {
+                            assertTrue(error == null, "$why: $error")
+                            assertTrue(!replayed, "$why: the second caller got a replay of the first caller's answer")
+                            assertEquals(c["runs"]!!.jsonPrimitive.content.toInt(), runs, "$why: the resolver ran $runs times")
+                        }
+                        else -> {
+                            assertTrue(error == null, "$why: $error")
+                            assertTrue(okFrame != null, "$why: no ok frame")
+                        }
+                    }
+                },
+            )
+        }
+        assertTrue(out.size > 5, "no idempotency vectors were found under ${root.absolutePath}")
+        return out
+    }
+
     @TestFactory
     fun canonicalization(): List<DynamicTest> {
         val out = mutableListOf<DynamicTest>()

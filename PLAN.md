@@ -53,7 +53,7 @@ Traps that have actually bitten, worst first:
 
 ---
 
-## 1. The conformance vector pack — 7 of 10 areas
+## 1. The conformance vector pack — 9 of 10 areas (only `patch/` left, behind the chapter)
 
 `conformance/vectors/`, run by `packages/schema/src/vectors.test.ts`, `packages/rb/src/vectors.test.ts`,
 `packages/server/src/manifest-vectors.test.ts` and `VectorsTest.kt`.
@@ -102,8 +102,15 @@ independent implementer would have hit.
       **Writing it found the gap in §9 immediately:** every IR carries the built-in definitions — twelve scalars,
       `Page`, `PageArgs`, each `builtin: true` — before a line of schema is read, and §9 as committed did not say so.
       An implementer would have hashed only their own declarations and matched nobody. Now §9.1a.
-- [ ] **`errors/`** — problem documents vs error frames, the lower-case title, the op-rooted detail path.
-- [ ] **`idempotency/`** — viewer scope, binding hash, `already_exists` on reuse, lease and takeover.
+- [x] **`errors/`** — the 16-code status table plus the rule that decides *how* a refusal arrives: a problem
+      document before a batch is parsed, an error frame once it has been. Both runtimes agreed on all of it. The one
+      correction was mine — I guessed the 415 problem type was `payload_unsupported` when it is
+      `unsupported_media_type`.
+- [x] **`idempotency/`** — 10 cases: replay vs re-run (counted at the resolver, since matching answers alone would
+      also be satisfied by a deterministic command), `meta.replay`, `already_exists` for a key reused on another
+      operation or other arguments, the key bounds either side of 16 and 128, `@idempotent(false)`, and the row that
+      matters most — **two viewers choosing the same key do not collide**, which an implementation scoping globally
+      would turn into one caller receiving another's answer. Both runtimes agreed on all of it.
 - [x] **`authorization/`** — 11 cases, the denial table row for row. **The first vector to fault TypeScript.** A
       denied entity in a `[Secret?]` list read as `null` there and failed the operation on the JVM; spec 06 §3 says a
       list element fails whatever its nullability, so TypeScript was wrong and is fixed. Two call sites needed it —
@@ -114,7 +121,8 @@ independent implementer would have hit.
       failure this pack exists to prevent. If the rule is wrong it is a Core 0.2 question.
 - [ ] **`patch/`** — blocked on the chapter below.
 
-**Scoreboard: 8 spec gaps, 5 code defects** — 4 in Kotlin, 1 in TypeScript. Six of the eight gaps were found before
+**Scoreboard: 8 spec gaps, 5 code defects** — 4 in Kotlin, 1 in TypeScript. The last three areas (`errors/`,
+`authorization/` bar one row, `idempotency/`) found nothing new, which is the shape you want at the end of a sweep. Six of the eight gaps were found before
 running any code, including the two biggest: a vector that could not be written at all (the IR defined by pointing at
 a file), and the built-in definitions the rewritten §9 still omitted.
 
