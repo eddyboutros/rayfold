@@ -69,7 +69,7 @@ object Mcp {
 
     fun resources(ir: RayfoldSchemaIR, schema: ManifestMode = ManifestMode.REDACTED): JsonArray {
         val out = mutableListOf<JsonElement>()
-        if (schema != ManifestMode.OFF) out.add(obj("uri" to str("rayfold://schema"), "name" to str("Rayfold schema (IR)"), "description" to str("The full schema as JSON IR"), "mimeType" to str("application/json")))
+        if (schema != ManifestMode.OFF) out.add(obj("uri" to str("rayfold://schema"), "name" to str("Rayfold schema (IR)"), "description" to str("The schema as JSON IR"), "mimeType" to str("application/json")))
         for (op in ir.ops.values) {
             if (op.kind != "query" || op.args.any { !it.type.nullable && it.default == null }) continue
             val r = linkedMapOf<String, JsonElement>("uri" to str("rayfold://query/${op.name}"), "name" to str(op.name), "mimeType" to str("application/json"))

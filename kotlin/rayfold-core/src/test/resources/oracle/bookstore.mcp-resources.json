@@ -2,7 +2,7 @@
  {
   "uri": "rayfold://schema",
   "name": "Rayfold schema (IR)",
-  "description": "The full schema as JSON IR",
+  "description": "The schema as JSON IR",
   "mimeType": "application/json"
  },
  {
