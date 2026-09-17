@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -215,6 +216,11 @@ class LifecycleTest {
         assertEquals(2_000L, HttpOptions().readinessTimeoutMs, "the default limit is the one the route uses")
     }
 
+    /** Waits, bounded, for the server to be down to [n] operations in flight. */
+    private suspend fun inflightReaches(server: RayfoldServer, n: Int) {
+        withTimeout(5_000) { while (server.inflight != n) delay(5) }
+    }
+
     // ------------------------------------------------------------------ draining
 
     @Test
@@ -227,14 +233,17 @@ class LifecycleTest {
 
         val command = client.sendAsync(request("POST", "$base/rayfold", """{"ops":[{"id":1,"op":"restock","args":{"id":"b1","qty":1},"key":"$key"}]}"""), HttpResponse.BodyHandlers.ofString())
         assertTrue(built.running.await(5, TimeUnit.SECONDS), "the command running")
-        assertEquals(3, built.server.inflight)
+        // only the live query's first frame was awaited above, so the stream may not be registered yet
+        inflightReaches(built.server, 3)
 
         // on its own thread: the frame reads below block this one
         val draining = async(Dispatchers.IO) { built.server.drain(timeoutMs = 5_000) }
         assertEquals(unavailable, live.next())
         assertEquals(unavailable, updates.next())
         assertFalse(draining.isCompleted, "the command is still running: shutting down waits for it")
-        assertEquals(1, built.server.inflight)
+        // the frame reaching the client is not the server having finished with the op, so wait for the count to
+        // settle rather than reading it the instant the last frame arrives
+        inflightReaches(built.server, 1)
 
         built.release.countDown()
         val answered = command.get(5, TimeUnit.SECONDS)
