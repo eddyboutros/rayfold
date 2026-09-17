@@ -94,7 +94,8 @@ class VectorsTest {
     fun hashing(): List<DynamicTest> {
         val out = mutableListOf<DynamicTest>()
         for ((file, doc) in area("hashing")) {
-            for (case in doc["bindings"]?.jsonArray ?: error("$file has no bindings")) {
+            // hashing/ holds more than one kind of file: schema.json carries cases, not bindings and scopes
+            for (case in doc["bindings"]?.jsonArray ?: emptyList()) {
                 val c = case.jsonObject
                 val name = c["name"]?.jsonPrimitive?.content ?: error("$file has a binding without a name")
                 val why = c["why"]?.jsonPrimitive?.content ?: name
@@ -111,7 +112,7 @@ class VectorsTest {
                     },
                 )
             }
-            for (case in doc["scopes"]?.jsonArray ?: error("$file has no scopes")) {
+            for (case in doc["scopes"]?.jsonArray ?: emptyList()) {
                 val c = case.jsonObject
                 val name = c["name"]?.jsonPrimitive?.content ?: error("$file has a scope without a name")
                 val why = c["why"]?.jsonPrimitive?.content ?: name

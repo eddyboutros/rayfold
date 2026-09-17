@@ -1,0 +1,38 @@
+{
+  "name": "hashing/schema",
+  "about": "The schema hash is the protocol's identity: it is what the manifest publishes, what the Rayfold-Schema header carries on every response, and what tells a client that the server it is talking to is still the one it built its RB key dictionary for. Until spec 01 §9 was written out, this file could not exist - §9 gave the IR's top-level shape and deferred to packages/schema/src/ir.ts for the rest, so the structure the identity is computed over was defined by pointing at one implementation.",
+  "source": "spec 01 §9 (the IR), §9.1a (the built-in definitions) and the canonical JSON rules in §9. Each hash below was produced by building the IR by hand from those sections - no Rayfold import, and a canonicaliser written for the purpose - and then hashing it with a general-purpose SHA-256. Both runtimes then agreed. That is the point of the file: it is evidence that a third party can reproduce a schema hash from the document alone.",
+  "rule": [
+    "The hash is SHA-256, lower-case hex, of the canonical JSON of the IR, excluding `extensions`.",
+    "Every IR contains the built-in definitions of §9.1a before any schema is read: twelve scalars, Page, PageArgs, each with builtin: true. An implementation that omits them agrees with nobody.",
+    "An optional member appears only when it has a value; a flag appears only when true. A description nobody wrote is absent, not null and not empty."
+  ],
+  "cases": [
+    {
+      "name": "the empty schema is exactly the built-in definitions",
+      "schema": "",
+      "hash": "3035c6664f8a6b67fc994e449d709b749b6ad56e25a3c082a9d004e80948a761",
+      "canonicalBytes": 1946,
+      "why": "the first thing to check when a hash does not match: if this one is wrong, the built-in table is wrong and nothing else can agree. The byte count is here so a mismatch can be localised before the hash is."
+    },
+    {
+      "name": "an entity and a query",
+      "schema": "entity Book { id: ID title: String } query book(id: ID): Book?",
+      "hash": "a7178902819ae544d6de0d1e099df33720cbe7abd5070aba79bbfcee33e3ae49",
+      "why": "exercises what a declared type adds: kind, name, empty annotations, fields with their ordinals, the empty implements list an entity always carries, an op with one argument, and a nullable return"
+    },
+    {
+      "name": "a description changes the identity",
+      "schema": "\"\"\"A book.\"\"\" entity Book { id: ID title: String } query book(id: ID): Book?",
+      "differsFrom": "an entity and a query",
+      "why": "a description is part of the schema and is hashed when present. This case exists to pin the other half of the optional-member rule: absent when unwritten, present when written, never null or empty"
+    },
+    {
+      "name": "vendor data does not change the identity",
+      "schema": "entity Book { id: ID title: String @vendor.note(x: 1) } query book(id: ID): Book?",
+      "differsFrom": "an entity and a query",
+      "why": "guard, and a subtle one: a namespaced annotation is kept on the node's own annotations list (§4), so it IS hashed and this schema differs. What is excluded from the hash is the document's `extensions` member, which is a different thing - see the note below"
+    }
+  ],
+  "extensionsAreNotHashed": "The document's `extensions` member is the one part of the IR left out of the hashed form. Vendor data there is ignored by implementations that do not know it, so an identity that moved with it would make two servers offering the same conversation look different, and a gateway that strips vendor metadata look like a schema change. Note this is not the same as a namespaced annotation, which lives on a node and is hashed."
+}

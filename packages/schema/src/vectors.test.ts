@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { canonicalJson, hashJson } from "./canonical.ts";
 import { canonicalShape, parseShapeText, shapeIdOf } from "./shape.ts";
+import { loadSchema } from "./load.ts";
 
 /**
  * The published vectors under `conformance/vectors`, run against this runtime.
@@ -69,14 +70,14 @@ describe("conformance vectors: hashing", () => {
   const docs = load<never>("hashing").map((f) => ({
     file: f.file,
     doc: JSON.parse(readFileSync(join(ROOT, "hashing", f.file), "utf8")) as {
-      bindings: Array<{ name: string; op: string; args: Record<string, unknown>; canonical: string; hash: string; why?: string }>;
-      scopes: Array<{ name: string; viewer: unknown; canonical: string; hash: string; why?: string }>;
+      bindings?: Array<{ name: string; op: string; args: Record<string, unknown>; canonical: string; hash: string; why?: string }>;
+      scopes?: Array<{ name: string; viewer: unknown; canonical: string; hash: string; why?: string }>;
     },
-  }));
+  })).filter((d) => d.doc.bindings || d.doc.scopes); // hashing/ also holds schema.json, which has its own describe
 
   for (const { file, doc } of docs) {
     describe(file, () => {
-      for (const c of doc.bindings) {
+      for (const c of doc.bindings ?? []) {
         it(`binding: ${c.name}`, () => {
           // the canonical text is checked as well as the digest: when a hash disagrees, the text says whether the
           // canonicaliser or the hashing is at fault, which is the difference between a five-minute fix and a day
@@ -84,11 +85,36 @@ describe("conformance vectors: hashing", () => {
           expect(hashJson({ op: c.op, args: c.args })).toBe(c.hash);
         });
       }
-      for (const c of doc.scopes) {
+      for (const c of doc.scopes ?? []) {
         it(`scope: ${c.name}`, () => {
           expect(canonicalJson(c.viewer), c.why ?? c.name).toBe(c.canonical);
           expect(hashJson(c.viewer)).toBe(c.hash);
         });
+      }
+    });
+  }
+});
+
+describe("conformance vectors: the schema hash", () => {
+  const doc = JSON.parse(readFileSync(join(ROOT, "hashing", "schema.json"), "utf8")) as {
+    cases: Array<{ name: string; schema: string; hash?: string; canonicalBytes?: number; differsFrom?: string; why?: string }>;
+  };
+  const hashOf = (schema: string) => loadSchema(schema).hash;
+
+  for (const c of doc.cases) {
+    it(c.name, () => {
+      if (c.hash) {
+        // the hash in the vector was built by hand from spec 01 §9 and §9.1a, with its own canonicaliser and a
+        // general-purpose digest. This is the runtime being checked against the document, not against itself.
+        expect(hashOf(c.schema), c.why ?? c.name).toBe(c.hash);
+      }
+      if (c.canonicalBytes !== undefined) {
+        const { extensions: _vendor, ...hashed } = loadSchema(c.schema).ir;
+        expect(canonicalJson(hashed).length, "the canonical IR is this many bytes").toBe(c.canonicalBytes);
+      }
+      if (c.differsFrom) {
+        const other = doc.cases.find((x) => x.name === c.differsFrom)!;
+        expect(hashOf(c.schema), c.why ?? c.name).not.toBe(hashOf(other.schema));
       }
     });
   }

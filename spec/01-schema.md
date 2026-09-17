@@ -244,6 +244,21 @@ from the same schema text produces the same hash, which is the only way a third 
 vendor data it does not know ([§4](#4-annotations)), so an identity that moved with it would make two servers
 offering the same conversation look different, and a gateway that strips vendor metadata look like a schema change.
 
+### 9.1a The built-in definitions
+
+**Every IR contains these before a single line of schema is read**, each carrying `builtin: true`. They are part of
+what is hashed, so an implementation that omits them agrees with nobody about anything — this is the first thing to
+get right, and the first thing to check when a hash does not match.
+
+* The twelve scalars of [§2.2](#22-scalars), each `{kind: "scalar", builtin: true, annotations: []}`:
+  `ID`, `String`, `Int`, `Long`, `Float`, `Boolean`, `Decimal`, `Instant`, `Date`, `Duration`, `Bytes`, `JSON`.
+* **`Page`**, an `object` with `typeParams: ["T"]` and four fields, in this order and with these ordinals:
+  `items: [T]` (1), `cursor: String?` (2), `hasMore: Boolean` (3), `total: Int?` (4).
+* **`PageArgs`**, an `input` with three fields: `first: Int` defaulting to `20` (1), `after: String?` (2),
+  `offset: Int?` (3).
+
+A schema may not redefine any of them ([§8](#8-validation-rules-normative) rule 1).
+
 ### 9.2 TypeRef
 
 A reference to a type, at a field, an argument or a return position.

@@ -53,7 +53,7 @@ Traps that have actually bitten, worst first:
 
 ---
 
-## 1. The conformance vector pack — 6 of 10 areas
+## 1. The conformance vector pack — 6 of 10 areas (hashing/ now complete)
 
 `conformance/vectors/`, run by `packages/schema/src/vectors.test.ts`, `packages/rb/src/vectors.test.ts`,
 `packages/server/src/manifest-vectors.test.ts` and `VectorsTest.kt`.
@@ -95,15 +95,21 @@ independent implementer would have hit.
       with it would make two servers offering the same conversation look different and a gateway that strips vendor
       metadata look like a schema change. Kotlin already projected it out; TypeScript hashed the whole object and
       now does not. No published hash moves — nothing populates `extensions` today.
-- [ ] **`hashing/schema.json`** — now unblocked. Hand-derive the IR for a tiny schema from §9 and hash it, which is
-      the end-to-end check that a third party can reproduce a schema hash from the document alone.
+- [x] **`hashing/schema.json`** — the end-to-end proof. I built the IR by hand from §9 and §9.1a alone, with my own
+      canonicaliser and a general-purpose digest, and **both hashes matched the runtime exactly** (`3035c666…` for
+      the empty schema, `a7178902…` for one entity and one query). A third party can now reproduce a schema hash
+      from the document.
+      **Writing it found the gap in §9 immediately:** every IR carries the built-in definitions — twelve scalars,
+      `Page`, `PageArgs`, each `builtin: true` — before a line of schema is read, and §9 as committed did not say so.
+      An implementer would have hashed only their own declarations and matched nobody. Now §9.1a.
 - [ ] **`errors/`** — problem documents vs error frames, the lower-case title, the op-rooted detail path.
 - [ ] **`idempotency/`** — viewer scope, binding hash, `already_exists` on reuse, lease and takeover.
 - [ ] **`authorization/`** — the denial table of spec 06, including the list-element case the runtimes disagree on.
 - [ ] **`patch/`** — blocked on the chapter below.
 
-**Scoreboard: 6 spec gaps, 4 code defects.** Five of the six gaps were found before running any code — including the
-biggest, which is a vector that could not be written at all.
+**Scoreboard: 8 spec gaps, 4 code defects.** Six of the eight were found before running any code, including the two
+biggest: a vector that could not be written at all (the IR defined by pointing at a file), and the built-in
+definitions that the rewritten §9 still omitted.
 
 ## 2. The patch chapter — largest piece, not started
 
