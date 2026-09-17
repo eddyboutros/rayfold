@@ -43,7 +43,7 @@ console.log(await reread.promise);
 | `watch(op, args, options, fn)` | Calls `fn` now and whenever the cached result changes. Returns a stop function. |
 | `live(op, args, options, fn, onError)` | A live query: the server pushes changes made by anyone. A dropped connection is reopened after a short wait, so the subscription outlives a deploy; `onError(e, { retrying })` says whether it is coming back. Returns a stop function. |
 | `stream(op, args)` | An async iterable over a stream op. |
-| `upload(body, { name, type })` | Sends a `File`, `Blob`, bytes or a stream to the server's upload route and answers with the handle a later command names. |
+| `upload(body, { name, type })` | Sends a `File`, `Blob`, bytes or a stream to the server's upload route and answers with the handle a later command names. Needs a fetch transport; over a WebSocket it fails with `unimplemented`. |
 | `createWebSocketTransport({ url })` | One socket for many batches, with per-op cancel. |
 
 Pass `offline: { storage, drainOnReconnect }` and a command made while the server is unreachable is queued and

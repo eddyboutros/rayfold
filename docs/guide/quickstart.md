@@ -101,8 +101,16 @@ const client = new RayfoldClient({
 const book = await client.query<Book>("book", { id: "b1" });
 console.log(book.title, book.stock);
 
-// watch() calls back whenever the cached book changes. The restock updates it through the server's patch.
-const stop = client.watch<Book>("book", { id: "b1" }, {}, (b) => console.log("stock is now", b.stock));
+// watch() calls back with the book now, and again whenever the cached book changes - the restock reaches it
+// through the command's own patch, with no refetch. Wait for that first call before commanding, or the
+// command can land while the watch is still loading.
+let stop = () => {};
+await new Promise<void>((loaded) => {
+  stop = client.watch<Book>("book", { id: "b1" }, {}, (b) => {
+    console.log("stock is now", b.stock);
+    loaded();
+  });
+});
 await client.command("restock", { id: "b1", qty: 5 });
 stop();
 ```

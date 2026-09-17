@@ -1,7 +1,8 @@
 # Rayfold on the JVM
 
-Seven modules, all tested against the same conformance fixtures as the TypeScript reference
-(`../conformance/fixtures`):
+Seven modules. `rayfold-core` runs the same conformance fixtures as the TypeScript reference
+(`../conformance/fixtures`), and `rayfold-core` and `rayfold-client` the shared vectors
+(`../conformance/vectors`):
 
 | Module | What | Guide |
 |---|---|---|

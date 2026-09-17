@@ -1,8 +1,9 @@
 # TypeScript types
 
-Rayfold has no code generation step for TypeScript. A schema written with the builder is a value, and every type a
-caller needs is read from it: the entities, the arguments of an operation, what it returns, and - because a shape is a
-string at the call site - exactly the fields a shape asks for.
+A schema written with the builder needs no code generation step. The schema is a value, and every type a caller
+needs is read from it - the entities, the arguments of an operation, what it returns, and, because a shape is a
+string at the call site, exactly the fields a shape asks for. (`rayfold gen ts` exists for a schema written as text;
+see [the quickstart](quickstart.md).)
 
 ## From the schema
 

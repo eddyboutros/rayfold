@@ -91,5 +91,5 @@ the base URI plus the error's name, and `title` is that name.
 
 ```json
 { "type": "https://eddyboutros.github.io/rayfold/errors/OutOfStock", "title": "OutOfStock", "status": 422,
-  "detail": "Only 2 left", "code": "failed_precondition", "data": { "available": 2 } }
+  "detail": "Only 2 left", "code": "domain", "data": { "available": 2 } }
 ```

@@ -112,7 +112,7 @@ const server = createRayfoldServer({ schema, resolvers: resolvers(seed()), maxOp
 ```
 
 `GET /rayfold/manifest` publishes them, so a client can check before it sends:
-`"limits":{"trustedShapes":false,"budget":1000,"maxOps":50,"maxDepth":8,"maxFields":500,"timing":false}`.
+`"limits":{"budget":1000,"maxOps":50,"maxDepth":8,"maxFields":500,"trustedShapes":false}`.
 
 ## Build a batch in the client
 

@@ -60,7 +60,7 @@ What else is in the package:
 | `createFetchHandler(server, options)` | The same endpoint as a standard `Request` → `Response` handler, for Workers, Deno, Bun, Hono or Next. |
 | `createHttpHandler(server, options)` | The same endpoint as a plain `(req, res)` handler for your own `http` server, Express or Fastify. |
 | `attachWebSocket(httpServer, server, options)` | Batches and live queries over one WebSocket. |
-| `createBindingHandler(server)` | REST routes from `@http(...)` annotations in the schema. |
+| `createBindingHandler(server)` | REST routes from `@http(...)` annotations in the schema. Node only: it is written against `IncomingMessage`/`ServerResponse`, and the fetch handler does not serve these routes. |
 | `openApiFor(server.ir, options)` | An OpenAPI 3.2 document for those routes. |
 | `createMcpHandler(server, options)` | The schema as an MCP server: commands become tools, queries become resources. `schema` says what `rayfold://schema` serves — `"redacted"` (the default, the IR without policy expressions), `"full"`, or `"off"`. |
 | `MemoryIdempotencyStore` | Where command results are kept so a retry replays instead of running the command again. |

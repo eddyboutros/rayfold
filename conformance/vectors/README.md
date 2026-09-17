@@ -31,7 +31,8 @@ produces. It is the question an independent implementer would have had to guess 
 
 ## Shape
 
-Each file is one area:
+Each file is one area (`hashing/` is the exception: two files, because the schema hash is a different function
+from the two small ones):
 
 ```json
 {
@@ -54,7 +55,7 @@ Each file is one area:
 | `errors/` | `statuses`, `cases` | Which HTTP status each code derives (spec 05 §3), and the rule that decides *how* a refusal arrives: a problem document before a batch is parsed, an error frame once it has been. |
 | `idempotency/` | `ops`, `expect` | What a key promises and to whom (spec 12 §4): replay against re-run counted at the resolver, `already_exists` on reuse, the key bounds, and that two viewers choosing one key do not collide. |
 | `authorization/` | `cases` | The denial table of spec 06 §3, row for row — including the list-element row the two runtimes disagreed on. |
-| `hashing/` | `bindings`, `scopes` | The idempotency binding and viewer scope (spec 12 §4.2): `SHA-256(canonical JSON)`, with the number rule. Each case carries the canonical text as well as the digest, so a failure says whether the canonicaliser or the hashing is at fault. |
+| `hashing/` | `bindings`, `scopes`; `schema.json` has `cases` and `documentCases` | The idempotency binding and viewer scope (spec 12 §4.2): `SHA-256(canonical JSON)`, with the number rule. Each case carries the canonical text as well as the digest, so a failure says whether the canonicaliser or the hashing is at fault. |
 
 `hashing/schema.json` is the one worth reading first. Writing it was blocked, because spec 01 §9 gave the IR's
 top-level shape and then deferred to `packages/schema/src/ir.ts` for the rest — so the structure the protocol's
@@ -63,10 +64,19 @@ hash. §9 now carries the whole structure, and that file is the evidence it work
 building the IR by hand from the document, with a canonicaliser written for the purpose and a general-purpose digest,
 and both matched the runtime exactly.
 
+Its `documentCases` are stated over the IR **document** rather than over schema text, because no schema text produces
+an `extensions` member — the one part of the IR left out of the hashed form. That is the only way to state the rule
+as a case, and it is worth the special shape: a runtime whose IR cannot hold the member passes the hash half of the
+case by accident, so the runners check the member survives a load as well. Kotlin's did not, which is how that got
+found.
+
 ## What each area has found
 
-Writing these produced **8 specification gaps and 6 implementation defects**, and six of the gaps were found before
+Writing these produced **8 specification gaps and 7 implementation defects**, and six of the gaps were found before
 any code ran — by trying to state the answer and discovering the document could not. The largest were canonical JSON
 defined in one sentence (spec 01 §9), the IR defined by pointing at a TypeScript file, and the built-in definitions
-that the rewritten §9 still omitted. The defects were four in Kotlin, one in TypeScript, and one in both clients: a
-deletion under a live list removing two rows, which the `patch/` area now has a regression case for.
+that the rewritten §9 still omitted. The defects were five in Kotlin, one in TypeScript, and one in both clients: a
+deletion under a live list removing two rows, which the `patch/` area now has a regression case for. The last of the
+five was found by the pack's own coverage rather than by a case — `hashing/schema.json` ran on one runtime only,
+because the JVM's hashing runner looks for `bindings` and `scopes` and that file has neither. Writing the missing
+runner is what surfaced an IR that could not hold `extensions` at all.

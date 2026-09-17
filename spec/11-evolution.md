@@ -21,7 +21,7 @@ three and fails on breaking ones; `--strict` also fails on warnings.
 * Removing or renaming anything that is not past its `@deprecated(sunset:)` date.
 * Changing a field or argument type, including nullability in the restrictive direction (result field non-null to nullable is breaking for clients that rely on it; argument optional to required is breaking for callers).
 * Removing an enum value or union member.
-* Removing a view: a client that asks for it by name gets nothing.
+* Removing a named view (removing a `default` view is a warning: the type falls back to its derived default): a client that asks for it by name gets nothing.
 * Dropping an interface a type declared.
 * Adding a required argument without a default.
 * Changing an ordinal.
@@ -30,7 +30,7 @@ three and fails on breaking ones; `--strict` also fails on warnings.
 `@deprecated(reason:, sunset: Date, replacement:)`. Removal is allowed only after `sunset`. Servers report usage of deprecated members per client (`Rayfold-Client`) so removal is a fact, not a guess.
 
 ## Field usage telemetry
-Runtimes record (op, field path, client, last seen). `rayfold check --unused --since 30d` lists members with no traffic, using an exported usage snapshot.
+Runtimes record (op, field path, client, last seen). `rayfold check <schema.rayfold> --unused <usage.json> --since 30d` lists members with no traffic, from an exported usage snapshot.
 
 ## Lockfile
 `rayfold.lock.json` records ordinals and the schema hash. `rayfold lock` updates it; committing it and running

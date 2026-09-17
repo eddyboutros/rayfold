@@ -89,7 +89,8 @@ event OrderPlaced { orderId: ID }
 A named shape (see [02](02-shapes.md)) attached to a type. The view named `default` is what a caller
 gets when it sends no shape. If a type declares no `default` view, its default view is every scalar and enum field
 that takes no arguments (which includes the `id`); nested entities and objects are left out entirely rather than
-reduced to their `id`.
+reduced to their `id`. The built-in `Page` is the one exception: its derived default view includes `items`,
+projected through the element type's own default view, since a window with no rows in it would answer nothing.
 
 ```
 view Book.default = { id title author { name } }
@@ -137,7 +138,7 @@ Annotations attach machine-readable policy to a definition or field. Core annota
 | Annotation | On | Meaning |
 |---|---|---|
 | `@cache(maxAge: Duration, scope: public \| private, swr: Duration?)` | entity, query | Freshness and cache scope ([07](07-cache.md)). |
-| `@allow(read: Expr?, write: Expr?)` | entity, field, operation | Policy expression; absent means allowed ([06](06-auth.md)). |
+| `@allow(read: Expr?, write: Expr?)` | entity, object, field, operation | Policy expression; absent means allowed ([06](06-auth.md)). |
 | `@deny(read: Expr?, write: Expr?)` | same | Explicit denial; evaluated after `@allow`. |
 | `@load(batch \| single)` | field | Loader shape. Default is `batch`. `single` marks a field the executor may resolve one parent at a time. |
 | `@page(cursor \| offset)` | field or query returning `Page<T>` | Pagination style. Default `cursor`. |
@@ -153,7 +154,7 @@ Annotations attach machine-readable policy to a definition or field. Core annota
 | `@interface` | object | Declares an interface. |
 | `@range(min: Number?, max: Number?)` | scalar, field, arg | **Enforced before execution** by the declared type (numbers and Decimals by value, strings and lists by length) on arguments and input fields the caller actually sent: a violating one is `invalid_argument` with a path, and no resolver runs. A default that is never sent is not checked, and `@range` on a result field is a hint only. |
 | `@format(String, pattern: String?)`, `@unit(String)` | scalar, field, arg | Machine-readable hints for docs and agents; `pattern` is enforced on strings. |
-| `@example(value)` | scalar, field, arg, and any operation or type | A sample value for docs, the explorer and agents. |
+| `@example(value)` | scalar, field, arg, any operation, and `entity`, `object` and `input` types | A sample value for docs, the explorer and agents. |
 | `@version` | entity field (`Int`, `Long`, `String` or `Instant`) | The entity's version for conditional commands ([03 §4a](03-batch-and-pipelining.md)). Bumped by the resolver on every write. |
 | `@http(method: M, path: String, body: Name \| "*"?, location: String?)` | query, command | HTTP binding ([04 §8](04-frames-and-transport.md)). Queries bind `GET` or `QUERY`; commands bind `POST`, `PUT`, `PATCH` or `DELETE`. `{name}` path segments are arguments. |
 | `@ordinal(Int)` | field, enum value | Fixes the wire ordinal used by RB ([09](09-binary-format.md)). Normally assigned by the lockfile. |
@@ -181,8 +182,9 @@ Roots available in scope: `viewer` (the authenticated principal, shape defined b
 (operation or field arguments), `this` (the current entity or object, for field and entity policies) and
 bare names, which resolve to `this.<name>` on entities/objects and to `args.<name>` on operations.
 Built-in calls: `has(list, value)`, `len(x)`, `now()`.
-Expressions are pure and total: a missing path evaluates to `null`, comparisons with `null` are `false`,
-`in` tests list membership.
+Expressions are pure: a missing path evaluates to `null`, `==` and `!=` treat a missing path and `null` as equal,
+**ordering** comparisons with `null` are `false`, and `in` tests list membership. They are total but for one case:
+ordering two values that cannot be ordered is an evaluation error, which fails closed ([06 §3](06-auth.md)).
 
 ## 6. Generic `Page<T>`
 
@@ -210,7 +212,8 @@ An IR is valid when:
 1. Every referenced type exists; no name is defined twice (types, errors, events and views share one namespace with operations in a second namespace).
 2. Every `entity` has `id: ID` (non-null).
 3. `input` types reference only scalars, enums and inputs. Operation arguments likewise.
-4. Operation results and entity/object fields reference only entities, objects, scalars, enums, unions and `Page<T>`.
+4. Operation results and entity/object fields reference only entities, objects, scalars, enums, unions and `Page<T>`;
+   a `stream` result may also be an `event` type ([§2.6](#26-event)).
 5. `throws` references only `error` definitions; `emits` only `event` definitions.
 6. Every `view` references an existing type and every selected field exists on it (recursively).
 7. Every `@allow`/`@deny` expression parses and references only paths rooted in the allowed roots.
@@ -250,7 +253,7 @@ offering the same conversation look different, and a gateway that strips vendor 
 what is hashed, so an implementation that omits them agrees with nobody about anything — this is the first thing to
 get right, and the first thing to check when a hash does not match.
 
-* The twelve scalars of [§2.2](#22-scalars), each `{kind: "scalar", builtin: true, annotations: []}`:
+* The twelve scalars of [§2.4](#24-enum-union-scalar), each `{kind: "scalar", builtin: true, annotations: []}`:
   `ID`, `String`, `Int`, `Long`, `Float`, `Boolean`, `Decimal`, `Instant`, `Date`, `Duration`, `Bytes`, `JSON`.
 * **`Page`**, an `object` with `typeParams: ["T"]` and four fields, in this order and with these ordinals:
   `items: [T]` (1), `cursor: String?` (2), `hasMore: Boolean` (3), `total: Int?` (4).

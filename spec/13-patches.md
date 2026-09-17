@@ -27,7 +27,7 @@ book, so a screen showing it and a list containing it move together without eith
 
 ## 2. The operations
 
-Five operations act on the cache as a whole and may appear in any `patch`, including a command's. Two more act on one
+Four operations act on the cache as a whole and may appear in any `patch`, including a command's. Two more act on one
 operation's own result and are valid only in a `patch` frame carrying an `id` ([04 §2b](04-frames-and-transport.md)).
 
 | Op | Effect |

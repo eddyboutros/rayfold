@@ -116,7 +116,7 @@ npm run smoke:maven                        # publish the JVM modules locally and
 
 | Path | What |
 |---|---|
-| [`spec/`](spec/00-overview.md) | The protocol: schema, shapes, batches, frames, errors, auth, cache (Core); live, RB, MCP, REST bindings, uploads, capability tokens (extensions); evolution; security; ADRs |
+| [`spec/`](spec/00-overview.md) | The protocol: schema, shapes, batches, frames, errors, auth, cache, patches (Core); live, RB, MCP, REST bindings, uploads, capability tokens (extensions); evolution; security; ADRs |
 | [`docs/`](docs/index.md) | User guides and background; [`docs/releasing.md`](docs/releasing.md) is the release checklist |
 | [`packages/schema`](packages/schema) | `.rayfold` parser, validator, shapes, policy expressions, breaking-change diff, TypeScript/Kotlin/Java/GraphQL generators |
 | [`packages/builder`](packages/builder) | code-first TypeScript schemas with inferred types |
@@ -125,7 +125,7 @@ npm run smoke:maven                        # publish the JVM modules locally and
 | [`packages/react`](packages/react) | `useQuery`, `useLive`, `useCommand` |
 | [`packages/rb`](packages/rb) | Rayfold Binary codec |
 | [`packages/cli`](packages/cli) | `rayfold check \| lock \| hash \| explain \| gen ts\|kotlin\|java\|graphql \| shapes \| import openapi\|graphql \| mock \| lsp \| dev` |
-| [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass |
+| [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass, and the vectors: a pure function and the answer the specification says it has |
 | [`kotlin/`](kotlin) | JVM modules: `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`, `rayfold-jdbc` |
 | [`examples/`](examples) | the bookstore used by tests, explorer and bench; the same bookshop per stack (`typescript`, `react`, `kotlin`, `java`, `spring-boot`) that the get-started guides are written from; the web demo; `workspace-ts`, a multi-tenant issue tracker that exercises every part of the protocol at once |
 | [`e2e/`](e2e/report.md) | the same flows over REST, GraphQL and Rayfold, every report cell asserted |

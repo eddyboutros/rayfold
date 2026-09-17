@@ -137,7 +137,7 @@ On the bookshop over loopback, counting the bytes of the HTTP bodies:
 Compact requests are a few bytes larger going up, because each op says `"compact": true`. The bookshop has three
 books; the gap grows with the result.
 
-The repository's benchmark, `npm run bench`, runs three flows against a store of 40 books, with compact frames. Bytes
+The repository's benchmark, `npm run bench`, runs three flows against a store of 36 books, with compact frames. Bytes
 down:
 
 | Flow | GraphQL | Rayfold, JSON | Rayfold, RB |
