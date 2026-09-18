@@ -7,6 +7,13 @@ packages and the Maven artifacts share one version number.
 
 ## 0.2.0 (2026-09-18)
 
+- **A server whose relay is still connecting can now shut down.** `close()` waited for the relay subscription with no
+  bound, in both runtimes. A relay that is re-establishing its connection has nothing to stop yet — `readiness()`
+  reports exactly that state as "relay: not listening yet" — so the wait could never end, the shutdown hook never
+  returned, and the process sat there until the platform killed it. A rolling deploy would stall on the server it was
+  replacing. The wait is bounded now (`closeTimeoutMs`, default 2000); past it the subscription attempt is abandoned
+  rather than held open.
+
 - **A stream is bounded in TypeScript too.** Spec 04 §5 says a server emits stream items as its resolver yields them,
   "bounded by its own per-stream item limit". The JVM has always had one; TypeScript had none, so a resolver that
   never stopped produced frames until the process gave out. `maxStreamItems` is now a server option in both, default

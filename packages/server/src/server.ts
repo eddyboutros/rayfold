@@ -198,9 +198,19 @@ export class RayfoldServer {
   }
 
   /** Stops hearing the other servers. */
-  async close(): Promise<void> {
+  async close(closeTimeoutMs = 2_000): Promise<void> {
     if (!this.listening) return;
-    const stop = await this.listening.catch(() => undefined);
+    // close() is what a shutdown path calls last, so waiting here without a bound is a server that never exits. A
+    // relay still connecting has nothing to stop yet — `readiness()` reports that state as "relay: not listening
+    // yet" — and its own subscribe may be retrying behind a dropped connection.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const bound = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), closeTimeoutMs);
+      // the guard must not be the reason the process stays up. `unref` is Node's, and this file is built for
+      // runtimes that have no Node types, so it is reached the way the rest of the package reaches host extras.
+      (timer as { unref?: () => void }).unref?.();
+    });
+    const stop = await Promise.race([this.listening.catch(() => undefined), bound]).finally(() => clearTimeout(timer));
     await stop?.();
   }
 

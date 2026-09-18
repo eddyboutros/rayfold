@@ -285,3 +285,34 @@ describe("draining", () => {
     await expect(fetch(`${base}/rayfold/health`)).rejects.toThrow();
   });
 });
+
+describe("close() with a relay that never finishes connecting", () => {
+  /** A relay whose subscribe never resolves: what a server sees while its LISTEN connection is being re-established. */
+  const stuckRelay = () => ({
+    publish: async () => {},
+    subscribe: () => new Promise<() => Promise<void>>(() => {}),
+  });
+
+  it("returns instead of holding shutdown open for ever", async () => {
+    // close() is the last thing a shutdown path calls, and it awaited the subscription with no bound — so a server
+    // whose relay was still connecting never exited. readiness() calls that state "relay: not listening yet", so it
+    // is expected, not exceptional.
+    const server = createRayfoldServer({ schema: SCHEMA, resolvers: {}, relay: stuckRelay() as never });
+    expect(server.readiness().reasons).toContain("relay: not listening yet");
+    await bounded(server.close(50), "close returned");
+  });
+
+  it("guard: a relay that connects is still stopped properly", async () => {
+    let stopped = false;
+    const relay = {
+      publish: async () => {},
+      subscribe: async () => async () => {
+        stopped = true;
+      },
+    };
+    const server = createRayfoldServer({ schema: SCHEMA, resolvers: {}, relay: relay as never });
+    await server.ready();
+    await server.close();
+    expect(stopped).toBe(true);
+  });
+});

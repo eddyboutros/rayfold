@@ -160,9 +160,21 @@ class RayfoldServer(
         listening?.await()
     }
 
-    /** Stops hearing the other servers. */
-    suspend fun close() {
-        val stop = listening?.let { runCatching { it.await() }.getOrNull() } ?: return
+    /**
+     * Stops hearing the other servers.
+     *
+     * [closeTimeoutMs] bounds the wait for a subscription that has not finished starting. close() is what a shutdown
+     * hook calls last, so waiting without a bound is a server that never exits: a relay still connecting has nothing
+     * to stop yet - [readiness] reports that state as "relay: not listening yet" - and its own subscribe may be
+     * retrying behind a dropped connection.
+     */
+    suspend fun close(closeTimeoutMs: Long = 2_000) {
+        val subscription = listening ?: return
+        val stop = withTimeoutOrNull(closeTimeoutMs) { runCatching { subscription.await() }.getOrNull() }
+        if (stop == null) {
+            subscription.cancel() // still connecting: give up the attempt rather than hold shutdown open
+            return
+        }
         stop()
     }
 }

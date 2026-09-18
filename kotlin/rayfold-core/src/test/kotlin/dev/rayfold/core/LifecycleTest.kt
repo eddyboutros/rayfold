@@ -370,4 +370,39 @@ class LifecycleTest {
         assertEquals(listOf("shutting down"), built.server.readiness().reasons)
         assertFailsWith<IOException> { get("${served.base}/rayfold/health") }
     }
+
+    /**
+     * close() is the last thing a shutdown hook calls, and it awaited the relay subscription with no bound - so a
+     * server whose relay was still connecting never exited, and the platform had to kill it. readiness() calls that
+     * state "relay: not listening yet", so it is an expected state rather than an exceptional one.
+     */
+    @Test
+    fun `close returns when the relay never finishes connecting`() = runBlocking {
+        val stuck = object : Relay {
+            override suspend fun publish(message: RelayMessage) {}
+            override suspend fun subscribe(onMessage: (RelayMessage) -> Unit): suspend () -> Unit {
+                CompletableDeferred<Unit>().await() // never completes: a LISTEN connection being re-established
+                error("unreachable")
+            }
+        }
+        val server = RayfoldServer(ir, Resolvers(), relay = stuck)
+        assertTrue(server.readiness().reasons.contains("relay: not listening yet"))
+        // close() with its own default, so this fails against the unbounded version by hanging rather than by
+        // failing to compile
+        withTimeout(8_000) { server.close() }
+    }
+
+    /** Guard: a relay that does connect is still stopped, so the bound did not turn close() into a no-op. */
+    @Test
+    fun `close stops a relay that connected`() = runBlocking {
+        val stopped = CompletableDeferred<Unit>()
+        val relay = object : Relay {
+            override suspend fun publish(message: RelayMessage) {}
+            override suspend fun subscribe(onMessage: (RelayMessage) -> Unit): suspend () -> Unit = { stopped.complete(Unit); Unit }
+        }
+        val server = RayfoldServer(ir, Resolvers(), relay = relay)
+        server.ready()
+        server.close()
+        withTimeout(5_000) { stopped.await() }
+    }
 }
