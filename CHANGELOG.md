@@ -5,6 +5,22 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+- **A stream is bounded in TypeScript too.** Spec 04 §5 says a server emits stream items as its resolver yields them,
+  "bounded by its own per-stream item limit". The JVM has always had one; TypeScript had none, so a resolver that
+  never stopped produced frames until the process gave out. `maxStreamItems` is now a server option in both, default
+  10000, and a stream that passes it ends with `resource_exhausted`. A resolver that stops on its own is unaffected.
+
+- **The website documents the features it advertises.** The home page promised REST routes, an OpenAPI document and
+  an MCP endpoint, and none of the three had a page to send a reader to; `Capabilities` was named only in a README
+  the site excludes; the sidebar's "Command line" entry left the site altogether; and `stream`, one of the three
+  operation kinds, was a single row in a table. There are now pages for
+  [the command line](https://rayfold.dev/guide/cli), [streams and events](https://rayfold.dev/learn/streams),
+  [MCP](https://rayfold.dev/guide/mcp), [REST routes and OpenAPI](https://rayfold.dev/guide/rest-bindings) and
+  [capability tokens](https://rayfold.dev/guide/capabilities), and the annotations that existed only in the
+  specification — `@version`, `@page`, `@load`, `@lazy`, `@live`, `@interface`, `@format`, `@unit`, `@example`,
+  `@ordinal` — are taught where they belong, along with interfaces and unions, `...on` conditions, offset
+  pagination, deadlines, conditional writes, and how to serve the WebSocket endpoint from Node.
+
 - **Fifteen conformance defects fixed, most of them in both runtimes.** None changes what a correct client already
   did; each closes a place where a runtime did not do what the specification says.
   On the wire: an unsafe `POST` answered with a single JSON frame now carries `Cache-Control: no-store` (spec 07 §3) —

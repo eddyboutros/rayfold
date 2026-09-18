@@ -99,6 +99,9 @@ rayfold.manifest=redacted
 rayfold.trusted-shapes=false
 rayfold.budget=1000
 rayfold.websocket=true
+rayfold.allowed-hosts=api.example.com
+rayfold.max-body-bytes=1048576
+rayfold.max-depth=8
 ```
 
 ### Live queries and WebSocket

@@ -54,6 +54,35 @@ If you prefer plain Java types and functional interfaces, use `rayfold-java` ([J
 `@rayfold/explorer` serves; `RayfoldExplorer(endpoint, title).mount(http)` puts it on a server of its own. It is off
 until it is turned on.
 
+## Any JVM server
+
+The built-in JDK server above and the [Spring Boot starter](./java-spring.md) are two hosts for the same engine, not
+two implementations. The seam between them is `HttpCall`: implement it over whatever your server calls a request and
+a response, and `RayfoldHttp.serve(call, base, viewer)` does the rest — batches, live queries, the manifest, caching,
+health and readiness.
+
+```kotlin
+class KtorCall(private val call: ApplicationCall) : HttpCall {
+    override val method get() = call.request.httpMethod.value
+    override val path get() = call.request.path()
+    override val rawQuery get() = call.request.queryString().ifEmpty { null }
+    override fun header(name: String) = call.request.header(name)
+    override val body: InputStream get() = call.receiveStream()
+    override val secure get() = call.request.origin.scheme == "https"
+    override val localAddress: InetAddress? = null
+    override fun setHeader(name: String, value: String) = call.response.header(name, value)
+    override fun respond(status: Int, length: Long): OutputStream = /* your server's output stream */
+    override fun abort() { /* end the exchange */ }
+}
+```
+
+Two members earn their place. `secure` and `localAddress` feed the Origin and loopback-Host checks, so a host that
+cannot answer them truthfully weakens those rules rather than breaking them. And `respond(status, length)` takes
+`-1` for `length` when the body streams, which is how a live query or a stream stays open instead of being buffered.
+
+The repository has two worked implementations to copy: `JdkCall` for the JDK HTTP server, and `ServletCall` in the
+Spring starter.
+
 ## A client
 
 ```kotlin

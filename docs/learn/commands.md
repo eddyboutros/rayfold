@@ -124,6 +124,35 @@ deadline passes *after* the command committed, the record says exactly that:
 The retry is told its effect happened. Replaying the op's own `deadline_exceeded` would say the opposite, and since that
 code is retryable the client would come back with a fresh key and buy a second copy.
 
+## Conditional writes
+
+Retrying safely is one half of writing from several places at once; not overwriting someone else's change is the
+other. Mark the field that says which version of a row you have:
+
+```rayfold
+entity Book {
+  id: ID
+  title: String
+  stock: Int
+  version: Int @version
+}
+```
+
+Then send the version you read with the command, and the server refuses it if the row has moved on since:
+
+```ts
+const book = await client.query<Book>("book", { id: "b1" }, { shape: "{ id stock version }" });
+await client.command("restock", { bookId: "b1", qty: 5 }, { ifVersion: book.version });
+```
+
+A stale version comes back as the typed error `VersionConflict`, carrying the key, the version you expected and the
+version the row is actually at — so a client can show the current value, or retry against it, without a second
+round trip to find out what happened. Over a [REST binding](../guide/rest-bindings.md) this is `If-Match`, and the
+refusal is `412 Precondition Failed`.
+
+A `@version` field can be an `Int`, a `Long`, a `String` or an `Instant`; the resolver bumps it on every write. A
+resolver that compares versions itself calls `ctx.checkVersion(key, actual, current)` and gets the same typed error.
+
 ## Errors the schema declares
 
 When the resolver throws `OutOfStock`, the client receives it by name, with the data the schema describes:

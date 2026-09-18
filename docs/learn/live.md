@@ -65,6 +65,17 @@ That makes live queries correct by default: the same policies apply to every upd
 query can never show a field its viewer may not read. A server can also put changes from elsewhere, such as rows
 written by another system, onto the same bus.
 
+Because every change re-runs the query, some queries are a poor fit — a search whose results depend on a keyword
+rather than on any one entity would re-run on every write to a type it can reach, and pay for it. Mark such a query
+`@live(false)` and the server refuses to open it live:
+
+```rayfold
+query search(q: String, page: PageArgs = { first: 20 }): Page<SearchHit> @live(false)
+```
+
+A client asking for it with `live: true` is refused with `invalid_argument`; the same query still answers normally
+without it.
+
 The bus belongs to one server. Behind a load balancer that is silently wrong: a command that runs on the second
 server never reaches a live query held by the first, and the screen sits there showing stale data with no error to
 say so. Give every server the same `relay` and the changes cross between them — `MemoryRelay` for servers sharing a
@@ -83,18 +94,33 @@ that book updates too, not only the live one. In React, only the components show
   answer so it can compute cache headers for it, which is the opposite of staying open. Send live ops over a plain
   `POST` or the WebSocket transport.
 - To share one connection between many live queries, give the TypeScript client
-  `createWebSocketTransport({ url: "wss://example.com/rayfold/ws" })`.
+  `createWebSocketTransport({ url: "wss://example.com/rayfold/ws" })`. On the server, attach the endpoint to the same
+  Node HTTP server your batch endpoint runs on:
+
+  ```ts
+  import { attachWebSocket } from "@rayfold/server";
+
+  const http = createServer(handler);
+  attachWebSocket(http, server, { viewer, allowedOrigins: ["https://app.example.com"] });
+  http.listen(4000);
+  ```
+
+  It serves `/rayfold/ws` by default, speaks the `rayfold.0.1` subprotocol, and checks the handshake's `Origin` —
+  browsers attach cookies to a WebSocket handshake, so without that check any site could open a socket as your user.
+  `maxMessage` bounds an assembled message (1 MiB by default). One socket carries many operations, and
+  `{ "cancel": <id> }` cancels one of them without closing it. On the JVM, `RayfoldWebSocket` does the same job.
 - A dropped connection is not the end of the subscription. The TypeScript client reopens it after half a second,
   doubling to thirty, so a screen survives a deploy; `onError(e, { retrying })` says whether it is coming back, and
   only an error that would recur ends it. The Kotlin client does not retry yet: reopen it yourself.
 - Reopening re-runs the query, so what comes back is the current answer rather than the changes you missed. The
   guarantee is that the screen catches up, not that you see every step it took to get there: a value that changed and
-  changed back while you were away leaves no trace. If you need the steps, an event stream is the right shape for it,
-  not a live query.
+  changed back while you were away leaves no trace. If you need the steps, [an event stream](./streams.md) is the
+  right shape for it, not a live query.
 - Stop by calling the function `live` returned, by unmounting the component, or by aborting the request.
 
 ## Next
 
 - Commands are what live queries react to: [Commands and errors](./commands.md).
+- Every step rather than the current answer: [Streams and events](./streams.md).
 - Show a change before the server confirms it: [Offline and optimistic](../guide/offline.md).
 - The [live chapter of the specification](../../spec/08-live-and-sync.md) describes change detection exactly.

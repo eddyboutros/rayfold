@@ -44,9 +44,9 @@ features:
     link: /learn/commands
     linkText: Commands and errors
   - title: Plain HTTP when you want it
-    details: JSON over POST, cacheable GET, REST routes, an OpenAPI document, and an MCP endpoint so AI agents can use the same API.
-    link: /guide/from-rest
-    linkText: Coming from REST
+    details: JSON over POST, cacheable GET, REST routes bound in the schema, a generated OpenAPI document, and an MCP endpoint so AI agents can use the same API.
+    link: /guide/rest-bindings
+    linkText: REST routes and OpenAPI
 ---
 
 <div class="home-section">

@@ -24,10 +24,46 @@ Here is the bookshop every guide on this site builds:
 | `union` | One of several types: `union SearchHit = Book | Author`. |
 | `error` | An error an operation can end with, and the data it carries. |
 | `event` | A fact a command publishes, such as `StockChanged`. |
+| `scalar` | A scalar of your own: `scalar Money @format("decimal")`. It travels as its base form with a name and a hint on it. |
 
-Built-in scalars are `ID`, `String`, `Int`, `Long`, `Float`, `Boolean`, `Decimal`, `Instant`, `Date`, `Duration`,
-`Bytes` and `JSON`, plus the generic `Page<T>`. `Decimal` travels as a string so no digit is lost, and a `Long` above
-2^53 does too.
+Twelve scalars are built in, plus the generic `Page<T>`. Five of them are text on the wire in a particular form:
+
+| Scalar | On the wire |
+|---|---|
+| `ID`, `String` | a string |
+| `Int`, `Float` | a number |
+| `Boolean` | `true` or `false` |
+| `Long` | a number, or a string above 2^53 so no digit is lost |
+| `Decimal` | a string, always, for the same reason |
+| `Instant` | RFC 3339 in UTC: `2026-09-18T14:30:00Z` |
+| `Date` | `YYYY-MM-DD` |
+| `Duration` | `250ms`, `60s`, `5m`, `2h`, `7d` |
+| `Bytes` | base64url |
+| `JSON` | any JSON value, unchecked |
+
+## Interfaces and unions
+
+Two types can share a shape without one containing the other. An `object` marked `@interface` declares fields that
+entities then promise to have:
+
+```rayfold
+object Named @interface {
+  id: ID
+  name: String
+}
+
+entity Person implements Named { id: ID  name: String  email: String }
+entity Team   implements Named { id: ID  name: String  size: Int }
+```
+
+A field typed `Named` may hold either. A `union` is the other shape — several types with nothing in common:
+
+```rayfold
+union SearchHit = Book | Author
+```
+
+Either way a result can hold more than one kind of thing, and the shape says what to select from each
+([Queries and shapes](./queries.md#one-field-many-types)).
 
 ## Required unless marked
 
@@ -85,7 +121,16 @@ Annotations put rules and hints next to the thing they apply to. The ones you wi
 | `@deprecated(reason: "...", sunset: "2027-01-01")` | Going away, and from when. Tooling refuses to remove it earlier. |
 | `@simulate` | The command accepts dry runs. |
 | `@partial` | The field may fail on its own instead of failing the whole operation. |
-| `@http(method: GET, path: "/books/{id}")` | Also serve the operation as a REST route. |
+| `@http(method: GET, path: "/books/{id}")` | Also serve the operation as a [REST route](../guide/rest-bindings.md). |
+| `@version` | The field holding an entity's version, for [conditional writes](./commands.md#conditional-writes). |
+| `@page(cursor)` or `@page(offset)` | How a `Page<T>` field or query is paged. Default `cursor`. |
+| `@load(batch)` or `@load(single)` | How a field's loader is called. Default `batch`, which is what avoids N+1. |
+| `@lazy` | The field arrives in a later frame unless a shape asks for it eagerly. See [deliver a field later](./queries.md#deliver-a-field-later). |
+| `@live(false)` | The query may not be opened [live](./live.md). |
+| `@interface` | The object declares an interface other types implement. |
+| `@format("...", pattern: "...")`, `@unit("...")` | Machine-readable hints for docs and agents; `pattern` is enforced on strings. |
+| `@example(value: ...)` | A sample value, used by docs, the explorer and `rayfold mock`. |
+| `@ordinal(3)` | Fix the wire ordinal by hand instead of letting the lockfile assign it. |
 
 The [schema chapter of the specification](../../spec/01-schema.md#4-annotations) lists them all.
 

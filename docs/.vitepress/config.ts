@@ -119,7 +119,9 @@ export default defineConfig({
           text: "Everyday",
           items: [
             { text: "Who can do what", link: "/learn/auth" },
+            { text: "Capability tokens", link: "/guide/capabilities" },
             { text: "Live updates", link: "/learn/live" },
+            { text: "Streams and events", link: "/learn/streams" },
             { text: "Caching", link: "/learn/caching" },
           ],
         },
@@ -135,6 +137,7 @@ export default defineConfig({
             { text: "Tracing", link: "/guide/tracing" },
             { text: "Deployment", link: "/guide/deployment" },
             { text: "Hono, Workers, Bun, Deno, Next", link: "/guide/runtimes" },
+            { text: "REST routes and OpenAPI", link: "/guide/rest-bindings" },
             { text: "Uploads", link: "/guide/uploads" },
           ],
         },
@@ -153,7 +156,8 @@ export default defineConfig({
           text: "Tools",
           items: [
             { text: "The explorer", link: "/guide/explorer" },
-            { text: "Command line", link: "https://github.com/eddyboutros/rayfold/blob/main/packages/cli/README.md" },
+            { text: "MCP for AI agents", link: "/guide/mcp" },
+            { text: "Command line", link: "/guide/cli" },
             { text: "Editors", link: "/guide/editors" },
             { text: "Errors", link: "/errors/" },
           ],

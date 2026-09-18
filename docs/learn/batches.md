@@ -103,13 +103,40 @@ To read what a command changed, reference the command, as `book` does with `1.id
 |---|---|---|
 | Ops per batch | 50 | `{"error":{"code":"resource_exhausted","message":"At most 50 ops per batch"},"fin":true}` |
 | Cost of the whole batch | 1000 | `resource_exhausted`, such as `Batch cost 4 exceeds budget 3` |
+| Shape depth | 8 | `resource_exhausted` before the op runs |
+| Fields one shape selects | 500 | `resource_exhausted` before the op runs |
+| Items one stream may yield | 10000 | `resource_exhausted`, and the stream ends |
 | Request body over HTTP | 1 MiB | `413` before anything runs |
 
-Both batch limits are refused before any op runs, and both are server options:
+The batch limits are refused before any op runs, and all of them are server options:
 
 ```ts
-const server = createRayfoldServer({ schema, resolvers: resolvers(seed()), maxOps: 100, budget: 2000 });
+const server = createRayfoldServer({
+  schema,
+  resolvers: resolvers(seed()),
+  maxOps: 100,
+  budget: 2000,
+  maxDepth: 10,
+  maxFields: 800,
+  maxStreamItems: 50_000,
+});
 ```
+
+The JVM has two more of its own: `maxFrames` bounds the frames one batch's resolvers may produce, and
+`maxInlineShapes` how many shapes learned from requests are remembered.
+
+## Deadlines
+
+A caller can say how long it is willing to wait, and the server stops rather than finishing work nobody is waiting
+for. Send `meta.deadline` on the envelope, or per operation, in milliseconds:
+
+```json
+{ "meta": { "deadline": 2000 }, "ops": [{ "id": 1, "op": "books", "args": {} }] }
+```
+
+Over HTTP the `Rayfold-Deadline` header does the same. An operation that runs out ends with `deadline_exceeded`. A
+command that had already committed records that fact, so a retry is answered with what happened rather than running
+the command a second time — see [Safe to retry](./commands.md#safe-to-retry).
 
 `GET /rayfold/manifest` publishes them, so a client can check before it sends:
 `"limits":{"budget":1000,"maxOps":50,"maxDepth":8,"maxFields":500,"trustedShapes":false}`.

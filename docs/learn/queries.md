@@ -63,8 +63,41 @@ A shape is a list of field names, with nested braces for fields that hold object
   can be cached and registered once.
 - `...Book.card` includes a named view: a shape the schema defines once for everyone.
 - `@defer { reviews { ... } }` sends that part in a later frame, so the rest of the screen can show first.
+- `...on Book { title }` selects fields that only exist on one of the types a field can hold.
 
 The [shapes chapter of the specification](../../spec/02-shapes.md) has the full grammar.
+
+## One field, many types
+
+A field typed as an interface or a [union](./schema.md#interfaces-and-unions) can hold more than one kind of thing,
+so a shape says what to take from each:
+
+```
+{
+  results {
+    ...on Book   { id title }
+    ...on Author { id name }
+  }
+}
+```
+
+Fields the types share can be selected once outside the conditions; each `...on` adds what is particular to that
+type. Every result carries its `$type`, so a client knows which arm it got.
+
+## Deliver a field later
+
+Not every field has to arrive with the first frame. Four things control that, and they work together:
+
+| | Where it goes | What it does |
+|---|---|---|
+| `@defer { ... }` | in the shape | Send this part in a later `at` frame. The caller decides. |
+| `@lazy` | on the field | The field arrives in a later frame by default. The schema decides, for a field that is usually expensive and rarely needed. |
+| `@eager` | in the shape | Overrides `@lazy` for this request: send it with everything else. |
+| `@partial` | on the field | The field may fail on its own — `null`, and an entry in the frame's `errors` — instead of failing the operation. |
+
+A deferred part arrives as an `at` frame naming its path, and a client fills it in when it lands. The first frame is
+what a screen can paint immediately, so the choice is really "what does this screen need before it can show
+anything".
 
 ## Or leave the shape out
 
@@ -107,6 +140,12 @@ get one lookup per level however many rows there are, without writing a DataLoad
 npx rayfold explain src/bookshop.rayfold books --shape "{ items { title author { name } } }"
 ```
 
+### Tuning a loader
+
+A loader gets every parent at once by default, which is what avoids the N+1. `@load(single)` marks a field whose
+source can only be asked one parent at a time; the executor then calls it per parent rather than pretending it
+batches.
+
 ## Pages
 
 A query that returns `Page<Book>` gets a cursor, `hasMore` and `total` without any extra schema. Its resolver returns
@@ -134,6 +173,16 @@ those along with the items; see `books` in the [resolvers](../get-started/typesc
 ```
 
 The next page passes the cursor back: `"page": { "first": 2, "after": "b2" }`.
+
+## Cursors or offsets
+
+`@page(cursor)` is the default and the one to prefer: a cursor names a position in the result, so a row inserted
+while the reader is on page two does not shift everything down and show them a row twice. Pass the `cursor` from one
+page as `after` on the next.
+
+`@page(offset)` numbers pages instead, and `PageArgs.offset` skips that many rows. Use it when the caller genuinely
+needs to jump to page seven — a table with numbered pages — and accept that concurrent inserts can duplicate or skip
+a row at a boundary.
 
 ## What a query costs
 

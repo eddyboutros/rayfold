@@ -102,8 +102,11 @@ The server works out what each batch can cost before it runs and refuses one ove
 
 A capability token lets an AI agent or another service act for a user in a limited way, without holding the user's
 credentials: it names the viewer, the operations it may call and when it expires, and it is signed. A token can be
-narrowed further before being handed on, never widened. The [authorization chapter](../../spec/06-auth.md) describes
-the format.
+narrowed further before being handed on, never widened. The operation list is enforced by the runtime, and the
+policies on this page still run on the viewer the token names — a token narrows, it never widens.
+
+[Capability tokens](../guide/capabilities.md) shows how to mint, use and attenuate one; the
+[authorization chapter](../../spec/06-auth.md) defines the format.
 
 ## Browsers
 

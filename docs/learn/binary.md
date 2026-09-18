@@ -70,7 +70,11 @@ A server lists `rb` among its extensions in `GET /rayfold/manifest` (`"extension
 a client needs to build the key numbers. That schema leaves out how access policies decide, which RB does not need:
 it encodes exactly like the server's own copy.
 
-## Turn it on in TypeScript
+## Turn it on
+
+The codec is `@rayfold/rb` on npm, and `dev.rayfold:rayfold-core` carries the JVM one. You rarely use it directly —
+the client and server negotiate it for you — but it is a package you can depend on if you are writing a client of
+your own. in TypeScript
 
 Load the manifest, then give it to the transport:
 
