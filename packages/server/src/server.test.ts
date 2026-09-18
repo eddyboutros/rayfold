@@ -948,3 +948,46 @@ describe("a field with arguments and no loader", () => {
     expect(frames).toEqual([{ id: 1, error: { code: "unimplemented", message: "No loader for Author.books", path: "books" }, fin: true }]);
   });
 });
+
+describe("a stream is bounded", () => {
+  const SCHEMA = `
+event Tick { id: ID  n: Int }
+query nothing: Int
+stream ticks: Tick
+`;
+
+  /** A resolver that never stops, which is what the bound exists for. */
+  const endless = () => ({
+    Query: { nothing: () => 0 },
+    Stream: {
+      ticks: async function* () {
+        for (let n = 0; ; n++) yield { id: `t${n}`, n };
+      },
+    },
+  });
+
+  it("fails with resource_exhausted rather than yielding for ever", async () => {
+    // spec 04 §5: a server emits items as its resolver yields them, bounded by its own per-stream item limit.
+    // TypeScript had no bound at all, so an endless resolver produced frames until the process gave out.
+    const server = createRayfoldServer({ schema: SCHEMA, resolvers: endless() as never, maxStreamItems: 5 });
+    const frames = await server.collect({ ops: [{ id: 1, op: "ticks", shape: "{ id n }" }] }, {});
+    const items = frames.filter((f) => "item" in (f as object));
+    expect(items).toHaveLength(5);
+    expect(frames[frames.length - 1]).toMatchObject({ id: 1, error: { code: "resource_exhausted" }, fin: true });
+  });
+
+  it("guard: a resolver that stops on its own is not truncated or failed", async () => {
+    const server = createRayfoldServer({
+      schema: SCHEMA,
+      resolvers: {
+        Query: { nothing: () => 0 },
+        Stream: { ticks: async function* () { yield { id: "t0", n: 0 }; yield { id: "t1", n: 1 }; } },
+      } as never,
+      maxStreamItems: 5,
+    });
+    const frames = await server.collect({ ops: [{ id: 1, op: "ticks", shape: "{ id n }" }] }, {});
+    expect(frames.filter((f) => "item" in (f as object))).toHaveLength(2);
+    expect(frames[frames.length - 1]).toMatchObject({ id: 1, fin: true });
+    expect(frames.some((f) => "error" in (f as object))).toBe(false);
+  });
+});

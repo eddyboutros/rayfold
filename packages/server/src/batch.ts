@@ -18,6 +18,8 @@ export interface BatchOptions {
   maxOps: number;
   maxDepth: number;
   maxFields: number;
+  /** Items one stream op may yield before it fails with `resource_exhausted` (spec 04 §5). */
+  maxStreamItems: number;
   timing: boolean;
   now: () => number;
 }
@@ -385,7 +387,7 @@ async function runOp(
         break;
       }
       case "stream":
-        await rt.executor.runStream(p.op, args, p.shape, p.explicit, ctx, (f) => sink.push(stamp(f)));
+        await rt.executor.runStream(p.op, args, p.shape, p.explicit, ctx, (f) => sink.push(stamp(f)), rt.options.maxStreamItems);
         break;
       case "command": {
         const idem = annotation(p.op, "idempotent");

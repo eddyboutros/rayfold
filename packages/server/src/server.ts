@@ -21,6 +21,8 @@ export interface RayfoldServerOptions {
   maxOps?: number;
   maxDepth?: number;
   maxFields?: number;
+  /** Items one stream op may yield before it fails with `resource_exhausted` (spec 04 §5). Default 10000. */
+  maxStreamItems?: number;
   /** Add `meta.ms` to frames. Default false (keeps frames deterministic). */
   timing?: boolean;
   idempotency?: IdempotencyStore;
@@ -98,6 +100,7 @@ export class RayfoldServer {
       maxOps: opts.maxOps ?? 50,
       maxDepth: opts.maxDepth ?? 8,
       maxFields: opts.maxFields ?? 500,
+      maxStreamItems: opts.maxStreamItems ?? 10_000,
       timing: opts.timing ?? false,
       now: opts.now ?? Date.now,
     };

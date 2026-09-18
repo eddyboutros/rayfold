@@ -218,18 +218,22 @@ export class Executor {
 
   // ---------------------------------------------------------------- streams
 
-  async runStream(op: OpDef, args: Record<string, unknown>, shape: Shape, explicit: boolean, ctx: RayfoldContext, emit: Emit): Promise<void> {
+  async runStream(op: OpDef, args: Record<string, unknown>, shape: Shape, explicit: boolean, ctx: RayfoldContext, emit: Emit, maxItems = 10_000): Promise<void> {
     this.checkOpPolicy(op, "read", args, ctx);
     ctx.policy = this.policyHint(op.returns);
     const fn = this.resolvers.Stream?.[op.name];
     if (!fn) throw new RayfoldError("unimplemented", `No resolver for stream ${op.name}`);
     const iterable = fn(args as never, ctx as RayfoldContext<never>);
     const iterator = iterable[Symbol.asyncIterator]();
+    let items = 0;
     try {
       for (;;) {
         if (ctx.signal.aborted) break;
         const next = await raceAbort(iterator.next(), ctx.signal);
         if (next.done) break;
+        // spec 04 §5: until flow control is a requirement, a server emits items as its resolver yields them,
+        // bounded by its own per-stream item limit. A resolver that never stops is otherwise unbounded memory.
+        if (++items > maxItems) throw new RayfoldError("resource_exhausted", `${op.name}() yielded more than ${maxItems} items`);
         const st: ProjectState = { ctx, errors: [], deferred: [], explicit };
         const item = await this.projectValue(next.value, op.returns, shape, "", st);
         while (st.deferred.length) {
