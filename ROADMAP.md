@@ -26,6 +26,10 @@ waits here rather than being made quietly. These are worth doing together, when 
 - **An `Upload` scalar.** A file argument is an `ID` naming an upload today ([04 §9](spec/04-frames-and-transport.md)),
   so nothing in the schema says it is a file, and code generation, OpenAPI (`format: binary`), the MCP bridge and the
   explorer cannot show it as one.
+- **Entity revisions**, which would turn the ordering caveat of [13 §6](spec/13-patches.md) into a rule and let a
+  client tell a patch it has already applied from one it has not. Reserved in that chapter.
+- **Resume**, so a live query that lost its connection is told what changed while it was gone instead of refetching.
+  It needs retention, a revision to count from, and an answer for a cursor that is too old. Reserved in 13 §6.
 
 ## Known gaps in 0.1
 
@@ -38,6 +42,11 @@ waits here rather than being made quietly. These are worth doing together, when 
   for and not a file server: `PgUploadStore` and `JdbcUploadStore` hold the bytes whole on the way out, and pgjdbc
   holds them whole on the way in. For hundreds of megabytes, hand the client a URL from object storage instead.
 - Credit-based flow control on streams (spec 04, section 5) is not implemented in either runtime.
+- `@http` REST routes are served on Node only: `createBindingHandler` is written against `IncomingMessage`/
+  `ServerResponse`, so a fetch runtime serves batches but not the REST bindings ([Runtimes](docs/guide/runtimes.md)).
+- `client.upload()` needs a fetch transport; over a WebSocket it answers `unimplemented`.
+- The Kotlin client speaks JSON only: no RB, and no `upload()`.
+- `JdbcStore` has no `screen()`, so the whole-screen single-statement compiler is Node-only.
 - Not yet tested on Safari itself (WebKit stands in for it), a real Android device, a commercial CDN, or load across
   several machines.
 - No independent security review yet. `spec/12-security.md` lists the rules the test suite checks.
