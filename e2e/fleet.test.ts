@@ -127,10 +127,12 @@ describe.skipIf(!url)("two servers, two processes, one Postgres", () => {
     for (const m of cluster.members) expect((await fetch(`${m.base}/rayfold/ready`)).status).toBe(200);
   }, 90_000);
 
+  // longer than stopAll's own 20s bound, so a member that stalls is named by that bound instead of the hook timing
+  // out first and reporting nothing useful
   afterAll(async () => {
     await cluster.stopAll();
     await pool.end();
-  });
+  }, 40_000);
 
   it("a keyed command sent to both servers at once runs once, and both answer with its result", async () => {
     const [a, b] = cluster.members;
@@ -184,10 +186,12 @@ describe.skipIf(!url || !jvmBuilt)("a TypeScript server and a JVM server in one 
     for (const m of cluster.members) expect((await fetch(`${m.base}/rayfold/ready`)).status).toBe(200);
   }, 120_000);
 
+  // longer than stopAll's own 20s bound, so a member that stalls is named by that bound instead of the hook timing
+  // out first and reporting nothing useful
   afterAll(async () => {
     await cluster.stopAll();
     await pool.end();
-  });
+  }, 40_000);
 
   it("the JVM server replays the record the TypeScript server wrote, and never runs the command again", async () => {
     expect((await frames(await restock(node.base, KEY)))[0]).toMatchObject({ ok: { $type: "Book", id: "b1", stock: 4 } });
