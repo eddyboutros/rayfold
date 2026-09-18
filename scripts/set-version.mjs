@@ -30,3 +30,31 @@ const text = readFileSync(gradle, "utf8");
 if (!/^VERSION_NAME=/m.test(text)) throw new Error(`no VERSION_NAME line in ${gradle}`);
 writeFileSync(gradle, text.replace(/^VERSION_NAME=.*$/m, `VERSION_NAME=${version}`));
 console.log(`kotlin modules ${version}`);
+
+/**
+ * The JVM examples pin the runtime they build against, and `scripts/examples-jvm.mjs` publishes it to the local
+ * Maven repository for them. Left behind at the old number they resolve the previous release from Maven Central
+ * instead — so they still build, still pass, and stop testing the tree entirely. They are also what the
+ * documentation site quotes, so the version a reader copies is this one.
+ */
+const pins = [
+  { file: "examples/java/pom.xml", kind: "pom" },
+  { file: "examples/spring-boot/pom.xml", kind: "pom" },
+  { file: "examples/kotlin/build.gradle.kts", kind: "gradle" },
+];
+
+for (const { file, kind } of pins) {
+  const path = join(ROOT, file);
+  const before = readFileSync(path, "utf8");
+  const after =
+    kind === "pom"
+      ? // only the <version> of a dev.rayfold dependency; the example's own version is left alone
+        before.replace(
+          /(<groupId>dev\.rayfold<\/groupId>\s*<artifactId>[^<]+<\/artifactId>\s*<version>)[^<]+(<\/version>)/g,
+          `$1${version}$2`,
+        )
+      : before.replace(/(["']dev\.rayfold:[^:"']+:)[^"']+(["'])/g, `$1${version}$2`);
+  if (after === before) throw new Error(`no dev.rayfold version to set in ${file}`);
+  writeFileSync(path, after);
+  console.log(`${file} ${version}`);
+}
