@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/lsp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A language server for .rayfold schemas: diagnostics, completion, hover, go to definition and an outline, over stdio.",
   "keywords": [

@@ -17,8 +17,8 @@ export const PACKAGES = [
   // conformance/README.md documents the fixture format for contributors; npm gets a README for users
   {
     dir: "conformance",
-    copy: ["fixtures"],
+    copy: ["fixtures", "vectors"],
     readme: "README.npm.md",
-    exports: { "./package.json": "./package.json", "./fixtures/*": "./fixtures/*" },
+    exports: { "./package.json": "./package.json", "./fixtures/*": "./fixtures/*", "./vectors/*": "./vectors/*" },
   },
 ];

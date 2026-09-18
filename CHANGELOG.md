@@ -5,6 +5,8 @@ packages and the Maven artifacts share one version number.
 
 ## Unreleased
 
+## 0.2.0 (2026-09-18)
+
 - **A stream is bounded in TypeScript too.** Spec 04 §5 says a server emits stream items as its resolver yields them,
   "bounded by its own per-stream item limit". The JVM has always had one; TypeScript had none, so a resolver that
   never stopped produced frames until the process gave out. `maxStreamItems` is now a server option in both, default

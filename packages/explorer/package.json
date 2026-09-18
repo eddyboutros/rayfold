@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/explorer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The Rayfold explorer: a page served next to the endpoint that lists every operation from the manifest, writes shapes, sends batches and dry-runs commands.",
   "keywords": [
