@@ -80,14 +80,13 @@ export function documentStoreHttp({ server, store, files, uploads, caps }: Docum
 
   return createServer((req, res) => {
     const [path = "", search = ""] = (req.url ?? "").split("?");
-    // #region serve
     if (req.method === "GET" && path.startsWith("/files/")) {
       return void serve(decodeURIComponent(path.slice("/files/".length)), new URLSearchParams(search));
     }
-    // #endregion serve
     if (path.startsWith("/rayfold")) return void endpoint(req, res);
     res.writeHead(404).end();
 
+    // #region serve
     async function serve(id: string, query: URLSearchParams): Promise<void> {
       // the same rule the schema states, applied to the bytes: an unguessable url is not a permission
       const revision = store.revisions.get(id);
@@ -107,5 +106,6 @@ export function documentStoreHttp({ server, store, files, uploads, caps }: Docum
         .on("error", () => res.destroy())
         .pipe(res);
     }
+    // #endregion serve
   });
 }

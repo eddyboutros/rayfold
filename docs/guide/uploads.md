@@ -98,9 +98,7 @@ const uploads = new FileUploadStore({ dir: "/var/lib/app/uploads" }); // ttlMs i
 ```
 
 It is a staging area, not storage: whatever no command claims is swept once its lifetime passes. An application
-that keeps files moves them somewhere of its own and hands out a URL — see
-[examples/document-store](https://github.com/eddyboutros/rayfold/tree/main/examples/document-store), which does
-exactly that and serves the bytes from `GET /files/{id}`.
+that keeps files moves them somewhere of its own and hands out a URL — [worked through below](#a-worked-example-keeping-what-arrives).
 
 For a fleet, the store has to be shared the way the idempotency records are ([Deployment](deployment.md)): an upload
 that landed on one server is named by a command that may run on another. A directory works when it is a shared
@@ -148,6 +146,52 @@ HttpServer http = Rayfold.http(server)
 A resolver reads it with `store.open(id)` and drops it with `store.delete(id)`, as on Node. The Kotlin client has no
 `upload()` of its own yet: post the bytes to `{path}/uploads` yourself with whatever HTTP client you already use, and
 name the returned id in the command.
+
+## A worked example: keeping what arrives
+
+An upload is a staging area with a lifetime. Keeping a file is a different job, and the two stores should be
+different things: whatever no command claims is swept, and what a command kept stays until it is deleted.
+
+[examples/document-store](https://github.com/eddyboutros/rayfold/tree/main/examples/document-store) is that shape end
+to end — upload a file, replace it, keep every revision, share it with someone who has no account. Everything below
+is quoted from it, and its tests run on every change to the repository.
+
+**The move.** A command takes the bytes out of the upload store and writes them where they will live. The upload is
+consumed, not copied and left:
+
+<<< @/../examples/document-store/src/resolvers.ts#move{ts}
+
+**What the command answers with.** A `Document` carrying `url` — the same string an `<img>`, a download link or
+another service would use. The bytes are not in the answer and never were:
+
+<<< @/../examples/document-store/src/resolvers.ts#create{ts}
+
+**Replacing.** The conditional write is checked *before* the bytes move, so a replace that loses the race leaves no
+file behind. The old revision keeps its own url and still serves:
+
+<<< @/../examples/document-store/src/resolvers.ts#replace{ts}
+
+**Serving them.** Where `url` points. Note what it does first: an unguessable URL is not a permission, so the route
+asks the same question the schema asks, and asks it before the status line goes out — a stream that fails afterwards
+can only close the connection, which a client cannot tell from a network fault.
+
+<<< @/../examples/document-store/src/documents.ts#serve{ts}
+
+### Sharing it, without an account
+
+The document store hands out a [capability token](capabilities.md) rather than creating a user:
+
+<<< @/../examples/document-store/src/resolvers.ts#share{ts}
+
+The viewer that token speaks for has a `documentId` and nothing else, which is what the policy on the entity reads:
+
+```rayfold
+entity Document @allow(read: viewer.id == ownerId || viewer.documentId == id) { ... }
+```
+
+So the holder reads one document. Asking for another returns `null` rather than `permission_denied` — a refused
+entity at a nullable position is simply not there, so a share link cannot be used to learn what else exists. The
+token also names the operations it may call, and the batch refuses the rest before a resolver runs.
 
 ## When not to use this
 
