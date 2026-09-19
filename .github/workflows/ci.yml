@@ -171,8 +171,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      # npm audit exits 1 both for a finding and for an unreachable advisory service; this fails only on the first,
+      # and leans on the OSV scanner below when npm is down
       - name: No known vulnerability in what the published packages depend on
-        run: npm audit --omit=dev --audit-level=moderate
+        run: node scripts/audit.mjs
       - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
         with:
           scan-args: --lockfile=package-lock.json
