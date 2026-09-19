@@ -372,4 +372,66 @@ class IdempotencyTest {
         assertEquals(compact, full, "an error has one form; both retries get it with the replay marker")
         assertEquals(1, runs.get(), "the command never ran again")
     }
+
+    @Test
+    fun `a replayed failure is a failure, so a later op does not run on an answer that never came`() = runTest(timeout = 5.seconds) {
+        // Treating the replay as a success would let a $ref op run with nothing to read, and would count a command
+        // that never succeeds as one that always does. Same names as packages/server/src/counters.ts: a fleet console
+        // reads these from either runtime.
+        val counters = MemoryCounters()
+        val runs = AtomicInteger()
+        val withQuery = SchemaText.load("entity Book { id: ID title: String } query book(id: ID): Book command restock(bookId: ID, qty: Int): Book").ir
+        // the row lacks the non-null title, so projecting it fails after the effect stands
+        val server = RayfoldServer(
+            withQuery,
+            Resolvers(
+                queries = mapOf("book" to query { args, _ -> obj("""{"id":${args["id"]},"title":"T1"}""") }),
+                commands = mapOf("restock" to command { _, _ -> runs.incrementAndGet(); CommandResult(obj("""{"id":"b1"}""")) }),
+            ),
+            counters = counters,
+        )
+        assertEquals("internal", server.collect(envelope(restockOp(shape = "{ id title }")), u1).single().errorCode())
+
+        val retry = server.collect(
+            obj("""{"ops":[${Canonical.json(restockOp(shape = "{ id title }"))},{"id":2,"op":"book","args":{"id":{"${'$'}ref":"1.id"}},"shape":"{ id }"}]}"""),
+            u1,
+        )
+        assertEquals(1, runs.get(), "replayed, not run again")
+        assertTrue(retry[0].replayed())
+        assertEquals("internal", retry[0].errorCode())
+        assertEquals("DependencyFailed", ((retry[1]["error"] as? JsonObject)?.get("type") as? JsonPrimitive)?.content)
+
+        assertEquals(2, countOf(counters, "rayfold.ops", mapOf("kind" to "command", "outcome" to "internal")), "the run and the replay")
+        assertEquals(0, countOf(counters, "rayfold.ops", mapOf("kind" to "command", "outcome" to "ok")))
+        assertEquals(2, countOf(counters, "rayfold.errors", mapOf("op" to "restock", "code" to "internal")))
+    }
+
+    @Test
+    fun `guard - a replayed success still feeds the op that depends on it, and counts as a success`() = runTest(timeout = 5.seconds) {
+        val counters = MemoryCounters()
+        val runs = AtomicInteger()
+        val withQuery = SchemaText.load("entity Book { id: ID stock: Int } query book(id: ID): Book command restock(bookId: ID, qty: Int): Book").ir
+        val server = RayfoldServer(
+            withQuery,
+            Resolvers(
+                queries = mapOf("book" to query { args, _ -> obj("""{"id":${args["id"]},"stock":7}""") }),
+                commands = mapOf("restock" to numbered(runs)),
+            ),
+            counters = counters,
+        )
+        server.collect(envelope(restockOp(shape = "{ id stock }")), u1)
+
+        val retry = server.collect(
+            obj("""{"ops":[${Canonical.json(restockOp(shape = "{ id stock }"))},{"id":2,"op":"book","args":{"id":{"${'$'}ref":"1.id"}},"shape":"{ id stock }"}]}"""),
+            u1,
+        )
+        assertTrue(retry[0].replayed())
+        assertEquals(1, runs.get())
+        assertEquals("b1", ((retry[1]["data"] as? JsonObject)?.get("id") as? JsonPrimitive)?.content, "the dependent op read the replayed answer")
+        assertEquals(2, countOf(counters, "rayfold.ops", mapOf("kind" to "command", "outcome" to "ok")))
+        assertTrue(counters.snapshot().none { it.name == "rayfold.errors" })
+    }
+
+    private fun countOf(c: MemoryCounters, name: String, labels: Map<String, String>): Long =
+        c.snapshot().find { it.name == name && labels.all { (k, v) -> it.labels[k] == v } }?.count ?: 0L
 }

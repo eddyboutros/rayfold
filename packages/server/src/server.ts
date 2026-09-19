@@ -8,6 +8,7 @@ import { MemoryShapeRegistry, type ShapeRegistry } from "./views.ts";
 import { ChangeBus } from "./live.ts";
 import type { Relay, RelayMessage } from "./relay.ts";
 import type { UsageSink } from "./usage.ts";
+import type { Counters } from "./counters.ts";
 import { parseShapeText } from "@rayfold/schema";
 
 export interface RayfoldServerOptions {
@@ -46,7 +47,32 @@ export interface RayfoldServerOptions {
   instrumentation?: Instrumentation;
   /** Where to record which members each client asks for (spec 11). Without one, nothing is recorded. */
   usage?: UsageSink;
+  /** Who this server is, for an operator looking at several of them. See {@link ServerIdentity}. */
+  identity?: ServerIdentity;
+  /** Where to count what this server does (spec-free, operator-facing). Without one, nothing is counted. */
+  counters?: Counters;
 }
+
+/**
+ * What tells one running server from another.
+ *
+ * None of this reaches the manifest. Spec 04 §4a fixes that document's members exactly and Core 0.1 is frozen, so
+ * identity is served by `GET {base}/stats` instead - a route that is off until the transport is given an `authorize`
+ * function, so a server discloses none of it until its operator decides to.
+ */
+export interface ServerIdentity {
+  /** The application this server is: the same across its instances and its restarts. */
+  name?: string;
+  /** This process. Stable for its lifetime, new on every restart; a random id when you do not supply one. */
+  instance?: string;
+  /** Whatever you deploy by - a version, a commit, a build number. */
+  version?: string;
+  /** Small and free-form: region, zone, tenant. */
+  labels?: Record<string, string>;
+}
+
+/** {@link ServerIdentity} as the server answers it: `instance` and `startedAt` are always present. */
+export type ResolvedIdentity = ServerIdentity & { instance: string; startedAt: number };
 
 export class RayfoldServer {
   readonly ir: RayfoldSchemaIR;
@@ -64,10 +90,14 @@ export class RayfoldServer {
   private onIdle: (() => void) | undefined;
   /** Field-usage telemetry, when the server was given a sink (spec 11). */
   readonly usage: UsageSink | undefined;
+  /** What this server did, when it was given a sink. Counts nothing without one. */
+  readonly counters: Counters | undefined;
   readonly shapes: ShapeRegistry;
   readonly options: BatchOptions;
   /** Extensions served by endpoints mounted beside this server, such as `mcp` by createMcpHandler; the manifest lists them. */
   readonly mounted = new Set<string>();
+  /** Who this server is. Before this, two servers in one fleet were indistinguishable. */
+  readonly identity: Readonly<ResolvedIdentity>;
   private readonly rt: BatchRuntime;
 
   constructor(opts: RayfoldServerOptions) {
@@ -93,6 +123,14 @@ export class RayfoldServer {
       );
     }
     this.usage = opts.usage;
+    this.counters = opts.counters;
+    // A restart has to read as a restart, so the default instance id is per process rather than per host. Web Crypto
+    // rather than node:crypto, as MemoryUploadStore does: this file is in the fetch handler's import graph.
+    this.identity = Object.freeze({
+      ...opts.identity,
+      instance: opts.identity?.instance ?? crypto.randomUUID(),
+      startedAt: (opts.now ?? Date.now)(),
+    });
     this.shapes = opts.shapes ?? new MemoryShapeRegistry(this.ir);
     this.options = {
       trustedShapes: opts.trustedShapes ?? false,
@@ -120,6 +158,7 @@ export class RayfoldServer {
       changes: this.changes,
       options: this.options,
       ...(opts.usage ? { usage: opts.usage } : {}),
+      ...(opts.counters ? { counters: opts.counters } : {}),
       ...(opts.instrumentation ? { instrumentation: opts.instrumentation } : {}),
     };
   }

@@ -40,6 +40,15 @@ export interface FetchOptions extends OriginOptions {
   /** How long a readiness check may take before it counts as failed. Default 2000. */
   readinessTimeoutMs?: number;
   /**
+   * Serves `GET {path}/stats`: who this server is and what it is doing right now, for an operator or a fleet console.
+   *
+   * Off unless given, so this adds no open surface by default. `authorize` decides who may read it, and it is asked
+   * on every request - a bearer token, an allowed address, whatever you already use. Everything here is in the
+   * process already ({@link RayfoldServer.inflight}, the live-query count, the usage snapshot); none of it was
+   * reachable from outside, which is why an operator could not tell two servers apart or see a fleet at all.
+   */
+  stats?: { authorize: (request: Request) => boolean | Promise<boolean> };
+  /**
    * Whether this server is reached on a loopback address, which makes it answer loopback host names only (spec 12 §2).
    * The Node transport knows from the socket; elsewhere say so yourself. Default false.
    */
@@ -69,6 +78,38 @@ export function publicIR(ir: RayfoldSchemaIR): RayfoldSchemaIR {
     const isPolicy = (o["name"] === "allow" || o["name"] === "deny") && !("type" in o) && !!o["args"] && typeof o["args"] === "object" && !Array.isArray(o["args"]);
     return isPolicy ? { ...o, args: {} } : v;
   }) as RayfoldSchemaIR;
+}
+
+/**
+ * What one server can say about itself: who it is, and what it is doing right now.
+ *
+ * Every field is read straight off the server - nothing is accumulated and nothing is measured here, so asking is
+ * cheap and answering changes nothing. Counts over time are a caller's job.
+ */
+export function statsOf(server: RayfoldServer): Record<string, unknown> {
+  const readiness = server.readiness();
+  return {
+    identity: server.identity,
+    uptimeMs: Date.now() - server.identity.startedAt,
+    rayfold: "0.1",
+    schemaHash: server.hash,
+    extensions: [...server.mounted],
+    inflight: server.inflight,
+    draining: server.draining.aborted,
+    ready: readiness.ready,
+    reasons: readiness.reasons,
+    // live queries and streams subscribed to the change bus right now: what a drain is about to end
+    live: server.changes.size,
+    ...(server.relayFailure === undefined ? {} : { relayFailure: String(server.relayFailure) }),
+    ...(server.counters && "snapshot" in server.counters
+      ? {
+          counters: (server.counters as { snapshot(): unknown }).snapshot(),
+          // above zero means the counters above are incomplete, which a reader has to be told rather than left to assume
+          countersDropped: (server.counters as { dropped?: number }).dropped ?? 0,
+        }
+      : {}),
+    ...(server.usage && "snapshot" in server.usage ? { usage: (server.usage as { snapshot(): unknown }).snapshot() } : {}),
+  };
 }
 
 /** The server's own readiness and the configured checks, each given `readinessTimeoutMs` to answer. */
@@ -325,16 +366,28 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
       return response;
     };
 
+    // Counted here because nothing else can: a refusal below is answered and returned before `execute` is called,
+    // so no Instrumentation hook ever sees it. Without this a server cannot say that a fifth of its traffic is
+    // being turned away at the door, let alone why.
+    const count = (name: string, labels?: Record<string, string>) => server.counters?.add(name, 1, labels);
+    count("rayfold.requests", { method: request.method });
+
     const host = request.headers.get("host") ?? url.host;
     const badHost = hostProblemOf(host, opts.loopback ?? false, opts);
-    if (badHost) return withCommon(problemResponse(403, "permission_denied", badHost));
+    if (badHost) {
+      count("rayfold.refused", { reason: "host" });
+      return withCommon(problemResponse(403, "permission_denied", badHost));
+    }
     if (opts.cors) {
       common["Access-Control-Allow-Origin"] = opts.cors;
       common["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe";
       common["Access-Control-Allow-Methods"] = "GET, POST, QUERY, OPTIONS";
       if (request.method === "OPTIONS") return withCommon(new Response(null, { status: 204 }));
     }
-    if (!url.pathname.startsWith(base)) return withCommon(problemResponse(404, "not_found", `No route for ${url.pathname}`));
+    if (!url.pathname.startsWith(base)) {
+      count("rayfold.refused", { reason: "route" });
+      return withCommon(problemResponse(404, "not_found", `No route for ${url.pathname}`));
+    }
 
     const sub = url.pathname.slice(base.length);
     try {
@@ -349,6 +402,13 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
       if (sub === "/ready" && request.method === "GET") {
         const status = await readinessOf(server, opts);
         return withCommon(json(status, { status: status.ready ? 200 : 503, headers: { "Cache-Control": "no-store" } }));
+      }
+      if (sub === "/stats" && request.method === "GET") {
+        // A route nobody configured is a route that does not exist, rather than one that refuses: an unconfigured
+        // server should look the same from outside as one that never had the feature.
+        if (!opts.stats) throw new RayfoldError("not_found", `No route for ${url.pathname}`);
+        if (!(await opts.stats.authorize(request))) throw new RayfoldError("permission_denied", "Not allowed to read stats");
+        return withCommon(json(statsOf(server), { headers: { "Cache-Control": "no-store" } }));
       }
       if (server.draining.aborted) {
         // the balancer has been told through /ready; a request that still arrives is sent elsewhere
@@ -368,6 +428,7 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
           // JSON-only bodies force browsers into a CORS preflight, so a cross-site form or text/plain post cannot run anything.
           const ct = mediaTypeOf(request.headers.get("content-type"));
           if (!BODY_TYPES.has(ct)) {
+            count("rayfold.refused", { reason: "media" });
             return withCommon(
               problemResponse(415, "invalid_argument", `Content-Type ${ct || "(none)"} is not accepted; send application/rayfold+json`, "unsupported_media_type", {
                 "Accept-Post": [...BODY_TYPES].join(", "),
@@ -379,7 +440,10 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
           // Origin check. This keeps reads working behind proxies that rewrite Host.
           const declaredSafe = request.method === "QUERY" || request.headers.get("rayfold-safe") === "true";
           const badOrigin = declaredSafe ? null : originProblemOf(request.headers.get("origin"), host, opts);
-          if (badOrigin) return withCommon(problemResponse(403, "permission_denied", badOrigin));
+          if (badOrigin) {
+            count("rayfold.refused", { reason: "origin" });
+            return withCommon(problemResponse(403, "permission_denied", badOrigin));
+          }
           const body = await readBody(request, maxBody);
           if (ct === RB_CONTENT_TYPE) {
             try {
@@ -396,6 +460,7 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
           }
           safe = declaredSafe;
         } else {
+          count("rayfold.refused", { reason: "method" });
           throw Object.assign(new RayfoldError("unimplemented", `Method ${request.method} not allowed on ${base}`), {
             headers: { Allow: "POST, QUERY", "Accept-Query": "application/rayfold+json" },
           });

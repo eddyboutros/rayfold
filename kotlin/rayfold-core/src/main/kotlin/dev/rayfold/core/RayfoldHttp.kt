@@ -80,6 +80,12 @@ data class HttpOptions(
     val readiness: Map<String, suspend () -> Unit> = emptyMap(),
     /** How long a readiness check may take before it counts as failed. */
     val readinessTimeoutMs: Long = 2_000,
+    /**
+     * Serves `GET {path}/stats`: who this server is and what it is doing right now, for an operator or a fleet
+     * console. Null (the default) means the route does not exist - this adds no open surface unless you ask for it.
+     * The function decides who may read it, and is asked on every request.
+     */
+    val stats: ((HttpCall) -> Boolean)? = null,
     /** Serves `POST {path}/uploads` (extension `upload`, spec 04 section 9). Without it, that route is not there at all. */
     val uploads: UploadOptions? = null,
 )
@@ -190,7 +196,11 @@ class RayfoldHttp(
         call.setHeader("X-Content-Type-Options", "nosniff")
         var streaming = false
         try {
-            Guard.hostProblem(call.header("Host"), call.localAddress, options.allowedHosts)?.let { throw HttpProblem(403, Code.PERMISSION_DENIED, it) }
+            server.counters?.add("rayfold.requests", mapOf("method" to call.method))
+            Guard.hostProblem(call.header("Host"), call.localAddress, options.allowedHosts)?.let {
+                server.counters?.add("rayfold.refused", mapOf("reason" to "host"))
+                throw HttpProblem(403, Code.PERMISSION_DENIED, it)
+            }
             val path = call.path
             // servers match mounts by string prefix; `/rayfoldbook` is not `/rayfold/book`
             val sub = when {
@@ -211,6 +221,14 @@ class RayfoldHttp(
                 call.setHeader("Cache-Control", "no-store")
                 return json(call, if (status.ready) 200 else 503, buildJsonObject { put("ready", status.ready); put("reasons", JsonArray(status.reasons.map { JsonPrimitive(it) })) })
             }
+            if (sub == "/stats" && call.method == "GET") {
+                // a route nobody configured is a route that does not exist, rather than one that refuses: an
+                // unconfigured server should look the same from outside as one that never had the feature
+                val allow = options.stats ?: throw RayfoldException(Code.NOT_FOUND, "No route for ${call.path}")
+                if (!allow(call)) throw RayfoldException(Code.PERMISSION_DENIED, "Not allowed to read stats")
+                call.setHeader("Cache-Control", "no-store")
+                return json(call, 200, stats())
+            }
             if (server.draining.isCompleted) {
                 // the balancer has been told through /ready; a request that still arrives is sent elsewhere
                 call.setHeader("Retry-After", "1")
@@ -224,6 +242,7 @@ class RayfoldHttp(
                     // a 501 says what to send instead, as the TypeScript handler does
                     call.setHeader("Allow", "POST, QUERY")
                     call.setHeader("Accept-Query", "application/rayfold+json")
+                    server.counters?.add("rayfold.refused", mapOf("reason" to "method"))
                     throw RayfoldException(Code.UNIMPLEMENTED, "Method ${call.method} not allowed on $base")
                 }
                 val binary = checkContentType(call) == RbCodec.CONTENT_TYPE
@@ -366,6 +385,7 @@ class RayfoldHttp(
         val host = call.header("Host")
         if (host != null && origin.equals("$scheme://$host", ignoreCase = true)) return
         if (origin in options.allowedOrigins) return
+        server.counters?.add("rayfold.refused", mapOf("reason" to "origin"))
         throw RayfoldException(Code.PERMISSION_DENIED, "Origin $origin is not allowed")
     }
 
@@ -374,6 +394,7 @@ class RayfoldHttp(
         val raw = call.header("Content-Type")
         val media = raw?.substringBefore(';')?.trim()?.lowercase()
         if (media == null || media !in BODY_TYPES) {
+            server.counters?.add("rayfold.refused", mapOf("reason" to "media"))
             throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${raw ?: "(none)"} is not accepted; send application/rayfold+json", "unsupported_media_type")
         }
         return media
@@ -387,6 +408,69 @@ class RayfoldHttp(
         val bytes = call.body.readNBytes(max + 1)
         if (bytes.size > max) throw tooLarge()
         return bytes
+    }
+
+    /**
+     * What one server can say about itself: who it is, and what it is doing right now.
+     *
+     * Every field is read straight off the server - nothing is accumulated and nothing is measured here, so asking is
+     * cheap and answering changes nothing. Counts over time are a caller's job.
+     */
+    private fun stats(): JsonObject {
+        val readiness = server.readiness()
+        val id = server.identity
+        return buildJsonObject {
+            put(
+                "identity",
+                buildJsonObject {
+                    id.name?.let { put("name", it) }
+                    put("instance", id.instance)
+                    id.version?.let { put("version", it) }
+                    if (id.labels.isNotEmpty()) put("labels", JsonObject(id.labels.mapValues { JsonPrimitive(it.value) }))
+                    put("startedAt", id.startedAt)
+                },
+            )
+            put("uptimeMs", server.uptimeMs)
+            put("rayfold", "0.1")
+            put("schemaHash", server.hash)
+            put("extensions", JsonArray(server.mounted.map { JsonPrimitive(it) }))
+            put("inflight", server.inflight)
+            put("draining", server.draining.isCompleted)
+            put("ready", readiness.ready)
+            put("reasons", JsonArray(readiness.reasons.map { JsonPrimitive(it) }))
+            // live queries and streams subscribed to the change bus right now: what a drain is about to end
+            put("live", server.changes.size)
+            server.relayFailure?.let { put("relayFailure", it.message ?: it.toString()) }
+            (server.counters as? MemoryCounters)?.let { c ->
+                put(
+                    "counters",
+                    JsonArray(
+                        c.snapshot().map { e ->
+                            buildJsonObject {
+                                put("name", e.name)
+                                put("labels", JsonObject(e.labels.mapValues { JsonPrimitive(it.value) }))
+                                put("count", e.count)
+                            }
+                        },
+                    ),
+                )
+                // above zero means the counts are incomplete, which a reader has to be told rather than left to assume
+                put("countersDropped", c.dropped)
+            }
+            (server.usage as? MemoryUsage)?.let { u ->
+                put(
+                    "usage",
+                    JsonArray(
+                        u.snapshot().map { e ->
+                            buildJsonObject {
+                                put("op", e.op); put("path", e.path); put("client", e.client)
+                                put("lastSeen", e.lastSeen); put("count", e.count)
+                            }
+                        },
+                    ),
+                )
+            }
+        }
     }
 
     private fun manifest(call: HttpCall, path: String) {

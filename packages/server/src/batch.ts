@@ -8,6 +8,7 @@ import { compactQueryFrame, type Executor } from "./executor.ts";
 import { RayfoldError, VersionConflict, toWireError, type Frame, type RequestEnvelope, type RequestMeta, type RequestOp, type WireError } from "./protocol.ts";
 import { resolveRequestShape, type ShapeRegistry } from "./views.ts";
 import type { UsageSink } from "./usage.ts";
+import type { Counters } from "./counters.ts";
 import { capabilityAllows } from "./capability-scope.ts";
 import type { Change } from "./live.ts";
 import { ChangeBus, changeFromPatch, diffResults, foldFrames, readSetOf } from "./live.ts";
@@ -35,6 +36,8 @@ export interface BatchRuntime {
   instrumentation?: Instrumentation;
   /** Records which operations each client called (spec 11). */
   usage?: UsageSink;
+  /** Counts what the server did, for an operator. */
+  counters?: Counters;
   /** How long a command holds its idempotency key before another server may take it over (spec 03 section 4). */
   leaseMs: number;
   /** Aborts when the server is shutting down: live queries and streams end on it, with its reason. */
@@ -260,13 +263,23 @@ async function runOne(
   sink: FrameSink,
 ): Promise<void> {
   const hook = rt.instrumentation?.op;
-  const run = () => runOp(rt, p, meta, opts, batchSignal, viewerScope, results, status, sink);
+  // Counted whether or not an Instrumentation hook was configured: an operator asking "what is this server doing"
+  // should not first have to wire up tracing.
+  const counted = async (): Promise<WireError | undefined> => {
+    const error = await runOp(rt, p, meta, opts, batchSignal, viewerScope, results, status, sink);
+    rt.counters?.add("rayfold.ops", 1, { kind: p.op.kind, outcome: error ? error.code : "ok" });
+    // A declared error is `domain` on the wire and its name lives in `type`, so counting the code alone would put
+    // every one of a schema's declared errors in the same bucket. Both labels come from the schema, so the series
+    // stay bounded by it.
+    if (error) rt.counters?.add("rayfold.errors", 1, { op: p.op.name, code: error.code, type: error.type ?? "" });
+    return error;
+  };
   if (!hook) {
-    await run();
+    await counted();
     return;
   }
   await hook({ id: p.req.id, name: p.op.name, kind: p.op.kind, cost: p.cost }, async () => {
-    const error = await run();
+    const error = await counted();
     return error ? { error } : {};
   });
 }
@@ -405,14 +418,23 @@ async function runOp(
         // Bound to the operation as well as the arguments: a key can never replay another command's result.
         const argsHash = hashJson({ op: p.op.name, args });
         const keyed = key !== undefined && !ctx.simulate;
-        const replayed = (record: IdempotencyRecord): void => {
+        const replayed = (record: IdempotencyRecord): WireError | undefined => {
           if (record.argsHash !== argsHash) throw new RayfoldError("already_exists", `Idempotency key ${key} was used for another operation or other arguments`);
           const stored = p.req.compact && record.compactFrame !== undefined ? record.compactFrame : record.frame;
           const replay = structuredClone(stored) as Frame & { meta?: Record<string, unknown> };
           replay.meta = { ...(replay.meta ?? {}), replay: true };
           (replay as { id: number }).id = id; // a retry may use another op id; the answer belongs to this op
           sink.push(stamp(replay));
+          // A command that failed after committing records its failure (spec 12 section 4.4), so that failure is what
+          // the retry gets: it ends this op the way the first run ended, rather than passing as a success whose
+          // dependants then read nothing.
+          const failure = (replay as { error?: WireError }).error;
+          if (failure) {
+            status.set(id, "failed");
+            return failure;
+          }
           results.set(id, (replay as { ok?: unknown }).ok);
+          return undefined;
         };
 
         // One execution per key, however many servers share the store: one caller owns the key and the others wait
@@ -420,8 +442,10 @@ async function runOp(
         let token: string | undefined;
         if (keyed) {
           const held = await claimKey(rt, viewerScope, key as string, ctx.signal);
+          rt.counters?.add("rayfold.idempotency", 1, { claim: held.state });
           if (held.state === "done") {
-            replayed(held.record);
+            const failure = replayed(held.record);
+            if (failure) return failure; // its error frame is already sent, so this is not `fail()`'s to send again
             break;
           }
           token = held.token;
@@ -528,6 +552,7 @@ async function runLive(
       } else sink.push(stamp(f));
     }
     results.set(id, current);
+    rt.counters?.add("rayfold.live.opened", 1, { op: p.op.name });
 
     while (!ctx.signal.aborted) {
       if (!dirty) await new Promise<void>((res) => (wake = res));
@@ -536,6 +561,7 @@ async function runLive(
       if (!dirty || running) continue;
       dirty = false;
       running = true;
+      rt.counters?.add("rayfold.live.reran", 1, { op: p.op.name });
       try {
         const next = await collect();
         const d = diffResults(current, next.data);
@@ -551,6 +577,7 @@ async function runLive(
   } finally {
     off();
     ctx.signal.removeEventListener("abort", onAbort);
+    rt.counters?.add("rayfold.live.closed", 1, { op: p.op.name });
   }
   throw ctx.signal.reason instanceof RayfoldError ? ctx.signal.reason : new RayfoldError("canceled", "Canceled");
 }

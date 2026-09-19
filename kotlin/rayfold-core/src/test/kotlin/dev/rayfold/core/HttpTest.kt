@@ -433,4 +433,113 @@ class HttpTest {
         assertNull(header(write, "ETag"), "guard: a request that can change data gets no ETag")
         assertEquals("no-store", header(write, "Cache-Control"))
     }
+
+    /**
+     * Identity and `GET /rayfold/stats`. Mirrors the TypeScript cases in `packages/server/src/fetch.test.ts`, since a
+     * fleet console reads the same document from either runtime.
+     */
+    private fun serveWithStats(allow: ((HttpCall) -> Boolean)?): Int {
+        val server = RayfoldServer(
+            ir,
+            FixtureResolvers.build(fixture, store),
+            identity = ServerIdentity(name = "bookshop", version = "1.4.0", labels = mapOf("region" to "eu-west")),
+        )
+        val http = RayfoldHttp(server, HttpOptions(stats = allow)) { JsonNull }.start(0)
+        started.add(http)
+        return http.address.port
+    }
+
+    private fun statsAt(p: Int, vararg headers: String): HttpResponse<String> {
+        val b = HttpRequest.newBuilder(URI("http://127.0.0.1:$p/rayfold/stats")).timeout(Duration.ofSeconds(5)).GET()
+        headers.toList().chunked(2).forEach { (k, v) -> b.header(k, v) }
+        return client.send(b.build(), HttpResponse.BodyHandlers.ofString())
+    }
+
+    @Test
+    fun `stats says who the server is and what it is doing`() {
+        val res = statsAt(serveWithStats { true })
+        assertEquals(200, res.statusCode(), res.body())
+        assertEquals("no-store", res.headers().firstValue("Cache-Control").orElse(null))
+        val body = obj(res.body())
+        val id = body["identity"] as JsonObject
+        assertEquals(JsonPrimitive("bookshop"), id["name"])
+        assertEquals(JsonPrimitive("1.4.0"), id["version"])
+        assertEquals(JsonPrimitive("eu-west"), (id["labels"] as JsonObject)["region"])
+        assertTrue((id["instance"] as JsonPrimitive).content.isNotEmpty())
+        assertEquals(JsonPrimitive(0), body["inflight"])
+        assertEquals(JsonPrimitive(false), body["draining"])
+        assertEquals(JsonPrimitive(true), body["ready"])
+        assertEquals(JsonPrimitive(0), body["live"])
+    }
+
+    @Test
+    fun `stats does not exist unless it was configured`() {
+        // an unconfigured server must look from outside like one that never had the route at all
+        assertEquals(404, statsAt(serveWithStats(null)).statusCode())
+    }
+
+    @Test
+    fun `stats refuses a caller its function turned down`() {
+        val p = serveWithStats { it.header("Authorization") == "Bearer ops" }
+        assertEquals(403, statsAt(p).statusCode())
+        // guard: the same route answers the caller it allows, so the refusal is the function's doing
+        assertEquals(200, statsAt(p, "Authorization", "Bearer ops").statusCode())
+    }
+
+    @Test
+    fun `two servers get different instance ids, and one given is kept`() {
+        val a = RayfoldServer(ir, FixtureResolvers.build(fixture, store))
+        val b = RayfoldServer(ir, FixtureResolvers.build(fixture, store))
+        assertTrue(a.identity.instance != b.identity.instance)
+        val named = RayfoldServer(ir, FixtureResolvers.build(fixture, store), identity = ServerIdentity(instance = "web-3"))
+        assertEquals("web-3", named.identity.instance)
+    }
+
+    /**
+     * Counters. Same names as packages/server/src/counters.ts, because a fleet console reads them from either runtime.
+     */
+    @Test
+    fun `counters record a refusal nothing else can see`() {
+        val counters = MemoryCounters()
+        val server = RayfoldServer(ir, FixtureResolvers.build(fixture, store), counters = counters)
+        val http = RayfoldHttp(server, HttpOptions(allowedOrigins = setOf("https://app.example"))) { JsonNull }.start(0)
+        started.add(http)
+        val p = http.address.port
+
+        // a 415 is answered and returned before a batch is built, so no Instrumentation hook ever sees it
+        val b = HttpRequest.newBuilder(URI("http://127.0.0.1:$p/rayfold"))
+            .header("Content-Type", "text/plain")
+            .POST(HttpRequest.BodyPublishers.ofString("{}"))
+            .timeout(Duration.ofSeconds(5))
+        assertEquals(415, client.send(b.build(), HttpResponse.BodyHandlers.ofString()).statusCode())
+        assertEquals(1, countOf(counters, "rayfold.refused", mapOf("reason" to "media")))
+        // guard: the reasons are not interchangeable
+        assertEquals(0, countOf(counters, "rayfold.refused", mapOf("reason" to "origin")))
+        assertTrue(countOf(counters, "rayfold.requests", mapOf("method" to "POST")) >= 1)
+    }
+
+    @Test
+    fun `a full counter sink says so instead of going quiet`() {
+        // MemoryUsage stops recording when it is full, which leaves a graph that keeps drawing and stops being true
+        val c = MemoryCounters(2)
+        c.add("a", mapOf("x" to "1"))
+        c.add("b", mapOf("x" to "1"))
+        c.add("c", mapOf("x" to "1"))
+        assertEquals(2, c.size)
+        assertEquals(1L, c.dropped)
+        c.add("a", 5, mapOf("x" to "1"))
+        assertEquals(6L, countOf(c, "a", mapOf("x" to "1"))) // a series it already knows still counts
+    }
+
+    @Test
+    fun `counter labels in any order are one series`() {
+        val c = MemoryCounters()
+        c.add("x", mapOf("a" to "1", "b" to "2"))
+        c.add("x", mapOf("b" to "2", "a" to "1"))
+        assertEquals(1, c.snapshot().size)
+        assertEquals(2L, c.snapshot()[0].count)
+    }
+
+    private fun countOf(c: MemoryCounters, name: String, labels: Map<String, String>): Long =
+        c.snapshot().firstOrNull { it.name == name && labels.all { (k, v) -> it.labels[k] == v } }?.count ?: 0L
 }

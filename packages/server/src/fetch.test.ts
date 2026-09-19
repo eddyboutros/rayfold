@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { createFetchHandler } from "./fetch.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
+import { MemoryCounters } from "./counters.ts";
+import { RayfoldError } from "./protocol.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 
 /**
@@ -180,5 +182,156 @@ describe("a response that stays open", () => {
     const seen = live.frames.items.filter((f) => (f as { keepAlive?: boolean }).keepAlive);
     expect(seen.length).toBeGreaterThanOrEqual(1);
     await live.stop();
+  });
+});
+
+describe("identity and GET /rayfold/stats", () => {
+  const server = (identity?: Record<string, unknown>) =>
+    createRayfoldServer({
+      schema: `entity A { id: ID } query a: A`,
+      resolvers: { Query: { a: () => ({ id: "a" }) } },
+      ...(identity ? { identity } : {}),
+    });
+
+  const statsHandler = (stats?: { authorize: (r: Request) => boolean | Promise<boolean> }) =>
+    createFetchHandler(server({ name: "bookshop", version: "1.4.0", labels: { region: "eu-west" } }), stats ? { stats } : {});
+
+  const get = (h: ReturnType<typeof createFetchHandler>, headers: Record<string, string> = {}) =>
+    h(new Request("http://api.example/rayfold/stats", { headers }));
+
+  it("says who the server is and what it is doing", async () => {
+    const res = await get(statsHandler({ authorize: () => true }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const body = (await res.json()) as { identity: { instance: string; startedAt: number }; uptimeMs: number };
+    expect(body).toMatchObject({
+      identity: { name: "bookshop", version: "1.4.0", labels: { region: "eu-west" } },
+      inflight: 0,
+      draining: false,
+      ready: true,
+      live: 0,
+    });
+    // an instance id and a start time are always there, whether or not one was supplied
+    expect(typeof body.identity.instance).toBe("string");
+    expect(typeof body.identity.startedAt).toBe("number");
+    expect(typeof body.uptimeMs).toBe("number");
+  });
+
+  it("does not exist unless it was configured, rather than refusing", async () => {
+    // an unconfigured server must look from outside like one that never had the route at all
+    expect((await get(statsHandler())).status).toBe(404);
+  });
+
+  it("refuses a caller its authorize function turned down", async () => {
+    const h = statsHandler({ authorize: (r) => r.headers.get("authorization") === "Bearer ops" });
+    expect((await get(h)).status).toBe(403);
+    // guard: the same route answers the caller it allows, so the refusal is the function's doing and not a blanket one
+    expect((await get(h, { authorization: "Bearer ops" })).status).toBe(200);
+  });
+
+  it("gives two servers different instance ids, and keeps one a server was given", async () => {
+    expect(server().identity.instance).not.toBe(server().identity.instance);
+    expect(server({ instance: "web-3" }).identity.instance).toBe("web-3");
+  });
+});
+
+describe("counters", () => {
+  const counted = () => {
+    const counters = new MemoryCounters();
+    const server = createRayfoldServer({
+      schema: `entity A { id: ID  n: Int } error OutOfStock { id: ID } query a: A command bump(id: ID): A command refuse(id: ID): A throws OutOfStock`,
+      resolvers: {
+        Query: { a: () => ({ id: "a", n: 1 }) },
+        Command: {
+          bump: () => ({ id: "a", n: 2 }),
+          refuse: ({ id }: { id: string }) => {
+            throw RayfoldError.domain("OutOfStock", { id });
+          },
+        },
+      },
+      counters,
+    });
+    return { counters, server, handler: createFetchHandler(server, { allowedOrigins: ["https://app.example"] }) };
+  };
+  const find = (c: MemoryCounters, name: string, labels: Record<string, string>) =>
+    c.snapshot().find((e) => e.name === name && Object.entries(labels).every(([k, v]) => e.labels[k] === v))?.count ?? 0;
+
+  it("counts a refusal nothing else can see", async () => {
+    // a 415 is answered and returned before execute() is called, so no Instrumentation hook ever sees it
+    const { counters, handler } = counted();
+    await handler(new Request("http://api.example/rayfold", { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" }));
+    expect(find(counters, "rayfold.refused", { reason: "media" })).toBe(1);
+
+    await handler(
+      new Request("http://api.example/rayfold", {
+        method: "POST",
+        headers: { "content-type": "application/rayfold+json", origin: "https://evil.example" },
+        body: JSON.stringify({ ops: [{ id: 1, op: "a" }] }),
+      }),
+    );
+    expect(find(counters, "rayfold.refused", { reason: "origin" })).toBe(1);
+    expect(find(counters, "rayfold.refused", { reason: "route" })).toBe(0); // guard: reasons are not interchangeable
+  });
+
+  it("counts an op by kind and how it ended, without any instrumentation configured", async () => {
+    const { counters, server } = counted();
+    await server.collect({ ops: [{ id: 1, op: "a", shape: "{ id }" }] }, {});
+    await server.collect({ ops: [{ id: 1, op: "nope" }] }, {}); // refused while planning
+    expect(find(counters, "rayfold.ops", { kind: "query", outcome: "ok" })).toBe(1);
+  });
+
+  it("names the declared error, which a wire code alone cannot", async () => {
+    // every declared error is `domain` on the wire, so counting the code would put a schema's whole error vocabulary
+    // in one bucket and an operator could never see which one is firing
+    const { counters, server } = counted();
+    await server.collect({ ops: [{ id: 1, op: "refuse", args: { id: "a" }, key: KEY }] }, { viewer: { id: "u1" } });
+    await server.collect({ ops: [{ id: 1, op: "a", shape: "{ nope }" }] }, {});
+    expect(find(counters, "rayfold.errors", { op: "refuse", code: "domain", type: "OutOfStock" })).toBe(1);
+    expect(find(counters, "rayfold.errors", { op: "a", code: "invalid_argument", type: "" })).toBe(1);
+
+    // guard: an op that succeeded is not in there at all
+    await server.collect({ ops: [{ id: 1, op: "a", shape: "{ id }" }] }, {});
+    expect(find(counters, "rayfold.errors", { op: "a", code: "ok" })).toBe(0);
+    expect(counters.snapshot().filter((e) => e.name === "rayfold.errors")).toHaveLength(2);
+  });
+
+  it("counts what the idempotency claim decided", async () => {
+    const { counters, server } = counted();
+    const key = "0123456789abcdef";
+    // an idempotency key needs an identified caller: records are scoped per viewer, so anonymous callers would
+    // otherwise share one scope (spec 12 §4.4)
+    const viewer = { id: "u1" };
+    await server.collect({ ops: [{ id: 1, op: "bump", args: { id: "a" }, key }] }, { viewer });
+    expect(find(counters, "rayfold.idempotency", { claim: "owned" })).toBe(1);
+    await server.collect({ ops: [{ id: 1, op: "bump", args: { id: "a" }, key }] }, { viewer });
+    // the retry replayed rather than running again, and the counter says so
+    expect(find(counters, "rayfold.idempotency", { claim: "done" })).toBe(1);
+  });
+
+  it("a full sink says so instead of going quiet", () => {
+    // MemoryUsage stops recording when it is full, which leaves a graph that keeps drawing and stops being true.
+    // Counters must not repeat that: past the bound, known series keep counting and the drops are reported.
+    const c = new MemoryCounters(2);
+    c.add("a", 1, { x: "1" });
+    c.add("b", 1, { x: "1" });
+    c.add("c", 1, { x: "1" });
+    expect(c.size).toBe(2);
+    expect(c.dropped).toBe(1);
+    c.add("a", 5, { x: "1" });
+    expect(find(c, "a", { x: "1" })).toBe(6); // a series it already knows still counts
+  });
+
+  it("labels in any order are one series", () => {
+    const c = new MemoryCounters();
+    c.add("x", 1, { a: "1", b: "2" });
+    c.add("x", 1, { b: "2", a: "1" });
+    expect(c.snapshot()).toHaveLength(1);
+    expect(c.snapshot()[0]!.count).toBe(2);
+  });
+
+  it("a server given no sink counts nothing and does not fail", async () => {
+    const server = createRayfoldServer({ schema: `entity A { id: ID } query a: A`, resolvers: { Query: { a: () => ({ id: "a" }) } } });
+    expect(server.counters).toBeUndefined();
+    expect((await server.collect({ ops: [{ id: 1, op: "a", shape: "{ id }" }] }, {}))[0]).toMatchObject({ id: 1 });
   });
 });

@@ -2,7 +2,8 @@ import { hashJson } from "@rayfold/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryIdempotencyStore, type IdempotencyStore } from "./context.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
-import type { Frame } from "./protocol.ts";
+import { RayfoldError, type Frame } from "./protocol.ts";
+import { MemoryCounters } from "./counters.ts";
 import { bounded, Signal } from "../../../e2e/wait.ts";
 
 /**
@@ -248,6 +249,89 @@ describe("one command per key, across servers sharing a store", () => {
     const f = fleet(1, { store });
     expect((await book(f.servers[0]!))[0]).toMatchObject({ ok: { id: "t1" } });
     expect(f.runs()).toBe(1);
+  });
+
+  it("replays a recorded failure as a failure, so a later op does not run on an answer that never came", async () => {
+    // The seat is booked and the answer is not: the record holds the failure, and every retry gets it. Treating that
+    // replay as a success would let a `$ref` op run with nothing to read — and would count a command that never
+    // succeeds as one that always does.
+    const store = new MemoryIdempotencyStore();
+    const counters = new MemoryCounters();
+    let runs = 0;
+    const brittle = () =>
+      createRayfoldServer({
+        schema: `entity Ticket { id: ID seat: Int hold: Hold } entity Hold { id: ID owner: String } query ticket(id: ID): Ticket command book(seat: Int): Ticket`,
+        idempotency: store,
+        counters,
+        resolvers: {
+          Query: { ticket: ({ id }: { id: string }) => ({ id, seat: 1 }) },
+          Command: {
+            book: ({ seat }: { seat: number }) => {
+              runs++;
+              return { id: `t${seat}`, seat };
+            },
+          },
+          // runs after the command returned: the booking happened, whatever becomes of the answer
+          Ticket: {
+            hold: () => {
+              throw new RayfoldError("failed_precondition", "the ledger went away");
+            },
+          },
+        },
+      });
+
+    const shape = "{ id hold { owner } }";
+    const first = await brittle().collect({ ops: [{ id: 1, op: "book", args: { seat: 1 }, key: KEY, shape }] }, { viewer });
+    expect(first.at(-1)).toMatchObject({ id: 1, error: { code: "failed_precondition" } });
+    expect(runs).toBe(1);
+
+    const retry = await brittle().collect(
+      {
+        ops: [
+          { id: 1, op: "book", args: { seat: 1 }, key: KEY, shape },
+          { id: 2, op: "ticket", args: { id: { $ref: "1.id" } }, shape: "{ id }" },
+        ],
+      },
+      { viewer },
+    );
+    expect(runs).toBe(1); // replayed, not run again
+    expect(retry[0]).toMatchObject({ id: 1, error: { code: "failed_precondition" }, meta: { replay: true } });
+    expect(retry[1]).toMatchObject({ id: 2, error: { code: "failed_precondition", type: "DependencyFailed" } });
+
+    const find = (name: string, labels: Record<string, string>) =>
+      counters.snapshot().find((e) => e.name === name && Object.entries(labels).every(([k, v]) => e.labels[k] === v))?.count ?? 0;
+    expect(find("rayfold.ops", { kind: "command", outcome: "failed_precondition" })).toBe(2); // the run and the replay
+    expect(find("rayfold.ops", { kind: "command", outcome: "ok" })).toBe(0);
+    expect(find("rayfold.errors", { op: "book", code: "failed_precondition" })).toBe(2);
+  });
+
+  it("guard: a replayed success still feeds the op that depends on it", async () => {
+    const store = new MemoryIdempotencyStore();
+    const counters = new MemoryCounters();
+    const server = () =>
+      createRayfoldServer({
+        schema: `${SCHEMA} query ticket(id: ID): Ticket`,
+        idempotency: store,
+        counters,
+        resolvers: {
+          Query: { ticket: ({ id }: { id: string }) => ({ id, seat: 1 }) },
+          Command: { book: ({ seat }: { seat: number }) => ({ id: `t${seat}`, seat }) },
+        },
+      });
+    await server().collect({ ops: [{ id: 1, op: "book", args: { seat: 1 }, key: KEY, shape: "{ id }" }] }, { viewer });
+
+    const retry = await server().collect(
+      {
+        ops: [
+          { id: 1, op: "book", args: { seat: 1 }, key: KEY, shape: "{ id }" },
+          { id: 2, op: "ticket", args: { id: { $ref: "1.id" } }, shape: "{ id }" },
+        ],
+      },
+      { viewer },
+    );
+    expect(retry[0]).toMatchObject({ id: 1, ok: { id: "t1" }, meta: { replay: true } });
+    expect(retry[1]).toMatchObject({ id: 2, data: { id: "t1" } });
+    expect(counters.snapshot().filter((e) => e.name === "rayfold.errors")).toHaveLength(0);
   });
 
   it("keeps renewing a long command's lease, so a retry arriving after the first lease would have lapsed waits instead of running it again", async () => {

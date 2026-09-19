@@ -75,6 +75,66 @@ readinessProbe:
   periodSeconds: 5
 ```
 
+## What a server will tell you
+
+::: warning New in 0.2.0, which is not published yet
+`identity`, `stats` and the counters below are in the repository but not on npm or Maven Central. Everything above
+this line is in the published 0.1.0 — see [versioning](../versioning.md).
+:::
+
+`GET {base}/health` is liveness and `GET {base}/ready` is whether to send traffic. Neither says anything about the
+server itself, which is the gap `stats` fills:
+
+```ts
+const handler = createFetchHandler(server, {
+  stats: { authorize: (req) => req.headers.get("authorization") === `Bearer ${process.env.OPS_TOKEN}` },
+});
+```
+
+```json
+{
+  "identity": { "name": "bookshop", "instance": "8f3c…", "version": "1.4.0", "startedAt": 1789000000000 },
+  "uptimeMs": 86400000, "schemaHash": "a71789…", "extensions": ["live", "rb"],
+  "inflight": 2, "draining": false, "ready": true, "reasons": [], "live": 7
+}
+```
+
+The route does not exist until you configure it, and an unconfigured server answers `404` rather than `403`, so it
+does not advertise itself. Give the server an `identity` to make its answers worth comparing:
+
+```ts
+createRayfoldServer({ schema, resolvers, identity: { name: "bookshop", version: process.env.GIT_SHA } });
+```
+
+`instance` is generated per process when you do not supply one, so a restart is visible as a restart. None of this
+is in the manifest — that document's members are fixed by the specification.
+
+**Two servers disagreeing about the schema** is the failure this makes obvious: every response already carries
+`Rayfold-Schema`, and `stats` carries the same hash, so a fleet where one instance is still serving last week's
+schema shows up without any instrumentation at all.
+
+## Counting what happened
+
+Hand the server a `Counters` sink and it records what an operator asks about:
+
+```ts
+import { MemoryCounters } from "@rayfold/server";
+const counters = new MemoryCounters();
+createRayfoldServer({ schema, resolvers, counters });   // then GET {base}/stats includes them
+```
+
+| Counter | Labels | Why it is not available any other way |
+|---|---|---|
+| `rayfold.requests` | `method` | — |
+| `rayfold.refused` | `reason`: host, origin, media, method, route | These are answered **before** a batch is built, so no tracing hook ever sees one |
+| `rayfold.ops` | `kind`, `outcome` | Counted without any instrumentation configured |
+| `rayfold.errors` | `op`, `code`, `type` | Every declared error is `domain` on the wire and carries its name in `type`, so a code alone puts a schema's whole error vocabulary in one bucket |
+| `rayfold.idempotency` | `claim`: owned, done, inflight | A replayed command is otherwise invisible |
+| `rayfold.live.opened` / `.reran` / `.closed` | `op` | One live query is a single op for its whole life; `opened` minus `closed` is a leak you can see |
+
+Both runtimes emit the same names. A full sink keeps counting what it already knows and reports `countersDropped`
+beside the numbers, rather than going quiet and leaving a graph that keeps drawing and stops being true.
+
 ## Stopping
 
 A rolling deploy replaces servers one at a time. Each one has to stop taking traffic before it stops serving, finish

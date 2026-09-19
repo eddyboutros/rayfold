@@ -18,6 +18,26 @@ import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * What tells one running server from another.
+ *
+ * None of this reaches the manifest. Spec 04 section 4a fixes that document's members exactly and Core 0.1 is
+ * frozen, so identity is served by `GET {base}/stats` instead - a route that is off until [HttpOptions.stats] is
+ * given, so a server discloses none of it until its operator decides to.
+ */
+data class ServerIdentity(
+    /** The application this server is: the same across its instances and its restarts. */
+    val name: String? = null,
+    /** This process. Stable for its lifetime, new on every restart; a random id when you do not supply one. */
+    val instance: String = java.util.UUID.randomUUID().toString().replace("-", ""),
+    /** Whatever you deploy by - a version, a commit, a build number. */
+    val version: String? = null,
+    /** Small and free-form: region, zone, tenant. */
+    val labels: Map<String, String> = emptyMap(),
+    /** When this process started, epoch milliseconds. */
+    val startedAt: Long = System.currentTimeMillis(),
+)
+
 /** Whether a server should receive traffic, and every reason it should not. */
 data class Readiness(val ready: Boolean, val reasons: List<String>) {
     constructor(reasons: List<String>) : this(reasons.isEmpty(), reasons)
@@ -40,6 +60,10 @@ class RayfoldServer(
     relay: Relay? = null,
     /** Called when the relay refuses a message. What it carried already happened on this server. */
     onRelayError: (Throwable) -> Unit = {},
+    /** Who this server is, for an operator looking at several of them. See [ServerIdentity]. */
+    identity: ServerIdentity = ServerIdentity(),
+    /** Where to count what this server does. Without one, nothing is counted. */
+    val counters: Counters? = null,
 ) {
     init { ir.checkFormats() }
 
@@ -86,12 +110,18 @@ class RayfoldServer(
     @Volatile
     private var idle: CompletableDeferred<Unit>? = null
 
+    /** Who this server is. Before this, two servers in one fleet were indistinguishable. */
+    val identity: ServerIdentity = identity
+
+    /** Milliseconds since this process started. */
+    val uptimeMs: Long get() = System.currentTimeMillis() - identity.startedAt
+
     /** Extensions served by endpoints mounted beside this server, such as `mcp` by [RayfoldMcp]; the manifest lists them. */
     val mounted: MutableSet<String> = ConcurrentHashMap.newKeySet()
     val views = Views(ir, options.maxInlineShapes)
     private val executor = Executor(ir, resolvers, views, instrumentation, usage)
     private val cost = Cost(ir, views)
-    private val runner = BatchRunner(ir, executor, views, cost, idempotency, events, options, changes, instrumentation, usage, drainer)
+    private val runner = BatchRunner(ir, executor, views, cost, idempotency, events, options, changes, instrumentation, usage, drainer, counters)
 
     /** sha256 of the canonical IR: the hash `@rayfold/schema` computes for the same schema ([SchemaText.hash]). */
     val hash: String by lazy { SchemaText.hash(ir) }
