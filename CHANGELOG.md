@@ -3,10 +3,9 @@
 Every change a user will notice, newest first. Versions follow [docs/versioning.md](docs/versioning.md); the npm
 packages and the Maven artifacts share one version number.
 
-**0.1.0 is the published version.** Everything below its heading is on npm and Maven Central; everything above it is
-in this repository and nowhere else yet.
+Everything under a dated heading is published on npm and Maven Central.
 
-## 0.2.0 (not released yet)
+## 0.2.0 (2026-09-19)
 
 - **A JVM server sharing a Postgres relay now stops when it is told to.** `PgNotifications` guards the listening
   connection with a lock, and the notification poll loop asks for that lock again on the next line of its own `while`.
