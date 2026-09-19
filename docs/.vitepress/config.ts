@@ -148,6 +148,7 @@ export default defineConfig({
             { text: "Node.js quickstart", link: "/guide/quickstart" },
             { text: "Schema in TypeScript", link: "/guide/typescript" },
             { text: "React", link: "/guide/react" },
+            { text: "Angular", link: "/guide/angular" },
             { text: "Kotlin and Android", link: "/guide/kotlin" },
             { text: "Java and Spring Boot", link: "/guide/java-spring" },
           ],

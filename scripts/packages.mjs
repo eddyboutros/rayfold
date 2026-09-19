@@ -13,6 +13,7 @@ export const PACKAGES = [
   { dir: "packages/lsp" },
   { dir: "packages/client" },
   { dir: "packages/react" },
+  { dir: "packages/angular" },
   { dir: "packages/cli", bin: { rayfold: "main.js" } },
   // conformance/README.md documents the fixture format for contributors; npm gets a README for users
   {
