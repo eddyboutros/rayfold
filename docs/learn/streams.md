@@ -100,10 +100,10 @@ client.stream("stockUpdates", args("bookIds" to listOf("b1", "b2"))).collect { p
 A stream holds its response open, so it needs a transport that can stream: the HTTP endpoint answers with frames as
 they happen, and a WebSocket carries many streams over one connection, with per-operation cancellation.
 
-Items count against the batch's cost like anything else, and the JVM runtime bounds how many items one stream may
-yield (`maxStreamItems`; the TypeScript server gains the same option in 0.2.0, which is
-[not published yet](../versioning.md)). Give `ctx.signal` to whatever you subscribe to, as the resolver above does: on a transport
-that cannot notice a client that went away, that signal is what ends the subscription when the request ends.
+Items count against the batch's cost like anything else, and both runtimes bound how many items one stream may yield
+(`maxStreamItems`; on the TypeScript server from 0.2.0). Give `ctx.signal` to whatever you subscribe to, as the
+resolver above does: on a transport that cannot notice a client that went away, that signal is what ends the
+subscription when the request ends.
 
 ## Next
 

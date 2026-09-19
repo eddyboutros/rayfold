@@ -5,11 +5,6 @@ description: injectQuery, injectLive and injectCommand return signals, so a comm
 
 # Angular
 
-::: warning New in 0.2.0, which is not published yet
-`@rayfold/angular` is in the repository, tested, and documented here, but it is not on npm. The install below will
-not find it until 0.2.0 ships — see [versioning](../versioning.md).
-:::
-
 `@rayfold/angular` connects components to the Rayfold client's cache. When a command changes a book, every component
 showing that book updates with the new value — nothing is fetched again, and components showing other books do not
 recompute. It needs Angular 19 or newer, and no zone.

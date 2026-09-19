@@ -7,14 +7,13 @@ description: Which Rayfold version is published, which features each one added, 
 
 ## What is published
 
-| Version | Date | Status |
+| Version | Date | |
 |---|---|---|
-| **0.1.0** | 2026-09-15 | Published. `npm install @rayfold/server` and `dev.rayfold:rayfold-core:0.1.0` give you this. |
-| **0.2.0** | — | **Not published yet.** It is written, tested and documented in the repository; nothing on npm or Maven Central carries it. |
+| **0.2.0** | 2026-09-19 | The current release. `npm install @rayfold/server` gives you this, and `dev.rayfold:*:0.2.0` on Maven Central. |
+| **0.1.0** | 2026-09-15 | The first release. |
 
-This site documents both, so a few pages describe things 0.1.0 does not have. Each of those says so where it is
-taught, and the table below lists them together. Until 0.2.0 ships, pin `0.1.0` in a JVM build and let npm take the
-latest — it is 0.1.0.
+Before 1.0 only the latest minor version gets fixes, so a new project starts on 0.2.0. The table below says which
+feature arrived in which version, for anyone still on 0.1.0.
 
 ## What each version added
 

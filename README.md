@@ -41,9 +41,8 @@ that runs Rayfold in your browser.
 | A Java server | `dev.rayfold:rayfold-java` | [Java](docs/guide/java-spring.md) |
 | A Spring Boot app | `dev.rayfold:rayfold-spring-boot-starter` | [Spring Boot](docs/guide/java-spring.md#spring-boot) |
 
-Version 0.1.0 is on npm and Maven Central; the [changelog](CHANGELOG.md) lists what it holds. **0.2.0 is not
-published yet** — it is written and tested here, and [versioning](docs/versioning.md) says which feature came with
-which version. `@rayfold/angular` is one of the 0.2.0 ones, so the line above will not find it yet.
+Version 0.2.0 is on npm and Maven Central; the [changelog](CHANGELOG.md) lists what it holds, and
+[versioning](docs/versioning.md) says which feature came with which version.
 
 ## Sixty-second tour
 

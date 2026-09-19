@@ -22,11 +22,6 @@ The code on these pages comes from the [example projects](../../examples), whose
 repository. Not ready to install anything? The [playground](../playground.md) runs the bookshop server in your
 browser.
 
-::: info You will install 0.1.0
-That is the published version, and everything in these guides is in it. **0.2.0 is not published yet**; see
-[versioning](../versioning.md) for what it adds.
-:::
-
 ## The schema you will serve
 
 Every guide starts from this file. It is the contract: the server is checked against it, and clients learn from it

@@ -77,11 +77,6 @@ readinessProbe:
 
 ## What a server will tell you
 
-::: warning New in 0.2.0, which is not published yet
-`identity`, `stats` and the counters below are in the repository but not on npm or Maven Central. Everything above
-this line is in the published 0.1.0 — see [versioning](../versioning.md).
-:::
-
 `GET {base}/health` is liveness and `GET {base}/ready` is whether to send traffic. Neither says anything about the
 server itself, which is the gap `stats` fills:
 

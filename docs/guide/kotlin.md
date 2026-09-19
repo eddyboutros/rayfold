@@ -10,8 +10,8 @@
 
 ```kotlin
 dependencies {
-    implementation("dev.rayfold:rayfold-core:0.1.0")    // the server
-    implementation("dev.rayfold:rayfold-client:0.1.0")  // the client
+    implementation("dev.rayfold:rayfold-core:0.2.0")    // the server
+    implementation("dev.rayfold:rayfold-client:0.2.0")  // the client
 }
 ```
 
