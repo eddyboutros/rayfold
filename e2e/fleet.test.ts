@@ -28,6 +28,8 @@ interface Member {
   base: string;
   child: ChildProcess;
   exited: Promise<number | null>;
+  /** Everything it has printed, so a member that will not stop can be asked what it was doing. */
+  output: Signal<string>;
 }
 
 /** The members a suite started, so it stops exactly those. */
@@ -43,7 +45,8 @@ class Cluster {
       env: { ...process.env, DATABASE_URL: url, PORT: String(port), NAME: name },
       stdio: ["ignore", "pipe", "inherit"],
     });
-    const member = { name, base: `http://127.0.0.1:${port}`, child, exited: Promise.resolve<number | null>(null) };
+    const lines = new Signal<string>();
+    const member = { name, base: `http://127.0.0.1:${port}`, child, exited: Promise.resolve<number | null>(null), output: lines };
     // recorded before it is listening, so a member that started while another failed is still stopped afterwards
     this.members.push(member);
     // `error` is how a missing `java` arrives, and `exit` never follows it: without both, a start that cannot happen
@@ -51,7 +54,6 @@ class Cluster {
     const failed = new Promise<never>((_resolve, reject) => child.on("error", (e) => reject(new Error(`${name} could not start: ${e.message}`))));
     const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
     member.exited = Promise.race([exited, failed.catch(() => null)]);
-    const lines = new Signal<string>();
     child.stdout?.on("data", (chunk: Buffer) => {
       for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) lines.push(line.trim());
     });
@@ -70,8 +72,43 @@ class Cluster {
       else m.child.kill("SIGTERM");
     }
     // bounded: a member whose shutdown stalls fails the run with its name instead of hanging it
-    await Promise.all(this.members.map((m) => bounded(m.exited, `${m.name} exiting`, 20_000)));
+    await Promise.all(this.members.map((m) => stop(m)));
   }
+}
+
+/**
+ * Waits for one member to go, and says what it was doing when it does not.
+ *
+ * A server that will not stop is a defect in a product that promises clean drains, so this still fails — but the
+ * bare "no signal within 20000 ms" it used to fail with told the next person nothing. A JVM prints a full thread
+ * dump on SIGQUIT, and that dump names the thread and the line the shutdown is stuck on.
+ */
+async function stop(m: Member): Promise<void> {
+  try {
+    await bounded(m.exited, `${m.name} exiting`, 20_000);
+  } catch (e) {
+    const dump = await threadDump(m);
+    m.child.kill("SIGKILL"); // it is not going on its own, and the next run needs the port
+    throw new Error(`${m.name} did not exit within 20s of SIGTERM${dump}`, { cause: e });
+  }
+}
+
+/** A JVM's own answer to "what are you waiting for": SIGQUIT prints every thread and its stack to stdout. */
+async function threadDump(m: Member): Promise<string> {
+  if (process.platform === "win32" || !m.child.pid) return "";
+  const before = m.output.items.length;
+  try {
+    process.kill(m.child.pid, "SIGQUIT");
+  } catch {
+    return "";
+  }
+  // the dump arrives on stdout in one burst; a bounded wait for its last line, then whatever came
+  await m.output.until((items) => items.slice(before).some((l) => l.includes("VM Thread") || l.includes("JNI global")), "thread dump", 4_000).catch(() => undefined);
+  const dump = m.output.items.slice(before);
+  if (!dump.length) return "";
+  // the threads this project owns, with what each is blocked on: the rest of a dump is JVM housekeeping
+  const ours = dump.filter((l, i) => l.includes("dev.rayfold") || l.startsWith('"') || (l.includes("java.lang.Thread.State") && dump[i - 1]?.startsWith('"')));
+  return `\n${(ours.length ? ours : dump).slice(0, 60).join("\n")}`;
 }
 
 const post = (base: string, body: unknown) => fetch(`${base}/rayfold`, { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify(body) });

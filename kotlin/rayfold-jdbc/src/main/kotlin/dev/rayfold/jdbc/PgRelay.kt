@@ -21,6 +21,8 @@ import java.sql.Connection
 import java.sql.Statement
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /** What the relay needs from Postgres: [PgNotifications] provides it over pgjdbc; a test can provide it in memory. */
 interface Notifications {
@@ -152,13 +154,23 @@ class PgNotifications(
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Whose turn it is on the listening connection: the poll loop, a publish, or an unsubscribe.
+     *
+     * Fair on purpose. `synchronized` is not, and the poll loop releases the monitor and asks for it again on the
+     * next line, so it wins that race nearly every time: an unsubscribe waiting behind it can be starved for
+     * seconds, which is how a server that was told to stop kept a shutdown open long enough to fail a deploy. A fair
+     * lock hands the connection over after at most one poll.
+     */
+    private val turn = ReentrantLock(true)
+
     @Volatile
     private var poller: Job? = null
 
     override suspend fun listen(channel: String, onPayload: (String) -> Unit): suspend () -> Unit {
         val l = Listener(channel, onPayload)
         withContext(Dispatchers.IO) {
-            synchronized(listener) {
+            turn.withLock {
                 if (listeners.none { it.channel == channel }) listener.createStatement().use { it.execute("LISTEN ${quote(channel)}") }
                 listeners.add(l)
                 if (poller == null) poller = scope.launch { poll() }
@@ -166,7 +178,7 @@ class PgNotifications(
         }
         return {
             withContext(Dispatchers.IO) {
-                synchronized(listener) {
+                turn.withLock {
                     listeners.remove(l)
                     if (listeners.none { it.channel == channel }) listener.createStatement().use { it.execute("UNLISTEN ${quote(channel)}") }
                     if (listeners.isEmpty()) { poller?.cancel(); poller = null }
@@ -179,18 +191,21 @@ class PgNotifications(
         withContext(Dispatchers.IO) {
             val c = notifier()
             try {
-                synchronized(c) {
-                    c.prepareStatement("SELECT pg_notify(?, ?)").use { s -> s.setString(1, channel); s.setString(2, payload); s.executeQuery().close() }
-                }
+                // the same connection the poll loop holds, unless the caller gave us another one to publish on
+                if (c === listener) turn.withLock { send(c, channel, payload) } else synchronized(c) { send(c, channel, payload) }
             } finally {
                 if (c !== listener) c.close()
             }
         }
     }
 
+    private fun send(c: Connection, channel: String, payload: String) {
+        c.prepareStatement("SELECT pg_notify(?, ?)").use { s -> s.setString(1, channel); s.setString(2, payload); s.executeQuery().close() }
+    }
+
     private fun CoroutineScope.poll() {
         while (isActive) {
-            val batch = synchronized(listener) { listener.unwrap(PGConnection::class.java).getNotifications(pollMs) } ?: continue
+            val batch = turn.withLock { listener.unwrap(PGConnection::class.java).getNotifications(pollMs) } ?: continue
             for (n in batch) for (l in listeners) if (l.channel == n.name) l.onPayload(n.parameter ?: "")
         }
     }

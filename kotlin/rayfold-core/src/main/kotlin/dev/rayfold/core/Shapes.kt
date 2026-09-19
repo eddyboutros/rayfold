@@ -127,7 +127,10 @@ object Shapes {
                 val m = linkedMapOf<String, JsonElement>()
                 while (!atPunct(")")) { val k = expectName(); expectPunct(":"); m[k] = value() }
                 expectPunct(")")
-                args = m
+                // `field()` selects exactly what `field` selects, and the canonical form prints it without the
+                // parentheses, so an empty map here would make the parsed shape disagree with a re-parse of its own
+                // printed text.
+                if (m.isNotEmpty()) args = m
             }
             val sub = if (atPunct("{")) shape() else null
             var eager = false; var partial = false

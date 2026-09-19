@@ -14,6 +14,8 @@ dependencies {
     compileOnly("org.postgresql:postgresql:42.7.13")
     // the tests run against a real database; the adapter itself needs nothing but JDBC from the JDK
     testImplementation("com.h2database:h2:2.5.250")
+    // the driver's own interfaces, so a test can stand in for the one part of this module that is pgjdbc-specific
+    testImplementation("org.postgresql:postgresql:42.7.13")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

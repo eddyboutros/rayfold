@@ -77,7 +77,9 @@ function parseItem(ts: TokenStream): ShapeItem {
       args[k] = parseShapeValue(ts);
     }
     ts.expectPunct(")");
-    item.args = args;
+    // `field()` selects exactly what `field` selects, and the canonical form prints it without the parentheses, so
+    // recording an empty map here would make the parsed shape disagree with a re-parse of its own printed text.
+    if (Object.keys(args).length) item.args = args;
   }
   if (ts.atPunct("{")) item.shape = parseShape(ts);
   // Modifiers belong to this field; anything else after "@" (like @defer) is the next item.

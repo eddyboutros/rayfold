@@ -6,7 +6,7 @@ import { parseSchemaText } from "./parser.ts";
 import { validateIR } from "./validate.ts";
 import { RayfoldSyntaxError, tokenize } from "./lexer.ts";
 import { evalExpr, parseExprText, isPushable, referencesViewer } from "./expr.ts";
-import { canonicalShape, parseShapeText, shapeIdOf } from "./shape.ts";
+import { canonicalShape, parseShapeText, shapeIdOf, shapeToString } from "./shape.ts";
 import { typeRefToString } from "./ir.ts";
 
 const bookstore = readFileSync(fileURLToPath(new URL("../../../examples/bookstore-ts/bookstore.rayfold", import.meta.url)), "utf8");
@@ -230,6 +230,20 @@ describe("shapes", () => {
     expect(canonicalShape(s, views)).toBe(
       `{ top: reviews(page: {"first":$n}) { items { id } } ...on Book { title @eager } @defer(label: "x") { stock @partial } }`,
     );
+  });
+
+  it("an empty argument list is the same selection as none at all", () => {
+    // Found by the fuzz job: `field()` was parsed with an empty args map, printed back without the parentheses, and
+    // so failed to survive its own round trip. It is the same selection either way, and both forms must agree.
+    const empty = parseShapeText(`{ i() title }`);
+    expect(empty).toEqual(parseShapeText(`{ i title }`));
+    expect(shapeToString(empty)).toBe(`{ i title }`);
+    expect(canonicalShape(empty, views)).toBe(canonicalShape(parseShapeText(`{ i title }`), views));
+
+    // guard: a real argument is still recorded, and still prints
+    const real = parseShapeText(`{ i(n: 1) }`);
+    expect(real.items[0]).toMatchObject({ name: "i", args: { n: 1 } });
+    expect(shapeToString(real)).toBe(`{ i(n: 1) }`);
   });
 
   it("rejects unknown views and bad directives", () => {

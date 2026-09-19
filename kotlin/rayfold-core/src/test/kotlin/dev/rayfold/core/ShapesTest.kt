@@ -83,6 +83,18 @@ class ShapesTest {
     }
 
     @Test
+    fun `an empty argument list is the same selection as none at all`() {
+        // Found by the TypeScript fuzz job, and the same here: `field()` was parsed with an empty argument map, and
+        // the canonical form prints it without the parentheses, so a parsed shape disagreed with a re-parse of its
+        // own printed text. Both runtimes must read it the same way, or one id would not match the other.
+        assertEquals(null, Shapes.parse("{ i() title }").items.first().args, "empty parentheses record no arguments")
+        assertEquals(id("{ i title }"), id("{ i() title }"))
+        // guard: a real argument is still recorded, and still changes the id
+        assertEquals(JsonPrimitive(1), Shapes.parse("{ i(n: 1) }").items.single().args?.get("n"))
+        assertNotEquals(id("{ i }"), id("{ i(n: 1) }"))
+    }
+
+    @Test
     fun `literals decode to the JSON values the TS parser yields`() {
         val args = Shapes.parse("""{ x(i: 12 f: 1.0 e: 1e3 d: 0.25 s: "\u0041\b\/" b: true n: null w: ASC) }""").items.single().args ?: error("no args parsed")
         assertEquals(JsonPrimitive(12), args["i"])

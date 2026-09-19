@@ -33,6 +33,7 @@ import java.sql.DriverManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -285,5 +286,26 @@ class PgRelayTest {
         live.stop()
         stream.stop()
         withTimeout(5_000) { a.close(); b.close() }
+    }
+
+    /**
+     * The listening connection is taken in turns, fairly.
+     *
+     * One connection serves three callers: the notification poll loop, a publish, and an unsubscribe. `synchronized`
+     * is unfair, and the poll loop asks for the connection again on the next line of its own `while`, so it barged in
+     * front of the other two for as long as it liked: a JVM server told to stop queued behind its own poll loop, and
+     * the fleet job watched a member take 19.9 seconds to answer a SIGTERM against a bound of 20 (measured in a
+     * container against a real Postgres: 0.7s at every delay once the lock was fair, 0.7 → 5.7 → 8.9 → 19.9s as the
+     * server ran longer before it was, which is why it failed intermittently rather than always).
+     *
+     * This asserts the fairness itself. Starvation is a race, so a test that tried to provoke it would pass on the
+     * broken code often enough to be worthless — the behaviour is held by the fleet end-to-end job, and this holds
+     * the one line that job cannot explain.
+     */
+    @Test
+    fun `the listening connection is taken in turns, fairly`() {
+        val notifications = PgNotifications(keepAlive)
+        val turn = PgNotifications::class.java.getDeclaredField("turn").apply { isAccessible = true }.get(notifications)
+        assertTrue((turn as ReentrantLock).isFair, "an unfair lock lets the poll loop starve a publish and an unsubscribe")
     }
 }
