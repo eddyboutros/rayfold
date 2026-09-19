@@ -85,6 +85,10 @@ jobs:
           npm sbom --sbom-format cyclonedx --omit dev > rayfold-npm.cdx.json
           (cd kotlin && chmod +x gradlew && ./gradlew cyclonedxBom)
           cp kotlin/build/reports/cyclonedx/bom.json rayfold-jvm.cdx.json
-      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes rayfold-npm.cdx.json rayfold-jvm.cdx.json
+      # the changelog, not --generate-notes: that lists merged pull requests, and a release lands here as commits on
+      # main, so 0.2.0's page named three dependabot bumps and none of the release
+      - name: Release notes from the changelog
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > notes.md
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md rayfold-npm.cdx.json rayfold-jvm.cdx.json
         env:
           GH_TOKEN: ${{ github.token }}

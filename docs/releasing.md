@@ -18,8 +18,8 @@ The tag starts `.github/workflows/release.yml`:
   packages disagree on the version, or when that version is already on npm.
 - **Maven Central:** checks the tag against `VERSION_NAME` in `kotlin/gradle.properties`, runs the JVM tests, then
   signs and releases with `publishAndReleaseToMavenCentral`.
-- **GitHub release:** once both are out, a release for the tag with generated notes and CycloneDX bills of materials
-  for the npm packages and the JVM artifacts.
+- **GitHub release:** once both are out, a release for the tag with that version's section of `CHANGELOG.md` as its
+  notes (`scripts/release-notes.mjs`) and CycloneDX bills of materials for the npm packages and the JVM artifacts.
 
 A published version can never be replaced. Fix a mistake with a new patch version and `npm deprecate` the bad one: npm
 allows unpublishing only within 72 hours, and Maven Central not at all.
