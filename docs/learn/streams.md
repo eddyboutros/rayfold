@@ -101,7 +101,8 @@ A stream holds its response open, so it needs a transport that can stream: the H
 they happen, and a WebSocket carries many streams over one connection, with per-operation cancellation.
 
 Items count against the batch's cost like anything else, and the JVM runtime bounds how many items one stream may
-yield (`maxStreamItems`). Give `ctx.signal` to whatever you subscribe to, as the resolver above does: on a transport
+yield (`maxStreamItems`; the TypeScript server gains the same option in 0.2.0, which is
+[not published yet](../versioning.md)). Give `ctx.signal` to whatever you subscribe to, as the resolver above does: on a transport
 that cannot notice a client that went away, that signal is what ends the subscription when the request ends.
 
 ## Next

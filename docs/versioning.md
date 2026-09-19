@@ -1,4 +1,42 @@
+---
+title: Versioning
+description: Which Rayfold version is published, which features each one added, and how packages, the protocol and your own schema are versioned.
+---
+
 # Versioning
+
+## What is published
+
+| Version | Date | Status |
+|---|---|---|
+| **0.1.0** | 2026-09-15 | Published. `npm install @rayfold/server` and `dev.rayfold:rayfold-core:0.1.0` give you this. |
+| **0.2.0** | — | **Not published yet.** It is written, tested and documented in the repository; nothing on npm or Maven Central carries it. |
+
+This site documents both, so a few pages describe things 0.1.0 does not have. Each of those says so where it is
+taught, and the table below lists them together. Until 0.2.0 ships, pin `0.1.0` in a JVM build and let npm take the
+latest — it is 0.1.0.
+
+## What each version added
+
+Everything the protocol itself does — batches, shapes, loaders, commands with declared errors, patches, live queries,
+streams, policies, caching, idempotency, uploads, capability tokens, RB, MCP, `@http` routes and OpenAPI, relays,
+health and readiness, the CLI and the editor server — is 0.1.0. Later versions add tooling and fix defects; Core 0.1
+is frozen, so none of them changes what a request means.
+
+| Feature | Since | Where |
+|---|---|---|
+| The protocol, both runtimes, and every client package | 0.1.0 | [Get started](./get-started/) |
+| `@rayfold/react` | 0.1.0 | [React](./guide/react.md) |
+| `@rayfold/postgres`, `@rayfold/otel`, the JDBC and Spring Boot modules | 0.1.0 | [Postgres](./guide/postgres.md), [Tracing](./guide/tracing.md) |
+| `@rayfold/angular` | **0.2.0** | [Angular](./guide/angular.md) |
+| Server identity and `GET {base}/stats` | **0.2.0** | [Deployment](./guide/deployment.md#what-a-server-will-tell-you) |
+| `Counters` and `MemoryCounters` | **0.2.0** | [Deployment](./guide/deployment.md#counting-what-happened) |
+| `maxStreamItems` on the TypeScript server (the JVM always had one) | **0.2.0** | [Streams](./learn/streams.md) |
+| `closeTimeoutMs`, so a server still connecting to its relay can shut down | **0.2.0** | [CHANGELOG](https://github.com/eddyboutros/rayfold/blob/main/CHANGELOG.md) |
+| Published conformance vectors | **0.2.0** | [Conformance](https://github.com/eddyboutros/rayfold/tree/main/conformance) |
+
+[CHANGELOG.md](https://github.com/eddyboutros/rayfold/blob/main/CHANGELOG.md) has the rest, including the defects
+each version fixed.
 
 Three things carry a version, and they move independently.
 

@@ -125,6 +125,9 @@ const server = createRayfoldServer({
 The JVM has two more of its own: `maxFrames` bounds the frames one batch's resolvers may produce, and
 `maxInlineShapes` how many shapes learned from requests are remembered.
 
+`maxStreamItems` on the TypeScript server is **new in 0.2.0, which is not published yet**; the JVM has always had it.
+In the published 0.1.0, a TypeScript stream is bounded only by the batch's cost. See [versioning](../versioning.md).
+
 ## Deadlines
 
 A caller can say how long it is willing to wait, and the server stops rather than finishing work nobody is waiting

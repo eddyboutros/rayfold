@@ -51,6 +51,12 @@ features:
 
 <div class="home-section">
 
+::: info The published version is 0.1.0
+Everything on this page is in **0.1.0**, which is what npm and Maven Central carry today. **0.2.0 is not published
+yet** — it is written and tested in the repository, and the few pages that document it say so.
+[Which feature came with which version](/versioning#what-each-version-added).
+:::
+
 ## What it looks like
 
 A schema, a request for one screen, and what comes back. The same request works against a TypeScript, Kotlin,

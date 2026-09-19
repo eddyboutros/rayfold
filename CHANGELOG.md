@@ -3,9 +3,61 @@
 Every change a user will notice, newest first. Versions follow [docs/versioning.md](docs/versioning.md); the npm
 packages and the Maven artifacts share one version number.
 
-## Unreleased
+**0.1.0 is the published version.** Everything below its heading is on npm and Maven Central; everything above it is
+in this repository and nowhere else yet.
 
-## 0.2.0 (2026-09-18)
+## 0.2.0 (not released yet)
+
+- **A JVM server sharing a Postgres relay now stops when it is told to.** `PgNotifications` guards the listening
+  connection with a lock, and the notification poll loop asks for that lock again on the next line of its own `while`.
+  Java's monitors are unfair, so the loop barged in front of everything else: an unsubscribe during shutdown — and,
+  with the default notifier, every relay publish — queued behind it. Measured against a real Postgres in a container:
+  a member told to stop took 0.7s when it had just started, 5.7s a tenth of a second later, and **19.9s** after a
+  second of listening, against a deploy's twenty-second patience. The lock is fair now, and the same measurements are
+  0.7s throughout. This is what had been failing the fleet job in CI intermittently.
+
+- **`field()` in a shape is the same selection as `field`.** An empty argument list was parsed into an empty argument
+  map, which the canonical form and the printer both drop, so a parsed shape did not survive being printed and read
+  back. Both runtimes now record no arguments for it. Shape ids were never affected — the canonical form already
+  ignored an empty map — so nothing on the wire changes. Found by the nightly fuzz job.
+
+- **A server can say who it is and what it is doing.** Two Rayfold servers were indistinguishable: there was no name,
+  no instance id, no start time — the concept did not exist in either runtime. `identity` supplies the first three
+  (an instance id is generated per process, so a restart reads as a restart), and `GET {base}/stats` serves them
+  beside what was already in the process and unreachable from outside: operations in flight, live queries open,
+  readiness detail, the last relay failure, the field-usage snapshot.
+  The route is **off unless you configure it**, and an unconfigured server answers `404` rather than `403` — a server
+  that has not enabled it should look from outside like one that never had it, not advertise that it is there and
+  refused. Nothing about identity reaches the manifest: spec 04 §4a fixes that document's members exactly and Core
+  0.1 is frozen.
+
+- **Counters, so an operator does not have to wire up tracing first.** `Counters` is a sink beside `UsageSink`, and
+  `MemoryCounters` keeps them for one process. What it counts cannot be had any other way: `rayfold.refused{reason}`
+  is a request turned away for its host, origin, media type or method — all of which are answered and returned
+  *before* a batch is built, so no instrumentation hook has ever seen one. Also `rayfold.ops{kind,outcome}`,
+  `rayfold.errors{op,code,type}` — every declared error is `domain` on the wire and carries its name in `type`, so a
+  code alone would put a schema's whole error vocabulary in one bucket — `rayfold.idempotency{claim}` (ran it,
+  replayed it, or waited for whoever holds the key), and `rayfold.live.opened/reran/closed` — one live query is a
+  single op for its whole life, so its re-runs were invisible, and opened-minus-closed is a subscription leak you can
+  now see.
+  A full sink says so. `MemoryUsage` stops recording at its bound, which leaves a graph that keeps drawing and stops
+  being true; counters keep counting the series they know and report `dropped` beside the numbers. Both runtimes emit
+  the same names, because a console reading them from one and not the other is worse than neither.
+
+- **`@rayfold/angular`.** Angular had nothing — the only bindings were React's. `provideRayfold(client)`, then
+  `injectQuery`, `injectLive` and `injectCommand` return signals, which is what the client already wants: it keeps a
+  normalised cache and pushes to it, and a signal invalidates on push and computes on read. A query is in flight the
+  moment it is injected rather than on the first change detection, and arguments may be a function
+  (`() => ({ id: this.id() })`) so a call re-runs when the signals it read change, as may `enabled`
+  (`enabled: () => this.id() !== ""`) — the shape every detail screen has, where the id is not known when the
+  component is created. Standalone, `OnPush`, no zone.
+
+- **A replayed failure is reported as a failure.** A command that failed after its effect had happened records that
+  failure, and every retry is answered with it (spec 12 §4.4). TypeScript then marked the replaying op *succeeded*:
+  a later op reading its result through `$ref` ran with nothing to read, and a command that never succeeds counted as
+  one that always does. It now ends the op the way the first run ended, as the JVM already did. The JVM in turn
+  counted a command that sent its own error frame as neither success nor failure, and reported it to instrumentation
+  as `failed` rather than as its code; both now match TypeScript.
 
 - **A server whose relay is still connecting can now shut down.** `close()` waited for the relay subscription with no
   bound, in both runtimes. A relay that is re-establishing its connection has nothing to stop yet — `readiness()`

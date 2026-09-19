@@ -29,6 +29,7 @@ that runs Rayfold in your browser.
 | A server on Workers, Deno, Bun or Hono | `npm install @rayfold/server` | [Runtimes](docs/guide/runtimes.md) |
 | A web or Node.js client | `npm install @rayfold/client` | [Quickstart](docs/guide/quickstart.md#4-call-it) |
 | A React app | `npm install @rayfold/react @rayfold/client` | [React](docs/guide/react.md) |
+| An Angular app | `npm install @rayfold/angular @rayfold/client` | [Angular](docs/guide/angular.md) |
 | Resolvers over Postgres | `npm install @rayfold/postgres` | [Postgres](docs/guide/postgres.md) |
 | OpenTelemetry tracing | `npm install @rayfold/otel` | [Tracing](docs/guide/tracing.md) |
 | An explorer next to the endpoint | `npm install @rayfold/explorer` | [Explorer](docs/guide/explorer.md) |
@@ -40,7 +41,9 @@ that runs Rayfold in your browser.
 | A Java server | `dev.rayfold:rayfold-java` | [Java](docs/guide/java-spring.md) |
 | A Spring Boot app | `dev.rayfold:rayfold-spring-boot-starter` | [Spring Boot](docs/guide/java-spring.md#spring-boot) |
 
-Version 0.1.0 is on npm and Maven Central; the [changelog](CHANGELOG.md) lists what it holds.
+Version 0.1.0 is on npm and Maven Central; the [changelog](CHANGELOG.md) lists what it holds. **0.2.0 is not
+published yet** — it is written and tested here, and [versioning](docs/versioning.md) says which feature came with
+which version. `@rayfold/angular` is one of the 0.2.0 ones, so the line above will not find it yet.
 
 ## Sixty-second tour
 
@@ -123,6 +126,7 @@ npm run smoke:maven                        # publish the JVM modules locally and
 | [`packages/server`](packages/server) | the server runtime: executor, batches, idempotency, policies, cost, cache headers, live queries, uploads, `@http` bindings, OpenAPI, WebSocket, MCP; a fetch handler with a Node adapter over it, a relay to join a fleet, and drain and readiness for a rolling deploy |
 | [`packages/client`](packages/client) | normalized cache with patches, batches with `$ref`, watch/live, uploads, an offline queue, fetch and WebSocket transports, RB |
 | [`packages/react`](packages/react) | `useQuery`, `useLive`, `useCommand` |
+| [`packages/angular`](packages/angular) | `injectQuery`, `injectLive`, `injectCommand`, as signals |
 | [`packages/rb`](packages/rb) | Rayfold Binary codec |
 | [`packages/cli`](packages/cli) | `rayfold check \| lock \| hash \| explain \| gen ts\|kotlin\|java\|graphql \| shapes \| import openapi\|graphql \| mock \| lsp \| dev` |
 | [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass, and the vectors: a pure function and the answer the specification says it has |
