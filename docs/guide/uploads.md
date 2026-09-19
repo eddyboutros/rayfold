@@ -12,7 +12,7 @@ Turn the route on by giving the server somewhere to put the bytes. Without a sto
 ```ts
 import { listen, MemoryUploadStore } from "@rayfold/server";
 
-const uploads = new MemoryUploadStore(); // for tests and one small server; see below for a real one
+const uploads = new MemoryUploadStore(); // for tests and one small server; FileUploadStore writes them down
 await listen(server, 4000, { viewer, uploads: { store: uploads, maxBytes: 8 * 1024 * 1024 } });
 ```
 
@@ -88,8 +88,23 @@ interface UploadStore {
 }
 ```
 
+`FileUploadStore` streams them to a directory instead, so what the server holds at once is one chunk whatever the
+file weighs — the store to reach for when the bytes are files:
+
+```ts
+import { FileUploadStore } from "@rayfold/server";
+
+const uploads = new FileUploadStore({ dir: "/var/lib/app/uploads" }); // ttlMs is yours to set
+```
+
+It is a staging area, not storage: whatever no command claims is swept once its lifetime passes. An application
+that keeps files moves them somewhere of its own and hands out a URL — see
+[examples/document-store](https://github.com/eddyboutros/rayfold/tree/main/examples/document-store), which does
+exactly that and serves the bytes from `GET /files/{id}`.
+
 For a fleet, the store has to be shared the way the idempotency records are ([Deployment](deployment.md)): an upload
-that landed on one server is named by a command that may run on another. `PgUploadStore` keeps them in Postgres, in
+that landed on one server is named by a command that may run on another. A directory works when it is a shared
+volume; otherwise use one of the two below. `PgUploadStore` keeps them in Postgres, in
 the same table the JVM's `JdbcUploadStore` creates, so a mixed fleet shares one:
 
 ```ts
