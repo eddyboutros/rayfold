@@ -28,10 +28,35 @@ different things: whatever nobody claims is swept, and what a command kept stays
 In production `FileStore` is an object store and `url` points at it or at a CDN in front of it. Nothing else in the
 schema or the resolvers changes.
 
+## Sharing, without an account
+
+`shareDocument` mints a **capability token**: a short-lived, signed reference to a viewer that exists only to read
+one document. Nothing is stored — the token carries who it speaks for, the operations it may call and when it
+expires, and it is signed, so verifying it needs no lookup.
+
+```ts
+const share = await client.command("shareDocument", { id: doc.id, ttlMs: 3_600_000 });
+// share.token -> "rfcap1.…", good for `document` and `revisions`, for this document, for an hour
+```
+
+Two rules do the work, and neither is an `if` in a resolver:
+
+- **the schema.** `Document` carries `@allow(read: viewer.id == ownerId || viewer.documentId == id)`. The viewer a
+  token speaks for has a `documentId` and no account, so it satisfies the second half for exactly one document.
+  Asking for another reads `null` — a refused entity at a nullable position is not there rather than forbidden, so
+  the holder cannot even learn it exists.
+- **the token.** It names `["document", "revisions"]`, and the batch refuses anything else before a resolver runs.
+  It cannot be widened: attenuation only ever narrows.
+
+The bytes are covered by the same rule. `GET /files/{id}` looks up which document a revision belongs to and applies
+it, so an unguessable URL is not a permission. A browser following a share link cannot set a header, so the token
+is accepted as `?token=` too — the trade-off signed URLs make everywhere: it is visible in logs and referrers, which
+is what the short lifetime is for.
+
 ## What it exercises
 
-The upload extension end to end, `@version` conditional writes (`ifVersion`, and the `VersionConflict` that comes
-back carrying both versions so a client can repair without a refetch), declared errors by name, loaders for
-`owner` and `by`, and per-viewer reads.
+The upload extension end to end, **capability tokens** for sharing, `@version` conditional writes (`ifVersion`, and
+the `VersionConflict` that comes back carrying both versions so a client can repair without a refetch), entity-level
+policies, declared errors by name, loaders for `owner` and `by`, and per-viewer reads.
 
 `src/app.test.ts` drives all of it over real HTTP with the real client.

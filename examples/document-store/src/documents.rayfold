@@ -10,10 +10,17 @@ entity Member {
   name: String
 }
 
-"""A file someone keeps here. `url` is where its bytes are; nothing else carries them."""
-entity Document @cache(maxAge: 0s, scope: private) {
+"""
+A file someone keeps here. `url` is where its bytes are; nothing else carries them.
+
+Who may read it is one expression: its owner, or the holder of a share for this document and no other. A share is a
+capability token, so that second viewer never existed as an account and cannot be anything but this.
+"""
+entity Document @cache(maxAge: 0s, scope: private) @allow(read: viewer.id == ownerId || viewer.documentId == id) {
   id: ID
   name: String
+  """Who it belongs to. The policy above reads it; `owner` below is the same person, loaded."""
+  ownerId: ID
   contentType: String
   """Bytes of the current revision."""
   size: Int
@@ -34,6 +41,17 @@ entity Revision {
   url: String
   at: Instant
   by: Member
+}
+
+"""A link to one document, for someone who has no account here."""
+entity Share {
+  id: ID
+  documentId: ID
+  """The capability token. Hand this to whoever the document is for; it carries its own permission."""
+  token: String
+  expiresAt: Instant
+  """What the holder may do. Reading only, for now."""
+  ops: [String]
 }
 
 error NotFound { id: ID }
@@ -67,6 +85,15 @@ command renameDocument(id: ID, name: String): Document
   emits DocumentChanged
   @allow(write: viewer != null)
   @simulate
+
+"""
+Hand someone a link to one document. What comes back is a capability token: it speaks for a viewer that can read
+this document and nothing else, it may call only the operations it names, and it stops working when it expires.
+No account is created, nothing is stored, and it cannot be widened by whoever holds it.
+"""
+command shareDocument(id: ID, ttlMs: Int = 3600000 @range(min: 1000, max: 86400000)): Share
+  throws NotFound | Forbidden
+  @allow(write: viewer != null)
 
 """Deletes the document, its revisions and their bytes."""
 command deleteDocument(id: ID): Document

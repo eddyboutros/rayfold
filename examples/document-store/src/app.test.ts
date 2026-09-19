@@ -3,9 +3,10 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { readdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
+import { Capabilities } from "@rayfold/server";
 import { RayfoldClient, createFetchTransport, type RayfoldClientError } from "@rayfold/client";
 import { createDocumentStore, documentStoreHttp, scratchDirs, type Bookkeeping } from "./documents.ts";
-import type { Document } from "./resolvers.ts";
+import type { Document, Share } from "./resolvers.ts";
 
 /**
  * The whole path, over real HTTP: bytes to the upload route, a command that keeps them, and a GET of the `url` the
@@ -16,9 +17,19 @@ let base: string;
 let dirs: Bookkeeping;
 let shop: ReturnType<typeof createDocumentStore>;
 
+/** A clock the tests move, so an expiry is a decision and not a wait. */
+const clock = {
+  t: 1_700_000_000_000,
+  now: () => clock.t,
+  set: (v: number) => {
+    clock.t = v;
+  },
+};
+
 beforeEach(async () => {
+  clock.set(1_700_000_000_000);
   dirs = await scratchDirs();
-  shop = createDocumentStore(dirs);
+  shop = createDocumentStore(dirs, { caps: new Capabilities({ secret: "a-test-secret-of-sufficient-length", now: clock.now }) });
   http = documentStoreHttp(shop);
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
@@ -46,6 +57,10 @@ async function upload(who: string, bytes: Uint8Array, type = "text/plain"): Prom
   return ((await res.json()) as { id: string }).id;
 }
 
+/** Fetches a document's bytes as `who` — a signed-in person, or a share's token. */
+const download = (url: string, who?: string) =>
+  fetch(`${base}${url}`, who ? { headers: { authorization: `Bearer ${who}` } } : undefined);
+
 const text = (s: string) => new TextEncoder().encode(s);
 const SHAPE = "{ id name contentType size url version owner { name } }";
 
@@ -58,7 +73,7 @@ it("keeps an uploaded file, answers with its url, and serves the bytes from ther
 
   // the answer carries a url and no bytes; the bytes are one file, and this is where they are served
   expect(JSON.stringify(doc)).not.toContain("the first draft");
-  const served = await fetch(`${base}${doc.url}`);
+  const served = await download(doc.url, "ada");
   expect(served.status).toBe(200);
   expect(await served.text()).toBe("the first draft");
   expect(await readdir(dirs.files)).toHaveLength(1);
@@ -71,9 +86,9 @@ it("replaces the bytes, keeps the old revision, and both urls still serve", asyn
 
   expect(second).toMatchObject({ id: first.id, version: 2, size: 14 });
   expect(second.url).not.toBe(first.url);
-  expect(await (await fetch(`${base}${second.url}`)).text()).toBe("two and a half");
+  expect(await (await download(second.url, "ada")).text()).toBe("two and a half");
   // the old revision is still readable: a replace adds, it does not overwrite
-  expect(await (await fetch(`${base}${first.url}`)).text()).toBe("one");
+  expect(await (await download(first.url, "ada")).text()).toBe("one");
 
   const history = await ada.query<{ items: Array<{ version: number; size: number; by: { name: string } }> }>(
     "revisions",
@@ -105,7 +120,7 @@ it("refuses a replace that would land on top of someone else's, and leaves no fi
   // guard: the same write with the version it actually has goes through
   const won = await ada.command<Document>("replaceContent", { id: doc.id, upload: stale }, { shape: SHAPE, ifVersion: 2 });
   expect(won.version).toBe(3);
-  expect(await (await fetch(`${base}${won.url}`)).text()).toBe("three");
+  expect(await (await download(won.url, "ada")).text()).toBe("three");
 });
 
 it("will not let someone else replace or read a document that is not theirs", async () => {
@@ -115,7 +130,12 @@ it("will not let someone else replace or read a document that is not theirs", as
     .command<Document>("replaceContent", { id: doc.id, upload: await upload("grace", text("mine now")) }, { shape: SHAPE })
     .then(() => null, (e: RayfoldClientError) => e);
   expect(refused?.is("Forbidden")).toBe(true);
-  expect(await (await fetch(`${base}${doc.url}`)).text()).toBe("private");
+
+  // the url is not a permission: knowing it is not enough, for Grace or for nobody at all
+  expect((await download(doc.url, "grace")).status).toBe(404);
+  expect((await download(doc.url)).status).toBe(401);
+  // guard: its owner still reads it
+  expect(await (await download(doc.url, "ada")).text()).toBe("private");
 
   const hers = await client("grace").query<{ items: Document[] }>("documents", {}, { shape: "{ items { id } }" });
   expect(hers.items).toEqual([]);
@@ -128,7 +148,7 @@ it("takes the bytes with the document when it is deleted", async () => {
 
   await ada.command("deleteDocument", { id: doc.id }, { shape: "{ id }" });
   expect(await readdir(dirs.files)).toEqual([]);
-  expect((await fetch(`${base}${doc.url}`)).status).toBe(404);
+  expect((await download(doc.url, "ada")).status).toBe(404);
 });
 
 it("says so when the upload a command names has already gone", async () => {
@@ -150,4 +170,64 @@ it("leaves the upload directory empty once commands have claimed what arrived", 
 
   expect(await readdir(dirs.uploads)).toEqual([]);
   expect(await readdir(dirs.files)).toHaveLength(2);
+});
+
+it("a share reads that one document and its bytes, and nothing else", async () => {
+  const ada = client("ada");
+  const doc = await ada.command<Document>("createDocument", { upload: await upload("ada", text("for the lawyer")), name: "contract.txt" }, { shape: SHAPE });
+  const other = await ada.command<Document>("createDocument", { upload: await upload("ada", text("not for them")), name: "salaries.txt" }, { shape: SHAPE });
+
+  const share = await ada.command<Share>("shareDocument", { id: doc.id }, { shape: "{ id documentId token ops }" });
+  expect(share).toMatchObject({ documentId: doc.id, ops: ["document", "revisions"] });
+  expect(share.token).toMatch(/^rfcap1\./);
+
+  // whoever holds the token is not an account here, and has never signed in
+  const guest = client(share.token);
+  expect(await guest.query<Document>("document", { id: doc.id }, { shape: "{ id name }" })).toMatchObject({ name: "contract.txt" });
+  expect(await (await download(doc.url, share.token)).text()).toBe("for the lawyer");
+
+  // the same token, pointed at Ada's other document: the policy on Document refuses it, and a refused entity at a
+  // nullable position reads null rather than erroring — the holder cannot even tell it is there
+  expect(await guest.query<Document | null>("document", { id: other.id }, { shape: "{ id name }" })).toBeNull();
+  expect((await download(other.url, share.token)).status).toBe(404);
+});
+
+it("a share cannot change anything, whatever it is asked to run", async () => {
+  const ada = client("ada");
+  const doc = await ada.command<Document>("createDocument", { upload: await upload("ada", text("read only")), name: "contract.txt" }, { shape: SHAPE });
+  const share = await ada.command<Share>("shareDocument", { id: doc.id }, { shape: "{ token }" });
+  const guest = client(share.token);
+
+  for (const [op, args] of [
+    ["renameDocument", { id: doc.id, name: "mine now" }],
+    ["deleteDocument", { id: doc.id }],
+    ["shareDocument", { id: doc.id }],
+  ] as const) {
+    const refused = await guest.command(op, args, { shape: "{ id }" }).then(() => null, (e: RayfoldClientError) => e);
+    expect(refused?.code, op).toBe("permission_denied");
+  }
+
+  // nothing moved: the document is as its owner left it
+  expect(await ada.query<Document>("document", { id: doc.id }, { shape: "{ name version }" })).toMatchObject({ name: "contract.txt", version: 1 });
+});
+
+it("a share stops working when it expires", async () => {
+  const ada = client("ada");
+  const doc = await ada.command<Document>("createDocument", { upload: await upload("ada", text("briefly")), name: "contract.txt" }, { shape: SHAPE });
+  const share = await ada.command<Share>("shareDocument", { id: doc.id, ttlMs: 1000 }, { shape: "{ token expiresAt }" });
+
+  // guard: it works while it lives, so what follows is expiry and not a token that never worked
+  expect(await client(share.token).query<Document>("document", { id: doc.id }, { shape: "{ id }" })).toMatchObject({ id: doc.id });
+
+  clock.set(clock.now() + 1001);
+  const stale = await client(share.token).query<Document>("document", { id: doc.id }, { shape: "{ id }" }).then(() => null, (e: RayfoldClientError) => e);
+  expect(stale?.code).toBe("unauthenticated");
+  expect((await download(doc.url, share.token)).status).toBe(401);
+});
+
+it("a share is refused for a document that is not yours", async () => {
+  const doc = await client("ada").command<Document>("createDocument", { upload: await upload("ada", text("private")), name: "contract.txt" }, { shape: SHAPE });
+
+  const refused = await client("grace").command<Share>("shareDocument", { id: doc.id }, { shape: "{ token }" }).then(() => null, (e: RayfoldClientError) => e);
+  expect(refused?.is("Forbidden")).toBe(true);
 });

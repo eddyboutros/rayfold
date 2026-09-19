@@ -6,7 +6,7 @@
  * only `url`.
  */
 import { RayfoldError, ok, type Resolvers } from "@rayfold/server/core";
-import type { UploadStore } from "@rayfold/server";
+import type { Capabilities, UploadStore } from "@rayfold/server";
 import type { FileStore } from "./files.ts";
 
 export interface Member {
@@ -37,8 +37,22 @@ export interface Revision {
 
 export interface Viewer {
   id: string;
-  name: string;
+  name?: string;
+  /** Set only on the viewer a share's token speaks for: the one document it may read. */
+  documentId?: string;
 }
+
+/** What a share hands out. Nothing is stored: the token carries its own permission and expiry. */
+export interface Share {
+  id: string;
+  documentId: string;
+  token: string;
+  expiresAt: number;
+  ops: string[];
+}
+
+/** The operations a share's holder may call. Reading only: a share is a link, not an account. */
+export const SHARED_OPS = ["document", "revisions"];
 
 export function seed() {
   return {
@@ -56,6 +70,8 @@ export interface Parts {
   store: Store;
   files: FileStore;
   uploads: UploadStore;
+  /** Signs the tokens `shareDocument` hands out. */
+  caps: Capabilities;
   /** Ids, injectable so a test can say what a document and its revisions are called. */
   id?: () => string;
   /** Wall clock, injectable for the same reason. */
@@ -63,7 +79,7 @@ export interface Parts {
 }
 
 // #region resolvers
-export function resolvers({ store, files, uploads, id = () => crypto.randomUUID(), now = Date.now }: Parts): Resolvers {
+export function resolvers({ store, files, uploads, caps, id = () => crypto.randomUUID(), now = Date.now }: Parts): Resolvers {
   const find = (documentId: string) => {
     const doc = store.documents.get(documentId);
     if (!doc) throw RayfoldError.domain("NotFound", { id: documentId }, `No document ${documentId}`);
@@ -156,6 +172,16 @@ export function resolvers({ store, files, uploads, id = () => crypto.randomUUID(
         doc.updatedAt = now();
         return ok(doc, { emit: [{ event: "DocumentChanged", payload: { documentId: doc.id, version: doc.version } }] });
       },
+
+      // #region share
+      shareDocument: ({ id: documentId, ttlMs }: { id: string; ttlMs: number }, ctx) => {
+        const doc = mine(find(documentId), ctx.viewer as Viewer);
+        // the viewer the token speaks for is not an account: it exists only to satisfy the policy on Document,
+        // which reads viewer.documentId. so a share cannot be turned into a way to read anything else.
+        const token = caps.mint({ id: `share:${doc.id}`, documentId: doc.id }, { ops: SHARED_OPS, ttlMs, iss: "document-store" });
+        return ok({ id: id(), documentId: doc.id, token, expiresAt: now() + ttlMs, ops: SHARED_OPS });
+      },
+      // #endregion share
 
       deleteDocument: async ({ id: documentId }: { id: string }, ctx) => {
         const doc = mine(find(documentId), ctx.viewer as Viewer);
