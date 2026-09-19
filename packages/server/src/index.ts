@@ -2,6 +2,7 @@ export * from "./core.ts";
 export { createHttpHandler, listen, shutdown, readiness, applyCacheHeaders, type HttpOptions } from "./http.ts";
 export { createFetchHandler, statsOf, type FetchOptions } from "./fetch.ts";
 export { MemoryUploadStore, type Upload, type UploadMeta, type UploadOptions, type UploadStore } from "./uploads.ts";
+export { FileUploadStore, type FileUploadOptions } from "./upload-file.ts";
 export { createBindingHandler, bindingsOf, type Binding, type BindingOptions } from "./bindings.ts";
 export { openApiFor } from "./openapi.ts";
 export { attachWebSocket, encodeFrame, decodeFrame, SUBPROTOCOL, type WsOptions } from "./ws.ts";

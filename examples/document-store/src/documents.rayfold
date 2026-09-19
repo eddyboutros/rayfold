@@ -1,0 +1,74 @@
+"""
+A document store: upload a file, replace it, keep every revision.
+
+The bytes never travel in a batch and never sit in a row. They arrive on the upload route, the command moves them
+into the store's own directory, and everything after that names a document by its id and reads its bytes from `url`.
+"""
+
+entity Member {
+  id: ID
+  name: String
+}
+
+"""A file someone keeps here. `url` is where its bytes are; nothing else carries them."""
+entity Document @cache(maxAge: 0s, scope: private) {
+  id: ID
+  name: String
+  contentType: String
+  """Bytes of the current revision."""
+  size: Int
+  """Where to read the bytes. Serve them from wherever you keep them; this store serves them itself."""
+  url: String
+  """Bumped on every change. Send it back as ifVersion (or If-Match) so a replace cannot lose someone else's."""
+  version: Int @version
+  updatedAt: Instant
+  owner: Member
+}
+
+"""What the document was before. Every replace keeps one, so nothing is overwritten in place."""
+entity Revision {
+  id: ID
+  documentId: ID
+  version: Int
+  size: Int
+  url: String
+  at: Instant
+  by: Member
+}
+
+error NotFound { id: ID }
+error Forbidden { id: ID }
+"""The upload named by a command was never there, or its lifetime ran out before the command arrived."""
+error UploadGone { upload: ID }
+
+event DocumentChanged { documentId: ID, version: Int }
+
+query document(id: ID): Document? @allow(read: viewer != null)
+query documents(page: PageArgs = { first: 20 }): Page<Document> @allow(read: viewer != null) @cost(base: 1, perItem: 1)
+query revisions(documentId: ID, page: PageArgs = { first: 20 }): Page<Revision> @allow(read: viewer != null) @cost(base: 1, perItem: 1)
+
+"""Take an upload and keep it as a document. The upload is consumed: its bytes move, they are not copied and left."""
+command createDocument(upload: ID, name: String): Document
+  throws UploadGone
+  emits DocumentChanged
+  @allow(write: viewer != null)
+
+"""
+Replace a document's bytes, keeping the old ones as a revision. Send `ifVersion` with the version you read, and a
+replace that would land on top of someone else's is refused with `version_conflict` instead.
+"""
+command replaceContent(id: ID, upload: ID): Document
+  throws NotFound | Forbidden | UploadGone
+  emits DocumentChanged
+  @allow(write: viewer != null)
+
+command renameDocument(id: ID, name: String): Document
+  throws NotFound | Forbidden
+  emits DocumentChanged
+  @allow(write: viewer != null)
+  @simulate
+
+"""Deletes the document, its revisions and their bytes."""
+command deleteDocument(id: ID): Document
+  throws NotFound | Forbidden
+  @allow(write: viewer != null)
