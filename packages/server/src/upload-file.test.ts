@@ -161,6 +161,22 @@ describe("uploads on disk", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
+  it("keeps working when the directory it writes to goes away underneath it", async () => {
+    const store = new FileUploadStore({ dir });
+    const { handler } = build(store);
+    expect((await post(handler, filling(8))).status).toBe(201);
+
+    // a remounted volume, an operator clearing it, a tmpfs that reset. a store that made the directory once and
+    // remembered doing so answered 500 to every upload after this, for the life of the process.
+    await rm(dir, { recursive: true, force: true });
+
+    const after = await post(handler, filling(16));
+    expect(after.status).toBe(201);
+    const kept = (await after.json()) as { id: string; size: number };
+    expect(kept.size).toBe(16);
+    expect(await store.open(kept.id)).toBeDefined();
+  });
+
   it("delete takes the bytes and the metadata together", async () => {
     const store = new FileUploadStore({ dir });
     const { handler } = build(store);

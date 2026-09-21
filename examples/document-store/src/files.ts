@@ -18,8 +18,6 @@ import { pipeline } from "node:stream/promises";
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export class FileStore {
-  private ready: Promise<void> | undefined;
-
   constructor(
     private readonly dir: string,
     /** What `url` is prefixed with. A path here; an object store's origin in production. */
@@ -33,8 +31,8 @@ export class FileStore {
   /** Writes the bytes under [id] and answers how many there were. */
   async write(id: string, body: ReadableStream<Uint8Array>): Promise<number> {
     if (!ID.test(id)) throw new Error(`FileStore: ${JSON.stringify(id)} is not a usable name`);
-    this.ready ??= mkdir(this.dir, { recursive: true }).then(() => undefined);
-    await this.ready;
+    // every time: a cached mkdir outlives the directory it made, and a volume that goes away then fails every write
+    await mkdir(this.dir, { recursive: true });
     const path = this.path(id);
     try {
       await pipeline(Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(path));

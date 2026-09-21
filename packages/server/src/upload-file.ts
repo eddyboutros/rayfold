@@ -39,7 +39,6 @@ export class FileUploadStore implements UploadStore {
   private readonly ttlMs: number;
   private readonly now: () => number;
   private readonly nextId: () => string;
-  private ready: Promise<void> | undefined;
 
   constructor(opts: FileUploadOptions) {
     this.dir = opts.dir;
@@ -49,7 +48,10 @@ export class FileUploadStore implements UploadStore {
   }
 
   async put(body: ReadableStream<Uint8Array>, meta: Omit<UploadMeta, "size" | "at">): Promise<Upload> {
-    await this.mkdir();
+    // every time, not once: a directory that goes away — a remounted volume, an operator clearing it, a tmpfs that
+    // reset — used to leave a cached promise saying it was there, and every upload after that failed until restart.
+    // `mkdir -p` on a directory that exists is one cheap syscall.
+    await mkdir(this.dir, { recursive: true });
     const id = this.nextId();
     if (!ID.test(id)) throw new Error(`FileUploadStore: an id must match ${ID}, got ${JSON.stringify(id)}`);
     const bytes = this.bytesPath(id);
@@ -114,11 +116,5 @@ export class FileUploadStore implements UploadStore {
 
   private metaPath(id: string): string {
     return join(this.dir, `${id}.json`);
-  }
-
-  /** One mkdir for the life of the store, awaited by everything that writes. */
-  private mkdir(): Promise<void> {
-    this.ready ??= mkdir(this.dir, { recursive: true }).then(() => undefined);
-    return this.ready;
   }
 }
