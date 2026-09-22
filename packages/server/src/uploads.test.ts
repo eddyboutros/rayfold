@@ -19,7 +19,7 @@ const KEY = "0123456789abcdef";
 const viewer = { id: "u1" };
 const bytes = (n: number) => new Uint8Array(n).fill(65);
 
-function build(opts: { store?: MemoryUploadStore; maxBytes?: number; viewerRequired?: boolean; who?: unknown } = {}) {
+function build(opts: { store?: MemoryUploadStore; maxBytes?: number; viewerRequired?: boolean; who?: unknown; cors?: string } = {}) {
   const store = opts.store ?? new MemoryUploadStore();
   const taken: Array<{ userId: string; size: number }> = [];
   const server = createRayfoldServer({
@@ -47,6 +47,8 @@ function build(opts: { store?: MemoryUploadStore; maxBytes?: number; viewerRequi
   const handler = createFetchHandler(server, {
     viewer: () => ("who" in opts ? opts.who : viewer),
     uploads: { store, ...(opts.maxBytes !== undefined ? { maxBytes: opts.maxBytes } : {}), ...(opts.viewerRequired !== undefined ? { viewerRequired: opts.viewerRequired } : {}) },
+    // a page on another origin, for the one test that speaks as a browser's preflight
+    ...(opts.cors ? { cors: opts.cors, allowedOrigins: [opts.cors] } : {}),
   });
   return { store, handler, taken };
 }
@@ -88,6 +90,27 @@ describe("an upload arrives on its own route", () => {
     expect(await answer.json()).toMatchObject({ ok: { $type: "Avatar", id: "u1", bytes: 2_048 } });
     expect(taken).toEqual([{ userId: "u1", size: 2_048 }]);
     expect(store.size).toBe(0); // the resolver took what it needed and said so
+  });
+
+  it("tells a browser on another origin that the upload headers are allowed", async () => {
+    // a preflight, as a browser sends one before an upload from a page on a different origin. Node's fetch does
+    // not enforce CORS, so nothing else here would notice a header missing from this list; a browser refuses the
+    // whole request over it, before the server sees a byte.
+    const { handler } = build({ cors: "https://app.example" });
+    const res = await handler(
+      new Request("http://api.example/rayfold/uploads", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://app.example",
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "authorization,content-type,rayfold-upload-name,rayfold-upload-type",
+        },
+      }),
+    );
+    expect(res.status).toBe(204);
+    const allowed = (res.headers.get("access-control-allow-headers") ?? "").toLowerCase().split(/,\s*/);
+    expect(allowed).toContain("rayfold-upload-name");
+    expect(allowed).toContain("rayfold-upload-type");
   });
 
   it("refuses a content type a page could send cross-site without asking first", async () => {

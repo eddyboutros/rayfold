@@ -380,7 +380,9 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
     }
     if (opts.cors) {
       common["Access-Control-Allow-Origin"] = opts.cors;
-      common["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe";
+      // the upload route's own two are here as well: a browser on another origin preflights an upload, and a
+      // header the preflight does not allow makes the whole request fail before the server ever sees it
+      common["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe, Rayfold-Upload-Name, Rayfold-Upload-Type";
       common["Access-Control-Allow-Methods"] = "GET, POST, QUERY, OPTIONS";
       if (request.method === "OPTIONS") return withCommon(new Response(null, { status: 204 }));
     }
