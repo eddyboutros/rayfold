@@ -72,7 +72,8 @@ command refund(orderId: ID): Order @allow(write: viewer.caps.iss == "support-con
 
 ## Narrow and pass on
 
-A holder can derive a smaller token from one it has, without the secret ever leaving the server that mints it:
+A holder that wants a narrower token asks the server that minted it, which derives one without the secret ever
+leaving it:
 
 ```ts
 const narrower = caps.attenuate(token, { ops: ["book"], ttlMs: 10_000 });

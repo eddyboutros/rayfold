@@ -29,6 +29,12 @@ Rayfold-Safe: true
 
 :::
 
+A read goes out as a `POST` because a request is a batch: several operations, each with its arguments and shape,
+which do not fit in a URL. `Rayfold-Safe: true` marks it as a read. The server then refuses anything in it that is not
+a query, and the answer may be cached like a `GET`. HTTP's `QUERY` method, a `POST` that is safe by definition, says
+the same where the client and the proxies support it, and a single query can also be a plain `GET` by URL. Commands
+go as a plain `POST`. [Caching](./caching.md#which-requests-are-cacheable) has all three forms.
+
 The answer is a frame for operation 1:
 
 ```json
@@ -45,7 +51,7 @@ The answer is a frame for operation 1:
 }
 ```
 
-`$type` names the type of each entity in the result. `meta.cost` is what the query cost against the caller's budget,
+`$type` names the type of each entity in the result. `meta.cost` is what the query counts against the batch's budget,
 and `fin` says this operation is finished.
 
 ## What a shape can say
@@ -140,6 +146,9 @@ get one lookup per level however many rows there are, without writing a DataLoad
 npx rayfold explain src/bookshop.rayfold books --shape "{ items { title author { name } } }"
 ```
 
+`rayfold` comes with `@rayfold/cli`, installed in the project with `npm install --save-dev @rayfold/cli`; without it,
+`npx @rayfold/cli` runs it instead.
+
 ### Tuning a loader
 
 A loader gets every parent at once by default, which is what avoids the N+1. `@load(single)` marks a field whose
@@ -187,7 +196,7 @@ a row at a boundary.
 ## What a query costs
 
 Before it runs anything, the server works out what a batch can cost from the page sizes it asks for and the schema's
-`@cost` hints, and refuses a batch over the caller's budget (1000 by default) with
+`@cost` hints, and refuses a batch over the server's per-batch budget (1000 by default) with
 [`resource_exhausted`](/errors/resource_exhausted). Loading rows costs; reading a scalar field of a row already
 loaded does not. Each frame reports its cost in `meta.cost`: 2 for the book with its author above, 4 for the page of
 two books.

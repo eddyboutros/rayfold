@@ -5,7 +5,8 @@
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { createHttpHandler, createRayfoldServer, type RayfoldServer } from "@rayfold/server";
-import { resolvers, seed, viewerFrom, type Store } from "./resolvers.ts";
+import { viewerFrom } from "./auth.ts";
+import { resolvers, seed, type Store } from "./resolvers.ts";
 
 const schema = readFileSync(new URL("./bookshop.rayfold", import.meta.url), "utf8");
 

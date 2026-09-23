@@ -41,17 +41,18 @@ class ServerTest {
     private fun JsonObject.text(vararg path: String): String =
         path.dropLast(1).fold(this) { o, key -> o.getValue(key).jsonObject }.getValue(path.last()).jsonPrimitive.content
 
-    private fun request(ops: JsonObject, token: String?): HttpRequest {
+    /** A request signed in as [token] ("customer" or "staff", with a token as the identity provider issues one), or as nobody. */
+    private fun request(ops: JsonObject, token: String?, bearer: String? = token?.let { devToken(if (it == "staff") "s1" else "u1", it) }): HttpRequest {
         val body = buildJsonObject { put("ops", JsonArray(listOf(ops))) }
         val request = HttpRequest.newBuilder(endpoint)
             .timeout(Duration.ofSeconds(5))
             .header("Content-Type", "application/rayfold+json")
             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-        token?.let { request.header("Authorization", "Bearer $it") }
+        bearer?.let { request.header("Authorization", "Bearer $it") }
         return request.build()
     }
 
-    /** Sends a batch of one op, as the viewer [token] names or as nobody, and returns the op's one frame. */
+    /** Sends a batch of one op, signed in as [token] or as nobody, and returns the op's one frame. */
     private fun send(op: JsonObject, token: String?): JsonObject {
         val response = client.send(request(op, token), HttpResponse.BodyHandlers.ofString())
         assertEquals(200, response.statusCode(), response.body())
@@ -238,5 +239,30 @@ class ServerTest {
         // the page carries the endpoint it talks to and the title startServer gave it
         assertContains(page.body(), """<script type="application/json" id="config">{"endpoint":"/rayfold","title":"Bookshop"}</script>""")
         assertEquals(404, get("/elsewhere").statusCode())
+    }
+
+    @Test
+    fun `a role is believed only from a token that verifies, and a forged or foreign one is refused before anything runs`() {
+        fun signed(key: String, issuer: String = "http://localhost:4000/dev", audience: String = "bookshop", expires: Long = System.currentTimeMillis() + 3_600_000): String {
+            val claims = com.nimbusds.jwt.JWTClaimsSet.Builder().subject("s1").issuer(issuer).audience(audience).claim("role", "staff")
+                .expirationTime(java.util.Date(expires)).build()
+            return com.nimbusds.jwt.SignedJWT(com.nimbusds.jose.JWSHeader(com.nimbusds.jose.JWSAlgorithm.HS256), claims)
+                .apply { sign(com.nimbusds.jose.crypto.MACSigner(key.toByteArray())) }.serialize()
+        }
+        val restock = op("restock", """{"bookId":"b2","qty":4}""", "{ id stock }", key = UUID.randomUUID().toString())
+        val devKey = "bookshop development key, not a secret"
+        val refused = listOf(
+            "staff", // the role's name is not a credential
+            signed("a key this server does not hold, at least 32 bytes"),
+            signed(devKey, expires = 1_000),
+            signed(devKey, issuer = "https://someone-else.example"),
+            signed(devKey, audience = "another-app"),
+        ).map { bearer -> client.send(request(restock, token = null, bearer = bearer), HttpResponse.BodyHandlers.ofString()).let { it.statusCode() to json(it.body()).text("detail") } }
+        assertEquals(List(5) { 401 to "Invalid or expired token" }, refused)
+        assertEquals(0, store.book("b2")?.stock)
+        // guard: the same claims, signed with the key and for this issuer and audience, are believed
+        val ok = client.send(request(restock, token = null, bearer = signed(devKey)), HttpResponse.BodyHandlers.ofString())
+        assertEquals(200, ok.statusCode(), ok.body())
+        assertEquals(4, store.book("b2")?.stock)
     }
 }

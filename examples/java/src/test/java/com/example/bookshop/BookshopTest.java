@@ -1,5 +1,10 @@
 package com.example.bookshop;
 
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import com.sun.net.httpserver.HttpServer;
 import dev.rayfold.java.Rayfold;
 import org.junit.jupiter.api.AfterEach;
@@ -11,7 +16,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,16 +53,25 @@ class BookshopTest {
         return URI.create("http://127.0.0.1:" + http.getAddress().getPort() + path);
     }
 
-    /** Sends a batch of one op, as the viewer the token names or as nobody, and returns the op's one frame. */
-    @SuppressWarnings("unchecked")
-    Map<String, Object> send(Map<String, Object> op, String token) throws Exception {
+    /** A request for one op with the given bearer token, or none. */
+    HttpRequest request(Map<String, Object> op, String bearer) {
         String body = Rayfold.toJson(Map.of("ops", List.of(op))).toString();
         HttpRequest.Builder request = HttpRequest.newBuilder(uri("/rayfold"))
             .timeout(Duration.ofSeconds(5))
             .header("Content-Type", "application/rayfold+json")
             .POST(HttpRequest.BodyPublishers.ofString(body));
-        if (token != null) request.header("Authorization", "Bearer " + token);
-        HttpResponse<String> response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        if (bearer != null) request.header("Authorization", "Bearer " + bearer);
+        return request.build();
+    }
+
+    /**
+     * Sends a batch of one op, signed in as {@code role} ("customer" or "staff", with a token as the identity provider
+     * issues one) or as nobody, and returns the op's one frame.
+     */
+    @SuppressWarnings("unchecked")
+    Map<String, Object> send(Map<String, Object> op, String role) throws Exception {
+        String bearer = role == null ? null : Auth.devToken(role.equals("staff") ? "s1" : "u1", role);
+        HttpResponse<String> response = client.send(request(op, bearer), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode(), response.body());
         List<String> frames = response.body().lines().filter(line -> !line.isBlank()).toList();
         assertEquals(1, frames.size(), response.body());
@@ -237,5 +255,36 @@ class BookshopTest {
         // the page carries the endpoint it talks to and the title Bookshop.start gave it
         assertTrue(page.body().contains("<script type=\"application/json\" id=\"config\">{\"endpoint\":\"/rayfold\",\"title\":\"Bookshop\"}</script>"));
         assertEquals(404, get("/elsewhere").statusCode());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aRoleIsBelievedOnlyFromATokenThatVerifies() throws Exception {
+        String devKey = "bookshop development key, not a secret";
+        var restock = new LinkedHashMap<String, Object>(Map.of("id", 1, "op", "restock", "args", Map.of("bookId", "b2", "qty", 4), "key", UUID.randomUUID().toString()));
+        var refused = new ArrayList<String>();
+        for (String bearer : List.of(
+            "staff", // the role's name is not a credential
+            signed("a key this server does not hold, at least 32 bytes", "http://localhost:4000/dev", "bookshop", 3_600_000),
+            signed(devKey, "http://localhost:4000/dev", "bookshop", -3_600_000), // expired an hour ago
+            signed(devKey, "https://someone-else.example", "bookshop", 3_600_000),
+            signed(devKey, "http://localhost:4000/dev", "another-app", 3_600_000))) {
+            HttpResponse<String> response = client.send(request(restock, bearer), HttpResponse.BodyHandlers.ofString());
+            refused.add(response.statusCode() + " " + ((Map<String, Object>) Rayfold.parseJson(response.body())).get("detail"));
+        }
+        assertEquals(Collections.nCopies(5, "401 Invalid or expired token"), refused);
+        assertEquals(0, store.book("b2").orElseThrow().stock());
+        // guard: the same claims, signed with the key and for this issuer and audience, are believed
+        HttpResponse<String> ok = client.send(request(restock, signed(devKey, "http://localhost:4000/dev", "bookshop", 3_600_000)), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, ok.statusCode(), ok.body());
+        assertEquals(4, store.book("b2").orElseThrow().stock());
+    }
+
+    private static String signed(String key, String issuer, String audience, long expiresInMs) throws Exception {
+        var claims = new JWTClaimsSet.Builder().subject("s1").issuer(issuer).audience(audience).claim("role", "staff")
+            .expirationTime(new Date(System.currentTimeMillis() + expiresInMs)).build();
+        var jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
+        jwt.sign(new MACSigner(key.getBytes(StandardCharsets.UTF_8)));
+        return jwt.serialize();
     }
 }

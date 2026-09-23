@@ -24,7 +24,7 @@ build a batch.
 
 Each op has an `id`, a positive integer unique in the batch, and each frame of the response carries the id of the op
 it answers. Commands carry an idempotency `key` as always ([Commands and errors](./commands.md#safe-to-retry)). Sent
-with `Authorization: Bearer customer`, the answer is:
+with a customer's access token, the answer is:
 
 ```json
 {"id":1,"ok":{"$type":"Book","id":"b3"},"patch":[{"set":"Book:b3","value":{"$type":"Book","id":"b3"}}],"meta":{"cost":1},"fin":true}
@@ -128,6 +128,9 @@ The JVM has two more of its own: `maxFrames` bounds the frames one batch's resol
 `maxStreamItems` on the TypeScript server arrived in 0.2.0; the JVM has always had it. On 0.1.0 a TypeScript stream
 is bounded only by the batch's cost.
 
+`GET /rayfold/manifest` publishes the batch limits, so a client can check before it sends:
+`"limits":{"budget":1000,"maxOps":50,"maxDepth":8,"maxFields":500,"trustedShapes":false}`.
+
 ## Deadlines
 
 A caller can say how long it is willing to wait, and the server stops rather than finishing work nobody is waiting
@@ -140,9 +143,6 @@ for. Send `meta.deadline` on the envelope, or per operation, in milliseconds:
 Over HTTP the `Rayfold-Deadline` header does the same. An operation that runs out ends with `deadline_exceeded`. A
 command that had already committed records that fact, so a retry is answered with what happened rather than running
 the command a second time — see [Safe to retry](./commands.md#safe-to-retry).
-
-`GET /rayfold/manifest` publishes them, so a client can check before it sends:
-`"limits":{"budget":1000,"maxOps":50,"maxDepth":8,"maxFields":500,"trustedShapes":false}`.
 
 ## Build a batch in the client
 

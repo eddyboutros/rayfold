@@ -117,7 +117,7 @@ Annotations put rules and hints next to the thing they apply to. The ones you wi
 | `@allow(read: ..., write: ...)` | Who may read or change it. See [Who can do what](./auth.md). |
 | `@range(min: ..., max: ...)` | Allowed values, or lengths for strings and lists. Checked before any resolver runs. |
 | `@cache(maxAge: 60s, scope: public)` | How long a result may be cached, and whether a shared cache may keep it. |
-| `@cost(base: 5, perItem: 1)` | What a query costs against the caller's budget. |
+| `@cost(base: 5, perItem: 1)` | What a query costs against the server's per-batch budget. |
 | `@deprecated(reason: "...", sunset: "2027-01-01")` | Going away, and from when. Tooling refuses to remove it earlier. |
 | `@simulate` | The command accepts dry runs. |
 | `@partial` | The field may fail on its own instead of failing the whole operation. |
@@ -148,7 +148,8 @@ Without a `default` view, a type's own scalar fields are its default. Clients ca
 
 ## Check it
 
-`rayfold check` validates a schema and says what is wrong and where:
+`rayfold check` validates a schema and says what is wrong and where. It comes with `@rayfold/cli`
+(`npm install --save-dev @rayfold/cli`, or run it once with `npx @rayfold/cli`):
 
 ```sh
 npx rayfold check bookshop.rayfold
@@ -173,7 +174,7 @@ The schema can generate types for each stack:
 ```sh
 npx rayfold gen ts bookshop.rayfold --out src/schema.ts
 npx rayfold gen kotlin bookshop.rayfold --package com.example.bookshop --out Bookshop.kt
-npx rayfold gen java bookshop.rayfold --package com.example.bookshop --out Bookshop.java
+npx rayfold gen java bookshop.rayfold --package com.example.bookshop --class Bookshop --out Bookshop.java
 ```
 
 In TypeScript you can also write the schema in code with `@rayfold/builder` and get the types inferred; see

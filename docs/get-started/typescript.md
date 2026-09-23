@@ -16,8 +16,9 @@ The finished project is [examples/typescript](../../examples/typescript). You ne
 mkdir bookshop && cd bookshop
 npm init -y
 npm pkg set type=module
-npm install @rayfold/server @rayfold/client @rayfold/explorer
+npm install @rayfold/server @rayfold/client @rayfold/explorer jose
 npm install --save-dev tsx @rayfold/cli
+npm pkg set scripts.server="tsx src/server.ts" scripts.client="tsx src/client.ts" scripts.token="tsx src/token.ts"
 ```
 
 ## 2. Describe the API
@@ -34,9 +35,9 @@ npx rayfold check src/bookshop.rayfold
 
 ## 3. Write the resolvers
 
-`src/resolvers.ts`, after the data and types (see the [whole file](../../examples/typescript/src/resolvers.ts)):
+`src/resolvers.ts` holds the data, its types and the resolvers:
 
-<<< @/../examples/typescript/src/resolvers.ts#resolvers{ts}
+<<< @/../examples/typescript/src/resolvers.ts{ts}
 
 - `Query` and `Command` have one function per operation, named as in the schema. Arguments arrive already checked
   against it, `@range` included.
@@ -49,28 +50,36 @@ npx rayfold check src/bookshop.rayfold
 
 ## 4. Say who is calling
 
-<<< @/../examples/typescript/src/resolvers.ts#auth{ts}
+Your identity provider signs the user in and gives the client an access token (a JWT). `src/auth.ts` verifies it
+with [jose](https://github.com/panva/jose) against the provider's published keys and turns its claims into the
+viewer:
 
-What this returns is `viewer` in the schema's `@allow` rules. The resolvers never check permissions themselves.
+<<< @/../examples/typescript/src/auth.ts{ts}
+
+What `viewerFrom` returns is `viewer` in the schema's `@allow` rules, and the resolvers never check permissions
+themselves. Until you have a provider, the server signs and checks tokens with the development key at the top of the
+file; `devToken` makes one as a provider would. `src/token.ts` prints one for you to try the server with:
+
+<<< @/../examples/typescript/src/token.ts{ts}
 
 ## 5. Start the server
 
 `src/bookshop.ts` builds the server from the schema and the resolvers, then serves it at `/rayfold` with the explorer
 beside it:
 
-<<< @/../examples/typescript/src/bookshop.ts#server{ts}
+<<< @/../examples/typescript/src/bookshop.ts{ts}
 
 `src/server.ts` starts it:
 
 <<< @/../examples/typescript/src/server.ts{ts}
 
 ```sh
-npx tsx src/server.ts
+npm run server
 ```
 
-Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. Type `customer` or `staff` in
-the auth field to try the commands; the explorer adds the `Bearer` itself. Or call it with curl, marking the request
-as a read with `rayfold-safe`:
+Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. To try the commands, paste a
+token into the auth field: `npm run token` prints a customer's, `npm run token -- staff` a member of staff's. Or call
+it with curl, marking the request as a read with `rayfold-safe`:
 
 ```sh
 curl -s localhost:4000/rayfold -H 'content-type: application/rayfold+json' -H 'rayfold-safe: true' \
@@ -97,7 +106,7 @@ Errors the schema declares arrive typed:
 Run it while the server is up:
 
 ```sh
-npx tsx src/client.ts
+npm run client
 ```
 
 ## Next

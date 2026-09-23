@@ -22,7 +22,7 @@ query books(filter: BookFilter?, page: PageArgs): Page<Book>
   @http(method: QUERY, path: "/books", body: "*")
 
 command buy(bookId: ID, qty: Int = 1): Order
-  @http(method: POST, path: "/orders", location: "/orders/{id}")
+  @http(method: POST, path: "/orders", body: "*", location: "/orders/{id}")
 
 command updateBook(id: ID, patch: BookPatch): Book
   @http(method: PATCH, path: "/books/{id}", body: patch)
@@ -38,7 +38,8 @@ command deleteReview(id: ID): Review
 - **`location`** — on a `POST`, the path of the thing that was created. It makes the response `201` with a `Location`
   header built from the result.
 
-Arguments not in the path come from the query string on `GET`, and from the body otherwise.
+Path segments fill their arguments. On `GET` the rest come from the query string. Any other method reads the request
+body only when the binding names `body`, one argument or `"*"` for all of them; without `body`, the body is ignored.
 
 ## Serve them
 
@@ -51,7 +52,7 @@ import { createRayfoldServer, createHttpHandler, createBindingHandler } from "@r
 
 const server = createRayfoldServer({ schema, resolvers });
 const rayfold = createHttpHandler(server, { viewer });
-const rest = createBindingHandler(server);
+const rest = createBindingHandler(server, { viewer }); // the same viewer as the batch endpoint, or routes run anonymous
 
 createServer(async (req, res) => {
   if (await rest(req, res)) return;

@@ -47,4 +47,5 @@ Instrumentation rayfoldTracing(OpenTelemetry openTelemetry) {
 ## Other tools
 
 `instrumentation` is a plain set of three hooks (`batch`, `op` and `loader`, each wrapping the work it reports), so
-metrics or logging need no OpenTelemetry at all: implement `Instrumentation` directly.
+metrics or logging need no OpenTelemetry at all: implement `Instrumentation` directly. On the JVM its hooks are
+Kotlin `suspend` functions, so write them in Kotlin; Java code can use `RayfoldOpenTelemetry` instead.

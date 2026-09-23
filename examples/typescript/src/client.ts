@@ -1,13 +1,17 @@
+// #region client
 // Run the server first (npm run server), then: npm run client
 import { RayfoldClient, RayfoldClientError, createFetchTransport } from "@rayfold/client";
+import { devToken } from "./auth.ts";
 
 interface Book { id: string; title: string; stock: number; author: { name: string } }
 
-// #region client
+// the access token the user's sign-in produced; a local run signs a customer's with the development key
+const accessToken = process.env["TOKEN"] ?? (await devToken("u1", "customer"));
+
 const client = new RayfoldClient({
   transport: createFetchTransport({
     url: "http://localhost:4000/rayfold",
-    headers: () => ({ authorization: "Bearer customer" }),
+    headers: () => ({ authorization: `Bearer ${accessToken}` }),
   }),
 });
 

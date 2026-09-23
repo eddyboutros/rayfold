@@ -1,3 +1,4 @@
+// #region app
 import type { RayfoldClientError } from "@rayfold/client";
 import { useCommand, useLive, useQuery } from "@rayfold/react";
 
@@ -16,6 +17,7 @@ export function App() {
     </main>
   );
 }
+// #endregion app
 
 // #region list
 function BookList() {

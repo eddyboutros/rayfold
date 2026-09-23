@@ -23,7 +23,7 @@ usual path is: describe what you have, serve it both ways, and move screens one 
 If you publish an OpenAPI document, the first draft of the schema can be read from it:
 
 ```sh
-npx rayfold import openapi openapi.json --out api.rayfold
+npx @rayfold/cli import openapi openapi.json --out api.rayfold
 ```
 
 A `GET` becomes a query, anything that changes data becomes a command, `components.schemas` become types, and every
@@ -52,7 +52,7 @@ Everything it had to assume is listed on stderr, so the schema on stdout stays a
 
 - **Idempotency keys.** Commands need a key of 16 to 128 characters. The clients add one; `curl` users must too, or
   the route opts out with `@idempotent(false)`. Bound `PUT`, `PATCH` and `DELETE` routes do not need one.
-- **Cross-site requests.** Rayfold accepts only JSON bodies and checks the Origin of every request that can change
-  data. Behind a proxy that rewrites Host, list your public origin in `allowedOrigins`.
+- **Cross-site requests.** Rayfold accepts only JSON and its binary format (`application/rayfold`) as bodies, which a
+  browser cannot send cross-site without a preflight, and checks the Origin of every request that can change data. Behind a proxy that rewrites Host, list your public origin in `allowedOrigins`.
 - **Costs.** Every batch has a budget (1 000 by default); a list's cost grows with its page size. Raise it for trusted
   internal callers instead of turning it off.

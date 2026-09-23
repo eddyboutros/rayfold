@@ -25,7 +25,7 @@ class ClientTest {
         val requests = AtomicInteger()
         val transport = HttpTransport(
             "http://127.0.0.1:${http.address.port}/rayfold",
-            headers = { mapOf("Authorization" to "Bearer customer") },
+            headers = { mapOf("Authorization" to "Bearer ${devToken("u1", "customer")}") },
         )
         val counted = Transport { envelope, safe ->
             requests.incrementAndGet()

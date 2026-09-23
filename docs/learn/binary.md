@@ -74,18 +74,21 @@ it encodes exactly like the server's own copy.
 
 The codec is `@rayfold/rb` on npm, and `dev.rayfold:rayfold-core` carries the JVM one. You rarely use it directly —
 the client and server negotiate it for you — but it is a package you can depend on if you are writing a client of
-your own. in TypeScript
+your own.
+
+## TypeScript
 
 Load the manifest, then give it to the transport:
 
 ```ts
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
+import { accessToken } from "./session.ts"; // the signed-in user's token, from your identity provider
 
 const url = "http://localhost:4000/rayfold";
 const manifest = await (await fetch(`${url}/manifest`)).json();
 
 const client = new RayfoldClient({
-  transport: createFetchTransport({ url, binary: manifest, headers: () => ({ authorization: "Bearer customer" }) }),
+  transport: createFetchTransport({ url, binary: manifest, headers: async () => ({ authorization: `Bearer ${await accessToken()}` }) }),
   schema: manifest.schema,
 });
 

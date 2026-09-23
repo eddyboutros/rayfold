@@ -89,10 +89,13 @@ const handler = createFetchHandler(server, {
 ```json
 {
   "identity": { "name": "bookshop", "instance": "8f3c…", "version": "1.4.0", "startedAt": 1789000000000 },
-  "uptimeMs": 86400000, "schemaHash": "a71789…", "extensions": ["live", "rb"],
+  "uptimeMs": 86400000, "rayfold": "0.1", "schemaHash": "a71789…", "extensions": ["mcp"],
   "inflight": 2, "draining": false, "ready": true, "reasons": [], "live": 7
 }
 ```
+
+`extensions` lists the endpoints mounted beside this server (`upload`, `mcp`); the manifest lists the protocol
+extensions it speaks.
 
 The route does not exist until you configure it, and an unconfigured server answers `404` rather than `403`, so it
 does not advertise itself. Give the server an `identity` to make its answers worth comparing:
@@ -161,8 +164,9 @@ val relay = PgRelay(PgNotifications(dataSource.connection), dataSource::getConne
 idempotency.migrate(); relay.migrate() // safe on every instance at start
 
 val server = RayfoldServer(ir, resolvers, idempotency = idempotency, relay = relay)
-server.ready()
-// RayfoldHttp serves GET /rayfold/health and /rayfold/ready; server.drain(timeoutMs) then server.close() to stop
+runBlocking { server.ready() } // suspends until the relay is listening
+// RayfoldHttp(server, ...).start(4000, "/rayfold", "0.0.0.0") serves GET /rayfold/health and /rayfold/ready to the
+// balancer (start alone listens on loopback); to stop, runBlocking { server.drain(); server.close() }
 ```
 
 Under Spring Boot the starter wires `IdempotencyStore` and `Relay` beans in, serves both routes, and drains when the

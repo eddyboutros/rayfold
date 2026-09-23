@@ -6,12 +6,14 @@
   "type": "module",
   "scripts": {
     "server": "tsx src/server.ts",
-    "client": "tsx src/client.ts"
+    "client": "tsx src/client.ts",
+    "token": "tsx src/token.ts"
   },
   "dependencies": {
     "@rayfold/client": "*",
     "@rayfold/explorer": "*",
-    "@rayfold/server": "*"
+    "@rayfold/server": "*",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "tsx": "^4.20.0"

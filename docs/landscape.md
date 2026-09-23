@@ -1,6 +1,11 @@
-# Landscape refresh, 2026-09
+---
+title: Landscape
+description: The state of the standards and projects Rayfold draws from, with sources, and what Rayfold takes from each.
+---
 
-Verified state of the incumbents Rayfold draws from, with sources. Compiled 2026-09-09.
+# Landscape
+
+The state of the standards and projects Rayfold draws from, with sources, as of September 2026.
 
 ## 1. HTTP QUERY method
 - Published as **RFC 10008 "The HTTP QUERY Method"**, Proposed Standard, June 2026. Safe, idempotent, cacheable (cache key includes request content); adds the `Accept-Query` response header; requests without `Content-Type` fail with 4xx. https://www.rfc-editor.org/rfc/rfc10008.html
@@ -63,15 +68,14 @@ Verified state of the incumbents Rayfold draws from, with sources. Compiled 2026
 ## 13. Apollo GraphOS field usage
 - Per-field requests vs executions, first/last seen, referencing operations and clients. https://www.apollographql.com/docs/graphos/platform/insights/field-usage
 
-## Implications for Rayfold (applied in the spec)
+## What Rayfold takes from them
 1. `QUERY` is an RFC: Rayfold reads are designed as `QUERY` with body, with a mandatory `POST` + `Rayfold-Safe: true` fallback for browsers (04 §4).
 2. Advertise `Accept-Query`; ETag is a hash of the payload so body-keyed CDN caching works when it lands (07 §2).
-3. Core is stateless like MCP 2026-07-28; the MCP bridge mirrors op names into headers and adopts the `input_required` retry pattern for human-in-the-loop instead of server-initiated requests (10).
+3. Core is stateless like MCP 2026-07-28, and the MCP bridge mirrors op names into headers (10). The `input_required` retry pattern for human-in-the-loop is reserved in spec 10, not implemented.
 4. MCP tool definitions use JSON Schema 2020-12 for input and output; the bridge emits `structuredContent` and `ttlMs`/`cacheScope` from `@cache` (10).
-5. Sync follows Zero/Convex: the query is the subscription; versioned transitions over one stream; optimistic commands rebase on ack (08).
-6. An Electric-style plain-HTTP shape log (offset/handle, `up-to-date`, long-poll or SSE) is the lowest-common-denominator sync transport (08).
+5. Sync follows Zero/Convex: the query is the subscription, and optimistic commands rebase on the server's answer (08). Versioned transitions over one stream, so a reconnect resumes where it left off, are a draft in spec 08 §5 and not implemented.
+6. An Electric-style plain-HTTP shape log (offset/handle, `up-to-date`, long-poll or SSE) as the lowest-common-denominator sync transport is a draft in spec 08; neither runtime implements it.
 7. Error model: RFC 9457 body for batch-level failures, Connect's 16 codes as the protocol code set, HTTP 200 for frame streams (05).
 8. GET for single idempotent queries with base64url-encoded args, like Connect (04 §4). Rayfold defines its own incremental delivery (defer frames) rather than waiting on GraphQL's.
 9. Trusted shapes (SHA-256 allowlist) are in Core now; GraphQL's persisted-documents appendix is still unmerged (02 §3).
-10. `RateLimit` headers are named by the draft but neither runtime emits them yet (04 §4).
-11. WebTransport is Baseline, so the spec names it as the bidirectional transport tier (04 §6); neither runtime implements it. Compression dictionaries are an opt-in optimisation in the RB extension (09).
+10. WebTransport is Baseline, so the spec names it as the bidirectional transport tier (04 §6); neither runtime implements it.

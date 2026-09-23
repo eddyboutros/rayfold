@@ -22,7 +22,8 @@ event StockChanged { bookId: ID, stock: Int }
 
 command restock(bookId: ID, qty: Int): Book
   emits StockChanged
-  @allow(write: viewer.role == "admin")
+  @allow(write: viewer.role == "staff")
+  @simulate
 
 stream stockUpdates(bookIds: [ID]): StockChanged
 ```
@@ -49,8 +50,8 @@ restock: (args: { bookId: string; qty: number }, ctx) => {
 },
 ```
 
-Nothing is published when the command is a dry run (`@simulate`), which is the point of that check: a simulation must
-not be visible to anyone else.
+The runtime never publishes the events or patches of a dry run (`@simulate`), so a simulation is visible to nobody
+else; the `ctx.simulate` check is what keeps the resolver from writing.
 
 ## Resolve the stream
 

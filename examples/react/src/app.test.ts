@@ -4,7 +4,8 @@ import { JSDOM } from "jsdom";
 import { createElement as h } from "react";
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
 import { RayfoldProvider } from "@rayfold/react";
-import { afterAll, afterEach, beforeEach, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import { devToken } from "./auth.ts";
 import { bookshopHttp, createBookshop } from "./bookshop.ts";
 import type { Store } from "./resolvers.ts";
 
@@ -28,6 +29,13 @@ const PAGE_ORIGIN = "http://localhost:5173";
 
 let http: Server;
 let store: Store;
+/** Tokens as the identity provider issues them at sign-in. */
+let customer = "";
+let staffToken = "";
+beforeAll(async () => {
+  customer = await devToken("u1", "customer");
+  staffToken = await devToken("s1", "staff");
+});
 let base: string;
 let unmount = () => {};
 
@@ -63,7 +71,7 @@ function renderApp(origin: string): { answers: Answer[] } {
   const client = new RayfoldClient({
     transport: createFetchTransport({
       url: `${base}/rayfold`,
-      headers: () => ({ authorization: "Bearer customer", origin }),
+      headers: () => ({ authorization: `Bearer ${customer}`, origin }),
       fetch: async (input, init) => {
         const res = await fetch(input, init);
         answers.push({ ops: (JSON.parse(String(init?.body)) as { ops: Array<{ op: string }> }).ops.map((o) => o.op), status: res.status });
@@ -128,7 +136,7 @@ it("says Sold out when there is none left, and sells nothing", async () => {
 it("shows a restock made by someone else, as it happens", async () => {
   renderApp(PAGE_ORIGIN);
   await until(() => stockOf("b3") === "7 in stock", "the third book's stock");
-  const staff = new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: "Bearer staff" }) }) });
+  const staff = new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: `Bearer ${staffToken}` }) }) });
   await staff.command("restock", { bookId: "b3", qty: 5 });
   await until(() => stockOf("b3") === "12 in stock", "the restocked count");
 });
@@ -140,7 +148,7 @@ it("a copy of the page on another site is refused: it shows the error, and a pur
   expect(dom.window.document.body.textContent).toBe("BookshopCould not load the books.");
   expect(answers).toEqual([{ ops: ["books"], status: 403 }]);
 
-  const client = new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: "Bearer customer", origin: elsewhere }) }) });
+  const client = new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: `Bearer ${customer}`, origin: elsewhere }) }) });
   await expect(client.command("buy", { bookId: "b1", qty: 1 })).rejects.toMatchObject({ code: "permission_denied", message: `Origin ${elsewhere} is not allowed` });
   expect(store.books.get("b1")?.stock).toBe(3);
 });

@@ -7,7 +7,9 @@ book, watches it, buys a copy and prints the stock the purchase left. One Gradle
 |---|---|
 | `src/main/resources/bookshop.rayfold` | The schema |
 | `src/main/kotlin/com/example/bookshop/Store.kt` | The shelves, in memory |
-| `src/main/kotlin/com/example/bookshop/Server.kt` | Resolvers, the batched `Book.author` loader, the viewer, the server |
+| `src/main/kotlin/com/example/bookshop/Server.kt` | Resolvers, the batched `Book.author` loader, the server |
+| `src/main/kotlin/com/example/bookshop/Auth.kt` | Who the caller is, from a signed token (JWT); `devToken` for local runs |
+| `src/main/kotlin/com/example/bookshop/Token.kt` | Prints a development token (`./gradlew -q token`) |
 | `src/main/kotlin/com/example/bookshop/Client.kt` | The client app |
 | `src/test/kotlin/com/example/bookshop/` | Tests over HTTP against a server on a free port |
 
@@ -29,18 +31,38 @@ nothing has to be published. In a copy of the project anywhere else, delete the 
 
 On Windows, use `gradlew.bat` instead of `./gradlew`.
 
+## Signing in
+
+The server believes who a caller is only from a signed token (a JWT) whose signature, issuer, audience and expiry it
+checks. With no identity provider configured, it signs and checks tokens with a development key. This prints a
+customer's token, who may buy:
+
+```sh
+./gradlew -q token
+```
+
+and this a member of staff's, who may also restock and see `costPrice`:
+
+```sh
+./gradlew -q token --args=staff
+```
+
+Without a token you can only read. A token that does not verify, including a bare role name such as `Bearer staff`, is
+not a credential: the server refuses it with 401 before anything runs.
+
+In production, set `AUTH_JWKS_URL` (the provider's published keys) and `AUTH_ISSUER` in the environment. The server then accepts
+tokens that provider signed for the audience `bookshop`, and the development key is never used.
+
 ## Call it
 
 ```sh
+TOKEN=$(./gradlew -q token --args=staff)
 curl http://localhost:4000/rayfold \
   -H 'Content-Type: application/rayfold+json' \
-  -H 'Authorization: Bearer staff' \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ title stock costPrice author { name } }"}]}'
 ```
 
-`Bearer customer` may buy. `Bearer staff` may also restock and see `costPrice`. Without a token, you can only read.
-
 ## Explorer
 
-While the server runs, open http://localhost:4000/rayfold/explorer. To sign in there, type `customer` or `staff` in
-the auth field.
+While the server runs, open http://localhost:4000/rayfold/explorer, and paste a token into the auth field.

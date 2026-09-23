@@ -34,12 +34,8 @@ createServer(async (req, res) => {
 
 ```kotlin [Kotlin]
 val server = RayfoldServer(ir, resolvers)
-val http = HttpServer.create(InetSocketAddress(4000), 0)
-
-RayfoldHttp(server).mount(http)
-RayfoldMcp(server) { ex -> viewerOf(ex) }.mount(http)
-
-http.start()
+val http = RayfoldHttp(server) { ex -> viewerOf(ex) }.start(4000) // serves /rayfold; returns the running HttpServer
+RayfoldMcp(server) { ex -> viewerOf(ex) }.mount(http)              // adds /mcp beside it
 ```
 
 :::
@@ -56,7 +52,8 @@ a browser could drive a local or intranet server. Configure `allowedOrigins` as 
 |---|---|
 | `command` | a tool |
 | `command` with `@simulate` | a second tool, `name.simulate`, that runs it as a dry run |
-| `query` | a tool, and a resource at `rayfold://query/<name>` |
+| `query` | a tool; also a listed resource at `rayfold://query/<name>` when it has no required arguments (the others can still be read as `rayfold://query/<name>?arg=value`) |
+| `stream` | not exposed |
 | the schema | a resource at `rayfold://schema` |
 
 Argument schemas come from the operation's own arguments, so an agent gets the types, the defaults and the

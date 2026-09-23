@@ -3,8 +3,9 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { RayfoldClient, RayfoldClientError, createFetchTransport } from "@rayfold/client";
 import { createRayfoldServer, type RayfoldServer } from "@rayfold/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bookshopHttp, createBookshop, resolvers, seed, type Book, type Store } from "./bookshop.ts";
+import { SignJWT } from "jose";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { bookshopHttp, createBookshop, devToken, resolvers, seed, type Book, type Store } from "./bookshop.ts";
 
 let http: Server;
 let store: Store;
@@ -30,13 +31,20 @@ const close = () =>
 
 afterEach(close);
 
-/** A client that also records the op names of every request it sends. */
-function recordingClient(token?: string): { client: RayfoldClient; requests: string[][] } {
+/** Tokens as the identity provider issues them at sign-in, one per role. */
+const tokens: Record<"customer" | "staff", string> = { customer: "", staff: "" };
+beforeAll(async () => {
+  tokens.customer = await devToken("u1", "customer");
+  tokens.staff = await devToken("s1", "staff");
+});
+
+/** A client signed in as `role`, or anonymous, that also records the op names of every request it sends. */
+function recordingClient(role?: "customer" | "staff", bearer = role && tokens[role]): { client: RayfoldClient; requests: string[][] } {
   const requests: string[][] = [];
   const client = new RayfoldClient({
     transport: createFetchTransport({
       url: `${base}/rayfold`,
-      headers: () => (token ? { authorization: `Bearer ${token}` } : {}),
+      headers: () => (bearer ? { authorization: `Bearer ${bearer}` } : {}),
       fetch: (input, init) => {
         requests.push((JSON.parse(String(init?.body)) as { ops: Array<{ op: string }> }).ops.map((o) => o.op));
         return fetch(input, init);
@@ -46,7 +54,7 @@ function recordingClient(token?: string): { client: RayfoldClient; requests: str
   return { client, requests };
 }
 
-const clientFor = (token?: string) => recordingClient(token).client;
+const clientFor = (role?: "customer" | "staff") => recordingClient(role).client;
 
 async function rejection(p: Promise<unknown>): Promise<RayfoldClientError> {
   const e = await p.then(
@@ -183,6 +191,29 @@ describe("the bookshop over HTTP", () => {
     await restocked;
     stop();
     expect(seen).toEqual([7, 9]);
+  });
+
+  it("believes a role only from a token that verifies: a forged, expired or foreign one is refused before anything runs", async () => {
+    const restock = (bearer: string) => rejection(recordingClient(undefined, bearer).client.command("restock", { bookId: "b2", qty: 4 }));
+    const signed = (key: string, claims: { iss?: string; aud?: string; exp?: number | string } = {}) =>
+      new SignJWT({ role: "staff" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject("s1")
+        .setIssuer(claims.iss ?? "http://localhost:4000/dev")
+        .setAudience(claims.aud ?? "bookshop")
+        .setExpirationTime(claims.exp ?? "1h")
+        .sign(new TextEncoder().encode(key));
+    const refused = [
+      await restock("staff"), // the role's name is not a credential
+      await restock(await signed("a key the server does not hold")),
+      await restock(await signed("bookshop development key, not a secret", { exp: 1 })), // expired in 1970
+      await restock(await signed("bookshop development key, not a secret", { iss: "https://someone-else.example" })),
+      await restock(await signed("bookshop development key, not a secret", { aud: "another-app" })),
+    ];
+    expect(refused.map((e) => [e.code, e.message])).toEqual(Array(5).fill(["unauthenticated", "Invalid or expired token"]));
+    expect(store.books.get("b2")?.stock).toBe(0);
+    // guard: the same claims, signed with the key and for this issuer and audience, are believed
+    await expect(recordingClient(undefined, await signed("bookshop development key, not a secret")).client.command("restock", { bookId: "b2", qty: 4 })).resolves.toMatchObject({ stock: 4 });
   });
 
   it("serves the explorer beside the endpoint and nothing else", async () => {

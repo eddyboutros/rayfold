@@ -67,7 +67,9 @@ function BuyButton({ id }: { id: string }) {
 ```
 
 `buy(...)` returns a promise that rejects on failure, and the outcome also lands in the hook's state. Calling it
-without `await`, as above, is fine. Each call gets its own idempotency key, so a retried request never buys twice.
+without `await`, as above, is fine. Each call gets its own idempotency key, so a resend of that call, as the offline
+queue does, is answered from the first attempt instead of buying twice. A second click is a second call; disabling
+the button while it runs is what stops that.
 
 ## Follow other people's changes with `useLive`
 

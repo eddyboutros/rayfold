@@ -63,5 +63,5 @@ changes what a Core 0.1 request means.
 ## Your schema
 
 APIs built on Rayfold do not carry version numbers. A schema evolves additively: add fields, operations and enum
-values; mark what is going away with `@deprecated(sunset: 2027-06-30, replacement: "...")`; and let `rayfold check`
+values; mark what is going away with `@deprecated(reason: "...", sunset: "2027-06-30", replacement: "...")`; and let `rayfold check`
 refuse removals before their sunset date and changes that would break existing clients ([spec 11](../spec/11-evolution.md)).

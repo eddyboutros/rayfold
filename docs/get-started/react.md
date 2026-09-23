@@ -28,18 +28,44 @@ In development the page comes from Vite on port 5173 and the API from port 4000.
 The browser still names the page's origin on every command, and a Rayfold server refuses commands from origins it
 does not know, which is what stops other websites from acting for your users. Behind the proxy above the request
 arrives looking same-origin, so it is allowed whatever the server is written in; name the origin anyway, so the app
-keeps working the day you point it straight at port 4000:
+keeps working the day you point it straight at port 4000. On the TypeScript server it is an option in
+`src/bookshop.ts`:
 
 <<< @/../examples/react/src/bookshop.ts#origins{ts}
 
+On the JVM it is `HttpOptions(allowedOrigins = setOf("http://localhost:5173"))` in Kotlin, `.allowedOrigins(...)` on
+`Rayfold.http(server)` in Java, and `rayfold.allowed-origins=http://localhost:5173` under Spring Boot.
+
 ## 3. Provide the client
+
+Replace `src/main.tsx`:
 
 <<< @/../examples/react/src/main.tsx#provider{tsx}
 
-The token stands in for your real sign-in. The server turns it into the viewer that the schema's `@allow` rules
-check.
+`accessToken()` is your sign-in: your identity provider's SDK returns the signed-in user's current token, refreshed
+before it expires, and the client sends it with every request. The server verifies it and turns it into the viewer
+that the schema's `@allow` rules check.
+
+<<< @/../examples/react/src/session.ts
+
+Until sign-in is wired in, a development token stands in for it. Every example server accepts one, since they share
+a development key: print one with that server's token command (`npm run token` for the TypeScript one), and put it
+in `.env.local`:
+
+```sh
+VITE_DEV_TOKEN=eyJhbGciOiJIUzI1NiJ9...
+```
+
+Development tokens last eight hours; when one expires every request fails with `unauthenticated`, so print a new one
+and restart `npm run dev`, which reads `.env.local` when it starts.
 
 ## 4. List the books
+
+Replace `src/App.tsx`. It starts with the page itself:
+
+<<< @/../examples/react/src/App.tsx#app{tsx}
+
+and the list, which the rest of this page adds to:
 
 <<< @/../examples/react/src/App.tsx#list{tsx}
 

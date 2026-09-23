@@ -11,6 +11,8 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- a property rather than plugin configuration, so -Dexec.mainClass=...Auth can run the token printer instead -->
+    <exec.mainClass>com.example.bookshop.Bookshop</exec.mainClass>
   </properties>
 
   <!-- #region deps -->
@@ -19,6 +21,13 @@
       <groupId>dev.rayfold</groupId>
       <artifactId>rayfold-java</artifactId>
       <version>0.2.1</version>
+    </dependency>
+
+    <!-- verifies the tokens your identity provider signs -->
+    <dependency>
+      <groupId>com.nimbusds</groupId>
+      <artifactId>nimbus-jose-jwt</artifactId>
+      <version>10.9.1</version>
     </dependency>
 
     <dependency>
@@ -46,9 +55,6 @@
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.6.4</version>
-        <configuration>
-          <mainClass>com.example.bookshop.Bookshop</mainClass>
-        </configuration>
       </plugin>
     </plugins>
   </build>

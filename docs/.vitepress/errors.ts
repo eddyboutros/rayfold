@@ -35,7 +35,7 @@ export const ERROR_TYPES: ErrorType[] = [
       "Compare the request with the schema, or open the explorer, which shows every argument with its type and range.",
     ],
     retryable: false,
-    detail: "ops[0].args.qty: must be at most 10",
+    detail: "buy().qty: must be <= 10",
   },
   {
     type: "failed_precondition",
@@ -97,7 +97,7 @@ export const ERROR_TYPES: ErrorType[] = [
       "For a web app on another origin, add that origin to the server's `allowedOrigins`.",
     ],
     retryable: false,
-    detail: "Book.costPrice: not allowed for this viewer",
+    detail: "Not allowed to access Book.costPrice",
   },
   {
     type: "not_found",
@@ -150,7 +150,7 @@ export const ERROR_TYPES: ErrorType[] = [
     ],
     fixes: ["Ask for less: smaller pages, fewer fields, or split the batch. Retrying the same request unchanged gives the same answer."],
     retryable: false,
-    detail: "Batch costs 1240, over the budget of 1000",
+    detail: "Batch cost 1240 exceeds budget 1000",
   },
   {
     type: "payload_too_large",
@@ -186,7 +186,7 @@ export const ERROR_TYPES: ErrorType[] = [
     causes: ["The client aborted, closed the connection, or navigated away."],
     fixes: ["Nothing to fix on the server. A command that was canceled can be sent again with the same idempotency key."],
     retryable: false,
-    detail: "Request canceled by the client",
+    detail: "Canceled",
   },
   {
     type: "unimplemented",
@@ -199,7 +199,7 @@ export const ERROR_TYPES: ErrorType[] = [
     ],
     fixes: ["Check the server's manifest at `/rayfold/manifest` for what it offers."],
     retryable: false,
-    detail: "Streams are not served over this transport",
+    detail: "No resolver for query recommendations",
   },
   {
     type: "unavailable",
@@ -219,7 +219,7 @@ export const ERROR_TYPES: ErrorType[] = [
     causes: ["The `deadline` sent with the request was shorter than the work took."],
     fixes: ["Give the request more time (at most 600000 ms), or ask for less. The server stops work for a request once its deadline passes."],
     retryable: true,
-    detail: "Deadline of 200 ms exceeded",
+    detail: "Deadline exceeded",
   },
   {
     type: "domain",
@@ -282,7 +282,11 @@ const title = (type: string) => type.replace(/_/g, " ").replace(/^./, (c) => c.t
 
 /** The markdown of one error's page. */
 export function errorPage(e: ErrorType): string {
-  const problem = { type: PROBLEM_TYPE_BASE + e.type, title: e.type.replace(/_/g, " "), status: e.status, detail: e.detail, code: e.code };
+  // a declared domain error names itself by its own type, and carries its data (spec 05 §4)
+  const problem =
+    e.type === "domain"
+      ? { type: PROBLEM_TYPE_BASE + "OutOfStock", title: "OutOfStock", status: e.status, detail: e.detail, code: e.code, data: { bookId: "b1", available: 1 } }
+      : { type: PROBLEM_TYPE_BASE + e.type, title: e.type.replace(/_/g, " "), status: e.status, detail: e.detail, code: e.code };
   const list = (items: string[]) => items.map((i) => `- ${i}`).join("\n");
   return [
     "---",
@@ -309,8 +313,10 @@ export function errorPage(e: ErrorType): string {
     "Inside a batch, the operation's frame carries it:",
     "",
     "```json",
-    JSON.stringify({ id: 1, error: { code: e.code, ...(e.type === "domain" ? { type: "OutOfStock", data: { bookId: "b1", available: 1 } } : {}), message: e.detail, ...(e.retryable ? { retryable: true } : {}) }, fin: true }, null, 2),
+    JSON.stringify({ id: 1, error: { code: e.code, ...(e.type === "domain" ? { type: "OutOfStock", data: { bookId: "b1", available: 1 } } : {}), message: e.detail }, fin: true }, null, 2),
     "```",
+    "",
+    "`retryable` appears only where it differs from the code's default, which is the one at the top of this page.",
     "",
     "When the whole request is refused over HTTP, the answer is a problem document:",
     "",

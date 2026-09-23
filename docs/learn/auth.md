@@ -10,21 +10,40 @@ request, before and while it runs, so resolvers never repeat a permission check 
 
 ## Who is calling
 
+Rayfold does not sign anyone in. Your identity provider does (Auth0, Entra ID, Keycloak, Cognito, or your own), and
+issues the client a signed access token. The server checks that token on every request and turns the claims it
+signed into the **viewer**, the object the schema's rules see as `viewer`. The client never tells the server who it
+is or what role it has: a role comes only from a token whose signature, issuer, audience and expiry all check out.
+
 ::: code-group
 
-<<< @/../examples/typescript/src/resolvers.ts#auth{ts} [TypeScript]
+<<< @/../examples/typescript/src/auth.ts#auth{ts} [TypeScript]
 
-<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Server.kt#auth{kotlin} [Kotlin]
+<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Auth.kt#auth{kotlin} [Kotlin]
 
-<<< @/../examples/java/src/main/java/com/example/bookshop/Bookshop.java#auth{java} [Java]
+<<< @/../examples/java/src/main/java/com/example/bookshop/Auth.java#auth{java} [Java]
 
 <<< @/../examples/spring-boot/src/main/java/com/example/bookshop/SecurityConfig.java#auth{java} [Spring Boot]
 
 :::
 
-The function gets the request and returns the viewer: any object you like, or `null` for someone who is not signed
-in. In a real server it reads a session or verifies a token. In Spring Boot you do not write it: the starter builds
-the viewer from Spring Security's signed-in principal. The server hands the function every request:
+- The keys come from the provider's published key set (JWKS), fetched once, cached, and refreshed when the provider
+  rotates them. No shared secret is copied into the server.
+- A request without a token is anonymous: the viewer is `null`, and it can still do whatever the rules allow
+  anonymous callers. A token that is present but does not verify is refused with
+  [`unauthenticated`](/errors/unauthenticated) (HTTP 401) before anything runs.
+- The viewer can be any object. Here it is the token's subject and its `role` claim; use whichever claims your provider
+  puts roles, groups or tenants in. A session cookie works the same way: look the session up, and return its user.
+- In Spring Boot you do not write this function. Spring Security verifies the token, and the starter builds the viewer
+  from the authenticated principal: its name becomes `viewer.id`, its roles `viewer.roles`, and the first of them
+  `viewer.role`.
+
+Without a provider configured, the examples sign and check tokens with a development key, so they run on their own.
+`npm run token -- staff`, `./gradlew -q token --args=staff`, or `./mvnw -q compile exec:java -Dexec.args=staff` in
+the Spring Boot example prints one. Setting `AUTH_JWKS_URL` (which needs `AUTH_ISSUER` beside it) turns the
+development key off; in Spring Boot, setting `spring.security.oauth2.resourceserver.jwt.issuer-uri` does.
+
+The server calls the function once per request, or once per WebSocket connection:
 
 ::: code-group
 
@@ -85,7 +104,8 @@ An expression that cannot be evaluated, such as comparing text with a boolean, f
 | An entity at a position that may be `null` | `null`, exactly as if it did not exist |
 | An entity at a position that may not be `null`, or an element of a list | `permission_denied` with a `path`, and the operation fails as a whole |
 
-The last row matters: a caller cannot find out that an order exists by being refused it.
+The row about positions that may be `null` matters: there a caller cannot tell an entity it may not see from one
+that does not exist.
 
 ## Rules in the database too
 
@@ -93,10 +113,11 @@ A rule that only uses `viewer`, `args`, literals and plain fields of `this` can 
 so a list query never loads rows the viewer may not see. Loaders that do not use it still get correct results: the
 runtime filters afterwards. The [Postgres adapter](../guide/postgres.md) turns these rules into SQL.
 
-## Limits per caller
+## Cost limits
 
-The server works out what each batch can cost before it runs and refuses one over the caller's budget with
-[`resource_exhausted`](/errors/resource_exhausted). See [what a query costs](./queries.md#what-a-query-costs).
+The server works out what each batch can cost before it runs and refuses one over its per-batch budget (`budget`,
+1000 by default) with [`resource_exhausted`](/errors/resource_exhausted). The budget is the server's, the same for
+every caller. See [what a query costs](./queries.md#what-a-query-costs).
 
 ## Narrow access for agents and services
 
@@ -110,8 +131,8 @@ policies on this page still run on the viewer the token names — a token narrow
 
 ## Browsers
 
-- A Rayfold server refuses commands sent by a browser from an origin it does not know, which stops another website
-  from acting for your users. List your web app's origin in `allowedOrigins`; the [React guide](../get-started/react.md#2-send-api-calls-to-the-server)
+- A Rayfold server refuses any request that is not a safe read (commands, live queries, plain `POST`s) from a browser
+  origin it does not know, which stops another website from acting for your users. List your web app's origin in `allowedOrigins`; the [React guide](../get-started/react.md#2-send-api-calls-to-the-server)
   shows it.
 - The batch endpoint reads only JSON and its binary format as request bodies, and the uploads route only
   `application/octet-stream`. None of those is a type a plain HTML form on another site can send without asking

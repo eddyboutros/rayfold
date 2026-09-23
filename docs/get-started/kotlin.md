@@ -12,9 +12,10 @@ library also runs on Android. The finished project is [examples/kotlin](../../ex
 
 ## 1. Create the project
 
-A Kotlin JVM project with Gradle's `application` plugin. Add the Rayfold server and client:
+A Kotlin JVM project with Gradle's `application` plugin, the Rayfold server and client, and Nimbus to verify tokens.
+`build.gradle.kts`, with a `runClient` task for step 6 and a `token` task for step 5:
 
-<<< @/../examples/kotlin/build.gradle.kts#deps{kotlin}
+<<< @/../examples/kotlin/build.gradle.kts{kotlin}
 
 ## 2. Describe the API
 
@@ -22,12 +23,18 @@ Save the schema as `src/main/resources/bookshop.rayfold`, so it ships inside the
 
 <<< @/../examples/kotlin/src/main/resources/bookshop.rayfold
 
-The server reads this file when it starts and checks every request against it. `npx rayfold check` validates it
-from the command line, and `npx rayfold gen kotlin` generates data classes from it if you want them.
+The server reads this file when it starts and checks every request against it. `npx @rayfold/cli check` validates it
+from the command line, and `npx @rayfold/cli gen kotlin` generates data classes from it if you want them.
 
 ## 3. Write the resolvers
 
-<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Server.kt#resolvers{kotlin}
+The books live in memory, in `Store.kt`:
+
+<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Store.kt{kotlin}
+
+`Server.kt` starts the server and holds one resolver per operation, with the small helpers they share at the bottom:
+
+<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Server.kt{kotlin}
 
 - `queries` and `commands` have one function per operation, named as in the schema. Arguments arrive as JSON already
   checked against the schema, `@range` included, which is why the helpers can read them without checks.
@@ -40,20 +47,29 @@ from the command line, and `npx rayfold gen kotlin` generates data classes from 
 
 ## 4. Say who is calling
 
-<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Server.kt#auth{kotlin}
+Your identity provider signs the user in and gives the client an access token (a JWT). The server verifies it with
+[Nimbus JOSE + JWT](https://connect2id.com/products/nimbus-jose-jwt) against the provider's published keys, and turns
+its claims into the viewer:
 
-What this returns is `viewer` in the schema's `@allow` rules. The resolvers never check permissions themselves.
+<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Auth.kt{kotlin}
+
+What `viewerOf` returns is `viewer` in the schema's `@allow` rules, and the resolvers never check permissions
+themselves. Until you have a provider, the server signs and checks tokens with the development key at the top of the
+file; `devToken` makes one as a provider would, and `Token.kt` prints one:
+
+<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Token.kt{kotlin}
 
 ## 5. Start the server
 
-<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Server.kt#server{kotlin}
+`main` and `startServer`, at the top of `Server.kt`, serve the endpoint on port 4000 with the explorer beside it:
 
 ```sh
 ./gradlew run
 ```
 
-Open http://localhost:4000/rayfold/explorer to browse the operations and send requests; type `customer` or `staff` in
-the auth field to try the commands, as the explorer adds the `Bearer` itself. Or call it with curl:
+Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. To try the commands, paste a
+token into the auth field: `./gradlew -q token` prints a customer's, `./gradlew -q token --args=staff` a member of
+staff's. Or call it with curl:
 
 ```sh
 curl -s localhost:4000/rayfold -H 'content-type: application/rayfold+json' -H 'rayfold-safe: true' \
@@ -62,7 +78,9 @@ curl -s localhost:4000/rayfold -H 'content-type: application/rayfold+json' -H 'r
 
 ## 6. Call it from Kotlin
 
-<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Client.kt#client{kotlin}
+`Client.kt`:
+
+<<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Client.kt{kotlin}
 
 `watch` is a flow of the book as the client's cache holds it. The purchase comes back with a patch for `Book:b1`, the
 cache applies it, and the flow emits the new stock without a second request.

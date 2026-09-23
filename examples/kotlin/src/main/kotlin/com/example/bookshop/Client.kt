@@ -13,8 +13,10 @@ import kotlinx.serialization.json.jsonPrimitive
 
 // #region client
 fun main() = runBlocking {
+    // the access token the user's sign-in produced; a local run signs a customer's with the development key
+    val accessToken = System.getenv("TOKEN") ?: devToken("u1", "customer")
     val client = RayfoldClient(
-        HttpTransport("http://localhost:4000/rayfold", headers = { mapOf("Authorization" to "Bearer customer") }),
+        HttpTransport("http://localhost:4000/rayfold", headers = { mapOf("Authorization" to "Bearer $accessToken") }),
     )
     buyOneCopy(client, ::println)
 }

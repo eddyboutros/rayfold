@@ -13,6 +13,8 @@ repositories {
 dependencies {
     implementation("dev.rayfold:rayfold-core:0.2.1")
     implementation("dev.rayfold:rayfold-client:0.2.1")
+    // verifies the tokens your identity provider signs
+    implementation("com.nimbusds:nimbus-jose-jwt:10.9.1")
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
@@ -40,6 +42,13 @@ tasks.register<JavaExec>("runClient") {
     description = "Runs the client app against the server that `run` started."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = "com.example.bookshop.ClientKt"
+}
+
+tasks.register<JavaExec>("token") {
+    group = "application"
+    description = "Prints a development token: --args=staff for a member of staff, a customer otherwise."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "com.example.bookshop.TokenKt"
 }
 
 tasks.test {

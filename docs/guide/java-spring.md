@@ -40,7 +40,7 @@ RayfoldServer server = Rayfold.server(Files.readString(Path.of("schema.rayfold")
 HttpServer http = Rayfold.http(server)
     .allowedOrigins("https://app.example")
     .viewer(exchange -> userOf(exchange))          // a Map or record with "id", or null when anonymous
-    .start(8080);
+    .start(8080, "/rayfold", "0.0.0.0");            // start(8080) alone listens on loopback only
 ```
 
 - Results can be records, maps, lists, enums, `Optional`, `java.time` values or objects with getters. `BigDecimal`
@@ -143,19 +143,25 @@ authorities without the prefix, `role` the first of them, and `authorities` all 
 (`@allow(read: viewer.role == "ADMIN")`) see exactly that. Define a `RayfoldViewerResolver` bean to build the viewer
 yourself.
 
-Rayfold protects its endpoint against cross-site requests itself: it accepts only JSON bodies and checks the Origin
-of every request that can change data. So turn off Spring Security's CSRF token check for that path:
+Rayfold protects its endpoint against cross-site requests itself: it accepts only JSON and its binary format as
+bodies, which a browser cannot send cross-site without a preflight, and checks the Origin of every request that can
+change data. So turn off Spring Security's CSRF token check for that path. The endpoint itself is open to anonymous
+callers, because the schema's `@allow` rules decide what a caller with no viewer may do; the rest of the application
+keeps its own rules:
 
 ```java
 @Bean
 SecurityFilterChain security(HttpSecurity http) throws Exception {
     return http
-        .authorizeHttpRequests(a -> a.anyRequest().permitAll())
-        .httpBasic(Customizer.withDefaults())
+        .authorizeHttpRequests(a -> a.requestMatchers("/rayfold/**").permitAll().anyRequest().authenticated())
+        .oauth2ResourceServer(o -> o.jwt(Customizer.withDefaults()))
         .csrf(c -> c.ignoringRequestMatchers("/rayfold/**"))
         .build();
 }
 ```
+
+The [Spring Boot guide](../get-started/spring-boot.md#4-say-who-is-calling) shows the whole configuration, with roles
+read from the token.
 
 ## Generated records
 

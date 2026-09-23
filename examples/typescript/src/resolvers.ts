@@ -69,12 +69,3 @@ export function resolvers(store: Store): Resolvers {
   };
 }
 // #endregion resolvers
-
-// #region auth
-// Stands in for real authentication: check your session cookie or JWT here instead.
-export function viewerFrom(authorization: string | undefined): Viewer | null {
-  if (authorization === "Bearer customer") return { id: "u1", role: "customer" };
-  if (authorization === "Bearer staff") return { id: "s1", role: "staff" };
-  return null;
-}
-// #endregion auth

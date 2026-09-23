@@ -6,9 +6,11 @@ import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { createExplorerHandler } from "@rayfold/explorer";
 import { createHttpHandler, createRayfoldServer, type RayfoldServer } from "@rayfold/server";
-import { resolvers, seed, viewerFrom, type Store } from "./resolvers.ts";
+import { viewerFrom } from "./auth.ts";
+import { resolvers, seed, type Store } from "./resolvers.ts";
 
-export { resolvers, seed, viewerFrom, type Author, type Book, type Store, type Viewer } from "./resolvers.ts";
+export { devToken, viewerFrom } from "./auth.ts";
+export { resolvers, seed, type Author, type Book, type Store, type Viewer } from "./resolvers.ts";
 
 // #region server
 const schema = readFileSync(new URL("./bookshop.rayfold", import.meta.url), "utf8");

@@ -19,6 +19,9 @@ npx rayfold lock src/bookshop.rayfold
 # wrote rayfold.lock.json (hash 683ba13db169)
 ```
 
+`rayfold` comes with `@rayfold/cli`, installed in the project with `npm install --save-dev @rayfold/cli`; without it,
+`npx @rayfold/cli` runs it instead.
+
 From then on `rayfold check src/bookshop.rayfold` compares the schema against `rayfold.lock.json` in the current
 directory, or against the file you name with `--against`, which may also be an older copy of the `.rayfold` file. It
 exits with status 1 when a change would break a client, so the same command fails a CI build. Run `rayfold lock`
@@ -222,5 +225,5 @@ long enough period. `MemoryUsage` keeps one process's records in memory; in prod
 ## Next
 
 - Everything the schema can declare: [The schema](./schema.md).
-- Every `rayfold` command: [the CLI reference](../../packages/cli/README.md).
+- Every `rayfold` command: [the CLI reference](../guide/cli.md).
 - The rules in full: [spec 11, Evolution](../../spec/11-evolution.md).

@@ -124,7 +124,7 @@ leave it out and there is no route:
 ::: code-group
 
 ```kotlin [Kotlin]
-val uploads = MemoryUploadStore() // or JdbcUploadStore(dataSource::getConnection) for a fleet
+val uploads = MemoryUploadStore() // or JdbcUploadStore(dataSource::getConnection).apply { migrate() } for a fleet
 val http = RayfoldHttp(server, HttpOptions(uploads = UploadOptions(uploads))) { viewerFrom(it) }.start(4000)
 ```
 
@@ -137,8 +137,9 @@ HttpServer http = Rayfold.http(server)
 ```
 
 ```kotlin [Spring Boot]
-// an UploadStore bean is all it takes: the starter finds it and serves the route
-@Bean fun uploads(dataSource: DataSource): UploadStore = JdbcUploadStore(dataSource::getConnection)
+// an UploadStore bean is all it takes: the starter finds it and serves the route. migrate() creates its table,
+// if it is not there yet, and is safe on every instance
+@Bean fun uploads(dataSource: DataSource): UploadStore = JdbcUploadStore(dataSource::getConnection).apply { migrate() }
 ```
 
 :::

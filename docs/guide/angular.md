@@ -67,7 +67,13 @@ readonly book = injectQuery<Book>("book", () => ({ id: this.id() }), { enabled: 
 
 ```ts
 export class RestockButton {
+  readonly id = input.required<string>();
   readonly restock = injectCommand<Book>("restock");
+  // error() is unknown: anything can be thrown, so the template gets a message rather than the value
+  readonly problem = computed(() => {
+    const e = this.restock.error();
+    return e instanceof Error ? e.message : e ? "Could not restock." : "";
+  });
 
   run(id: string) {
     this.restock.run({ id, qty: 5 });   // returns a promise; the outcome also lands in the signals
@@ -77,7 +83,7 @@ export class RestockButton {
 
 ```html
 <button (click)="run(id())" [disabled]="restock.running()">Restock</button>
-@if (restock.error(); as e) { <p>{{ e.message }}</p> }
+@if (problem()) { <p>{{ problem() }}</p> }
 ```
 
 Each run gets a fresh idempotency key unless you pass one, so a retry replays rather than running twice. The command's

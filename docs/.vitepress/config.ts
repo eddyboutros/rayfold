@@ -66,6 +66,8 @@ export default defineConfig({
 
   markdown: {
     languages: [rayfoldGrammar as unknown as Language],
+    // a guide shows some example files whole, and their #region markers belong to the other pages, not to the reader
+    snippet: { stripRegionMarkers: "all" },
     anchor: { slugify },
     config(md) {
       const render = md.renderer.rules.link_open ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));

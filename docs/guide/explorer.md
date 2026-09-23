@@ -15,7 +15,7 @@ createServer((req, res) => {
   if (explorer(req, res)) return;          // serves /rayfold/explorer
   if ((req.url ?? "").startsWith("/rayfold")) return endpoint(req, res);
   res.writeHead(404).end();
-});
+}).listen(4000);
 ```
 
 The page lists every operation with its arguments, what it returns, what it costs and which policies guard it; fills
@@ -24,8 +24,9 @@ endpoint like any other client; and shows the frames as they arrive, each with i
 `@simulate` can be run as a **dry run**, which reports what would happen and writes nothing. A query can be sent
 `live`, and the frames keep arriving as the data changes.
 
-It is one self-contained document: no fonts, scripts or styles from anywhere else, so it works behind a strict
-`Content-Security-Policy` and with no network beyond your own server.
+It is one self-contained document: nothing loads from any other origin, so it works offline and on a closed network.
+Its script and styles are inline, so where a `Content-Security-Policy` applies, its path needs `'unsafe-inline'` for
+`script-src` and `style-src`.
 
 ## Where it is served, and to whom
 

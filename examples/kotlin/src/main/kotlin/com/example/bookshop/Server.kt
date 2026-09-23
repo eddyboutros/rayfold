@@ -1,6 +1,5 @@
 package com.example.bookshop
 
-import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import dev.rayfold.core.Code
 import dev.rayfold.core.CommandResult
@@ -12,7 +11,6 @@ import dev.rayfold.core.Resolvers
 import dev.rayfold.core.SchemaText
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -35,18 +33,6 @@ fun startServer(port: Int, store: Store = Store()): HttpServer {
     return RayfoldHttp(server, options, ::viewerOf).start(port)
 }
 // #endregion server
-
-// #region auth
-// Two fixed tokens stand in for real authentication.
-private val demoViewers = mapOf(
-    "Bearer customer" to buildJsonObject { put("id", "u1"); put("role", "customer") },
-    "Bearer staff" to buildJsonObject { put("id", "s1"); put("role", "staff") },
-)
-
-/** The viewer the schema's policies see as `viewer`, or null for an anonymous request. */
-fun viewerOf(exchange: HttpExchange): JsonElement =
-    demoViewers[exchange.requestHeaders.getFirst("Authorization")] ?: JsonNull
-// #endregion auth
 
 // #region resolvers
 fun resolvers(store: Store) = Resolvers(

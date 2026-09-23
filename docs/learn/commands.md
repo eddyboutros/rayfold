@@ -72,7 +72,7 @@ write patches by hand; the server derives them from what the command returns.
 ```http [HTTP]
 POST /rayfold
 Content-Type: application/rayfold+json
-Authorization: Bearer customer
+Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 {"rayfold":"0.1","ops":[{"id":1,"op":"buy","args":{"bookId":"b3"},"key":"6c1f0d2e-buy-b3-0001"}]}
 ```
@@ -138,7 +138,8 @@ entity Book {
 }
 ```
 
-Then send the version you read with the command, and the server refuses it if the row has moved on since:
+Then send the version you read with the command. The resolver checks it against the row with `ctx.checkVersion`
+before it writes, and the server refuses the command if the row has moved on since:
 
 ```ts
 const book = await client.query<Book>("book", { id: "b1" }, { shape: "{ id stock version }" });
@@ -150,8 +151,20 @@ version the row is actually at — so a client can show the current value, or re
 round trip to find out what happened. Over a [REST binding](../guide/rest-bindings.md) this is `If-Match`, and the
 refusal is `412 Precondition Failed`.
 
-A `@version` field can be an `Int`, a `Long`, a `String` or an `Instant`; the resolver bumps it on every write. A
-resolver that compares versions itself calls `ctx.checkVersion(key, actual, current)` and gets the same typed error.
+A `@version` field can be an `Int`, a `Long`, a `String` or an `Instant`; the resolver bumps it on every write. The
+comparison is the resolver's to make, because only it reads the row: `ctx.checkVersion(key, actual, current)` compares
+the version the command sent with the one the row has, and throws `VersionConflict` if they differ. A resolver that
+does not call it writes whatever version the client sent.
+
+```ts
+restock: ({ bookId, qty }, ctx) => {
+  const book = store.books.get(bookId);
+  ctx.checkVersion(`Book:${bookId}`, book.version, book); // refuses a stale ifVersion, with the current book
+  book.stock += qty;
+  book.version += 1;
+  return book;
+},
+```
 
 ## Errors the schema declares
 
@@ -170,7 +183,9 @@ When the resolver throws `OutOfStock`, the client receives it by name, with the 
 :::
 
 The message is for people; code branches on `type`. A resolver may only throw errors its operation declares. Anything
-else reaches the client as [`internal`](/errors/internal), and the details stay in the server's log.
+else reaches the client as [`internal`](/errors/internal) with the message `Internal error`, so nothing about the
+server leaks. The runtime does not keep the original exception, so log it in the resolver, or in an
+[`Instrumentation`](../guide/tracing.md) hook, before it escapes.
 
 ## Errors every API shares
 

@@ -5,18 +5,21 @@ description: Every rayfold command — validate a schema, record its ordinals, g
 
 # Command line
 
-`rayfold` ships with `@rayfold/cli`. There is nothing to install if you have npm:
+`rayfold` ships with `@rayfold/cli`. Run it without installing anything:
 
 ```sh
-npx rayfold check schema.rayfold
+npx @rayfold/cli check schema.rayfold
 ```
+
+Or add it to the project with `npm install --save-dev @rayfold/cli`, after which `npx rayfold ...` runs the installed
+copy. The examples on this page use the short form.
 
 Every command takes a `.rayfold` file and does its work without a server, a database or a network. That is what makes
 them usable in CI: `check` is the one that belongs in a pipeline, and the rest are for the desk.
 
-**Exit codes.** `0` succeeded, `1` the schema is wrong or a change is refused, `2` the command was used wrongly (an
-unknown command, a missing argument, an unreadable usage snapshot). A pipeline can treat anything non-zero as failure;
-only `1` means "your schema".
+**Exit codes.** `0` succeeded. `2` the command line was malformed: an unknown command, a missing argument, a bad
+`--since`. `1` everything else: an invalid schema, a refused change, resolvers that do not cover the schema, or a file
+or target that could not be read or is not supported. A pipeline can treat anything non-zero as failure.
 
 ## check
 
@@ -80,6 +83,10 @@ rayfold explain <schema.rayfold> <op> [--shape "{...}"] [--args '{...}']
 
 Prints what an operation would do before it does it: its cost, its depth, how many loader calls each level takes, and
 which policies can be pushed down to the data source.
+
+```sh
+rayfold explain bookstore.rayfold books --shape "{ items { id title author { name } } }"
+```
 
 ```
 query books(): cost 46, depth 3, 5 fields
@@ -169,8 +176,9 @@ between runs. `@example` values are used where a field has one.
 rayfold dev <example-dir> [--port 4400]
 ```
 
-Runs a server from an example directory with the explorer in front of it. This is what `npm run dev` uses in this
-repository.
+Runs one of this repository's examples, a directory whose `src/index.ts` exports `createBookstore()`, with the explorer
+in front of it. This is what `npm run dev` uses in this repository. It believes any bearer token as a user id, so it
+is for local development only.
 
 ## lsp
 
@@ -179,16 +187,17 @@ rayfold lsp
 ```
 
 The language server for `.rayfold` files, speaking LSP over stdio: diagnostics as you type, completion, hover,
-go-to-definition and document symbols. Editors start it themselves — see [Editors](editors.md) for the VS Code,
-Neovim and Zed configuration.
+go-to-definition and document symbols. Editors start it themselves — see [Editors](editors.md) for the VS Code and
+Neovim configuration.
 
 ## In CI
 
 The one line worth having in a pipeline:
 
 ```sh
-npx rayfold check schema.rayfold --against rayfold.lock.json --strict
+npx @rayfold/cli check schema.rayfold --against rayfold.lock.json --strict --resolvers ./src/resolvers.ts
 ```
 
-It fails the build on a breaking change, and on a compatible one nobody meant to make. Add `--resolvers ./src/resolvers.ts`
-to fail it when the schema and the code have drifted apart.
+It fails the build on a breaking change, on a compatible one nobody meant to make, and, with `--resolvers`, when the
+schema and the code have drifted apart. The module must export `resolvers`, a default export, or a function that
+returns them.

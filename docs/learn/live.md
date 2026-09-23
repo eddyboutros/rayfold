@@ -73,8 +73,8 @@ rather than on any one entity would re-run on every write to a type it can reach
 query search(q: String, page: PageArgs = { first: 20 }): Page<SearchHit> @live(false)
 ```
 
-A client asking for it with `live: true` is refused with `invalid_argument`; the same query still answers normally
-without it.
+A client asking for it with `live: true` is refused with `invalid_argument`, and the whole batch is refused before it
+runs; the same query still answers normally without `live`.
 
 The bus belongs to one server. Behind a load balancer that is silently wrong: a command that runs on the second
 server never reaches a live query held by the first, and the screen sits there showing stale data with no error to
@@ -90,9 +90,9 @@ that book updates too, not only the live one. In React, only the components show
 
 - Over HTTP, a live query is a response that stays open. The TypeScript server sends an empty line when nothing has
   happened for 15 seconds (`keepAliveMs`), so proxies do not close an idle connection.
-- A live op cannot be a safe request: `Rayfold-Safe: true` (and `GET`, and `QUERY`) makes the server buffer the whole
-  answer so it can compute cache headers for it, which is the opposite of staying open. Send live ops over a plain
-  `POST` or the WebSocket transport.
+- A live op gets no cache headers. Sent as a safe request (`Rayfold-Safe: true`, `GET` or `QUERY`), it is streamed
+  with `Cache-Control: no-store`, like a plain `POST`. Servers up to 0.2.1 buffered a safe request whole, so a live op
+  sent that way never answered; the clients send live ops as plain `POST`s, which works with every version.
 - To share one connection between many live queries, give the TypeScript client
   `createWebSocketTransport({ url: "wss://example.com/rayfold/ws" })`. On the server, attach the endpoint to the same
   Node HTTP server your batch endpoint runs on:

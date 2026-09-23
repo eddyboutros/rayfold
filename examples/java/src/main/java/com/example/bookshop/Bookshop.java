@@ -1,6 +1,5 @@
 package com.example.bookshop;
 
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import dev.rayfold.core.Code;
 import dev.rayfold.core.RayfoldException;
@@ -28,24 +27,11 @@ public final class Bookshop {
     // #region server
     public static HttpServer start(int port, Store store) throws IOException {
         return Rayfold.http(server(store))
-            .viewer(Bookshop::viewerOf)
+            .viewer(Auth::viewerOf)
             .explorer("Bookshop")
             .start(port);
     }
     // #endregion server
-
-    // #region auth
-    // Two fixed tokens stand in for real authentication.
-    private static final Map<String, Map<String, String>> DEMO_VIEWERS = Map.of(
-        "Bearer customer", Map.of("id", "u1", "role", "customer"),
-        "Bearer staff", Map.of("id", "s1", "role", "staff"));
-
-    /** The viewer the schema's policies see as {@code viewer}, or null for an anonymous request. */
-    static Map<String, String> viewerOf(HttpExchange exchange) {
-        String authorization = exchange.getRequestHeaders().getFirst("Authorization");
-        return authorization == null ? null : DEMO_VIEWERS.get(authorization);
-    }
-    // #endregion auth
 
     // #region resolvers
     public static RayfoldServer server(Store store) {

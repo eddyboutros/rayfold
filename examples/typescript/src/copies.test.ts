@@ -26,6 +26,8 @@ it("every example has the same bookshop schema", () => {
   for (const copy of copies) expect(read(copy), relative(examples, copy)).toBe(original);
 });
 
-it("the React app's server runs the TypeScript example's resolvers", () => {
+it("the React app's server runs the TypeScript example's resolvers, and checks callers the same way", () => {
   expect(read(join(examples, "react", "src", "resolvers.ts"))).toBe(read(join(examples, "typescript", "src", "resolvers.ts")));
+  expect(read(join(examples, "react", "src", "auth.ts"))).toBe(read(join(examples, "typescript", "src", "auth.ts")));
+  expect(read(join(examples, "react", "src", "token.ts"))).toBe(read(join(examples, "typescript", "src", "token.ts")));
 });

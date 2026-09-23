@@ -26,7 +26,7 @@ that the parts GraphQL leaves to libraries and conventions are part of the contr
 
 ```sh
 npm install graphql       # the importer reads the SDL with it
-npx rayfold import graphql schema.graphql --out api.rayfold
+npx @rayfold/cli import graphql schema.graphql --out api.rayfold
 ```
 
 `Query` fields become queries, `Mutation` fields commands, `Subscription` fields streams, and the type system carries
@@ -41,7 +41,7 @@ importer leaves a note rather than inventing either. The notes go to stderr; the
 `rayfold gen graphql` prints a GraphQL schema for a Rayfold one, for GraphQL tooling or to compare the two:
 
 ```sh
-npx rayfold gen graphql api.rayfold --out schema.graphql
+npx @rayfold/cli gen graphql api.rayfold --out schema.graphql
 ```
 
 Types, fields, arguments, defaults, descriptions and deprecations carry over, and nullability flips back. Queries become
@@ -62,7 +62,7 @@ and rules such as `@allow`, `@cost` and `@cache`. The output describes the API; 
 3. **Move the queries.** A GraphQL document becomes one or more ops in a batch with a shape each. Variables become
    arguments, or `$name` inside the shape.
 4. **Move the client.** Replace Apollo or Relay with `@rayfold/client` and `@rayfold/react` (`useQuery`, `useLive`,
-   `useCommand`). Remove the cache-update code after mutations: the patches do that now.
+   `useCommand`), or `@rayfold/angular` (`injectQuery`, `injectLive`, `injectCommand`). Remove the cache-update code after mutations: the patches do that now.
 
 ## What to watch for
 

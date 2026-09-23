@@ -7,8 +7,9 @@ query per nesting level, keyset pages, and read policies pushed into the `WHERE`
 is still one round trip per level rather than per row.
 
 ```kotlin
-val store = JdbcStore({ dataSource.connection }, JdbcStoreOptions(
-    ir = server.ir,
+val ir = SchemaText.load(schemaText).ir
+val store = JdbcStore(dataSource::getConnection, JdbcStoreOptions(
+    ir = ir,
     naming = Naming.SNAKE,
     tables = mapOf(
         "Book" to JdbcTable("books", columns = mapOf("authorId" to "author_id")),
@@ -17,16 +18,22 @@ val store = JdbcStore({ dataSource.connection }, JdbcStoreOptions(
     ),
 ))
 
+// a page as the runtime's Page<T> reads it
+fun JdbcPage.json(): JsonElement = buildJsonObject {
+    put("items", JsonArray(items)); put("cursor", cursor); put("hasMore", hasMore); put("total", total)
+}
+
 val resolvers = Resolvers(
     queries = mapOf(
-        "books" to { args, ctx -> store.page("Book", first = 20, ctx = ctx) },
-        "myOrders" to { _, ctx -> store.find("Order", ctx = ctx) },
+        "books" to { _, ctx -> store.page("Book", first = 20, ctx = ctx).json() },
+        "myOrders" to { _, ctx -> JsonArray(store.find("Order", ctx = ctx)) },
     ),
     fields = mapOf(
         "Book" to mapOf("author" to { books, _, ctx -> store.byIds("Author", books.map { it["authorId"] }, ctx) }),
-        "Author" to mapOf("books" to { authors, _, ctx -> store.pagesByField("Book", "authorId", authors.map { it["id"] }, 10, ctx) }),
+        "Author" to mapOf("books" to { authors, _, ctx -> store.pagesByField("Book", "authorId", authors.map { it["id"] }, 10, ctx).map { it.json() } }),
     ),
 )
+val server = RayfoldServer(ir, resolvers)
 ```
 
 The store asks for a connection per query and closes it again, which is what a pool expects: hand it
@@ -66,7 +73,7 @@ val relay = PgRelay(PgNotifications(listener), dataSource::getConnection)
 relay.migrate() // or run relay.schema() in your migrations
 
 val server = RayfoldServer(ir, resolvers, idempotency = idempotency, relay = relay)
-server.ready() // listening to the other servers
+runBlocking { server.ready() } // suspends until it is listening to the other servers
 ```
 
 `PgNotifications` needs the Postgres driver on the classpath, and only then: `rayfold-jdbc` does not depend on it. The

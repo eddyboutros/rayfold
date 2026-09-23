@@ -38,10 +38,10 @@ val server = RayfoldServer(
 // HTTP on the JDK's own server, JSON or the binary RB encoding, live queries included; the viewer comes from your authentication
 RayfoldHttp(server, HttpOptions(allowedOrigins = setOf("https://app.example"))) { exchange ->
     userOf(exchange.requestHeaders.getFirst("Authorization"))?.let { buildJsonObject { put("id", it.id); put("role", it.role) } } ?: JsonNull
-}.start(8080)
+}.start(8080, host = "0.0.0.0") // start(8080) alone listens on loopback only
 
 // live queries and many batches over one socket: ws://host:8081/rayfold/ws
-RayfoldWebSocket(server) { request -> userOf(request.header("authorization"))?.let { buildJsonObject { put("id", it.id) } } ?: JsonNull }.start(8081)
+RayfoldWebSocket(server) { request -> userOf(request.header("authorization"))?.let { buildJsonObject { put("id", it.id) } } ?: JsonNull }.start(8081, host = "0.0.0.0")
 ```
 
 Resolvers are suspend functions over kotlinx.serialization JSON. A command returns the changed entity, or
@@ -61,17 +61,20 @@ two implementations. The seam between them is `HttpCall`: implement it over what
 a response, and `RayfoldHttp.serve(call, base, viewer)` does the rest — batches, live queries, the manifest, caching,
 health and readiness.
 
+A sketch for Ktor, to show the shape; the [Spring Boot starter's `ServletCall`](../../kotlin/rayfold-spring-boot-starter/src/main/kotlin/dev/rayfold/spring/RayfoldAutoConfiguration.kt)
+is a complete one. `serve` blocks while it reads and writes, so on Ktor call it inside `withContext(Dispatchers.IO)`:
+
 ```kotlin
 class KtorCall(private val call: ApplicationCall) : HttpCall {
     override val method get() = call.request.httpMethod.value
     override val path get() = call.request.path()
     override val rawQuery get() = call.request.queryString().ifEmpty { null }
     override fun header(name: String) = call.request.header(name)
-    override val body: InputStream get() = call.receiveStream()
+    override val body: InputStream get() = runBlocking { call.receiveStream() }
     override val secure get() = call.request.origin.scheme == "https"
     override val localAddress: InetAddress? = null
     override fun setHeader(name: String, value: String) = call.response.header(name, value)
-    override fun respond(status: Int, length: Long): OutputStream = /* your server's output stream */
+    override fun respond(status: Int, length: Long): OutputStream = TODO("your server's output stream")
     override fun abort() { /* end the exchange */ }
 }
 ```
@@ -100,8 +103,11 @@ Everything the client reads goes into a normalized cache, and commands' patches 
 // the result now, then again whenever this book changes in the cache, with no refetch
 client.watch("book", args("id" to "b1"), "{ id title stock }").collect { render(it) }
 
-// pushed by the server whenever anyone changes it, over HTTP or WebSocket
-client.live("book", args("id" to "b1"), "{ id stock }").collect { render(it) }
+// pushed by the server whenever anyone changes it, over HTTP or WebSocket. Unlike the TypeScript client, the flow
+// is not reopened: when the connection drops or the server drains it fails, so retry it
+client.live("book", args("id" to "b1"), "{ id stock }")
+    .retryWhen { e, attempt -> (e is IOException || (e as? RayfoldClientException)?.retryable == true) && attempt < 10 }
+    .collect { render(it) }
 
 // stream ops
 client.stream("ticks", args("n" to 10)).collect { println(it) }

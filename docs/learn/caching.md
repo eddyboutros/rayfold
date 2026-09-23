@@ -49,7 +49,7 @@ a response that contains it is private whatever `Book` says. Here is what the bo
 | Read | `Cache-Control` |
 |---|---|
 | `book` without credentials | `public, max-age=60` |
-| `book` with `Authorization: Bearer customer` | `private, max-age=60` |
+| `book` with a customer's access token | `private, max-age=60` |
 | `book` with shape `{ id costPrice }`, as staff | `private, max-age=60` |
 | `books` with `@cache(maxAge: 10s)` on the query and `swr: 5m` on `Book` | `public, max-age=10, stale-while-revalidate=300` |
 | `book` sent as a plain `POST`, without `Rayfold-Safe` | `no-store` |
