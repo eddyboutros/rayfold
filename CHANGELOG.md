@@ -14,6 +14,16 @@ Everything under a dated heading is published on npm and Maven Central.
   and reported the field as it had been. Both runtimes now give each re-run a fresh memo; the first run shares the
   batch's as before. Found by a page that hands an issue to someone and watches the list not change.
 
+- **Uploads can go to a directory.** `FileUploadStore` in `@rayfold/server` streams an upload to a file and back out,
+  so what a server holds at once is one chunk whatever the file weighs — `MemoryUploadStore` holds everything whole
+  and `PgUploadStore` puts the bytes in a column, which stops suiting them somewhere in the low megabytes. It survives
+  its directory going away between uploads. The [uploads guide](https://rayfold.dev/guide/uploads) shows it, and the
+  new `examples/document-store` keeps files with it and shares one with a capability token.
+
+- **A browser on another origin can upload.** The upload route's own headers, `Rayfold-Upload-Name` and
+  `Rayfold-Upload-Type`, were missing from the preflight's allow list, so a cross-origin upload failed in the browser
+  before the server saw a byte. They are allowed now, with a test.
+
 ## 0.2.0 (2026-09-19)
 
 - **A JVM server sharing a Postgres relay now stops when it is told to.** `PgNotifications` guards the listening
