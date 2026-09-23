@@ -508,9 +508,15 @@ async function runLive(
   // Read sets and diffs need `$type`, so the query always runs in full form; compaction happens on the way out.
   const runCtx: RayfoldContext = ctx.compact ? { ...ctx, compact: false } : ctx;
   const wire = (f: Frame): Frame => (ctx.compact ? compactQueryFrame(f) : f);
+  // The first run shares the batch's loader memo like any op; a re-run gets a fresh one. The memo remembers a field's
+  // load per entity, and a re-run exists to read what changed: with the memo kept, a loaded field would come back as
+  // it was on the first run for as long as the query stayed open.
+  let first = true;
   const collect = async (): Promise<{ frames: Frame[]; data: unknown }> => {
     const frames: Frame[] = [];
-    await rt.executor.runQuery(p.op, args, p.shape, p.explicit, p.cost, runCtx, (f) => frames.push(f));
+    const runIn = first ? runCtx : { ...runCtx, batch: new Map<string, unknown>() };
+    first = false;
+    await rt.executor.runQuery(p.op, args, p.shape, p.explicit, p.cost, runIn, (f) => frames.push(f));
     return { frames, data: foldFrames(frames) };
   };
   // Entity types reachable from the result type: a new entity of such a type may change membership.

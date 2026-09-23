@@ -122,6 +122,21 @@ describe("live queries", () => {
     expect(bs.server.changes.size).toBe(0);
   });
 
+  it("a re-run loads a field again rather than answering it from the batch's memo", async () => {
+    // the author is a loaded field: the first run loads it once for the batch. a re-run is a new read, and the row
+    // the loader would answer from has changed underneath: the re-run has to show it.
+    const live = startLive([{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id author { id name } }", live: true }]);
+    await live.until(1);
+    expect(live.frames[0]).toEqual({ id: 1, data: { $type: "Book", id: "b1", author: { $type: "Author", id: "a1", name: "Ursula K. Le Guin" } }, meta: { cost: 2 } });
+    expect(bs.store.calls["Book.author"]).toBe(1);
+    bs.store.books.set("b1", { ...bs.store.books.get("b1")!, authorId: "a2" });
+    bs.server.changes.publish({ keys: new Set(["Book:b1"]), ops: new Set() });
+    await live.until(2);
+    expect(live.frames[1]).toEqual({ id: 1, patch: [{ set: "Author:a2", value: { $type: "Author", id: "a2", name: "Italo Calvino" } }, { set: "Book:b1", value: { author: { $ref: "Author:a2" } } }] });
+    expect(bs.store.calls["Book.author"]).toBe(2);
+    await live.stop();
+  });
+
   it("sends nothing when a re-run gives the same result, a full data frame when membership changes, and honours invOp", async () => {
     const live = startLive([{ id: 1, op: "books", args: { filter: { format: "EBOOK" }, page: { first: 5 } }, shape: "{ items { id } }", live: true }]);
     await live.until(1);

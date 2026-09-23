@@ -97,6 +97,22 @@ class LiveTest {
     }
 
     @Test
+    fun `a re-run loads a field again rather than answering it from the batch's memo`() = runTest(timeout = 5.seconds) {
+        // the author is a loaded field: the first run loads it once for the batch. a re-run is a new read, and the
+        // row the loader would answer from has changed underneath: the re-run has to show it.
+        val bs = Bookstore()
+        val live = LiveRun(this, bs.server, """{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id author { id name } }","live":true}""")
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","author":{"${'$'}type":"Author","id":"a1","name":"Ursula K. Le Guin"}},"meta":{"cost":2}}"""), live.next())
+        assertEquals(1, bs.store.calls["Book.author"])
+        bs.store.books["b1"] = JsonObject(bs.store.books.getValue("b1") + ("authorId" to JsonPrimitive("a2")))
+        bs.server.changes.publish(Change(setOf("Book:b1"), emptySet()))
+        assertEquals(obj("""{"id":1,"patch":[{"set":"Author:a2","value":{"${'$'}type":"Author","id":"a2","name":"Italo Calvino"}},{"set":"Book:b1","value":{"author":{"${'$'}ref":"Author:a2"}}}]}"""), live.next())
+        assertEquals(2, bs.store.calls["Book.author"])
+        assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, bs.server.changes.size)
+    }
+
+    @Test
     fun `sends nothing when a re-run gives the same result, a full data frame when membership changes, and honours invOp`() = runTest(timeout = 5.seconds) {
         val bs = Bookstore()
         val live = LiveRun(this, bs.server, """{"id":1,"op":"books","args":{"filter":{"format":"EBOOK"},"page":{"first":5}},"shape":"{ items { id } }","live":true}""")

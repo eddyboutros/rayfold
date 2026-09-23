@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Rayfold server for Node.js: batches with pipelining, schema policies, HTTP caching, live queries, WebSocket, MCP and REST bindings.",
   "keywords": [

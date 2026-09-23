@@ -11,8 +11,8 @@ repositories {
 
 // #region deps
 dependencies {
-    implementation("dev.rayfold:rayfold-core:0.2.0")
-    implementation("dev.rayfold:rayfold-client:0.2.0")
+    implementation("dev.rayfold:rayfold-core:0.2.1")
+    implementation("dev.rayfold:rayfold-client:0.2.1")
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")

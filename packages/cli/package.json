@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Rayfold command line: check, lock, hash, explain, gen, shapes, import from OpenAPI or GraphQL, a mock server, a language server, and a dev server with the explorer.",
   "keywords": [

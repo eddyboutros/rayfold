@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/react",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "React hooks for Rayfold: useQuery, useLive and useCommand on top of @rayfold/client's self-updating cache.",
   "keywords": [

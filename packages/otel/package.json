@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/otel",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "OpenTelemetry tracing for Rayfold servers: a span per batch, per op and per loader call, continuing the caller's W3C trace.",
   "keywords": [

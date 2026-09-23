@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/rb",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Rayfold Binary (RB): the compact, schema-driven wire encoding for Rayfold.",
   "keywords": [

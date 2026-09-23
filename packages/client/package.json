@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/client",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Rayfold client for browsers and Node.js: a normalized cache kept current by server patches, batching and live queries.",
   "keywords": [

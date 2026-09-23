@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/angular",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Angular bindings for Rayfold: injectQuery, injectLive and injectCommand as signals, on top of @rayfold/client's self-updating cache.",
   "keywords": [

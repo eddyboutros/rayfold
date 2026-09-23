@@ -652,10 +652,16 @@ class BatchRunner(
         // read sets and diffs need `$type`, so the query always runs in full form; compaction happens on the way out
         val runCtx = if (!ctx.compact) ctx else RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, ctx.isCancelled, compact = false, ifVersion = ctx.ifVersion, batch = ctx.batch, shape = ctx.shape, client = ctx.client, meta = ctx.meta)
         class Run(val frames: List<JsonObject>, val data: JsonElement, val unions: Set<String>)
+        // the first run shares the batch's loader memo like any op; a re-run gets a fresh one. The memo remembers a
+        // field's load per entity, and a re-run exists to read what changed: with the memo kept, a loaded field would
+        // come back as it was on the first run for as long as the query stayed open.
+        var first = true
         suspend fun collect(): Run {
             val frames = mutableListOf<JsonObject>()
             val unions = mutableSetOf<String>()
-            executor.runQuery(p.op, args, p.shape, p.explicit, p.cost, runCtx, emit = { frames.add(it) }, unionPaths = unions)
+            val runIn = if (first) runCtx else runCtx.copy(batch = ConcurrentHashMap())
+            first = false
+            executor.runQuery(p.op, args, p.shape, p.explicit, p.cost, runIn, emit = { frames.add(it) }, unionPaths = unions)
             return Run(frames, Live.foldFrames(frames), unions)
         }
         fun wire(f: JsonObject, unions: Set<String>): JsonObject {

@@ -5,6 +5,15 @@ packages and the Maven artifacts share one version number.
 
 Everything under a dated heading is published on npm and Maven Central.
 
+## 0.2.1 (2026-09-23)
+
+- **A live query's re-run loads its fields again.** Every op of a batch shares one loader memo, so a field loaded
+  for an entity by one op is not loaded again by another. A live query's re-runs ran inside the same batch and so
+  shared that memo, which meant a loaded field — an issue's assignee, a book's author — was answered from the first
+  run for as long as the query stayed open: the row changed, the re-run saw the change on the entity's own columns,
+  and reported the field as it had been. Both runtimes now give each re-run a fresh memo; the first run shares the
+  batch's as before. Found by a page that hands an issue to someone and watches the list not change.
+
 ## 0.2.0 (2026-09-19)
 
 - **A JVM server sharing a Postgres relay now stops when it is told to.** `PgNotifications` guards the listening

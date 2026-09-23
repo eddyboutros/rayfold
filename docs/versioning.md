@@ -9,10 +9,11 @@ description: Which Rayfold version is published, which features each one added, 
 
 | Version | Date | |
 |---|---|---|
-| **0.2.0** | 2026-09-19 | The current release. `npm install @rayfold/server` gives you this, and `dev.rayfold:*:0.2.0` on Maven Central. |
+| **0.2.1** | 2026-09-23 | The current release. `npm install @rayfold/server` gives you this, and `dev.rayfold:*:0.2.1` on Maven Central. A live query's re-runs load their fields again. |
+| **0.2.0** | 2026-09-19 | Tooling: `@rayfold/angular`, server identity and `/stats`, counters, published conformance vectors. |
 | **0.1.0** | 2026-09-15 | The first release. |
 
-Before 1.0 only the latest minor version gets fixes, so a new project starts on 0.2.0. The table below says which
+Before 1.0 only the latest minor version gets fixes, so a new project starts on 0.2.1. The table below says which
 feature arrived in which version, for anyone still on 0.1.0.
 
 ## What each version added

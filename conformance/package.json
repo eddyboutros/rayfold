@@ -1,6 +1,6 @@
 {
   "name": "@rayfold/conformance",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Rayfold conformance fixtures and harness: the shared cases every Rayfold implementation must pass.",
   "keywords": [
