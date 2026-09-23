@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PassThrough } from "node:stream";
 import { readFileSync } from "node:fs";
 import { RayfoldLanguageServer, diagnosticsFor, indexDocument, serveStdio } from "./index.ts";
+import { bounded } from "../../../e2e/wait.ts";
 import { DEF_KEYWORDS } from "./positions.ts";
 
 const SCHEMA = [
@@ -115,7 +116,10 @@ describe("what an editor asks for", () => {
       textDocument: { uri: URI },
       position: { line: 0, character: 13 }, // just after the @ on the entity
     }) as Array<{ label: string; documentation: string }>;
-    expect(items.map((i) => i.label)).toEqual(expect.arrayContaining(["cache", "allow", "deny", "cost", "deprecated"]));
+    expect(items.map((i) => i.label)).toEqual([
+      "cache", "allow", "deny", "load", "page", "cost", "deprecated", "lazy", "partial", "live", "input", "interface",
+      "idempotent", "format", "unit", "range", "example", "ordinal", "version", "http", "simulate", "merge",
+    ]);
     expect(items.find((i) => i.label === "cache")?.documentation).toContain("entity");
   });
 
@@ -125,13 +129,13 @@ describe("what an editor asks for", () => {
       textDocument: { uri: URI },
       position: { line: 2, character: 9 }, // after "title:"
     }) as Array<{ label: string }>;
-    expect(inTypePosition.map((i) => i.label)).toEqual(expect.arrayContaining(["Book", "Author", "String", "ID"]));
+    expect(inTypePosition.map((i) => i.label)).toEqual(["Book", "Author", "ID", "String", "Int", "Long", "Float", "Boolean", "Decimal", "Instant", "Date", "Duration", "Bytes", "JSON"]);
 
     const atTopLevel = request(s, sent, "textDocument/completion", {
       textDocument: { uri: URI },
       position: { line: 5, character: 0 },
     }) as Array<{ label: string }>;
-    expect(atTopLevel.map((i) => i.label)).toEqual(expect.arrayContaining(["entity", "query", "command", "view"]));
+    expect(atTopLevel.map((i) => i.label)).toEqual(["entity", "object", "input", "enum", "union", "scalar", "error", "event", "query", "command", "stream", "view", "Book", "Author"]);
     // guard: a type position is not offered declaration keywords
     expect(inTypePosition.map((i) => i.label)).not.toContain("entity");
   });
@@ -217,10 +221,13 @@ describe("over stdio, as an editor speaks it", () => {
       }
     });
     return (count) =>
-      new Promise((resolve) => {
-        if (messages.length >= count) return resolve(messages);
-        waiting = { count, resolve };
-      });
+      bounded(
+        new Promise((resolve) => {
+          if (messages.length >= count) return resolve(messages);
+          waiting = { count, resolve };
+        }),
+        `${count} messages from the server`,
+      );
   }
 
   const frame = (message: unknown): Buffer => {
@@ -276,16 +283,42 @@ describe("over stdio, as an editor speaks it", () => {
     const stopped: string[] = [];
 
     const told = new PassThrough();
-    serveStdio(told, new PassThrough(), { onExit: () => stopped.push("exit") });
-    told.write(frame({ jsonrpc: "2.0", method: "exit" }));
-    await new Promise((resolve) => setImmediate(resolve));
+    await bounded(
+      new Promise<void>((resolve) => {
+        serveStdio(told, new PassThrough(), { onExit: () => (stopped.push("exit"), resolve()) });
+        told.write(frame({ jsonrpc: "2.0", method: "exit" }));
+      }),
+      "onExit after the exit notification",
+    );
     expect(stopped).toEqual(["exit"]);
 
     const closed = new PassThrough();
-    serveStdio(closed, new PassThrough(), { onExit: () => stopped.push("closed") });
-    closed.end();
-    await new Promise((resolve) => setImmediate(resolve));
+    await bounded(
+      new Promise<void>((resolve) => {
+        serveStdio(closed, new PassThrough(), { onExit: () => (stopped.push("closed"), resolve()) });
+        closed.end();
+      }),
+      "onExit after the pipe closed",
+    );
     expect(stopped).toEqual(["exit", "closed"]);
+  });
+
+  it("skips a header it cannot read and a body that is not JSON, then answers the next message", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    serveStdio(input, output);
+    const read = reader(output);
+
+    const garbage = Buffer.from("{not json", "utf8");
+    input.write(
+      Buffer.concat([
+        Buffer.from("X-Nonsense: 1\r\n\r\n", "utf8"),
+        Buffer.from(`Content-Length: ${garbage.length}\r\n\r\n`, "utf8"),
+        garbage,
+        frame({ jsonrpc: "2.0", id: 7, method: "shutdown" }),
+      ]),
+    );
+    expect(await read(1)).toEqual([{ jsonrpc: "2.0", id: 7, result: null }]);
   });
 
   it("guard - it keeps serving while the editor is still talking", async () => {

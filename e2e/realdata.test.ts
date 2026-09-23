@@ -5,10 +5,9 @@
  * writes e2e/realdata.json in the shape of e2e/results.json, with a description of the dataset.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { writeFileSync } from "node:fs";
 import { RbCodec } from "@rayfold/rb";
 import { gutenbergData, seed, withGutenberg, type Store } from "../examples/bookstore-ts/src/index.ts";
-import { Recorder, Report, exchange, startGraphQL, startRayfold, startRest, type Exchange, type Recorded, type Stack } from "./harness.ts";
+import { Recorder, Report, exchange, startGraphQL, startRayfold, startRest, writeReport, type Exchange, type Recorded, type Stack } from "./harness.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Obj = Record<string, any>;
@@ -83,7 +82,7 @@ afterEach(async () => {
 });
 afterAll(() => {
   recorder.uninstall();
-  writeFileSync("e2e/realdata.json", JSON.stringify({ ...(JSON.parse(report.json()) as Obj), dataset: DATASET }, null, 2) + "\n");
+  writeReport("e2e/realdata.json", JSON.stringify({ ...(JSON.parse(report.json()) as Obj), dataset: DATASET }, null, 2) + "\n");
 });
 
 // ---------------------------------------------------------------- measured calls

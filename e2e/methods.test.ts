@@ -4,11 +4,10 @@
  * facts are measured, not typed in. Writes e2e/methods.json for the report.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeFileSync } from "node:fs";
 import { base64url, canonicalShape, loadSchema, parseShapeText, shapeIdOf } from "@rayfold/schema";
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
 import { bookstoreSchemaText } from "../examples/bookstore-ts/src/index.ts";
-import { CachingClient, GqlNormalizedCache, Report, exchange, freshStore, startGraphQL, startRayfold, startRest, type Exchange, type Recorded, type Stack } from "./harness.ts";
+import { CachingClient, GqlNormalizedCache, Report, exchange, freshStore, startGraphQL, startRayfold, startRest, writeReport, type Exchange, type Recorded, type Stack } from "./harness.ts";
 import { Signal, openSse } from "./wait.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,7 +32,7 @@ afterEach(async () => {
   await Promise.all([rest.close(), gql.close(), rayfold.close()]);
 });
 afterAll(() => {
-  writeFileSync("e2e/methods.json", report.json());
+  writeReport("e2e/methods.json", report.json());
 });
 
 const labeled = (r: Recorded, label: string): Exchange => ({ ...r.ex, label });
@@ -381,7 +380,11 @@ describe("QUERY", () => {
     const restBody = JSON.stringify({ filter, limit: 20 });
     const rq = await exchange(rest.base, "QUERY", "/books", { headers: JSON_CT, body: restBody });
     expect(rq.status).toBe(200);
-    const items = (rq.json as Obj)["items"] as Array<{ authorId: string }>;
+    const items = (rq.json as Obj)["items"] as Array<{ id: string; authorId: string }>;
+    const ids = (list: Array<{ id: string }>) => list.map((b) => b.id);
+    // the seeded store's paperbacks at $10 or less, in key order: every stack must answer with exactly these
+    const PAPERBACKS = ["b11", "b14", "b16", "b21", "b22", "b30", "b31", "b33", "b4", "b5", "b9"];
+    expect(ids(items)).toEqual(PAPERBACKS);
     const authorIds = [...new Set(items.map((b) => b.authorId))];
     const rAuthors = await Promise.all(authorIds.map((id) => exchange(rest.base, "GET", `/authors/${id}`)));
 
@@ -389,15 +392,15 @@ describe("QUERY", () => {
     const gq = await exchange(gql.base, "QUERY", "/graphql", { headers: JSON_CT, body: JSON.stringify({ query: GQ }) });
     expect(gq.status).toBe(405);
     const gp = await exchange(gql.base, "POST", "/graphql", { headers: JSON_CT, body: JSON.stringify({ query: GQ }), label: "fallback: POST, which shared caches cannot store" });
-    expect(data(gp)["books"].items.length).toBe(items.length);
+    expect(ids(data(gp)["books"].items)).toEqual(PAPERBACKS);
 
     const envelope = JSON.stringify({ ops: [{ id: 1, op: "books", args: { filter, page: { first: 20 } }, shape: "{ items { id title price author { name } } total }" }] });
     const yq = await exchange(rayfold.base, "QUERY", "/rayfold", { headers: RAYFOLD_CT, body: envelope });
     const ETAG = /^"sha256-[0-9a-f]{64}"$/;
     expect(yq.headers["etag"]).toMatch(ETAG);
-    expect(frames(yq)[0]!["data"].items.length).toBe(items.length);
+    expect(ids(frames(yq)[0]!["data"].items)).toEqual(PAPERBACKS);
     const yb = await exchange(rayfold.base, "QUERY", "/books", { headers: JSON_CT, body: JSON.stringify({ filter }), label: "the same query through its HTTP binding" });
-    expect((yb.json as Obj)["items"].length).toBe(items.length);
+    expect(ids((yb.json as Obj)["items"])).toEqual(PAPERBACKS);
 
     const c = new CachingClient();
     await c.query(`${rest.base}/books`, restBody, JSON_CT);

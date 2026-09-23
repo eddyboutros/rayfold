@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { bookstoreResolvers, bookstoreSchemaText, createBookstore, seed } from "../../../examples/bookstore-ts/src/index.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 import { createRayfoldServer, type Resolvers } from "./index.ts";
-import type { Frame } from "./protocol.ts";
+import { RayfoldError, type Frame } from "./protocol.ts";
+import { MemoryCounters } from "./counters.ts";
 import { diffResults } from "./live.ts";
 
 type Bookstore = ReturnType<typeof createBookstore>;
@@ -273,6 +274,93 @@ describe("a change committed while the first read is still running", () => {
   });
 });
 
+describe("a live query's re-runs", () => {
+  /** A shelf whose `book` read can be parked or made to fail on a chosen run; the first run is run 1. */
+  function shelf(opts: { park?: number; fail?: number } = {}) {
+    const books = new Map([["b1", { id: "b1", stock: 3 }]]);
+    const parked = new Signal<number>();
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let reads = 0;
+    const counters = new MemoryCounters();
+    const server = createRayfoldServer({
+      schema: `entity Book { id: ID stock: Int } query book(id: ID): Book command restock(id: ID, qty: Int): Book @idempotent(false)`,
+      counters,
+      resolvers: {
+        Query: {
+          book: async ({ id }: { id: string }) => {
+            const run = ++reads;
+            if (run === opts.fail) throw new RayfoldError("unavailable", "the shelf went away");
+            const row = { ...books.get(id)! }; // what this run read, before it was parked
+            if (run === opts.park) {
+              parked.push(run);
+              await gate;
+            }
+            return row;
+          },
+        },
+        Command: {
+          restock: ({ id, qty }: { id: string; qty: number }) => {
+            const book = books.get(id)!;
+            book.stock += qty;
+            return { ...book };
+          },
+        },
+      },
+    });
+    const restock = () => server.collect({ ops: [{ id: 1, op: "restock", args: { id: "b1", qty: 1 } }] });
+    const ac = new AbortController();
+    const frames = new Signal<Frame>();
+    const done = (async () => {
+      for await (const f of server.execute({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }] }, { signal: ac.signal })) frames.push(f);
+    })();
+    const live = () => counters.snapshot().filter((e) => e.name.startsWith("rayfold.live.")).map((e) => [e.name, e.count]);
+    return { frames, done, restock, parked, release: () => release(), reads: () => reads, abort: () => ac.abort(), live };
+  }
+
+  it("a change that lands while a re-run is in progress runs it again once that re-run ends", async () => {
+    const s = shelf({ park: 2 });
+    await s.frames.atLeast(1, "the first answer");
+    await s.restock(); // stock 4: re-run 2 reads it and is parked
+    await s.parked.atLeast(1, "re-run 2 parked after its read");
+    await s.restock(); // stock 5, while re-run 2 is still in progress
+    s.release();
+    await s.frames.atLeast(3, "re-run 2's patch and the re-run the second change asked for");
+    s.abort();
+    await bounded(s.done, "the live query ending on abort");
+    expect(s.frames.items).toEqual([
+      { id: 1, data: { $type: "Book", id: "b1", stock: 3 }, meta: { cost: 1 } },
+      { id: 1, patch: [{ set: "Book:b1", value: { stock: 4 } }] },
+      { id: 1, patch: [{ set: "Book:b1", value: { stock: 5 } }] },
+      { id: 1, error: { code: "canceled", message: "Canceled" }, fin: true },
+    ]);
+    expect(s.reads()).toBe(3);
+    expect(s.live()).toEqual([
+      ["rayfold.live.closed", 1],
+      ["rayfold.live.opened", 1],
+      ["rayfold.live.reran", 2],
+    ]);
+  });
+
+  it("a re-run that fails ends the op with its error, and nothing re-runs after it", async () => {
+    const s = shelf({ fail: 2 });
+    await s.frames.atLeast(1, "the first answer");
+    await s.restock();
+    await bounded(s.done, "the live query ending on the failed re-run");
+    expect(s.frames.items).toEqual([
+      { id: 1, data: { $type: "Book", id: "b1", stock: 3 }, meta: { cost: 1 } },
+      { id: 1, error: { code: "unavailable", message: "the shelf went away" }, fin: true },
+    ]);
+    await s.restock(); // guard: the ended query is no longer listening, so this reads nothing
+    expect(s.reads()).toBe(2);
+    expect(s.live()).toEqual([
+      ["rayfold.live.closed", 1],
+      ["rayfold.live.opened", 1],
+      ["rayfold.live.reran", 1],
+    ]);
+  });
+});
+
 describe("@live(false)", () => {
   const SCHEMA = `
 entity Hit { id: ID  title: String }
@@ -288,11 +376,19 @@ query hits: [Hit]
   it("refuses to open a query the schema opted out of, and still opens one that did not", async () => {
     // declared in examples/workspace-ts/workspace.rayfold and enforced nowhere, so the runtime opened it live anyway
     const refused = await server().collect({ ops: [{ id: 1, op: "search", args: { q: "x" }, shape: "{ id }", live: true }] }, {});
-    expect(refused[0]).toMatchObject({ error: { code: "invalid_argument" }, fin: true });
-    expect((refused[0] as { error: { message: string } }).error.message).toContain("@live(false)");
+    expect(refused).toEqual([{ error: { code: "invalid_argument", message: "ops[0].live: search is declared @live(false)" }, fin: true }]);
 
     // guard: the opt-out is per operation, not a refusal of live queries on this server
-    const plain = await server().collect({ ops: [{ id: 1, op: "search", args: { q: "x" }, shape: "{ id }" }] }, {});
-    expect(plain[0]).toMatchObject({ id: 1, data: [{ id: "h1" }] });
+    const ac = new AbortController();
+    const frames = new Signal<Frame>();
+    const done = (async () => {
+      for await (const f of server().execute({ ops: [{ id: 1, op: "hits", shape: "{ id }", live: true }] }, { signal: ac.signal })) frames.push(f);
+    })();
+    await frames.atLeast(1, "the live hits query answering");
+    expect(frames.items).toEqual([{ id: 1, data: [{ $type: "Hit", id: "h1" }], meta: { cost: 1 } }]); // no fin: it stays open
+    ac.abort();
+    await bounded(done, "the live hits query ending on abort");
+    // guard: nor is it a refusal of the query itself, which still answers once
+    expect(await server().collect({ ops: [{ id: 1, op: "search", args: { q: "x" }, shape: "{ id }" }] }, {})).toEqual([{ id: 1, data: [{ $type: "Hit", id: "h1" }], meta: { cost: 1 }, fin: true }]);
   });
 });

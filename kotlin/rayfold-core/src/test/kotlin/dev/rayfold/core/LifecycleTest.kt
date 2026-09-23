@@ -11,7 +11,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -76,7 +75,7 @@ class LifecycleTest {
     /** A server whose restock says when it is [running] and, when held, waits for the test's [release]. */
     private class Built(val server: RayfoldServer, val running: CountDownLatch, val release: CountDownLatch)
 
-    private fun build(relay: Relay? = null, hold: Boolean = false): Built {
+    private fun build(relay: Relay? = null, hold: Boolean = false, instrumentation: Instrumentation = Instrumentation.NONE): Built {
         val books = ConcurrentHashMap(mapOf("b1" to obj("""{"id":"b1","stock":3}""")))
         val running = CountDownLatch(1)
         val release = CountDownLatch(1).also { gates.add(it) }
@@ -103,7 +102,7 @@ class LifecycleTest {
                 },
             ),
         )
-        return Built(RayfoldServer(ir, resolvers, relay = relay), running, release)
+        return Built(RayfoldServer(ir, resolvers, instrumentation = instrumentation, relay = relay), running, release)
     }
 
     private class Served(val base: String, val http: HttpServer)
@@ -126,18 +125,26 @@ class LifecycleTest {
     private fun header(res: HttpResponse<String>, name: String): String? = res.headers().firstValue(name).orElse(null)
 
     /** A streaming response, its frames taken one at a time, each within 5 s. */
-    private class Streamed(private val frames: LinkedBlockingQueue<JsonObject>) {
+    private class Streamed(private val frames: LinkedBlockingQueue<JsonObject>, private val ended: CountDownLatch) {
         fun next(): JsonObject = frames.poll(5, TimeUnit.SECONDS) ?: error("no frame within 5 s")
+
+        /** Waits, bounded, for the server to end the response: it does that only after the batch has left [RayfoldServer.inflight]. */
+        fun awaitEnd() = assertTrue(ended.await(5, TimeUnit.SECONDS), "the response did not end within 5 s")
     }
 
     private fun stream(base: String, op: String): Streamed {
         val res = client.sendAsync(request("POST", "$base/rayfold", """{"ops":[$op]}"""), HttpResponse.BodyHandlers.ofInputStream()).get(5, TimeUnit.SECONDS)
         assertEquals(200, res.statusCode())
         val frames = LinkedBlockingQueue<JsonObject>()
+        val ended = CountDownLatch(1)
         Thread.ofVirtual().start {
-            res.body().bufferedReader().useLines { lines -> lines.filter { it.isNotBlank() }.forEach { frames.add(obj(it)) } }
+            try {
+                res.body().bufferedReader().useLines { lines -> lines.filter { it.isNotBlank() }.forEach { frames.add(obj(it)) } }
+            } finally {
+                ended.countDown()
+            }
         }
-        return Streamed(frames)
+        return Streamed(frames, ended)
     }
 
     // ------------------------------------------------------------------ health and readiness
@@ -216,16 +223,21 @@ class LifecycleTest {
         assertEquals(2_000L, HttpOptions().readinessTimeoutMs, "the default limit is the one the route uses")
     }
 
-    /** Waits, bounded, for the server to be down to [n] operations in flight. */
-    private suspend fun inflightReaches(server: RayfoldServer, n: Int) {
-        withTimeout(5_000) { while (server.inflight != n) delay(5) }
+    /** Counts ops as they start. An op starts inside its batch, so by then the batch is counted in [RayfoldServer.inflight]. */
+    private class OpsStarted(n: Int) : Instrumentation {
+        val latch = CountDownLatch(n)
+        override suspend fun op(info: OpInfo, run: suspend () -> Outcome): Outcome {
+            latch.countDown()
+            return run()
+        }
     }
 
     // ------------------------------------------------------------------ draining
 
     @Test
     fun `drain ends a live query and a stream with a retryable unavailable, lets a running command finish, and returns once it has`() = runBlocking {
-        val built = build(hold = true)
+        val started = OpsStarted(3)
+        val built = build(hold = true, instrumentation = started)
         val base = serve(built.server).base
         val live = stream(base, liveBook)
         val updates = stream(base, """{"id":1,"op":"stockUpdates","args":{"bookIds":["b1"]}}""")
@@ -234,16 +246,18 @@ class LifecycleTest {
         val command = client.sendAsync(request("POST", "$base/rayfold", """{"ops":[{"id":1,"op":"restock","args":{"id":"b1","qty":1},"key":"$key"}]}"""), HttpResponse.BodyHandlers.ofString())
         assertTrue(built.running.await(5, TimeUnit.SECONDS), "the command running")
         // only the live query's first frame was awaited above, so the stream may not be registered yet
-        inflightReaches(built.server, 3)
+        assertTrue(started.latch.await(5, TimeUnit.SECONDS), "all three ops started")
+        assertEquals(3, built.server.inflight)
 
         // on its own thread: the frame reads below block this one
         val draining = async(Dispatchers.IO) { built.server.drain(timeoutMs = 5_000) }
         assertEquals(unavailable, live.next())
         assertEquals(unavailable, updates.next())
         assertFalse(draining.isCompleted, "the command is still running: shutting down waits for it")
-        // the frame reaching the client is not the server having finished with the op, so wait for the count to
-        // settle rather than reading it the instant the last frame arrives
-        inflightReaches(built.server, 1)
+        // the frame reaching the client is not the server having finished with the op; the end of the response is
+        live.awaitEnd()
+        updates.awaitEnd()
+        assertEquals(1, built.server.inflight)
 
         built.release.countDown()
         val answered = command.get(5, TimeUnit.SECONDS)
@@ -377,19 +391,33 @@ class LifecycleTest {
      * state "relay: not listening yet", so it is an expected state rather than an exceptional one.
      */
     @Test
-    fun `close returns when the relay never finishes connecting`() = runBlocking {
+    fun `close gives up on a relay that never finishes connecting at exactly its timeout, and cancels the attempt`() = runTest(timeout = 5.seconds) {
+        val subscribing = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
         val stuck = object : Relay {
             override suspend fun publish(message: RelayMessage) {}
             override suspend fun subscribe(onMessage: (RelayMessage) -> Unit): suspend () -> Unit {
-                CompletableDeferred<Unit>().await() // never completes: a LISTEN connection being re-established
-                error("unreachable")
+                try {
+                    subscribing.complete(Unit)
+                    awaitCancellation() // never completes: a LISTEN connection being re-established
+                } finally {
+                    cancelled.complete(Unit)
+                }
             }
         }
         val server = RayfoldServer(ir, Resolvers(), relay = stuck)
         assertTrue(server.readiness().reasons.contains("relay: not listening yet"))
-        // close() with its own default, so this fails against the unbounded version by hanging rather than by
-        // failing to compile
-        withTimeout(8_000) { server.close() }
+        subscribing.await()
+        // close() with its own default, so the default is pinned too; its wait runs on this test's virtual clock
+        val closing = async { server.close() }
+        advanceTimeBy(1_999)
+        runCurrent()
+        assertFalse(closing.isCompleted, "still waiting one millisecond before the limit")
+        advanceTimeBy(1)
+        runCurrent()
+        assertTrue(closing.isCompleted, "given up at the limit")
+        // left running, the attempt would hold a connection open after the server has gone; runTest's own limit bounds this
+        cancelled.await()
     }
 
     /** Guard: a relay that does connect is still stopped, so the bound did not turn close() into a no-op. */

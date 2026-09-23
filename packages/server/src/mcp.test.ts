@@ -149,7 +149,10 @@ describe("MCP tool calls run through the normal pipeline", () => {
     expect(bs.store.calls["Command.placeOrder"]).toBeUndefined();
     expect(bs.store.orders.size).toBe(0);
     // guard: a real query at the same shape of URI still runs
-    expect(await handleMcp(bs.server, { jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "rayfold://query/books" } }, u1)).toMatchObject({ result: {} });
+    const read = await handleMcp(bs.server, { jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "rayfold://query/books" } }, u1);
+    expect(bs.store.calls["Query.books"]).toBe(1);
+    const [page] = await bs.server.collect({ ops: [{ id: 1, op: "books" }] }, { viewer: u1 });
+    expect(read).toEqual({ jsonrpc: "2.0", id: 10, result: { contents: [{ uri: "rayfold://query/books", mimeType: "application/json", text: JSON.stringify((page as { data: unknown }).data) }] } });
   });
 
   it("the schema resource hides policy expressions unless it is asked to serve them, and can be turned off", async () => {
@@ -241,6 +244,32 @@ describe("MCP over Streamable HTTP", () => {
     const signedIn = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "placeOrder", arguments: order("b3", 1) } }, { authorization: "Bearer u1" });
     expect(await signedIn.json()).toMatchObject({ result: { structuredContent: { result: { id: "o1" } } } });
     expect(bs.store.orders.get("o1")).toMatchObject({ customerId: "u1" });
+  });
+
+  it("a body one byte over maxBody is refused 413 before anything runs; a body exactly at it is served (guard)", async () => {
+    const handler = createMcpHandler(bs.server, { maxBody: 200 });
+    const small = createServer((req, res) => void handler(req, res));
+    await new Promise<void>((r) => small.listen(0, r));
+    try {
+      const smallUrl = `http://127.0.0.1:${(small.address() as AddressInfo).port}/mcp`;
+      const books = { jsonrpc: "2.0" as const, id: 1, method: "tools/call", params: { name: "books", arguments: {} } };
+      const post = (bytes: number) => fetch(smallUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(books).padEnd(bytes, " ") });
+
+      const over = await post(201);
+      expect(over.status).toBe(413);
+      expect(await over.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/payload_too_large", title: "payload too large", status: 413, detail: "Body exceeds 200 bytes", code: "resource_exhausted" });
+      expect(bs.store.calls["Query.books"]).toBeUndefined();
+
+      const atLimit = await post(200);
+      expect(atLimit.status).toBe(200);
+      expect(bs.store.calls["Query.books"]).toBe(1);
+      expect(await atLimit.json()).toEqual(await handleMcp(bs.server, books, null));
+    } finally {
+      await new Promise<void>((r) => {
+        small.close(() => r());
+        small.closeAllConnections();
+      });
+    }
   });
 
   it("only POST is accepted and malformed JSON is a parse error", async () => {

@@ -78,10 +78,15 @@ describe("conformance vectors: idempotency", () => {
           expect(okOf(last)!.meta?.replay, `${why}: the second caller got its own answer, not a replay`).toBeUndefined();
           expect(runs, `${why}: the resolver ran ${runs} times`).toBe(c.runs);
           break;
-        case "ok":
+        case "ok": {
           expect(errorOf(last), why).toBeUndefined();
-          expect(okOf(last), why).toBeDefined();
+          // every "ok" case sends one op against a shelf that starts at 3, so the answer is known exactly
+          expect(c.ops, why).toHaveLength(1);
+          const { id, qty = 1 } = c.ops[0]!.args as { id: string; qty?: number };
+          expect(okOf(last)!.ok, why).toEqual({ $type: "Book", id, stock: 3 + qty });
+          expect(runs, `${why}: the resolver ran ${runs} times`).toBe(1);
           break;
+        }
       }
     });
   }

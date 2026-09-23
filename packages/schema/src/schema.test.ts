@@ -80,16 +80,16 @@ describe("validation", () => {
   const errorsOf = (src: string) => validateIR(parseSchemaText(src)).filter((d) => d.severity === "error").map((d) => d.code);
 
   it("flags unknown types, missing ids, unknown annotations", () => {
-    expect(errorsOf(`entity A { id: ID b: Nope }`)).toContain("unknown-type");
-    expect(errorsOf(`entity A { name: String }`)).toContain("entity-id");
-    expect(errorsOf(`entity A { id: ID @weird }`)).toContain("unknown-annotation");
+    expect(errorsOf(`entity A { id: ID b: Nope }`)).toEqual(["unknown-type"]);
+    expect(errorsOf(`entity A { name: String }`)).toEqual(["entity-id"]);
+    expect(errorsOf(`entity A { id: ID @weird }`)).toEqual(["unknown-annotation"]);
     expect(errorsOf(`entity A { id: ID @vendor.weird }`)).toEqual([]);
   });
 
   it("flags type-position mistakes", () => {
-    expect(errorsOf(`entity A { id: ID } input I { a: A }`)).toContain("bad-type-position");
-    expect(errorsOf(`entity A { id: ID } query q(a: A): A`)).toContain("bad-type-position");
-    expect(errorsOf(`input I { x: Int } query q: I`)).toContain("bad-type-position");
+    expect(errorsOf(`entity A { id: ID } input I { a: A }`)).toEqual(["bad-type-position"]);
+    expect(errorsOf(`entity A { id: ID } query q(a: A): A`)).toEqual(["bad-type-position"]);
+    expect(errorsOf(`input I { x: Int } query q: I`)).toEqual(["bad-type-position"]);
     // guard: the same positions holding allowed kinds are clean
     expect(errorsOf(`entity A { id: ID } input I { a: ID } query q(i: I): A`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID } query q(a: ID): A`)).toEqual([]);
@@ -98,60 +98,60 @@ describe("validation", () => {
 
   it("checks type conditions at an interface position", () => {
     const base = `object Named @interface { id: ID name: String } entity Person implements Named { id: ID name: String email: String } entity Bot { id: ID name: String } entity Note { id: ID author: Named } query note(id: ID): Note?`;
-    expect(errorsOf(`${base} view Note.card = { author { ...on Bot { name } } }`)).toContain("bad-type-condition");
+    expect(errorsOf(`${base} view Note.card = { author { ...on Bot { name } } }`)).toEqual(["bad-type-condition"]);
     // guard: an implementor is accepted, so the rule is not a blanket refusal of ...on at an interface position
     expect(errorsOf(`${base} view Note.card = { author { ...on Person { email } } }`)).toEqual([]);
   });
 
   it("enforces annotation rules", () => {
-    expect(errorsOf(`entity A { id: ID x: Int @partial }`)).toContain("partial-non-null");
+    expect(errorsOf(`entity A { id: ID x: Int @partial }`)).toEqual(["partial-non-null"]);
     expect(errorsOf(`entity A { id: ID x: Int? @partial }`)).toEqual([]);
-    expect(errorsOf(`entity A { id: ID x: [Int] @page(cursor) }`)).toContain("page-on-non-page");
-    expect(errorsOf(`entity A { id: ID } query q: Page<A>`)).toContain("page-args");
+    expect(errorsOf(`entity A { id: ID x: [Int] @page(cursor) }`)).toEqual(["page-on-non-page"]);
+    expect(errorsOf(`entity A { id: ID } query q: Page<A>`)).toEqual(["page-args"]);
     expect(errorsOf(`entity A { id: ID } query q(page: PageArgs): Page<A>`)).toEqual([]);
     // spec 01 §9's paging rule is about a field *or* a query, and the field half went unchecked
-    expect(errorsOf(`entity R { id: ID } entity A { id: ID rs: Page<R> } query a: A`)).toContain("page-args");
+    expect(errorsOf(`entity R { id: ID } entity A { id: ID rs: Page<R> } query a: A`)).toEqual(["page-args"]);
     expect(errorsOf(`entity R { id: ID } entity A { id: ID rs(page: PageArgs): Page<R> } query a: A`)).toEqual([]);
     expect(errorsOf(`entity R { id: ID } entity A { id: ID rs(first: Int): Page<R> } query a: A`)).toEqual([]);
     // rule 8 likewise covers both, and the operation half went unchecked
-    expect(errorsOf(`entity A { id: ID } query q: A @page(cursor)`)).toContain("page-on-non-page");
+    expect(errorsOf(`entity A { id: ID } query q: A @page(cursor)`)).toEqual(["page-on-non-page"]);
     expect(errorsOf(`entity A { id: ID } query q(page: PageArgs): Page<A> @page(cursor)`)).toEqual([]);
-    expect(errorsOf(`entity A { id: ID } query q: A @allow(read: this.x == 1)`)).toContain("policy-this-on-op");
+    expect(errorsOf(`entity A { id: ID } query q: A @allow(read: this.x == 1)`)).toEqual(["policy-this-on-op"]);
     expect(errorsOf(`entity A { id: ID } query q: A @allow(read: viewer != null)`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID x: Int @allow(read: this.x == 1) }`)).toEqual([]);
-    expect(errorsOf(`entity A { id: ID } query q: A @cache(maxAge: 5, scope: public)`)).toContain("bad-cache-maxage");
+    expect(errorsOf(`entity A { id: ID } query q: A @cache(maxAge: 5, scope: public)`)).toEqual(["bad-cache-maxage"]);
     // an unquoted date lexes as three numbers (sunset: 2027 and two positional values), and diff.ts can only read a
     // string, so the member could never be retired. docs/guide/from-rest.md taught the unquoted form.
-    expect(errorsOf(`entity A { id: ID p: Int @deprecated(sunset: 2027-06-30) }`)).toContain("bad-sunset");
+    expect(errorsOf(`entity A { id: ID p: Int @deprecated(sunset: 2027-06-30) }`)).toEqual(["bad-sunset"]);
     expect(errorsOf(`entity A { id: ID p: Int @deprecated(sunset: "2027-06-30") }`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID p: Int @deprecated(reason: "old") }`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID } query q: A @cache(maxAge: 5s, scope: public)`)).toEqual([]);
   });
 
   it("@version needs a non-null Int, Long, String or Instant field", () => {
-    for (const bad of ["Int?", "Float", "[Int]", "Boolean"]) expect(errorsOf(`entity A { id: ID v: ${bad} @version }`)).toContain("bad-version-field");
+    for (const bad of ["Int?", "Float", "[Int]", "Boolean"]) expect(errorsOf(`entity A { id: ID v: ${bad} @version }`)).toEqual(["bad-version-field"]);
     for (const ok of ["Int", "Long", "String", "Instant"]) expect(errorsOf(`entity A { id: ID v: ${ok} @version }`)).toEqual([]);
   });
 
   it("@http bindings are checked against the operation kind and its arguments", () => {
     const code = (op: string) => errorsOf(`entity A { id: ID } input P { x: Int? } ${op}`);
-    expect(code(`query q(id: ID): A @http(method: POST, path: "/a/{id}")`)).toContain("bad-http-method");
-    expect(code(`command c(id: ID): A @http(method: GET, path: "/a/{id}")`)).toContain("bad-http-method");
-    expect(code(`stream s(id: ID): A @http(method: GET, path: "/a/{id}")`)).toContain("bad-http-method");
+    expect(code(`query q(id: ID): A @http(method: POST, path: "/a/{id}")`)).toEqual(["bad-http-method"]);
+    expect(code(`command c(id: ID): A @http(method: GET, path: "/a/{id}")`)).toEqual(["bad-http-method"]);
+    expect(code(`stream s(id: ID): A @http(method: GET, path: "/a/{id}")`)).toEqual(["annotation-position", "bad-http-method"]);
     for (const m of ["GET", "QUERY"]) expect(code(`query q(id: ID): A @http(method: ${m}, path: "/a/{id}")`)).toEqual([]);
     for (const m of ["POST", "PUT", "PATCH", "DELETE"]) expect(code(`command c(id: ID): A @http(method: ${m}, path: "/a/{id}")`)).toEqual([]);
-    expect(code(`query q(id: ID): A @http(method: GET, path: "a/{id}")`)).toContain("bad-http-path");
-    expect(code(`query q(id: ID): A @http(method: GET, path: "/a/{nope}")`)).toContain("bad-http-param");
-    expect(code(`command c(id: ID, p: P): A @http(method: PATCH, path: "/a/{id}", body: nope)`)).toContain("bad-http-body");
-    expect(code(`query q(id: ID): A @http(method: GET, path: "/a", body: "*")`)).toContain("bad-http-body");
+    expect(code(`query q(id: ID): A @http(method: GET, path: "a/{id}")`)).toEqual(["bad-http-path"]);
+    expect(code(`query q(id: ID): A @http(method: GET, path: "/a/{nope}")`)).toEqual(["bad-http-param"]);
+    expect(code(`command c(id: ID, p: P): A @http(method: PATCH, path: "/a/{id}", body: nope)`)).toEqual(["bad-http-body"]);
+    expect(code(`query q(id: ID): A @http(method: GET, path: "/a", body: "*")`)).toEqual(["bad-http-body"]);
     expect(code(`command c(id: ID, p: P): A @http(method: PATCH, path: "/a/{id}", body: p)`)).toEqual([]);
     expect(code(`query q(id: ID, p: P?): A @http(method: QUERY, path: "/a", body: "*")`)).toEqual([]);
   });
 
   it("validates views against fields", () => {
-    expect(errorsOf(`entity A { id: ID } view A.default = { id nope }`)).toContain("unknown-field");
+    expect(errorsOf(`entity A { id: ID } view A.default = { id nope }`)).toEqual(["unknown-field"]);
     expect(errorsOf(`entity A { id: ID } view A.default = { id }`)).toEqual([]);
-    expect(errorsOf(`entity A { id: ID } view A.x = { ...A.y } view A.y = { ...A.x }`)).toContain("view-cycle");
+    expect(errorsOf(`entity A { id: ID } view A.x = { ...A.y } view A.y = { ...A.x }`)).toEqual(["view-cycle", "view-cycle"]);
   });
 
   it("warns on unreachable types", () => {

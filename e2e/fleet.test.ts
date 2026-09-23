@@ -21,6 +21,7 @@ const JVM_LIB = fileURLToPath(new URL("./fleet/jvm/build/install/fleet-member/li
 const jvmBuilt = existsSync(JVM_LIB);
 // CI builds the JVM member and sets this, so a build whose output moved fails the job instead of quietly skipping the
 // one suite that holds the two runtimes together. Locally the suite is skipped until you build it (see the guide).
+if (process.env["FLEET_JVM"] === "1" && !url) throw new Error("the JVM fleet member was required (FLEET_JVM=1) but DATABASE_URL is not set, so every fleet suite would be skipped");
 if (process.env["FLEET_JVM"] === "1" && !jvmBuilt) throw new Error(`the JVM fleet member was required but is not built: ${JVM_LIB} does not exist`);
 
 interface Member {
@@ -142,6 +143,18 @@ async function stream(base: string, op: Record<string, unknown>): Promise<Signal
   return out;
 }
 
+/**
+ * Opens the stockUpdates stream on `m` and waits for the member to say it subscribed, so a command sent after this is
+ * one the stream is there to hear.
+ */
+async function stockUpdates(m: Member): Promise<Signal<Record<string, unknown>>> {
+  const subscribed = (lines: string[]) => lines.filter((l) => l === `${m.name} stream subscribed`).length;
+  const before = subscribed(m.output.items);
+  const updates = await stream(m.base, { op: "stockUpdates", args: { bookIds: ["b1"] } });
+  await m.output.until((lines) => subscribed(lines) > before, `${m.name}'s stream subscribing`);
+  return updates;
+}
+
 /** The application's tables, as a deploy would have migrated them before any server started. */
 async function freshDatabase(pool: pg.Pool): Promise<void> {
   await pool.query("DROP TABLE IF EXISTS fleet_books, fleet_runs, rayfold_idempotency, rayfold_relay");
@@ -152,6 +165,8 @@ async function freshDatabase(pool: pg.Pool): Promise<void> {
 
 const liveBook = { op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true };
 const runsOf = async (pool: pg.Pool): Promise<string[]> => (await pool.query<{ server: string }>("SELECT server FROM fleet_runs ORDER BY id")).rows.map((r) => r.server);
+/** The stock as the database holds it now, so a test counts from where the tests before it left it. */
+const stockOf = async (pool: pg.Pool): Promise<number> => (await pool.query<{ stock: number }>("SELECT stock FROM fleet_books WHERE id = 'b1'")).rows[0]!.stock;
 
 describe.skipIf(!url)("two servers, two processes, one Postgres", () => {
   const cluster = new Cluster();
@@ -173,25 +188,27 @@ describe.skipIf(!url)("two servers, two processes, one Postgres", () => {
 
   it("a keyed command sent to both servers at once runs once, and both answer with its result", async () => {
     const [a, b] = cluster.members;
+    const [stock, runs] = [await stockOf(pool), (await runsOf(pool)).length];
     const [fromA, fromB] = await Promise.all([restock(a!.base, KEY), restock(b!.base, KEY)]);
     const answers = [await frames(fromA), await frames(fromB)];
-    for (const [frame] of answers) expect(frame).toMatchObject({ id: 1, ok: { $type: "Book", id: "b1", stock: 4 } });
+    for (const [frame] of answers) expect(frame).toMatchObject({ id: 1, ok: { $type: "Book", id: "b1", stock: stock + 1 } });
     expect(answers.filter(([frame]) => (frame as { meta?: { replay?: boolean } }).meta?.replay)).toHaveLength(1);
-    expect(await runsOf(pool)).toHaveLength(1); // one server ran it; the other replayed its answer
+    expect((await runsOf(pool)).length).toBe(runs + 1); // one server ran it; the other replayed its answer
   }, 20_000);
 
   it("a live query and a stream open on one server hear a command run on the other, through NOTIFY", async () => {
     const [a, b] = cluster.members;
     const live = await stream(b!.base, liveBook);
-    const updates = await stream(b!.base, { op: "stockUpdates", args: { bookIds: ["b1"] } });
+    const updates = await stockUpdates(b!);
     await live.atLeast(1, "b's live query answering");
-    expect(live.items[0]).toMatchObject({ id: 1, data: { id: "b1", stock: 4 } });
+    const before = (live.items[0] as { data: { stock: number } }).data.stock;
+    expect(live.items[0]).toMatchObject({ id: 1, data: { id: "b1", stock: await stockOf(pool) } });
 
-    expect((await frames(await restock(a!.base, KEY + "2")))[0]).toMatchObject({ ok: { stock: 5 } });
+    expect((await frames(await restock(a!.base, KEY + "2")))[0]).toMatchObject({ ok: { stock: before + 1 } });
     await live.atLeast(2, "b's live query hearing a's change");
     await updates.atLeast(1, "b's stream hearing a's event");
-    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 5 } }] });
-    expect(updates.items[0]).toEqual({ id: 1, item: { bookId: "b1", stock: 5 } });
+    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: before + 1 } }] });
+    expect(updates.items[0]).toEqual({ id: 1, item: { bookId: "b1", stock: before + 1 } });
   }, 20_000);
 
   // SIGTERM on Windows is a plain kill, so the graceful path can only be shown where the signal is delivered
@@ -206,7 +223,8 @@ describe.skipIf(!url)("two servers, two processes, one Postgres", () => {
     expect(await bounded(a!.exited, "a exiting", 15_000)).toBe(0);
 
     expect((await fetch(`${b!.base}/rayfold/ready`)).status).toBe(200);
-    expect((await frames(await restock(b!.base, KEY + "3")))[0]).toMatchObject({ ok: { stock: 6 } });
+    const stock = await stockOf(pool);
+    expect((await frames(await restock(b!.base, KEY + "3")))[0]).toMatchObject({ ok: { stock: stock + 1 } });
   }, 30_000);
 });
 
@@ -247,18 +265,20 @@ describe.skipIf(!url || !jvmBuilt)("a TypeScript server and a JVM server in one 
   it("a keyed command sent to both runtimes at once runs on one of them, and the other replays its answer", async () => {
     // the sequential tests above always meet a finished record; this is the contended path, where one runtime reads
     // the other's claim while it is still in flight and has to wait for it
+    const before = (await runsOf(pool)).length;
     const [fromNode, fromJvm] = await Promise.all([restock(node.base, KEY + "x"), restock(jvm.base, KEY + "x")]);
     const answers = [await frames(fromNode), await frames(fromJvm)];
     const stock = (a: Array<Record<string, unknown>>) => (a[0] as { ok?: { stock?: number } }).ok?.stock;
     expect(stock(answers[0]!)).toBe(stock(answers[1]!));
     expect(answers.filter(([f]) => (f as { meta?: { replay?: boolean } }).meta?.replay)).toHaveLength(1);
-    const ran = await runsOf(pool);
-    expect(ran.filter((r) => r === "node" || r === "jvm")).toHaveLength(ran.length); // whichever ran it, it ran once
+    const ran = (await runsOf(pool)).slice(before);
+    expect(ran).toHaveLength(1); // whichever ran it, it ran once
+    expect(["node", "jvm"]).toContain(ran[0]);
   }, 30_000);
 
   it("a live query on the JVM server hears a command run on the TypeScript one, and a stream hears its event", async () => {
     const live = await stream(jvm.base, liveBook);
-    const updates = await stream(jvm.base, { op: "stockUpdates", args: { bookIds: ["b1"] } });
+    const updates = await stockUpdates(jvm);
     await live.atLeast(1, "the JVM server's live query answering");
     // taken from what the query answered rather than counted from the tests before it, so the order they run in is theirs
     const before = ((live.items[0] as { data: { stock: number } }).data).stock;

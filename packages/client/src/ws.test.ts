@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { attachWebSocket, createHttpHandler, type Frame, type RayfoldServer } from "@rayfold/server";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
-import { Signal } from "../../../e2e/wait.ts";
-import { RayfoldClient } from "./client.ts";
+import { Signal, bounded } from "../../../e2e/wait.ts";
+import { RayfoldClient, RayfoldClientError } from "./client.ts";
 import { createLocalTransport, type Transport } from "./transport.ts";
 import { createWebSocketTransport } from "./ws-transport.ts";
 import { RbCodec } from "@rayfold/rb";
@@ -17,10 +17,16 @@ const viewerOf = (auth: string | undefined) => (auth === "Bearer admin" ? admin 
 let bs: Bookstore;
 let http: Server;
 let wsUrl: string;
+let conns: Set<Socket>;
 beforeEach(async () => {
   bs = createBookstore();
   const handler = createHttpHandler(bs.server, { viewer: (req) => viewerOf(req.headers.authorization) });
   http = createServer((req, res) => void handler(req, res));
+  conns = new Set();
+  http.on("connection", (s) => {
+    conns.add(s);
+    s.on("close", () => conns.delete(s));
+  });
   attachWebSocket(http, bs.server, { viewer: (req) => viewerOf(new URL(req.url ?? "/", "http://x").searchParams.get("auth") ?? undefined) });
   await new Promise<void>((r) => http.listen(0, r));
   wsUrl = `ws://127.0.0.1:${(http.address() as AddressInfo).port}/rayfold/ws`;
@@ -82,15 +88,16 @@ describe("live queries through the client", () => {
     const seen = new Signal<Array<{ id: string }>>();
     const stop = c.live<{ items: Array<{ id: string }> }>("books", { page: { first: 10 } }, { shape: "{ items { id title } }" }, (d) => seen.push(d.items));
     await seen.atLeast(1, "the initial list");
-    const before = seen.items[0]!.length;
     bs.store.books.set("b9", { id: "b9", title: "New", format: "EBOOK" as const, price: "1.00", stock: 1, authorId: "a1", costPrice: null, ownerId: "u1" });
     bs.server.changes.publish({ keys: new Set(), ops: new Set(["books"]) });
     await seen.atLeast(2, "the list patch");
     stop();
-    const patched = wire.find((f) => "patch" in f) as { patch: Array<Record<string, unknown>> };
-    expect(patched.patch.some((p) => "list" in p)).toBe(true); // the new row, not the page
-    expect(seen.items[1]!.length).toBe(before + 1);
-    expect(seen.items[1]!.map((b) => b.id)).toContain("b9");
+    // the new row, not the page
+    expect(wire.filter((f) => "patch" in f)).toEqual([{ id: 1, patch: [{ list: "items", ins: [{ at: 4, value: { $type: "Book", id: "b9", title: "New" } }] }] }]);
+    expect(seen.items.map((items) => items.map((b) => b.id))).toEqual([
+      ["b1", "b2", "b3", "b4"],
+      ["b1", "b2", "b3", "b4", "b9"],
+    ]);
   });
 
   it("a schema-aware client's live query travels compact and still receives patches", async () => {
@@ -165,6 +172,80 @@ describe("WebSocket transport", () => {
     } finally {
       transport.close();
       adminTransport.close();
+    }
+  });
+});
+
+describe("WebSocket transport connections", () => {
+  const ons = (n: number) => (xs: Array<"on" | "off">) => xs.filter((x) => x === "on").length >= n;
+
+  it("a dropped socket fails the live op as unavailable, and live() reopens it on a new socket from connectUrl", async () => {
+    const subs = changeBusLog(bs.server);
+    const urls: string[] = [];
+    // `url` is never dialled: connectUrl builds every socket's address
+    const transport = createWebSocketTransport({ url: "ws://127.0.0.1:1/unused", connectUrl: () => (urls.push(`${wsUrl}?auth=Bearer%20u1`), urls.at(-1)!) });
+    try {
+      const client = new RayfoldClient({ transport });
+      const seen = new Signal<{ stock: number; initial: boolean }>();
+      const errors = new Signal<{ code: string; message: string; retrying: boolean }>();
+      const stop = client.live<{ stock: number }>(
+        "book",
+        { id: "b1" },
+        { shape: "{ id stock }" },
+        (d, m) => seen.push({ stock: d.stock, initial: m.initial }),
+        (e, m) => errors.push({ code: (e as RayfoldClientError).code, message: (e as Error).message, retrying: m.retrying }),
+      );
+      await seen.atLeast(1, "live data on the first socket");
+      await subs.until(ons(1), "server subscribed the live op");
+      for (const s of conns) s.destroy();
+      await errors.atLeast(1, "the dropped socket reported");
+      await seen.atLeast(2, "live data on the reopened socket");
+      await subs.until(ons(2), "server subscribed the reopened op");
+      await new RayfoldClient({ transport: createLocalTransport(bs.server, () => admin) }).command("restock", { bookId: "b1", qty: 1 });
+      await seen.atLeast(3, "patch on the reopened socket");
+      expect(errors.items).toEqual([{ code: "unavailable", message: "Connection closed", retrying: true }]);
+      expect(seen.items).toEqual([
+        { stock: 5, initial: true },
+        { stock: 5, initial: false },
+        { stock: 6, initial: false },
+      ]);
+      expect(urls).toEqual([`${wsUrl}?auth=Bearer%20u1`, `${wsUrl}?auth=Bearer%20u1`]);
+      stop();
+    } finally {
+      transport.close();
+    }
+  });
+
+  it("a socket that cannot connect fails the batch as unavailable", async () => {
+    const gone = createServer();
+    await new Promise<void>((r) => gone.listen(0, r));
+    const port = (gone.address() as AddressInfo).port;
+    await new Promise<void>((r) => gone.close(() => r()));
+    const transport = createWebSocketTransport({ url: `ws://127.0.0.1:${port}/rayfold/ws` });
+    const err = await bounded(new RayfoldClient({ transport }).query("book", { id: "b1" }).catch((e: unknown) => e), "the refused connect");
+    expect(err).toBeInstanceOf(RayfoldClientError);
+    expect({ code: (err as RayfoldClientError).code, message: (err as Error).message }).toEqual({ code: "unavailable", message: "WebSocket connection failed" });
+  });
+
+  it("leaving a live op's frames early cancels exactly that op on the server", async () => {
+    const subs = changeBusLog(bs.server);
+    const transport = createWebSocketTransport({ url: `${wsUrl}?auth=Bearer%20u1` });
+    const live = (id: string) => transport.send({ rayfold: "0.1", ops: [{ id: 1, op: "book", args: { id }, shape: "{ id stock }", live: true }] })[Symbol.asyncIterator]();
+    try {
+      const left = live("b1");
+      const kept = live("b2");
+      expect(await left.next()).toEqual({ value: { id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 } }, done: false });
+      expect(await kept.next()).toEqual({ value: { id: 1, data: { $type: "Book", id: "b2", stock: 2 }, meta: { cost: 1 } }, done: false });
+      await subs.until(ons(2), "server subscribed both ops");
+      await left.return!();
+      await subs.until(offs(1), "server dropped the op that was left");
+      expect(bs.server.changes.size).toBe(1);
+      // guard: the op still being read stays subscribed and still gets its patch
+      await new RayfoldClient({ transport: createLocalTransport(bs.server, () => admin) }).command("restock", { bookId: "b2", qty: 1 });
+      expect(await bounded(kept.next(), "patch for the op still read")).toEqual({ value: { id: 1, patch: [{ set: "Book:b2", value: { stock: 3 } }] }, done: false });
+      expect(subs.items).toEqual(["on", "on", "off"]);
+    } finally {
+      transport.close();
     }
   });
 });

@@ -5,7 +5,6 @@
  * to e2e/security.json, which the report page shows.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { writeFileSync } from "node:fs";
 import { request as httpRequest, type IncomingHttpHeaders, type Server } from "node:http";
 import { connect, type AddressInfo, type Socket } from "node:net";
 import { createRayfoldServer, listen, MemoryIdempotencyStore } from "@rayfold/server";
@@ -13,7 +12,7 @@ import { RbCodec } from "@rayfold/rb";
 import { base64url, canonicalShape, loadSchema, parseShapeText, shapeIdOf } from "@rayfold/schema";
 import { bookstoreSchemaText, createBookstore } from "../examples/bookstore-ts/src/index.ts";
 import { MemoryShapeRegistry } from "../packages/server/src/views.ts";
-import { freshStore, startRayfold, type Exchange } from "./harness.ts";
+import { freshStore, startRayfold, writeReport, type Exchange } from "./harness.ts";
 import { Signal, bounded } from "./wait.ts";
 
 interface Attack { area: string; attack: string; defence: string; guard: string; runtimes: string[]; result: string; exchange?: Exchange }
@@ -32,7 +31,7 @@ function report(a: Omit<Attack, "result">, refused: boolean): void {
   expect(refused, a.attack).toBe(true);
 }
 afterAll(() => {
-  writeFileSync("e2e/security.json", JSON.stringify({ generatedAt: new Date().toISOString(), attacks }, null, 2) + "\n");
+  writeReport("e2e/security.json", JSON.stringify({ generatedAt: new Date().toISOString(), attacks }, null, 2) + "\n");
 });
 
 type Rayfold = Awaited<ReturnType<typeof startRayfold>>;

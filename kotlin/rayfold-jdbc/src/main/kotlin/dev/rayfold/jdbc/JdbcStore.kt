@@ -140,7 +140,9 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
             }
         }
         return when (e["k"]?.jsonPrimitive?.content) {
-            "not" -> compile(e["e"] as? JsonObject ?: return loose, env, t, params).let { if (it.exact) Frag("(NOT ${it.sql})", true) else loose }
+            // SQL reads a comparison with a null column as unknown, and NOT unknown drops the row; the policy reads it as
+            // false, so its negation keeps the row. COALESCE gives SQL the policy's reading before negating.
+            "not" -> compile(e["e"] as? JsonObject ?: return loose, env, t, params).let { if (it.exact) Frag("(NOT COALESCE(${it.sql}, FALSE))", true) else loose }
             "bin" -> binary(e, env, t, params)
             else -> loose
         }

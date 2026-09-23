@@ -93,13 +93,13 @@ const get = async (url: string) => {
 const post = (base: string, body: unknown) => fetch(`${base}/rayfold`, { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify(body) });
 const restock = (base: string, key: string) => post(base, { ops: [{ id: 1, op: "restock", args: { id: "b1", qty: 1 }, key }] });
 
-/** Opens a streaming response and records its frames as they arrive. */
-async function stream(base: string, op: Record<string, unknown>): Promise<Signal<unknown>> {
+/** Opens a streaming response and records its frames as they arrive; `ended` resolves when the response has ended. */
+async function stream(base: string, op: Record<string, unknown>): Promise<Signal<unknown> & { ended: Promise<void> }> {
   const res = await post(base, { ops: [{ id: 1, ...op }] });
   const frames = new Signal<unknown>();
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
-  void (async () => {
+  const ended = (async () => {
     let buffer = "";
     for (;;) {
       const { value, done } = await reader.read();
@@ -113,7 +113,7 @@ async function stream(base: string, op: Record<string, unknown>): Promise<Signal
       }
     }
   })();
-  return frames;
+  return Object.assign(frames, { ended });
 }
 
 const liveBook = { op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true };
@@ -131,15 +131,12 @@ describe("health and readiness", () => {
   it("readiness waits for the relay, and says what stopped it", async () => {
     let listening = () => {};
     const slow: Relay = { publish: async () => {}, subscribe: () => new Promise((resolve) => (listening = () => resolve(async () => {}))) };
-    const { base } = await serve(build({ relay: slow }).server);
+    const waiting = build({ relay: slow }).server;
+    const { base } = await serve(waiting);
     expect(await get(`${base}/rayfold/ready`)).toMatchObject({ status: 503, body: { ready: false, reasons: ["relay: not listening yet"] } });
     listening();
-    await bounded(
-      (async () => {
-        while ((await get(`${base}/rayfold/ready`)).status !== 200) await new Promise((r) => setImmediate(r));
-      })(),
-      "readiness turning true once the relay listens",
-    );
+    await bounded(waiting.ready(), "the server settling once the relay listens");
+    expect(await get(`${base}/rayfold/ready`)).toMatchObject({ status: 200, body: { ready: true, reasons: [] } });
 
     const broken: Relay = {
       publish: async () => {},
@@ -201,9 +198,10 @@ describe("draining", () => {
     await updates.atLeast(1, "the stream being ended");
     expect(live.items[1]).toEqual(unavailable);
     expect(updates.items[0]).toEqual(unavailable);
-    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
-    expect(drained).toBe(false); // the command is still running: shutting down waits for it
+    // a response ends only after its batch has, so from here two of the three batches are over and only the command runs
+    await bounded(Promise.all([live.ended, updates.ended]), "the ended responses closing");
     expect(built.server.inflight).toBe(1);
+    expect(drained).toBe(false); // the command is still running: shutting down waits for it
 
     built.release();
     const answered = await command;

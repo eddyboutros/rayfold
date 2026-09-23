@@ -10,6 +10,7 @@ import { buildSchema, graphql, parse, subscribe, version as graphqlVersion, type
 import { createHttpHandler, attachWebSocket, createMcpHandler, createBindingHandler } from "@rayfold/server";
 import { seed, createBookstore, withCatalogue, bookPage, authorBookPages, type Store, type AuthorRow, type BookRow, type BookFilter, type Page, type ReviewRow } from "../examples/bookstore-ts/src/index.ts";
 import { EventEmitter } from "node:events";
+import { renameSync, writeFileSync } from "node:fs";
 
 export interface Counters {
   originRequests: number;
@@ -629,6 +630,17 @@ export class Report {
     for (const r of this.rows) lines.push(`| ${r.aspect} | ${r.metric} | ${r.REST} | ${r.GraphQL} | ${r.Rayfold} | ${r.note ?? ""} |`);
     return lines.join("\n") + "\n";
   }
+}
+
+/**
+ * Writes a committed report file, only when E2E_WRITE=1 (`npm run e2e` sets it) so a plain test run leaves the tree clean.
+ * Through a temp file and a rename, so a suite reading the file in parallel never sees half of it.
+ */
+export function writeReport(path: string, text: string): void {
+  if (process.env["E2E_WRITE"] !== "1") return;
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, text);
+  renameSync(tmp, path);
 }
 
 /** The graphql-js major actually under test, so a report never names a version the suite did not run. */

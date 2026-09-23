@@ -3,13 +3,12 @@
  * asserts correctness per stack, records the measurable difference, and the suite writes e2e/report.md.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
 import { base64url, diffSchemas, loadSchema } from "@rayfold/schema";
 import { RbCodec } from "@rayfold/rb";
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
 import { bookstoreSchemaText } from "../examples/bookstore-ts/src/index.ts";
 import { BreakingChangeType, buildSchema, findBreakingChanges } from "graphql";
-import { CachingClient, GRAPHQL_MAJOR, GRAPHQL_SDL, GqlNormalizedCache, Recorder, Report, exchange, freshStore, startGraphQL, startRayfold, startRest, type Stack } from "./harness.ts";
+import { CachingClient, GRAPHQL_MAJOR, GRAPHQL_SDL, GqlNormalizedCache, Recorder, Report, exchange, freshStore, startGraphQL, startRayfold, startRest, writeReport, type Stack } from "./harness.ts";
 import { Signal, openSse } from "./wait.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,8 +43,7 @@ afterEach(async () => {
 });
 afterAll(() => {
   recorder.uninstall();
-  mkdirSync("e2e", { recursive: true });
-  writeFileSync(
+  writeReport(
     "e2e/report.md",
     report.markdown({
       title: "End-to-end comparison: REST vs GraphQL vs Rayfold",
@@ -53,7 +51,7 @@ afterAll(() => {
       assertedBy: "e2e/comparison.test.ts",
     }),
   );
-  writeFileSync("e2e/results.json", report.json());
+  writeReport("e2e/results.json", report.json());
 });
 
 const jsonPost = (url: string, body: unknown, headers: Record<string, string> = {}) =>

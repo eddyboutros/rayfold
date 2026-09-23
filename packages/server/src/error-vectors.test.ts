@@ -31,8 +31,9 @@ const SCHEMA = `
   query book(id: ID): Book? @cost(base: 5)
 `;
 
-function handler() {
-  const server = createRayfoldServer({ schema: SCHEMA, resolvers: { Query: { book: () => null } }, budget: 3 });
+/** `book` costs 5: over budget only when the vector asks for it, so the flag is what puts the batch over. */
+function handler(overBudget: boolean) {
+  const server = createRayfoldServer({ schema: SCHEMA, resolvers: { Query: { book: () => null } }, ...(overBudget ? { budget: 3 } : {}) });
   return createFetchHandler(server, { viewer: () => ({ id: "u1" }), maxBody: 200 });
 }
 
@@ -51,7 +52,7 @@ describe("conformance vectors: errors", () => {
         const body = c.request.oversize
           ? JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "x".repeat(400) } }] })
           : JSON.stringify({ ops: [{ id: 1, op: c.request.op ?? "book", args: { id: "b1" } }] });
-        const res = await handler()(
+        const res = await handler(c.request.overBudget ?? false)(
           new Request("http://api.example/rayfold", {
             method: "POST",
             headers: { "content-type": c.request.contentType ?? "application/rayfold+json" },
@@ -79,7 +80,7 @@ describe("conformance vectors: errors", () => {
           .split("\n")
           .map((l) => JSON.parse(l) as Record<string, unknown>);
         const errors = frames.filter((f) => "error" in f).map((f) => (f["error"] as { code: string }).code);
-        expect(errors, why).toContain(c.code);
+        expect(errors, why).toEqual([c.code]);
       });
     }
   });

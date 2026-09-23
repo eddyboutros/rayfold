@@ -11,12 +11,12 @@
  * GraphQL schema with the obvious resolvers, which is what a team ships before it discovers N+1.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { RbCodec } from "@rayfold/rb";
 import { loadSchema } from "@rayfold/schema";
 import { RayfoldClient, createFetchTransport } from "@rayfold/client";
-import { GRAPHQL_MAJOR, Recorder, Report } from "./harness.ts";
-import { Signal, openSse } from "./wait.ts";
+import { GRAPHQL_MAJOR, Recorder, Report, writeReport } from "./harness.ts";
+import { Signal, bounded, openSse } from "./wait.ts";
 import { freshWorkspace, startWorkspaceRest, type WorkspaceStack } from "./workspace-rest.ts";
 import { startWorkspaceGraphQL } from "./workspace-gql.ts";
 import { startWorkspaceRayfold } from "./workspace-rayfold.ts";
@@ -117,10 +117,9 @@ afterEach(async () => {
 });
 afterAll(() => {
   recorder.uninstall();
-  mkdirSync("e2e", { recursive: true });
   const size = sizes(freshWorkspace());
-  writeFileSync("e2e/workspace.json", JSON.stringify({ generatedAt: new Date().toISOString(), dataset: size, rows: report.rows }, null, 2) + "\n");
-  writeFileSync(
+  writeReport("e2e/workspace.json", JSON.stringify({ generatedAt: new Date().toISOString(), dataset: size, rows: report.rows }, null, 2) + "\n");
+  writeReport(
     "e2e/workspace.md",
     report.markdown({
       title: "End-to-end comparison on a workspace: REST vs GraphQL vs Rayfold",
@@ -178,9 +177,9 @@ describe("1. The board screen", () => {
     const batched = relationCalls(gql);
     await rayCall([{ id: 1, op: "board", args: { projectId: "p1" }, shape: BOARD_SHAPE }]);
     const rayfoldCalls = relationCalls(rayfold);
-    // The same three relations on both typed stacks: one call each when batching is wired, one call per row when it is not.
-    expect(naive).toBeGreaterThan(batched * 5);
-    expect(rayfoldCalls).toBe(batched);
+    // The same three relations on both typed stacks: one call each when batching is wired, one call per row when it is
+    // not. The dataset is fixed, so the per-row count is too.
+    expect([naive, batched, rayfoldCalls]).toEqual([100, RELATIONS.length, RELATIONS.length]);
 
     report.add({
       aspect: "N+1 on the board",
@@ -541,14 +540,48 @@ describe("8b. A board someone else is changing", () => {
         buffered += decoder.decode(chunk.value, { stream: true });
       }
     };
-    const first = await nextFrame();
+    // a frame that never comes fails on its bound, by name, and closes the stream so the recorder can settle
+    const frame = (label: string) =>
+      bounded(nextFrame(), label).catch((e: unknown) => {
+        ac.abort();
+        throw e;
+      });
+    const first = await frame("the live board's first frame");
     expect((data(first.frame)["columns"] as unknown[]).length).toBe(6);
     await rayCall([{ id: 1, op: "moveIssue", args: { id: target, to: "IN_PROGRESS" }, key: "ws-live-00000001", shape: "{ version }" }]);
-    const pushed = await nextFrame();
+    const pushed = await frame("the patch for the moved issue");
     ac.abort();
     const ops = pushed.frame["patch"] as Array<Record<string, unknown>>;
-    expect(ops.some((o) => "list" in o)).toBe(true); // the row left one column and joined another
-    expect(ops.some((o) => "at" in o)).toBe(true); // and the two column counts changed
+    expect(target).toBe("i078");
+    // the row left one column and joined the top of another, which lets its last row go; the two counts changed
+    expect(ops).toEqual([
+      { list: "columns.2.issues.items", del: [0] },
+      { at: "columns.2", value: { count: 8 } },
+      {
+        list: "columns.3.issues.items",
+        del: [9],
+        ins: [
+          {
+            at: 0,
+            value: {
+              $type: "Issue",
+              id: "i078",
+              key: "ING-78",
+              title: "Refactor the WebSocket transport on reconnect",
+              state: "IN_PROGRESS",
+              priority: "NONE",
+              updatedAt: "2026-02-01T12:00:01.000Z",
+              assignee: { $type: "Member", id: "m02", role: "ADMIN", user: { $type: "User", id: "u02", name: "Grace Hopper", avatarUrl: "https://avatars.example.com/u02.png" } },
+              labels: [
+                { $type: "Label", id: "l04", name: "docs", color: "#0075ca" },
+                { $type: "Label", id: "l10", name: "regression", color: "#e99695" },
+              ],
+            },
+          },
+        ],
+      },
+      { at: "columns.3", value: { count: 18 } },
+    ]);
     const rayfoldBytes = Buffer.byteLength(pushed.text);
 
     // REST: an event says something happened, so the client asks for the board again.
@@ -583,7 +616,8 @@ describe("8b. A board someone else is changing", () => {
       Rayfold: `${rayfoldBytes.toLocaleString("en-US")} B: the server diffs the board it already served and sends the row that moved and the two counts that changed`,
       note: "The client asks for nothing: it holds one live query, and what a change costs depends on the change rather than on the size of the screen.",
     });
-  });
+    // longer than a frame's bound, so a frame that never comes is named by that bound rather than by the test timing out
+  }, 10_000);
 });
 
 describe("9. Two tenants on one deployment", () => {

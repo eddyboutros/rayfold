@@ -90,7 +90,8 @@ export function statsOf(server: RayfoldServer): Record<string, unknown> {
   const readiness = server.readiness();
   return {
     identity: server.identity,
-    uptimeMs: Date.now() - server.identity.startedAt,
+    // the clock `startedAt` was read from: a server given its own `now` would otherwise report the gap between two clocks
+    uptimeMs: server.options.now() - server.identity.startedAt,
     rayfold: "0.1",
     schemaHash: server.hash,
     extensions: [...server.mounted],

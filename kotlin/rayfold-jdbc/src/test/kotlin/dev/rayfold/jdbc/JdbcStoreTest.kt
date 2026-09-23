@@ -15,6 +15,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -168,12 +169,16 @@ class JdbcStoreTest {
         entity VisibleTicket @allow(read: viewer.role == "admin" || ownerId == viewer.id) { id: ID deskId: ID ownerId: ID? }
         entity RankedTicket @allow(read: rank > 2) { id: ID deskId: ID rank: Int }
         entity UnsharedTicket @deny(read: status == "closed") { id: ID deskId: ID status: String? }
+        entity UnownedTicket @allow(read: ownerId == null) { id: ID deskId: ID ownerId: ID? }
+        entity NotClosedTicket @allow(read: !(status == "closed")) { id: ID deskId: ID status: String? }
         entity Desk { id: ID mine: [MyUrgentTicket] }
         query openTickets: [OpenTicket]
         query regionalTickets(page: PageArgs = { first: 20 }): Page<RegionalTicket>
         query visibleTickets: [VisibleTicket]
         query rankedTickets: [RankedTicket]
         query unsharedTickets: [UnsharedTicket]
+        query unownedTickets: [UnownedTicket]
+        query notClosedTickets: [NotClosedTicket]
         query desk(id: ID): Desk?
     """.trimIndent()
 
@@ -221,7 +226,7 @@ class JdbcStoreTest {
             { recorded(DriverManager.getConnection(url)) },
             JdbcStoreOptions(
                 ticketIr,
-                listOf("OpenTicket", "RegionalTicket", "MyUrgentTicket", "VisibleTicket", "RankedTicket", "UnsharedTicket").associateWith { JdbcTable("tickets") },
+                listOf("OpenTicket", "RegionalTicket", "MyUrgentTicket", "VisibleTicket", "RankedTicket", "UnsharedTicket", "UnownedTicket", "NotClosedTicket").associateWith { JdbcTable("tickets") },
                 Naming.SNAKE,
             ),
         )
@@ -246,6 +251,8 @@ class JdbcStoreTest {
                     "visibleTickets" to list("visibleTickets", "VisibleTicket"),
                     "rankedTickets" to list("rankedTickets", "RankedTicket"),
                     "unsharedTickets" to list("unsharedTickets", "UnsharedTicket"),
+                    "unownedTickets" to list("unownedTickets", "UnownedTicket"),
+                    "notClosedTickets" to list("notClosedTickets", "NotClosedTicket"),
                     "desk" to { args, _ -> buildJsonObject { put("id", args["id"] ?: error("no id")) } },
                 ),
                 fields = mapOf("Desk" to mapOf("mine" to mine)),
@@ -378,5 +385,89 @@ class JdbcStoreTest {
             frame("""{"id":1,"data":[{"${'$'}type":"UnsharedTicket","id":"t1","deskId":"d1","status":"open"},null,{"${'$'}type":"UnsharedTicket","id":"t3","deskId":"d1","status":null},{"${'$'}type":"UnsharedTicket","id":"t4","deskId":"d2","status":"open"},null],"meta":{"cost":1},"fin":true}"""),
             frames,
         )
+    }
+
+    @Test
+    fun `== null is pushed down as IS NULL`() {
+        val frames = collect(ticketServer(), """{"id":1,"op":"unownedTickets"}""", agent)
+        assertEquals(frame("""{"id":1,"data":[{"${'$'}type":"UnownedTicket","id":"t4","deskId":"d2","ownerId":null}],"meta":{"cost":1},"fin":true}"""), frames)
+        assertEquals("""SELECT * FROM "tickets" WHERE ("owner_id" IS NULL) ORDER BY "id"""", sent.single().sql)
+        assertEquals(emptyList(), sent.single().params.toList())
+        assertEquals(1, sent.single().rows.get())
+    }
+
+    @Test
+    fun `in over an empty list is pushed down as FALSE, and reads nothing`() {
+        val shape = """"shape":"{ items { id region } total }""""
+        val frames = collect(ticketServer(), """{"id":1,"op":"regionalTickets",$shape}""", """{"id":"u3","role":"agent","regions":[]}""")
+        assertEquals(frame("""{"id":1,"data":{"items":[],"total":0},"meta":{"cost":22},"fin":true}"""), frames)
+        assertEquals(
+            """SELECT * FROM (SELECT *, COUNT(*) OVER () AS "__total" FROM "tickets" WHERE FALSE) AS "__s" ORDER BY CAST("__s"."id" AS VARCHAR) LIMIT ?""",
+            sent.single().sql,
+        )
+        assertEquals(listOf<Any?>(21), sent.single().params.toList())
+        assertEquals(0, sent.single().rows.get())
+    }
+
+    /**
+     * SQL's NOT of an unknown is unknown, and a WHERE drops it; the policy language reads `null == "closed"` as false,
+     * so its negation keeps the row. t3's status is null: the policy allows it, and the pushed-down filter must too.
+     */
+    @Test
+    fun `not is pushed down without dropping a row whose column is null, which the policy allows`() {
+        val frames = collect(ticketServer(), """{"id":1,"op":"notClosedTickets"}""", agent)
+        assertEquals(
+            frame("""{"id":1,"data":[{"${'$'}type":"NotClosedTicket","id":"t1","deskId":"d1","status":"open"},{"${'$'}type":"NotClosedTicket","id":"t3","deskId":"d1","status":null},{"${'$'}type":"NotClosedTicket","id":"t4","deskId":"d2","status":"open"}],"meta":{"cost":1},"fin":true}"""),
+            frames,
+        )
+        assertEquals("""SELECT * FROM "tickets" WHERE (NOT COALESCE(("status" = ?), FALSE)) ORDER BY "id"""", sent.single().sql)
+        assertEquals(listOf<Any?>("closed"), sent.single().params.toList())
+        assertEquals(3, sent.single().rows.get(), "the closed tickets were never read")
+    }
+
+    /** A store over the tickets whose connections record into [sent], for calls made straight to the store. */
+    private fun recordedStore(ir: dev.rayfold.core.RayfoldSchemaIR, tables: Map<String, JdbcTable>, naming: Naming) =
+        JdbcStore({ recorded(DriverManager.getConnection(url)) }, JdbcStoreOptions(ir, tables, naming))
+
+    private val plainTickets = SchemaText.load("entity Ticket { id: ID deskId: ID status: String? }").ir
+
+    @Test
+    fun `where equalities become one condition each, and a null value is IS NULL`() {
+        val store = recordedStore(plainTickets, mapOf("Ticket" to JdbcTable("tickets")), Naming.SNAKE)
+        val rows = store.find("Ticket", mapOf("deskId" to JsonPrimitive("d1"), "status" to JsonNull))
+        assertEquals(listOf(Json.parseToJsonElement("""{"id":"t3","deskId":"d1","status":null}""")), rows.map { JsonObject(it.filterKeys { k -> k in setOf("id", "deskId", "status") }) })
+        assertEquals("""SELECT * FROM "tickets" WHERE "desk_id" = ? AND "status" IS NULL ORDER BY "id"""", sent.single().sql)
+        assertEquals(listOf<Any?>("d1"), sent.single().params.toList())
+        assertEquals(1, sent.single().rows.get())
+
+        // guard: a value is bound, not written as IS NULL
+        sent.clear()
+        assertEquals(listOf("t1"), store.find("Ticket", mapOf("deskId" to JsonPrimitive("d1"), "status" to JsonPrimitive("open"))).map { text(it, "id") })
+        assertEquals("""SELECT * FROM "tickets" WHERE "desk_id" = ? AND "status" = ? ORDER BY "id"""", sent.single().sql)
+        assertEquals(listOf<Any?>("d1", "open"), sent.single().params.toList())
+
+        // and a page takes the same conditions, counting only what matches them
+        sent.clear()
+        val page = store.page("Ticket", first = 10, where = mapOf("status" to JsonNull))
+        assertEquals(listOf("t3") to 1, page.items.map { text(it, "id") } to page.total)
+        assertEquals(
+            """SELECT * FROM (SELECT *, COUNT(*) OVER () AS "__total" FROM "tickets" WHERE "status" IS NULL) AS "__s" ORDER BY CAST("__s"."id" AS VARCHAR) LIMIT ?""",
+            sent.single().sql,
+        )
+        assertEquals(listOf<Any?>(11), sent.single().params.toList())
+    }
+
+    @Test
+    fun `Naming SAME uses the field name as the column, and a column override wins over either naming`() {
+        keepAlive.createStatement().use { s ->
+            s.execute("""CREATE TABLE "notes" ("id" varchar primary key, "deskRef" varchar not null, "body_text" varchar not null)""")
+            s.execute("""INSERT INTO "notes" VALUES ('n1','d1','hello'), ('n2','d2','bye')""")
+        }
+        val ir = SchemaText.load("entity Note { id: ID deskRef: ID body: String }").ir
+        val store = recordedStore(ir, mapOf("Note" to JdbcTable("notes", columns = mapOf("body" to "body_text"))), Naming.SAME)
+        val rows = store.find("Note", mapOf("deskRef" to JsonPrimitive("d1"), "body" to JsonPrimitive("hello")))
+        assertEquals(listOf(Json.parseToJsonElement("""{"id":"n1","deskRef":"d1","body":"hello"}""")), rows)
+        assertEquals("""SELECT * FROM "notes" WHERE "deskRef" = ? AND "body_text" = ? ORDER BY "id"""", sent.single().sql)
+        assertEquals(listOf<Any?>("d1", "hello"), sent.single().params.toList())
     }
 }

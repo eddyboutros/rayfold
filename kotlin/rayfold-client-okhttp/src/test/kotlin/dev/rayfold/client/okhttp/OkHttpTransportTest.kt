@@ -224,14 +224,15 @@ class OkHttpTransportTest {
         val live = async { t.send(envelope, safe = true).collect { frames.send(it) } }
         assertEquals(Json.parseToJsonElement("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1}}"""), frames.receive())
         assertEquals(1, server.changes.size, "the first frame comes after the live query subscribed")
+        val port = listener.port
         listener.close() // every connection closes, as when the server restarts
         live.await()
         frames.close()
         val rest = frames.toList()
         assertEquals(JsonPrimitive("unavailable"), (rest.last()["error"] as? JsonObject)?.get("code"), "$rest")
-        listener = RayfoldWebSocket(server) { JsonNull }.start(0)
-        url = "ws://127.0.0.1:${listener.port}/rayfold/ws"
-        assertEquals("Kindred", RayfoldClient(transport()).query("book", args("id" to "b2"), "{ title }").title(), "guard: a new socket works")
+        // back at the same address, so the transport that lost its socket can find the server again
+        listener = RayfoldWebSocket(server) { JsonNull }.start(port)
+        assertEquals("Kindred", RayfoldClient(t).query("book", args("id" to "b2"), "{ title }").title(), "guard: the same transport opens a new socket")
     }
 
     @Test

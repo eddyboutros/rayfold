@@ -111,6 +111,7 @@ fun main() = runBlocking {
                 val wanted = (args["bookIds"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }?.toSet() ?: emptySet()
                 callbackFlow<JsonElement> {
                     val off = ctx.events.on("StockChanged") { p -> if ((p["bookId"] as? JsonPrimitive)?.content in wanted) trySend(p) }
+                    println("$name stream subscribed") // the test sends its command only after this line, as with the TypeScript member
                     awaitClose { off() }
                 }
             },

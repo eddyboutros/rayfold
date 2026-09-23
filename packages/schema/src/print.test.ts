@@ -62,6 +62,36 @@ describe("printing the IR back to .rayfold text", () => {
     expect(printed).toContain("command buy(bookId: ID, qty: Int = 1): Review throws OutOfStock emits Bought @simulate");
   });
 
+  it("keeps an argument's description, on one line or several", () => {
+    const text = `entity Book { id: ID reviews("""newest first""" page: PageArgs = { first: 10 }): Page<Review> }
+entity Review { id: ID }
+query book("""
+the id
+or a slug
+""" id: ID, lang: String?): Book?`;
+    const original = loadSchema(text);
+    const printed = printSchemaText(original.ir);
+    expect(printed).toBe(
+      [
+        "entity Book {",
+        "  id: ID",
+        '  reviews("""newest first""" page: PageArgs = { first: 10 }): Page<Review>',
+        "}",
+        "",
+        "entity Review {",
+        "  id: ID",
+        "}",
+        "",
+        'query book("""',
+        "the id",
+        "or a slug",
+        '""" id: ID, lang: String?): Book?',
+        "",
+      ].join("\n"),
+    );
+    expect(loadSchema(printed).ir).toEqual(original.ir);
+  });
+
   it("writes an ordinal only where the field is not where its ordinal says", () => {
     const natural = printSchemaText(loadSchema("entity Book { id: ID title: String }\nquery book(id: ID): Book?").ir);
     expect(natural).not.toContain("@ordinal");

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createServer, request as httpRequest, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { connect as connectTcp, type AddressInfo, type Socket } from "node:net";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
-import { attachWebSocket, type WsOptions } from "./ws.ts";
+import { attachWebSocket, decodeFrame, type WsOptions } from "./ws.ts";
 import type { RayfoldServer } from "./server.ts";
 
 type Bookstore = ReturnType<typeof createBookstore>;
@@ -188,5 +188,105 @@ describe("op lifecycle on one connection", () => {
     await received.atLeast(6, "an answer after the unknown cancel");
     expect(received.items.slice(5)).toEqual([bookFrame(3, "b1")]);
     expect(closed.items).toEqual([]);
+  });
+});
+
+/** A client speaking RFC 6455 by hand over a real socket, for what the global WebSocket will not send: fragments, pings, raw bytes. */
+async function rawClient(host: string): Promise<{ send: (opcode: number, payload: Buffer | string, fin?: boolean) => void; frames: Signal<{ opcode: number; text: string }>; ended: Promise<void> }> {
+  const socket = connectTcp({ host: "127.0.0.1", port: Number(host.split(":")[1]) });
+  raws.push(socket);
+  const frames = new Signal<{ opcode: number; text: string }>();
+  let handshake = "";
+  let buf = Buffer.alloc(0);
+  let upgraded = () => {};
+  const switched = bounded(new Promise<void>((r) => (upgraded = r)), "the 101 switching protocols");
+  const ended = new Promise<void>((r) => socket.on("close", () => r()));
+  socket.on("data", (chunk: Buffer) => {
+    if (!handshake.endsWith("\r\n\r\n")) {
+      const all = handshake + chunk.toString("latin1");
+      const at = all.indexOf("\r\n\r\n");
+      if (at < 0) {
+        handshake = all;
+        return;
+      }
+      handshake = all.slice(0, at + 4);
+      chunk = Buffer.from(all.slice(at + 4), "latin1");
+      upgraded();
+    }
+    buf = Buffer.concat([buf, chunk]);
+    for (let f = decodeFrame(buf); f; f = decodeFrame(buf)) {
+      buf = buf.subarray(f.length);
+      frames.push({ opcode: f.opcode, text: f.opcode === 0x8 ? `${f.payload.readUInt16BE(0)} ${f.payload.subarray(2).toString("utf8")}` : f.payload.toString("utf8") });
+    }
+  });
+  socket.write(`GET /rayfold/ws HTTP/1.1\r\nHost: ${host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`);
+  await switched;
+  expect(handshake.startsWith("HTTP/1.1 101 ")).toBe(true);
+  const send = (opcode: number, payload: Buffer | string, fin = true) => {
+    const data = typeof payload === "string" ? Buffer.from(payload, "utf8") : payload;
+    const mask = Buffer.from([0x12, 0x34, 0x56, 0x78]);
+    const head = data.length < 126 ? Buffer.from([(fin ? 0x80 : 0) | opcode, 0x80 | data.length]) : Buffer.from([(fin ? 0x80 : 0) | opcode, 0x80 | 126, data.length >> 8, data.length & 0xff]);
+    socket.write(Buffer.concat([head, mask, Buffer.from(data.map((b, i) => b ^ mask[i % 4]!))]));
+  };
+  return { send, frames, ended };
+}
+const raws: Socket[] = [];
+afterEach(() => {
+  for (const s of raws.splice(0)) s.destroy();
+});
+const TEXT = 0x1;
+const CONTINUATION = 0x0;
+const CLOSE = 0x8;
+const PING = 0x9;
+const PONG = 0xa;
+
+describe("frames as the protocol allows them", () => {
+  it("a message split across a text frame and continuation frames is answered once it is whole, with a ping between them answered at once", async () => {
+    const host = await serve(bs.server);
+    const c = await rawClient(host);
+    const message = JSON.stringify(readBook(1, "b1"));
+    c.send(TEXT, message.slice(0, 10), false);
+    c.send(PING, "are you there");
+    await c.frames.atLeast(1, "the pong, sent while the message is still incomplete");
+    c.send(CONTINUATION, message.slice(10, 30), false);
+    c.send(CONTINUATION, message.slice(30));
+    await c.frames.atLeast(2, "the answer to the assembled message");
+    expect(c.frames.items).toEqual([
+      { opcode: PONG, text: "are you there" },
+      { opcode: TEXT, text: JSON.stringify(bookFrame(1, "b1")) },
+    ]);
+  });
+
+  it("fragments each under maxMessage that add up to more close the socket with 1009; the same fragments adding up to exactly maxMessage are served (guard)", async () => {
+    const message = JSON.stringify(readBook(1, "b1"));
+    const host = await serve(bs.server, { maxMessage: message.length });
+    const exact = await rawClient(host);
+    exact.send(TEXT, message.slice(0, 40), false);
+    exact.send(CONTINUATION, message.slice(40));
+    await exact.frames.atLeast(1, "the answer to a message exactly at the limit");
+    expect(exact.frames.items).toEqual([{ opcode: TEXT, text: JSON.stringify(bookFrame(1, "b1")) }]);
+
+    const over = await rawClient(host);
+    over.send(TEXT, message.slice(0, 40), false);
+    over.send(CONTINUATION, message.slice(40) + " "); // one byte more than the limit, in a frame well under it
+    await bounded(over.ended, "the oversized socket closing");
+    expect(over.frames.items).toEqual([{ opcode: CLOSE, text: "1009 message too big" }]);
+    expect(bs.store.calls["Query.book"]).toBe(1); // only the message at the limit ran
+  });
+
+  it("a message that is not JSON, or JSON that is not an envelope, is answered with an error and the socket stays open", async () => {
+    const host = await serve(bs.server);
+    const c = await rawClient(host);
+    c.send(TEXT, "{ not json");
+    c.send(TEXT, JSON.stringify({ hello: "there" }));
+    c.send(TEXT, "null");
+    c.send(TEXT, JSON.stringify(readBook(2, "b2"))); // guard: the same socket still runs a batch
+    await c.frames.atLeast(4, "three refusals and an answer");
+    expect(c.frames.items).toEqual([
+      { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Message is not valid JSON" }, fin: true }) },
+      { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true }) },
+      { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true }) },
+      { opcode: TEXT, text: JSON.stringify(bookFrame(2, "b2")) },
+    ]);
   });
 });

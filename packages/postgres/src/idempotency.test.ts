@@ -1,7 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
 import { hashJson } from "@rayfold/schema";
 import { createRayfoldServer, type RayfoldServer } from "@rayfold/server";
+import type { IdempotencyClaim } from "@rayfold/server/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Signal } from "../../../e2e/wait.ts";
 import { PgIdempotencyStore, type Queryable } from "./index.ts";
 
 /**
@@ -106,13 +108,21 @@ describe("idempotency records in Postgres", () => {
     const stopped = await f.store.claim(hashJson(viewer), KEY, 60);
     expect(stopped.state).toBe("owned");
 
+    const answers = new Signal<IdempotencyClaim["state"]>();
+    const claim = f.store.claim.bind(f.store);
+    f.store.claim = async (...args) => {
+      const c = await claim(...args);
+      answers.push(c.state);
+      return c;
+    };
     const retry = book(f.servers[0]!);
-    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    expect(await answers.atLeast(1, "the retry asked the database for the key")).toEqual(["inflight"]);
     expect(f.runs()).toBe(0); // the lease is still good, so the retry waits instead of running the command
 
     now += 61;
     expect((await retry)[0]).toMatchObject({ ok: { id: "t1" } });
     expect(f.runs()).toBe(1);
+    expect(answers.items.at(-1)).toBe("owned");
     expect(replayed((await book(f.servers[0]!)) as never)).toBe(true);
   });
 
@@ -131,12 +141,24 @@ describe("idempotency records in Postgres", () => {
   it("keeps one viewer's record away from another's on the same key", async () => {
     const f = await fleet(2);
     await book(f.servers[0]!);
-    const other = await book(f.servers[1]!, KEY, 1, { id: "u2" });
+    // another seat on the same key: in a scope shared with u1 this would be refused as a reused key
+    const other = await book(f.servers[1]!, KEY, 2, { id: "u2" });
 
     expect(replayed(other as never)).toBe(false);
     expect(f.runs()).toBe(2);
-    expect(await f.store.get(hashJson(viewer), KEY)).toBeDefined();
-    expect(await f.store.get(hashJson({ id: "u2" }), KEY)).toBeDefined();
+    const mine = await f.store.get(hashJson(viewer), KEY);
+    const theirs = await f.store.get(hashJson({ id: "u2" }), KEY);
+    expect([mine?.frame, mine?.compactFrame, mine?.at]).toEqual([
+      { id: 1, ok: { $type: "Ticket", id: "t1", seat: 1 }, patch: [{ set: "Ticket:t1", value: { $type: "Ticket", id: "t1", seat: 1 } }], meta: { cost: 1 }, fin: true },
+      { id: 1, ok: { id: "t1", seat: 1 }, patch: [], fin: true },
+      1_000,
+    ]);
+    expect([theirs?.frame, theirs?.compactFrame, theirs?.at]).toEqual([
+      { id: 1, ok: { $type: "Ticket", id: "t2", seat: 2 }, patch: [{ set: "Ticket:t2", value: { $type: "Ticket", id: "t2", seat: 2 } }], meta: { cost: 1 }, fin: true },
+      { id: 1, ok: { id: "t2", seat: 2 }, patch: [], fin: true },
+      1_000,
+    ]);
+    expect(theirs?.argsHash).not.toBe(mine?.argsHash);
   });
 
   it("guard: a key reused for other arguments on another server is refused from the database record, and that command never runs", async () => {

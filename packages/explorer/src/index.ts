@@ -271,7 +271,10 @@ async function send() {
 }
 async function start() {
   try {
-    manifest = await (await fetch(CONFIG.endpoint + "/manifest")).json();
+    var res = await fetch(CONFIG.endpoint + "/manifest");
+    // a server with its manifest turned off answers with an error frame, which parses but lists nothing
+    if (!res.ok) throw new Error(String(res.status));
+    manifest = await res.json();
   } catch (e) {
     text(document.getElementById("about"), "no manifest at " + CONFIG.endpoint + "/manifest");
     return;

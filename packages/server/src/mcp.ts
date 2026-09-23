@@ -11,7 +11,8 @@ import { jsonSchemaFor, withRange } from "./json-schema.ts";
 import { publicIR } from "./fetch.ts";
 
 export { jsonSchemaFor, withRange };
-import { hostProblem, mediaType, originProblem, refuse, type OriginOptions } from "./guard.ts";
+import { BodyTooLarge, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
+import { readBody } from "./http.ts";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 
@@ -212,11 +213,14 @@ export interface McpHttpOptions extends OriginOptions {
   viewer?: (req: IncomingMessage) => unknown | Promise<unknown>;
   /** What `rayfold://schema` serves. Default `"redacted"`: the IR without policy expressions (spec 12 §5.6). */
   schema?: SchemaMode;
+  /** Largest request body accepted, in bytes. Default 1 MiB, the same as the Rayfold HTTP endpoint. */
+  maxBody?: number;
 }
 
 /** Streamable HTTP endpoint: POST JSON-RPC, JSON reply. */
 export function createMcpHandler(server: RayfoldServer, opts: McpHttpOptions = {}): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
   const path = opts.path ?? "/mcp";
+  const maxBody = opts.maxBody ?? 1_048_576;
   server.mounted.add("mcp");
   return async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -236,11 +240,19 @@ export function createMcpHandler(server: RayfoldServer, opts: McpHttpOptions = {
       return true;
     }
     res.setHeader("X-Content-Type-Options", "nosniff");
-    const chunks: Buffer[] = [];
-    for await (const c of req) chunks.push(c as Buffer);
+    let raw: Buffer;
+    try {
+      raw = await readBody(req, maxBody);
+    } catch (e) {
+      if (e instanceof BodyTooLarge) {
+        refuseBody(res, e);
+        return true;
+      }
+      throw e;
+    }
     let body: JsonRpcRequest | JsonRpcRequest[];
     try {
-      body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      body = JSON.parse(raw.toString("utf8"));
     } catch {
       res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }));
       return true;

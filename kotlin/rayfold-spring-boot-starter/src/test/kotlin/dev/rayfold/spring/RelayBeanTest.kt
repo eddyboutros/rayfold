@@ -34,7 +34,7 @@ class RelayBeanTest {
             val other = relay.join()
             val stop = runBlocking { other.subscribe { m -> heard.add(if (m is RelayMessage.Change) "change ${m.keys} ${m.ops}" else "event"); arrived.countDown() } }
             val frame = runBlocking { withTimeout(5_000) { server.collect(buy, viewer) } }.single()
-            assertThat(frame["ok"]).isNotNull()
+            assertThat(frame).isEqualTo(Json.parseToJsonElement("""{"id":1,"ok":{"${'$'}type":"Book","id":"b1","stock":1},"patch":[{"set":"Book:b1","value":{"${'$'}type":"Book","id":"b1","stock":1}}],"meta":{"cost":1},"fin":true}"""))
             assertThat(arrived.await(5, TimeUnit.SECONDS)).describedAs("the other end hearing the change").isTrue()
             assertThat(heard).containsExactly("change [Book:b1] []")
             runBlocking { stop(); withTimeout(5_000) { server.close() } }

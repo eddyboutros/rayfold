@@ -190,10 +190,22 @@ class JdbcUploadStoreTest {
         val kept = s.put(ByteArrayInputStream(bytes(32)), null, null, u1)
         clock += 59_999
         assertTrue(s.open(kept.id) != null, "one millisecond inside its lifetime it is still there")
-        clock += 2
-        assertNull(s.open(kept.id), "one millisecond past it, it is gone")
+        clock += 1
+        assertNull(s.open(kept.id), "at exactly its lifetime it is gone")
         assertEquals(0, s.count(), "reading it away is what dropped it")
         assertEquals(0L, s.bytes())
+    }
+
+    @Test
+    fun `a write forgets the uploads past their lifetime, without anyone reading them`() = runBlocking {
+        val s = store(ttlMs = 60_000)
+        s.put(ByteArrayInputStream(bytes(32)), null, null, u1)
+        clock += 59_999
+        s.put(ByteArrayInputStream(bytes(8)), null, null, u1)
+        assertEquals(2 to 40L, s.count() to s.bytes(), "guard: inside its lifetime the first stays")
+        clock += 2 // the first is now past its lifetime, the second is not
+        s.put(ByteArrayInputStream(bytes(4)), null, null, u1)
+        assertEquals(2 to 12L, s.count() to s.bytes())
     }
 
     @Test

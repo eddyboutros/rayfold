@@ -392,19 +392,31 @@ describe("bodies that parse but are not envelopes (found by fuzzing)", () => {
         expect(((await res.json()) as { code: string }).code).toBe("invalid_argument");
       }
     }
+    const seen: unknown[] = [];
     for (const body of [{ ops: 5 }, { ops: [null] }, { ops: [1, "x"] }]) {
       for (const headers of heads) {
         const res = await post(body, headers);
-        const label = `${JSON.stringify(body)} ${JSON.stringify(headers)}`;
-        // a batch error frame in a stream (200), the frame as a single JSON document, or a problem document (both 400)
-        if (res.status === 200) expect((await frames(res))[0], label).toMatchObject({ error: { code: "invalid_argument" }, fin: true });
-        else {
-          expect(res.status, label).toBe(400);
-          const doc = (await res.json()) as { code?: string; error?: { code: string } };
-          expect(doc.code ?? doc.error?.code, label).toBe("invalid_argument");
-        }
+        seen.push([JSON.stringify(body), JSON.stringify(headers), res.status, res.headers.get("content-type"), await res.text()]);
       }
     }
+    const refusal = (message: string) => ({ error: { code: "invalid_argument", message }, fin: true });
+    // a batch error frame in a stream (200); the frame as a single JSON document when one op was asked for as JSON
+    // (400); a problem document when a safe request's ops cannot all be checked to be queries (400)
+    const streamed = (message: string) => [200, "application/rayfold-frames+json", `${JSON.stringify(refusal(message))}\n`];
+    const single = (message: string) => [400, "application/json; charset=utf-8", JSON.stringify(refusal(message))];
+    const unsafe = [400, "application/problem+json", JSON.stringify({ type: "https://eddyboutros.github.io/rayfold/errors/invalid_argument", title: "invalid argument", status: 400, detail: "Safe requests (GET/QUERY) may only contain queries", code: "invalid_argument" })];
+    const [plain, safe, json] = heads.map((h) => JSON.stringify(h));
+    expect(seen).toEqual([
+      ['{"ops":5}', plain, ...streamed("Body must be { ops: [...] }")],
+      ['{"ops":5}', safe, ...streamed("Body must be { ops: [...] }")],
+      ['{"ops":5}', json, ...streamed("Body must be { ops: [...] }")],
+      ['{"ops":[null]}', plain, ...streamed("ops[0]: expected an object")],
+      ['{"ops":[null]}', safe, ...unsafe],
+      ['{"ops":[null]}', json, ...single("ops[0]: expected an object")],
+      ['{"ops":[1,"x"]}', plain, ...streamed("ops[0]: expected an object")],
+      ['{"ops":[1,"x"]}', safe, ...unsafe],
+      ['{"ops":[1,"x"]}', json, ...streamed("ops[0]: expected an object")], // two ops: not a single-frame answer
+    ]);
     // guard: a real envelope on the same route still runs
     expect((await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, { "rayfold-safe": "true" })).status).toBe(200);
   });

@@ -149,7 +149,7 @@ describe("changes and events cross a relay between servers", () => {
   });
 
   it("a relay that refuses a message reports it, and the command that made the change still succeeds", async () => {
-    const refused: unknown[] = [];
+    const refused = new Signal<unknown>();
     const down: Relay = {
       publish: async () => {
         throw new Error("the relay is down");
@@ -161,27 +161,26 @@ describe("changes and events cross a relay between servers", () => {
     expect(frame).toMatchObject({ ok: { id: "b1", stock: 4 } });
 
     // the change and the event were both refused: two messages, two reports
-    await bounded(
-      new Promise<void>((resolve) => {
-        const tick = () => (refused.length >= 2 ? resolve() : setTimeout(tick, 0));
-        tick();
-      }),
-      "both refusals being reported",
-    );
-    expect(refused.map((e) => (e as Error).message)).toEqual(["the relay is down", "the relay is down"]);
+    await refused.atLeast(2, "both refusals being reported");
+    expect(refused.items.map((e) => (e as Error).message)).toEqual(["the relay is down", "the relay is down"]);
     expect((a.server.relayFailure as Error).message).toBe("the relay is down");
   });
 
   it("ready() waits until the server hears the others, and rejects with what stopped it", async () => {
     let listening = () => {};
+    const asked = new Signal<true>();
     const slow: Relay = {
       publish: async () => {},
-      subscribe: () => new Promise((resolve) => (listening = () => resolve(async () => {}))),
+      subscribe: () =>
+        new Promise((resolve) => {
+          listening = () => resolve(async () => {});
+          asked.push(true);
+        }),
     };
     const a = instance(shelf(), { relay: slow });
     let ready = false;
     const waiting = a.server.ready().then(() => (ready = true));
-    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    await asked.atLeast(1, "the server asking the relay to listen");
     expect(ready).toBe(false);
     listening();
     await bounded(waiting, "ready() resolving once the relay listens");

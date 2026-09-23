@@ -209,6 +209,10 @@ it("a share cannot change anything, whatever it is asked to run", async () => {
 
   // nothing moved: the document is as its owner left it
   expect(await ada.query<Document>("document", { id: doc.id }, { shape: "{ name version }" })).toMatchObject({ name: "contract.txt", version: 1 });
+
+  // guard: the refusal is the share's, not the command's: its owner renames it, and the new name is what is read back
+  expect(await ada.command<Document>("renameDocument", { id: doc.id, name: "signed.txt" }, { shape: "{ id name version }" })).toMatchObject({ id: doc.id, name: "signed.txt", version: 2 });
+  expect(await ada.query<Document>("document", { id: doc.id }, { shape: "{ name version }", policy: "network" })).toMatchObject({ name: "signed.txt", version: 2 });
 });
 
 it("a share stops working when it expires", async () => {

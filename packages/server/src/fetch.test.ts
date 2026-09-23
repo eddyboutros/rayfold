@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { createFetchHandler } from "./fetch.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
@@ -13,8 +13,12 @@ import { Signal, bounded } from "../../../e2e/wait.ts";
  */
 const KEY = "0123456789abcdef";
 const admin = { id: "u9", role: "admin" };
-const bs = createBookstore();
-const handler = createFetchHandler(bs.server, { viewer: (r) => (r.headers.get("authorization") === "Bearer admin" ? admin : null) });
+let bs: ReturnType<typeof createBookstore>;
+let handler: ReturnType<typeof createFetchHandler>;
+beforeEach(() => {
+  bs = createBookstore();
+  handler = createFetchHandler(bs.server, { viewer: (r) => (r.headers.get("authorization") === "Bearer admin" ? admin : null) });
+});
 
 const post = (body: unknown, headers: Record<string, string> = {}, method = "POST", path = "/rayfold") =>
   handler(new Request(`http://api.example/${path.replace(/^\//, "")}`, { method, headers: { "content-type": "application/rayfold+json", ...headers }, body: JSON.stringify(body) }));
@@ -52,7 +56,7 @@ describe("the fetch handler answers a batch", () => {
     expect(streamed.headers.get("cache-control")).toBe("no-store");
     // guard: a batch the caller marked safe still gets its shared-cache headers instead
     const safe = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, { accept: "application/json", "rayfold-safe": "true" });
-    expect(safe.headers.get("cache-control")).not.toBe("no-store");
+    expect(safe.headers.get("cache-control")).toBe("public, max-age=60");
   });
 
   it("runs a command for a viewer the handler derived from the request", async () => {
@@ -64,7 +68,7 @@ describe("the fetch handler answers a batch", () => {
   it("serves a single query over GET, with the cache headers a shared cache reads", async () => {
     const res = await get(`/rayfold/book?a=${Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url")}`);
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toMatch(/^public, max-age=\d+/);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
     expect(res.headers.get("etag")).toMatch(/^"sha256-[0-9a-f]{64}"$/);
     expect(res.headers.get("vary")).toBe("Rayfold-Client, Accept, Authorization");
 
@@ -116,11 +120,18 @@ describe("the fetch handler answers a batch", () => {
   it("a server that is shutting down sends the caller elsewhere", async () => {
     const draining = createRayfoldServer({ schema: `entity A { id: ID } query a: A`, resolvers: { Query: { a: () => ({ id: "a" }) } } });
     const drainingHandler = createFetchHandler(draining);
+    const ask = () => drainingHandler(new Request("http://api.example/rayfold", { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify({ ops: [{ id: 1, op: "a" }] }) }));
+    // guard: the same server answers the same batch until it is told to drain, so the refusal below is the drain's
+    expect(await frames(await ask())).toEqual([{ id: 1, data: { $type: "A", id: "a" }, meta: { cost: 1 }, fin: true }]);
     await draining.drain({ timeoutMs: 100 });
-    const res = await drainingHandler(new Request("http://api.example/rayfold", { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify({ ops: [{ id: 1, op: "a" }] }) }));
+    const res = await ask();
     expect(res.status).toBe(503);
     expect(res.headers.get("retry-after")).toBe("1");
-    expect((await get("/rayfold/health")).status).toBe(200); // guard: a live server still answers
+    expect(await res.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/unavailable", title: "unavailable", status: 503, detail: "The server is shutting down", code: "unavailable" });
+    // guard: draining turns batches away, not the process: health on the same server still answers
+    const health = await drainingHandler(new Request("http://api.example/rayfold/health"));
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ status: "ok" });
   });
 });
 
@@ -165,8 +176,11 @@ describe("a response that stays open", () => {
     await live.frames.atLeast(1, "the first result");
 
     await post({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 3 }, key: KEY + "b" }] }, { authorization: "Bearer admin" });
-    const [, change] = await live.frames.atLeast(2, "the change");
-    expect(change).toMatchObject({ id: 1, patch: [{ set: "Book:b1" }] });
+    await live.frames.atLeast(2, "the change");
+    expect(live.frames.items).toEqual([
+      { id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 } },
+      { id: 1, patch: [{ set: "Book:b1", value: { stock: 8 } }] },
+    ]);
     await live.stop();
   });
 
@@ -174,22 +188,40 @@ describe("a response that stays open", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const quiet = createFetchHandler(bs.server, { keepAliveMs: 1_000, viewer: () => admin });
     const res = await quiet(
-      new Request("http://api.example/rayfold", { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }", live: true }] }) }),
+      new Request("http://api.example/rayfold", { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }] }) }),
     );
     const live = read(res);
+    const restock = (key: string) => bs.server.collect({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key }] }, { viewer: admin });
     await live.frames.atLeast(1, "the first result");
+    // the first interval saw the data frame, so only the second, silent one writes a keep-alive
     await vi.advanceTimersByTimeAsync(2_000);
-    const seen = live.frames.items.filter((f) => (f as { keepAlive?: boolean }).keepAlive);
-    expect(seen.length).toBeGreaterThanOrEqual(1);
+    await live.frames.atLeast(2, "the keep-alive");
+    await restock(KEY + "k1");
+    await live.frames.atLeast(3, "the first change");
+    // guard: the interval right after a frame writes nothing, so the next thing on the wire is the second change
+    await vi.advanceTimersByTimeAsync(1_000);
+    await restock(KEY + "k2");
+    await live.frames.atLeast(4, "the second change");
+    await vi.advanceTimersByTimeAsync(2_000);
+    await live.frames.atLeast(5, "the keep-alive after the changes stopped");
+    expect(live.frames.items).toEqual([
+      { id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 } },
+      { keepAlive: true },
+      { id: 1, patch: [{ set: "Book:b1", value: { stock: 6 } }] },
+      { id: 1, patch: [{ set: "Book:b1", value: { stock: 7 } }] },
+      { keepAlive: true },
+    ]);
     await live.stop();
   });
 });
 
 describe("identity and GET /rayfold/stats", () => {
+  let t = 0;
   const server = (identity?: Record<string, unknown>) =>
     createRayfoldServer({
       schema: `entity A { id: ID } query a: A`,
       resolvers: { Query: { a: () => ({ id: "a" }) } },
+      now: () => t,
       ...(identity ? { identity } : {}),
     });
 
@@ -200,21 +232,27 @@ describe("identity and GET /rayfold/stats", () => {
     h(new Request("http://api.example/rayfold/stats", { headers }));
 
   it("says who the server is and what it is doing", async () => {
-    const res = await get(statsHandler({ authorize: () => true }));
+    t = 1_000;
+    const s = server({ name: "bookshop", version: "1.4.0", labels: { region: "eu-west" } });
+    t = 3_500; // the server's own clock, not the wall's, says how long it has been up
+    const res = await get(createFetchHandler(s, { stats: { authorize: () => true } }));
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    const body = (await res.json()) as { identity: { instance: string; startedAt: number }; uptimeMs: number };
-    expect(body).toMatchObject({
-      identity: { name: "bookshop", version: "1.4.0", labels: { region: "eu-west" } },
+    const body = (await res.json()) as { identity: { instance: string } };
+    // an instance id and a start time are always there, whether or not one was supplied
+    expect(body.identity.instance).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(body).toEqual({
+      identity: { name: "bookshop", version: "1.4.0", labels: { region: "eu-west" }, instance: body.identity.instance, startedAt: 1_000 },
+      uptimeMs: 2_500,
+      rayfold: "0.1",
+      schemaHash: s.hash,
+      extensions: [],
       inflight: 0,
       draining: false,
       ready: true,
+      reasons: [],
       live: 0,
     });
-    // an instance id and a start time are always there, whether or not one was supplied
-    expect(typeof body.identity.instance).toBe("string");
-    expect(typeof body.identity.startedAt).toBe("number");
-    expect(typeof body.uptimeMs).toBe("number");
   });
 
   it("does not exist unless it was configured, rather than refusing", async () => {
@@ -271,13 +309,24 @@ describe("counters", () => {
     );
     expect(find(counters, "rayfold.refused", { reason: "origin" })).toBe(1);
     expect(find(counters, "rayfold.refused", { reason: "route" })).toBe(0); // guard: reasons are not interchangeable
+    // every request is counted as it arrives, refused or not; neither of these reached an op
+    expect(counters.snapshot()).toEqual([
+      { name: "rayfold.refused", labels: { reason: "media" }, count: 1 },
+      { name: "rayfold.refused", labels: { reason: "origin" }, count: 1 },
+      { name: "rayfold.requests", labels: { method: "POST" }, count: 2 },
+    ]);
   });
 
   it("counts an op by kind and how it ended, without any instrumentation configured", async () => {
     const { counters, server } = counted();
     await server.collect({ ops: [{ id: 1, op: "a", shape: "{ id }" }] }, {});
-    await server.collect({ ops: [{ id: 1, op: "nope" }] }, {}); // refused while planning
-    expect(find(counters, "rayfold.ops", { kind: "query", outcome: "ok" })).toBe(1);
+    await server.collect({ ops: [{ id: 1, op: "a", shape: "{ nope }" }] }, {}); // refused while planning: an op that never ran
+    await server.collect({ ops: [{ id: 1, op: "nope" }] }, {}); // refused with the envelope, before there is an op to count
+    expect(counters.snapshot()).toEqual([
+      { name: "rayfold.errors", labels: { op: "a", code: "invalid_argument", type: "" }, count: 1 },
+      { name: "rayfold.ops", labels: { kind: "query", outcome: "invalid_argument" }, count: 1 },
+      { name: "rayfold.ops", labels: { kind: "query", outcome: "ok" }, count: 1 },
+    ]);
   });
 
   it("names the declared error, which a wire code alone cannot", async () => {

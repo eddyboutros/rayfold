@@ -67,7 +67,7 @@ describe("RB codec", () => {
     const b = new KeyDictionary(loadSchema(bookstoreSchemaText()).ir);
     expect(a.names).toEqual(b.names);
     expect(a.ids.get("id")).toBe(0);
-    expect(a.ids.get("costPrice")).toBeGreaterThan(30);
+    expect(a.ids.get("costPrice")).toBe(59);
   });
 
   it("is materially smaller than JSON on a realistic response", async () => {
@@ -105,6 +105,18 @@ describe("security: decoding hostile RB", () => {
     const forged = Uint8Array.from(bytes);
     forged[1] = 0x7f; // element count 127, with three elements' worth of bytes behind it
     expect(() => codec.decode(forged)).toThrow(/length exceeds the input|unexpected end/);
+  });
+
+  // each forged input sits next to the nearest valid one, so a check that refused everything would fail too
+  it.each([
+    ["an overlong varint", [0x03, ...Array(9).fill(0xff)], /^RB: varint too long$/, [0x03, ...Array(8).fill(0x80), 0x00], 0],
+    ["an unknown key id", [0x08, 0x01, 40 * 2, 0x00], /^RB: unknown key id 40$/, [0x08, 0x01, 39 * 2, 0x00], { ins: null }],
+    ["a string reference past the table", [0x07, 0x02, 0x05, 0x01, 0x61, 0x06, 0x01], /^RB: bad string reference$/, [0x07, 0x02, 0x05, 0x01, 0x61, 0x06, 0x00], ["a", "a"]],
+    ["an unknown tag", [0x0a], /^RB: unknown tag 0xa$/, [0x09, 0x00], new Uint8Array(0)],
+    ["trailing bytes", [0x00, 0x00], /^RB: trailing bytes$/, [0x00], null],
+  ])("%s is refused with an exact error", (_name, bad, message, good, value) => {
+    expect(() => codec.decode(Uint8Array.from(bad as number[]))).toThrow(message);
+    expect(codec.decode(Uint8Array.from(good as number[]))).toEqual(value);
   });
 });
 

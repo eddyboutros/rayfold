@@ -39,14 +39,21 @@ describe("field-usage telemetry (spec 11)", () => {
   });
 
   it("records nothing when the server was given no sink, and stops at its limit", async () => {
+    // without a sink the same request is answered in full, the recording simply skipped
     const quiet = createBookstore();
-    await quiet.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title }" }] });
-    expect(quiet.server.usage).toBeUndefined();
+    expect(await quiet.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title }" }] })).toEqual([
+      { id: 1, data: { $type: "Book", id: "b1", title: "The Dispossessed" }, meta: { cost: 1 }, fin: true },
+    ]);
 
-    // guard: a sink that is full records no more rather than growing without bound
+    // guard: a sink that is full records no more rather than growing without bound, and still counts what it holds
     const small = new MemoryUsage(2);
     const bs = createBookstore({ usage: small, now: () => AT });
-    await bs.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title author { name } }" }] });
-    expect(small.size).toBe(2);
+    const ask = () => bs.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title author { name } }" }] });
+    await ask();
+    await ask();
+    expect(small.snapshot()).toEqual([
+      { client: "", op: "book", path: "", lastSeen: new Date(AT).toISOString(), count: 2 },
+      { client: "", op: "book", path: "Book.id", lastSeen: new Date(AT).toISOString(), count: 2 },
+    ]);
   });
 });

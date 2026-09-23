@@ -6,7 +6,7 @@ import { StrictMode, createElement as h, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { RayfoldError, createRayfoldServer, listen } from "@rayfold/server";
 import { RayfoldClient, RayfoldClientError, createFetchTransport, type CommandOptions } from "@rayfold/client";
-import { bounded } from "../../../e2e/wait.ts";
+import { Signal, bounded } from "../../../e2e/wait.ts";
 import { RayfoldProvider, useCommand, useLive, useQuery, type CommandState, type QueryResult, type UseQueryOptions } from "./index.ts";
 
 // React renders into a jsdom document. fetch, AbortController and streams stay Node's: the client talks HTTP to a
@@ -53,6 +53,8 @@ interface Book {
 let books: Map<string, Book>;
 /** While set, commands wait for it: lets a test see the in-flight state without racing the network. */
 let gate: Promise<void> | undefined;
+/** The quantity of every restock, as the server starts it (and reads the gate). */
+let arrived: Signal<number>;
 let http: Server;
 let url: string;
 const cleanups: Array<() => void> = [];
@@ -63,6 +65,7 @@ beforeEach(async () => {
     ["b2", { id: "b2", title: "Emma", stock: 7 }],
   ]);
   gate = undefined;
+  arrived = new Signal<number>();
   const find = (id: string): Book => {
     const b = books.get(id);
     if (!b) throw new RayfoldError("not_found", `no book ${id}`);
@@ -74,6 +77,7 @@ beforeEach(async () => {
       Query: { book: ({ id }: { id: string }) => books.get(id) ?? null },
       Command: {
         restock: async ({ id, qty }: { id: string; qty: number }) => {
+          arrived.push(qty);
           await gate;
           const b = find(id);
           b.stock += qty;
@@ -96,12 +100,15 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const c of cleanups.splice(0)) c();
-  await drainReact();
-  http.closeAllConnections();
-  http.close();
-  for (const k of Object.keys(queries)) delete queries[k];
-  for (const k of Object.keys(commands)) delete commands[k];
+  try {
+    for (const c of cleanups.splice(0)) c();
+    await drainReact();
+  } finally {
+    http.closeAllConnections();
+    await new Promise<void>((resolve, reject) => http.close((e) => (e ? reject(e) : resolve())));
+    for (const k of Object.keys(queries)) delete queries[k];
+    for (const k of Object.keys(commands)) delete commands[k];
+  }
 });
 
 interface Sent {
@@ -351,6 +358,37 @@ describe("useCommand", () => {
     await waitForText(view.container, (t) => t.includes("A: Dune 1") && t.includes("X: done 1"), "two purchases on screen");
   });
 
+  it("only the latest run speaks for the state, whichever of the runs finishes last", async () => {
+    const { client } = makeClient();
+    const view = mount(client, h(Command, { op: "restock", label: "R" }));
+    await waitForText(view.container, (t) => t === "R: ready", "ready");
+    const release: Array<() => void> = [];
+    const hold = () => (gate = new Promise<void>((r) => release.push(r)));
+    // one at a time onto the server, each held by its own gate, so the test decides which finishes first
+    hold();
+    const first = commands["R"]!.run({ id: "b1", qty: 1 });
+    await arrived.atLeast(1, "the first run reaching the server");
+    hold();
+    const second = commands["R"]!.run({ id: "b1", qty: 2 });
+    await arrived.atLeast(2, "the second run reaching the server");
+
+    release[1]!();
+    expect((await second).stock).toBe(5);
+    await waitForText(view.container, (t) => t === "R: done 5", "the second run's result");
+    release[0]!();
+    expect((await first).stock).toBe(6); // its caller still gets its own answer
+
+    // the barrier: a third run's update is queued after anything the first run's answer could have queued
+    hold();
+    const third = commands["R"]!.run({ id: "b1", qty: 4 });
+    await waitForText(view.container, (t) => t === "R: running", "the third run under way");
+    const { data, error, running } = commands["R"]!.state;
+    expect([data?.stock, error, running]).toEqual([5, undefined, true]);
+    release[2]!();
+    expect((await third).stock).toBe(10);
+    await waitForText(view.container, (t) => t === "R: done 10", "the third run's result");
+  });
+
   it("an unawaited failing run leaves no unhandled rejection behind", async () => {
     const { client } = makeClient();
     const view = mount(client, h(Command, { op: "buy", label: "X" }));
@@ -387,10 +425,11 @@ describe("lifecycle", () => {
     await waitForText(view.container, (t) => t.includes("A: Dune 3") && t.includes("C: Emma 7") && t.includes("L: 3"), "all loaded");
     expect(open()).toBe(3);
     const liveRequests = sent.filter((s) => s.live);
-    expect(liveRequests.length).toBeGreaterThan(0);
+    // StrictMode mounts, unmounts and mounts again: the first stream was aborted by that unmount, the second is open
+    expect(liveRequests.map((s) => s.signal?.aborted)).toEqual([true, false]);
     view.unmount();
     expect(open()).toBe(0);
-    expect(liveRequests.every((s) => s.signal?.aborted)).toBe(true);
+    expect(liveRequests.map((s) => s.signal?.aborted)).toEqual([true, true]);
   });
 
   it("server rendering renders the loading state and sends no request; the browser then fetches", async () => {

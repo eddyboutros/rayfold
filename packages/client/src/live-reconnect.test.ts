@@ -87,6 +87,28 @@ describe("a live query reconnects", () => {
     stop();
   });
 
+  it("stops doubling the wait at thirty seconds", async () => {
+    vi.useFakeTimers();
+    const t = scripted([...Array.from({ length: 8 }, () => [goingAway]), [book(7)]]);
+    const client = new RayfoldClient({ transport: t.transport });
+    const seen: number[] = [];
+    const stop = client.live<{ stock: number }>("book", { id: "b1" }, {}, (d) => seen.push(d.stock));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(500 + 1_000 + 2_000 + 4_000 + 8_000 + 16_000);
+    expect(t.opened()).toBe(7);
+    // doubling again would wait 32 s
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(t.opened()).toBe(7);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(t.opened()).toBe(8);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(t.opened()).toBe(8);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(t.opened()).toBe(9);
+    expect(seen).toEqual([7]);
+    stop();
+  });
+
   it("a failure to connect at all is retried too, as a deploy in progress looks from outside", async () => {
     vi.useFakeTimers();
     const t = scripted([new TypeError("fetch failed"), [book(2)]]);

@@ -5,6 +5,30 @@ packages and the Maven artifacts share one version number.
 
 Everything under a dated heading is published on npm and Maven Central.
 
+## Unreleased
+
+- **The Node MCP endpoint limits what it reads.** `createMcpHandler` read a request body whole however large it was,
+  so one POST could make a server hold as much as a client cared to send. It now takes `maxBody`, 1 MiB by default
+  like the Rayfold endpoint, and refuses a larger body with the same 413 problem, drained so the client can read it.
+  The JVM runtime's `maxBodyBytes` already did this.
+
+- **A negated read policy keeps the rows it allows on the JVM.** `JdbcStore` pushed `!(status == "closed")` into SQL
+  as `NOT (status = ?)`, which is unknown for a row whose status is null, so the row was dropped although the policy
+  allows it. The negation now reads a null comparison as false first, as the policy does.
+
+- **A negated policy the Postgres store cannot translate no longer breaks the query.** `@rayfold/postgres` left the
+  value of an untranslatable comparison under a `!` — `!(total == viewer.limit)` on a `Decimal` — among the query's
+  parameters while dropping the comparison itself, and Postgres refused the statement. The value now goes with it.
+
+- **The explorer says when a server has its manifest turned off.** With `manifest: "off"` the page showed
+  "rayfold undefined" and listed nothing; it now says there is no manifest, as it does when nothing answers.
+
+- **`rayfold import` keeps argument descriptions.** A GraphQL or OpenAPI argument's description was dropped from the
+  schema it wrote.
+
+- **`/rayfold/stats` reports uptime on the server's clock.** A server given its own `now` reported the gap between that
+  clock and the wall clock as its uptime.
+
 ## 0.2.1 (2026-09-23)
 
 - **A live query's re-run loads its fields again.** Every op of a batch shares one loader memo, so a field loaded

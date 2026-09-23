@@ -383,8 +383,11 @@ export function compilePolicy(e: Expr, env: ExprEnv, columnOf: (field: string) =
       return { sql: c.scalar === "Boolean" ? `(${c.column} IS TRUE)` : `(${c.column} IS NOT NULL)`, exact: true };
     }
     case "not": {
+      const before = params.length;
       const f = compilePolicy(e.e, env, columnOf, params);
-      // negating a superset would give a subset, so only an exact fragment can be negated
+      // negating a superset would give a subset, so only an exact fragment can be negated. the values a dropped
+      // fragment added go with it: Postgres refuses a statement handed more parameters than it reads
+      if (!f.exact) params.length = before;
       return f.exact ? { sql: `(NOT ${f.sql})`, exact: true } : LOOSE;
     }
     case "bin": {

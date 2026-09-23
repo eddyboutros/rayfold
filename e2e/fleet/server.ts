@@ -70,6 +70,15 @@ const server = createRayfoldServer({
   },
 });
 
+// The test sends its command only once the stream says it subscribed: an event raised before that is not the stream's
+// to hear, and a live query answering first says nothing about when the stream got there.
+const on = server.events.on.bind(server.events);
+server.events.on = (event, fn) => {
+  const off = on(event, fn);
+  if (event === "StockChanged") console.log(`${name} stream subscribed`);
+  return off;
+};
+
 const http = await listen(server, port, {
   viewer: () => ({ id: "fleet" }),
   readiness: { db: () => pool.query("SELECT 1") },

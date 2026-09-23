@@ -179,4 +179,25 @@ class CostTest {
         assertEquals("Shape selects 4 fields, max 3", frames[2]?.errorMessage())
         assertEquals(1, fx.store.calls["Query.book"], "the op over the limit never ran")
     }
+
+    private fun books(n: Int) = batch(*(1..n).map { """{"id":$it,"op":"book","args":{"id":"b1"},"shape":"{ id }"}""" }.toTypedArray())
+
+    @Test
+    fun `a batch with one op over maxOps is refused whole before any resolver runs`() = runTest(timeout = 5.seconds) {
+        val fx = fixtureServer(options = BatchOptions(maxOps = 2))
+        assertEquals(
+            listOf(obj("""{"error":{"code":"resource_exhausted","message":"At most 2 ops per batch"},"fin":true}""")),
+            fx.server.collect(books(3)),
+        )
+        assertEquals(emptyMap(), fx.store.calls.toMap())
+    }
+
+    @Test
+    fun `a batch of exactly maxOps runs every op`() = runTest(timeout = 5.seconds) {
+        val fx = fixtureServer(options = BatchOptions(maxOps = 2))
+        val frames = fx.server.collect(books(2)).associateBy { it.opId() }
+        assertEquals(setOf(1, 2), frames.keys)
+        for (id in 1..2) assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), frames[id]?.get("data"), "op $id")
+        assertEquals(mapOf("Query.book" to 2), fx.store.calls.toMap(), "each op ran its own resolver")
+    }
 }

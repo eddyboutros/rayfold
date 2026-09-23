@@ -89,6 +89,7 @@ describe("uploads in Postgres", () => {
     expect(sent.status).toBe(201);
     const kept = (await sent.json()) as { id: string; size: number };
     expect(kept.size).toBe(4_096);
+    expect((await shared.open(kept.id))?.upload).toEqual({ id: kept.id, size: 4_096, at: 1_000, name: "avatar.png", type: "image/png", viewer });
 
     const answer = await consume(b, kept.id, "0123456789abcdef");
     expect(await answer.json()).toMatchObject({ ok: { id: "u1", bytes: 4_096, name: "avatar.png" } });
@@ -122,7 +123,7 @@ describe("uploads in Postgres", () => {
     const s = await store({ ttlMs: 60_000 });
     const kept = await s.put(bodyOf(bytes(32)), {});
     now += 59_999;
-    expect(await s.open(kept.id)).toBeDefined();
+    expect((await s.open(kept.id))?.upload).toEqual({ id: kept.id, size: 32, at: 1_000 });
     now += 2;
     expect(await s.open(kept.id)).toBeUndefined();
     expect(await s.count()).toBe(0); // reading it away is what dropped it
@@ -138,15 +139,15 @@ describe("uploads in Postgres", () => {
     const third = await s.put(bodyOf(bytes(1_024)), {});
 
     expect(await s.open(first.id)).toBeUndefined();
-    expect(await s.open(second.id)).toBeDefined();
-    expect(await s.open(third.id)).toBeDefined();
+    expect((await s.open(second.id))?.upload).toEqual({ id: second.id, size: 1_024, at: 1_001 });
+    expect((await s.open(third.id))?.upload).toEqual({ id: third.id, size: 1_024, at: 1_002 });
     expect(await s.bytes()).toBe(2_048);
   });
 
   it("two servers may each create the table as they start", async () => {
     const [a, b] = await Promise.all([store(), store()]);
     const kept = await a.put(bodyOf(bytes(8)), { name: "x" });
-    expect(await b.open(kept.id)).toBeDefined(); // one table, whichever of them made it
+    expect((await b.open(kept.id))?.upload).toEqual({ id: kept.id, size: 8, at: 1_000, name: "x" }); // one table, whichever of them made it
     expect(await b.count()).toBe(1);
   });
 

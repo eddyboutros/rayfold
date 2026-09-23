@@ -3,14 +3,15 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   Injector,
+  type DestroyableInjector,
   runInInjectionContext,
   signal,
   ɵChangeDetectionScheduler as ChangeDetectionScheduler,
   ɵEffectScheduler as EffectScheduler,
 } from "@angular/core";
 import { MemoryCounters, createRayfoldServer, listen, shutdown, type RayfoldServer } from "@rayfold/server";
-import { RayfoldClient, createFetchTransport } from "@rayfold/client";
-import { bounded } from "../../../e2e/wait.ts";
+import { RayfoldClient, RayfoldClientError, createFetchTransport } from "@rayfold/client";
+import { Signal, bounded } from "../../../e2e/wait.ts";
 import { injectCommand, injectLive, injectQuery, injectRayfoldClient, provideRayfold } from "./index.ts";
 
 /**
@@ -27,6 +28,10 @@ command restock(id: ID, qty: Int): Book
 let http: Server | undefined;
 let rayfold: RayfoldServer | undefined;
 const stock = new Map<string, { id: string; title: string; stock: number }>();
+/** A restock of this quantity waits for its gate to open, so a test decides the order overlapping runs finish in. */
+const gates = new Map<number, Promise<void>>();
+/** The quantity of every restock, as the server starts it. */
+let restocking = new Signal<number>();
 
 /**
  * What an application's change detection does for us: hold the effects Angular schedules, and run them when asked.
@@ -52,7 +57,7 @@ function effects(): { providers: unknown[]; flush: () => void } {
   };
 }
 
-async function start(): Promise<{ client: RayfoldClient; injector: Injector; counters: MemoryCounters; flush: () => void }> {
+async function start(): Promise<{ client: RayfoldClient; injector: DestroyableInjector; counters: MemoryCounters; flush: () => void }> {
   stock.set("b1", { id: "b1", title: "Dune", stock: 5 });
   const counters = new MemoryCounters();
   const server = createRayfoldServer({
@@ -61,7 +66,9 @@ async function start(): Promise<{ client: RayfoldClient; injector: Injector; cou
     resolvers: {
       Query: { book: ({ id }: { id: string }) => stock.get(id) ?? null },
       Command: {
-        restock: ({ id, qty }: { id: string; qty: number }) => {
+        restock: async ({ id, qty }: { id: string; qty: number }) => {
+          restocking.push(qty);
+          await gates.get(qty);
           const b = stock.get(id)!;
           b.stock += qty;
           return b;
@@ -89,6 +96,8 @@ afterEach(async () => {
   http = undefined;
   rayfold = undefined;
   stock.clear();
+  gates.clear();
+  restocking = new Signal<number>();
 });
 
 /** Waits, bounded, for a signal to satisfy `done` — the client answers over a real socket, so this is not instant. */
@@ -116,17 +125,49 @@ describe("injectQuery", () => {
   });
 
   it("sends nothing when it is not enabled", async () => {
-    const { injector } = await start();
+    const { client, injector, counters } = await start();
     const q = runInInjectionContext(injector, () => injectQuery("book", { id: "b1" }, { enabled: false }));
     expect(q.loading()).toBe(false);
     expect(q.data()).toBeUndefined();
+    // the barrier: a query of its own, asked after the injected one would have been, answered by the same server
+    await client.query("book", { id: "b2" }, { shape: "{ id }" });
+    expect(sent(counters)).toBe(1); // the barrier's, and nothing from the query that is not enabled
   });
 
   it("reports a failure without throwing", async () => {
     const { injector } = await start();
     const q = runInInjectionContext(injector, () => injectQuery("book", { id: "b1" }, { shape: "{ nope }" }));
     await until(() => q.error(), (e) => e !== undefined, "the failure arrived");
+    expect(q.error()).toBeInstanceOf(RayfoldClientError);
+    expect((q.error() as RayfoldClientError).code).toBe("invalid_argument");
     expect(q.loading()).toBe(false);
+  });
+
+  it("refetch asks the server again, past the cache, and shows what it answers now", async () => {
+    const { injector, counters } = await start();
+    const q = runInInjectionContext(injector, () => injectQuery<{ stock: number }>("book", { id: "b1" }, { shape: "{ id title stock }" }));
+    await until(() => q.data(), (d) => d !== undefined, "the first result");
+    expect([q.data()?.stock, sent(counters)]).toEqual([5, 1]);
+
+    stock.get("b1")!.stock = 9; // changed behind the API's back: no patch reaches the cache
+    await q.refetch();
+    expect([q.data()?.stock, q.error(), q.loading(), sent(counters)]).toEqual([9, undefined, false, 2]);
+  });
+
+  it("stops following the cache once its injector is destroyed", async () => {
+    const { client, injector } = await start();
+    const shape = "{ id title stock }";
+    const q = runInInjectionContext(injector, () => injectQuery<{ stock: number }>("book", { id: "b1" }, { shape }));
+    // guard: a query on an injector that lives on still follows, and is the barrier for the destroyed one
+    const other = Injector.create({ providers: [...provideRayfold(client)] as never[] });
+    const kept = runInInjectionContext(other, () => injectQuery<{ stock: number }>("book", { id: "b1" }, { shape }));
+    await until(() => [q.data()?.stock, kept.data()?.stock], ([a, b]) => a === 5 && b === 5, "both results");
+
+    injector.destroy();
+    await client.command("restock", { id: "b1", qty: 3 }, { shape });
+    await until(() => kept.data()?.stock, (s) => s === 8, "the living query saw the command's patch");
+    expect(q.data()?.stock).toBe(5);
+    other.destroy();
   });
 
   it("runs again when a signal the arguments read changes", async () => {
@@ -143,18 +184,19 @@ describe("injectQuery", () => {
 
   it("waits until enabled says so, then sends", async () => {
     // the shape every detail screen has: the id is not known when the component is created
-    const { injector, counters, flush } = await start();
+    const { client, injector, counters, flush } = await start();
     const ready = signal(false);
     const q = runInInjectionContext(injector, () =>
       injectQuery<{ title: string }>("book", { id: "b1" }, { shape: "{ id title stock }", enabled: () => ready() }),
     );
     expect(q.loading()).toBe(false);
-    expect(sent(counters)).toBe(0); // guard: nothing was asked of the server, not merely hidden from the signals
+    await client.query("book", { id: "b2" }, { shape: "{ id }" }); // the barrier, as above
+    expect(sent(counters)).toBe(1); // guard: nothing was asked of the server, not merely hidden from the signals
 
     ready.set(true);
     flush();
     await until(() => q.data()?.title, (t) => t === "Dune", "the query that was waiting to be enabled");
-    expect(sent(counters)).toBe(1);
+    expect(sent(counters)).toBe(2);
   });
 });
 
@@ -172,7 +214,9 @@ describe("injectCommand", () => {
 
     const cmd = runInInjectionContext(injector, () => injectCommand<{ stock: number }>("restock"));
     expect(cmd.running()).toBe(false);
-    await cmd.run({ id: "b1", qty: 3 });
+    const run = cmd.run({ id: "b1", qty: 3 });
+    expect(cmd.running()).toBe(true);
+    await run;
 
     expect(cmd.data()?.stock).toBe(8);
     expect(cmd.running()).toBe(false);
@@ -183,9 +227,39 @@ describe("injectCommand", () => {
   it("keeps a failure in the signals rather than only rejecting", async () => {
     const { injector } = await start();
     const cmd = runInInjectionContext(injector, () => injectCommand("restock"));
-    await expect(cmd.run({ id: "nope", qty: 1 })).rejects.toBeDefined();
-    expect(cmd.error()).toBeDefined();
+    await expect(cmd.run({ id: "nope", qty: 1 })).rejects.toBeInstanceOf(RayfoldClientError);
+    expect((cmd.error() as RayfoldClientError).code).toBe("internal");
     expect(cmd.running()).toBe(false);
+  });
+
+  it("only the latest run speaks for the state, whichever of the runs finishes last", async () => {
+    const { injector } = await start();
+    const cmd = runInInjectionContext(injector, () => injectCommand<{ stock: number }>("restock"));
+    let openFirst = () => {};
+    let openSecond = () => {};
+    gates.set(1, new Promise<void>((r) => (openFirst = r)));
+    gates.set(2, new Promise<void>((r) => (openSecond = r)));
+    // one at a time onto the server, so each is its own request and neither waits in a batch behind the other
+    const first = cmd.run({ id: "b1", qty: 1 });
+    await restocking.until((q) => q.includes(1), "the first run reaching the server");
+    const second = cmd.run({ id: "b1", qty: 2 });
+    await restocking.until((q) => q.includes(2), "the second run reaching the server");
+
+    openSecond();
+    expect((await second).stock).toBe(7);
+    expect([cmd.data()?.stock, cmd.running()]).toEqual([7, false]);
+    openFirst();
+    expect((await first).stock).toBe(8); // its caller still gets its own answer
+    expect([cmd.data()?.stock, cmd.error(), cmd.running()]).toEqual([7, undefined, false]);
+  });
+
+  it("leaves its state alone once its injector is destroyed", async () => {
+    const { injector } = await start();
+    const cmd = runInInjectionContext(injector, () => injectCommand<{ stock: number }>("restock"));
+    const run = cmd.run({ id: "b1", qty: 3 });
+    injector.destroy();
+    expect((await run).stock).toBe(8);
+    expect([cmd.data(), cmd.running()]).toEqual([undefined, true]);
   });
 });
 
@@ -214,6 +288,21 @@ describe("injectLive", () => {
     await until(() => live.data()?.title, (t) => t === "Kindred", "the subscription following the signal");
     await until(() => counted(counters, "rayfold.live.closed"), (n) => n === 1, "the first subscription ending");
     expect(counted(counters, "rayfold.live.opened")).toBe(2);
+  });
+});
+
+describe("injectLive, destroyed", () => {
+  it("ends its subscription on the server when its injector is destroyed, and hears nothing after", async () => {
+    const { client, injector, counters } = await start();
+    const live = runInInjectionContext(injector, () => injectLive<{ stock: number }>("book", { id: "b1" }, { shape: "{ id title stock }" }));
+    await until(() => live.data(), (d) => d !== undefined, "the first live result");
+    expect([counted(counters, "rayfold.live.opened"), counted(counters, "rayfold.live.closed")]).toEqual([1, 0]);
+
+    injector.destroy();
+    await until(() => counted(counters, "rayfold.live.closed"), (n) => n === 1, "the subscription ending");
+    await client.command("restock", { id: "b1", qty: 2 });
+    expect(counted(counters, "rayfold.live.opened")).toBe(1);
+    expect(live.data()?.stock).toBe(5);
   });
 });
 

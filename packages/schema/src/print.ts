@@ -67,7 +67,8 @@ function printField(field: FieldDef, index: number): string[] {
 }
 
 function printArg(arg: ArgDef): string {
-  const parts = [`${arg.name}: ${typeRefToString(arg.type)}`];
+  const doc = describe(arg.description, "");
+  const parts = [...(doc.length ? [doc.join("\n")] : []), `${arg.name}: ${typeRefToString(arg.type)}`];
   if (arg.default !== undefined) parts.push(`= ${literal(arg.default)}`);
   return [...parts, ...arg.annotations.map(printAnnotation)].join(" ");
 }

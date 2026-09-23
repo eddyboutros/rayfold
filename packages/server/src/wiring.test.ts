@@ -55,10 +55,10 @@ describe("do the resolvers cover the schema", () => {
   });
 
   it("guard - a field with no arguments needs no loader, because the parent carries it", () => {
-    const plain = Object.values(ir.types).flatMap((t) => (!t.builtin && "fields" in t ? t.fields.filter((f) => !f.args.length).map((f) => ({ type: t.name, field: f.name })) : []));
-    expect(plain.length).toBeGreaterThan(0);
-    // nothing is wired for any of them in a schema that already passes, and the check stays silent
-    expect(checkWiring(ir, wired())).toEqual([]);
+    const author = (ir.types["Book"] as { fields: Array<{ name: string; args: unknown[] }> }).fields.find((f) => f.name === "author");
+    expect(author?.args).toEqual([]); // the case under test: a field that takes no arguments
+    expect((wired() as Record<string, Record<string, unknown>>)["Book"]!["author"]).toBeTypeOf("function"); // and has a loader to take away
+    expect(checkWiring(ir, without(wired(), "Book", "author"))).toEqual([]);
   });
 
   it("finds a resolver the schema has no place for, which is what a rename leaves behind", () => {

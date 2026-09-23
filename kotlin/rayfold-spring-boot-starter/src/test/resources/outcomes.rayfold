@@ -1,0 +1,8 @@
+entity Author { id: ID name: String }
+entity Book { id: ID stock: Int author: Author }
+event Restocked { bookId: ID qty: Int }
+
+query book(id: ID): Book?
+command restock(id: ID, qty: Int): Book emits Restocked
+command reserve(id: ID, qty: Int): Book
+stream ticks(n: Int): Int

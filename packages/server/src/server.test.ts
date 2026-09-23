@@ -80,8 +80,9 @@ describe("queries and default views", () => {
     expect(await one({ id: 1, op: "books", args: { page: { first: "x" } } })).toMatchObject({ error: { code: "invalid_argument", message: expect.stringContaining("page.first") } });
     expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: -1 } } })).toMatchObject({ error: { code: "invalid_argument", message: "books().page.offset: must be >= 0" } });
     // guard: an offset of 0 or more is a valid page
-    expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: 0 } }, shape: "{ items { id } }" })).toMatchObject({ id: 1, data: {} });
-    expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: 1 } }, shape: "{ items { id } }" })).toMatchObject({ id: 1, data: {} });
+    const ids = (...xs: string[]) => ({ items: xs.map((id) => ({ $type: "Book", id })) });
+    expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: 0 } }, shape: "{ items { id } }" })).toEqual({ id: 1, data: ids("b1", "b2"), meta: { cost: 8 }, fin: true });
+    expect(await one({ id: 1, op: "books", args: { page: { first: 2, offset: 1 } }, shape: "{ items { id } }" })).toEqual({ id: 1, data: ids("b2", "b3"), meta: { cost: 8 }, fin: true });
     expect(await one({ id: 1, op: "books", args: { nope: 1 } })).toMatchObject({ error: { code: "invalid_argument", message: expect.stringContaining("unknown argument") } });
     expect(await one({ id: 1, op: "book", args: { id: "b1" }, shape: "{ reviews(page: { first: $n }) { items { id } } }" })).toMatchObject({ error: { code: "invalid_argument", message: expect.stringContaining("$n") } });
   });
@@ -395,10 +396,42 @@ describe("batch-level rules", () => {
     expect(bs.store.calls).toEqual({});
   });
 
+  it("a batch over maxOps is refused whole and nothing runs; a batch of exactly maxOps runs (guard)", async () => {
+    const two = createBookstore({ maxOps: 2 });
+    const book = (id: number) => ({ id, op: "book", args: { id: "b1" }, shape: "{ id }" });
+    expect(await two.server.collect({ ops: [book(1), book(2), book(3)] })).toEqual([{ error: { code: "resource_exhausted", message: "At most 2 ops per batch" }, fin: true }]);
+    expect(two.store.calls).toEqual({});
+    expect(await two.server.collect({ ops: [book(1), book(2)] })).toEqual([
+      { id: 1, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true },
+      { id: 2, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true },
+    ]);
+  });
+
+  it("a shape selecting more than maxFields is refused before its op runs; exactly maxFields runs (guard)", async () => {
+    const three = createBookstore({ maxFields: 3 });
+    const book = (shape: string) => three.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape }] });
+    expect(await book("{ id title stock price }")).toEqual([{ id: 1, error: { code: "resource_exhausted", message: "Shape selects 4 fields, max 3" }, fin: true }]);
+    expect(three.store.calls).toEqual({});
+    expect(await book("{ id title stock }")).toEqual([{ id: 1, data: { $type: "Book", id: "b1", title: "The Dispossessed", stock: 5 }, meta: { cost: 1 }, fin: true }]);
+  });
+
+  it("timing adds meta.ms, measured on the server's clock from the op's start; off by default (guard)", async () => {
+    let t = 1_000;
+    const timed = (timing?: boolean) =>
+      createRayfoldServer({
+        schema: `entity A { id: ID } query a: A`,
+        resolvers: { Query: { a: () => { t += 7; return { id: "a" }; } } },
+        now: () => t,
+        ...(timing === undefined ? {} : { timing }),
+      });
+    expect(await timed(true).collect({ ops: [{ id: 1, op: "a" }] })).toEqual([{ id: 1, data: { $type: "A", id: "a" }, meta: { cost: 1, ms: 7 }, fin: true }]);
+    expect(await timed().collect({ ops: [{ id: 1, op: "a" }] })).toEqual([{ id: 1, data: { $type: "A", id: "a" }, meta: { cost: 1 }, fin: true }]);
+  });
+
   it("enforces the cost budget for the whole batch", async () => {
     const small = createBookstore({ budget: 10 });
     const frames = await small.server.collect({ ops: [{ id: 1, op: "books", args: { page: { first: 50 } } }] });
-    expect(frames).toEqual([{ error: { code: "resource_exhausted", message: expect.stringContaining("exceeds budget"), data: { cost: expect.any(Number), budget: 10 } }, fin: true }]);
+    expect(frames).toEqual([{ error: { code: "resource_exhausted", message: "Batch cost 106 exceeds budget 10", data: { cost: 106, budget: 10 } }, fin: true }]);
   });
 
   it("charges rows and loads, not columns: scalars are free, an object field costs 1, a page 1 more per row", async () => {
@@ -759,10 +792,11 @@ describe("security: cost cannot be lowered by bad input", () => {
   it("an op with invalid arguments never runs and costs nothing; the valid op is charged in full", async () => {
     const c = await costOf(books(3));
     const tight = createBookstore({ budget: c });
-    expect(await tight.server.collect({ ops: [books(3)] })).toMatchObject([{ id: 1, data: {} }]);
+    const three = { id: 1, data: { items: ["b1", "b2", "b3"].map((id) => ({ $type: "Book", id })) }, meta: { cost: c }, fin: true };
+    expect(await tight.server.collect({ ops: [books(3)] })).toEqual([three]);
     const withJunk = await tight.server.collect({ ops: [books(3), books(-100000, 2)] });
     expect(withJunk.find((f) => idOf(f) === 2)).toMatchObject({ error: { code: "invalid_argument", message: "books().page.first: must be >= 0" } });
-    expect(withJunk.find((f) => idOf(f) === 1)).toMatchObject({ data: {} });
+    expect(withJunk.find((f) => idOf(f) === 1)).toEqual(three);
     // guard: two real ops are both charged, so the same budget refuses them
     expect(await tight.server.collect({ ops: [books(3), books(3, 2)] })).toMatchObject([{ error: { code: "resource_exhausted", message: `Batch cost ${2 * c} exceeds budget ${c}` } }]);
   });
@@ -772,8 +806,9 @@ describe("security: cost cannot be lowered by bad input", () => {
     const largest = await costOf(books(200));
     const tight = createBookstore({ budget: small + 20 });
     const frames = await tight.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ stock }" }, { id: 2, op: "books", args: { page: { first: { $ref: "1.stock" } } }, shape: "{ items { id } }" }] });
-    expect(frames).toMatchObject([{ error: { code: "resource_exhausted" } }]);
-    expect((frames[0] as { error: { data: { cost: number } } }).error.data.cost).toBeGreaterThanOrEqual(largest);
+    const stock = await costOf({ id: 1, op: "book", args: { id: "b1" }, shape: "{ stock }" });
+    const cost = stock + largest; // the $ref op charged as the largest page, not as the 5 the stock turns out to be
+    expect(frames).toEqual([{ error: { code: "resource_exhausted", message: `Batch cost ${cost} exceeds budget ${small + 20}`, data: { cost, budget: small + 20 } }, fin: true }]);
   });
 });
 
@@ -821,18 +856,31 @@ describe("security: idempotency keys", () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
     let runs = 0;
+    const store = new MemoryIdempotencyStore();
+    const claims = new Signal<string>();
+    const claim = store.claim.bind(store);
+    vi.spyOn(store, "claim").mockImplementation(async (scope: string, key: string, lease: number) => {
+      const c = await claim(scope, key, lease);
+      claims.push(c.state);
+      return c;
+    });
     const s = createRayfoldServer({
       schema: `entity A { id: ID } command slow(n: Int): A`,
       resolvers: { Command: { slow: async () => { runs++; await gate; return { id: `a${runs}` }; } } },
+      idempotency: store,
     });
     const call = () => s.collect({ ops: [{ id: 1, op: "slow", args: { n: 1 }, key: KEY }] }, { viewer: u1 });
     const first = call();
     const second = call();
+    // released only once the second has found the key held, so the replay below is one that waited for the first
+    await claims.until((c) => c.includes("owned") && c.includes("inflight"), "the second retry finding the key held");
+    expect(runs).toBe(1);
     release();
     const [a, b] = await bounded(Promise.all([first, second]), "both retries answered");
     expect(runs).toBe(1);
-    expect((a[0] as { ok: unknown }).ok).toEqual((b[0] as { ok: unknown }).ok);
-    expect([a, b].map((f) => (f[0] as { meta?: { replay?: boolean } }).meta?.replay ?? false).sort()).toEqual([false, true]);
+    expect(a).toEqual([{ id: 1, ok: { $type: "A", id: "a1" }, patch: [{ set: "A:a1", value: { $type: "A", id: "a1" } }], meta: { cost: 1 }, fin: true }]);
+    expect(b).toEqual([{ id: 1, ok: { $type: "A", id: "a1" }, patch: [{ set: "A:a1", value: { $type: "A", id: "a1" } }], meta: { cost: 1, replay: true }, fin: true }]);
+    vi.restoreAllMocks();
   });
 });
 
@@ -871,7 +919,7 @@ describe("security: dry runs, deadlines, $ref paths and numbers", () => {
   it("numbers that would silently lose digits are refused instead of rounded", async () => {
     expect(await one({ id: 1, op: "book", args: { id: 9007199254740993 } })).toMatchObject({ error: { code: "invalid_argument", message: "book().id: expected ID" } });
     expect(await one({ id: 1, op: "books", args: { filter: { maxPrice: 1e21 } } })).toMatchObject({ error: { code: "invalid_argument", message: "books().filter.maxPrice: expected Decimal" } });
-    expect(await one({ id: 1, op: "books", args: { filter: { maxPrice: 10.5 } }, shape: "{ items { id } }" })).toMatchObject({ data: {} }); // guard
+    expect(await one({ id: 1, op: "books", args: { filter: { maxPrice: 10.5 } }, shape: "{ items { id } }" })).toEqual({ id: 1, data: { items: [{ $type: "Book", id: "b3" }, { $type: "Book", id: "b4" }] }, meta: { cost: 26 }, fin: true }); // guard
   });
 });
 

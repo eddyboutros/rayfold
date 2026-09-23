@@ -84,6 +84,8 @@ describe("an upload arrives on its own route", () => {
     expect(kept).toMatchObject({ size: 2_048, name: "avatar.png", type: "image/png" });
     expect(kept.id).toMatch(/[0-9a-f-]{8,}/);
     expect(store.size).toBe(1);
+    // kept with who sent it, so the command naming it can refuse an upload that was someone else's
+    expect((await store.open(kept.id))?.upload.viewer).toEqual(viewer);
 
     const answer = await command(handler, kept.id);
     expect(answer.status).toBe(200);
@@ -138,7 +140,10 @@ describe("an upload arrives on its own route", () => {
     expect(anonymous.store.size).toBe(0);
 
     const open = build({ who: null, viewerRequired: false });
-    expect((await send(open.handler, bytes(8))).status).toBe(201);
+    const accepted = await send(open.handler, bytes(8));
+    expect(accepted.status).toBe(201);
+    // and it says nobody sent it, rather than borrowing an identity
+    expect((await open.store.open(((await accepted.json()) as { id: string }).id))?.upload.viewer).toBeNull();
   });
 
   it("stops at the size bound while reading, whatever the request claimed", async () => {

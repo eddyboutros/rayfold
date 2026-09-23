@@ -49,6 +49,19 @@ function fleet(count: number, opts: { store: IdempotencyStore; now?: () => numbe
   return { servers, runs: () => runs, open };
 }
 
+/** Records what every `claim` on the store answered, so a test can wait until a retry has found the key held. */
+function spyClaims(store: MemoryIdempotencyStore): Signal<string> {
+  const claims = new Signal<string>();
+  const claim = store.claim.bind(store);
+  vi.spyOn(store, "claim").mockImplementation(async (scope: string, key: string, lease: number) => {
+    const c = await claim(scope, key, lease);
+    claims.push(c.state);
+    return c;
+  });
+  return claims;
+}
+const count = (states: string[], state: string) => states.filter((s) => s === state).length;
+
 const book = (server: RayfoldServer, key = KEY, seat = 1): Promise<Frame[]> => server.collect({ ops: [{ id: 1, op: "book", args: { seat }, key }] }, { viewer });
 
 describe("a store that fails after the command committed", () => {
@@ -77,7 +90,7 @@ const replayed = (frames: Frame[]): boolean => Boolean((frames[0] as { meta?: { 
 
 /** A store whose `renew` fails for the tokens listed: what a server that lost its database sees. */
 class LossyStore extends MemoryIdempotencyStore {
-  readonly granted: string[] = [];
+  readonly granted = new Signal<string>();
   readonly lost = new Set<string>();
   override async claim(scope: string, key: string, leaseMs: number) {
     const c = await super.claim(scope, key, leaseMs);
@@ -90,12 +103,20 @@ class LossyStore extends MemoryIdempotencyStore {
 }
 
 describe("one command per key, across servers sharing a store", () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it("runs the command once however many servers the retries land on, and answers them all with its result", async () => {
     const store = new MemoryIdempotencyStore();
+    const claims = spyClaims(store);
     const f = fleet(2, { store, hold: true });
     const calls = Array.from({ length: 20 }, (_, i) => book(f.servers[i % 2]!));
+    // every retry but the first must have found the key held before the command is let finish, or nothing here
+    // shows that they waited rather than arriving after it was recorded
+    await claims.until((c) => count(c, "owned") === 1 && count(c, "inflight") >= 19, "nineteen retries finding the key held");
+    expect(f.runs()).toBe(1);
     f.open();
     const answers = await bounded(Promise.all(calls), "twenty retries across two servers");
 
@@ -152,8 +173,9 @@ describe("one command per key, across servers sharing a store", () => {
     const stopped = await store.claim(hashJson(viewer), KEY, 60);
     expect(stopped.state).toBe("owned");
 
+    const claims = spyClaims(store);
     const retry = book(f.servers[0]!);
-    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    await claims.until((c) => c.includes("inflight"), "the retry finding the key held");
     expect(f.runs()).toBe(0); // the lease is still good, so the retry waits instead of running the command
 
     t += 61;
@@ -335,9 +357,11 @@ describe("one command per key, across servers sharing a store", () => {
   });
 
   it("keeps renewing a long command's lease, so a retry arriving after the first lease would have lapsed waits instead of running it again", async () => {
-    vi.useFakeTimers();
+    // the renewals and the clock are faked; the waits below keep their real timers, so they stay bounded
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
     const store = new MemoryIdempotencyStore(24 * 3_600_000, () => Date.now());
     const renew = vi.spyOn(store, "renew");
+    const claims = spyClaims(store);
     const f = fleet(2, { store, now: () => Date.now(), hold: true, leaseMs: 60 });
     const first = book(f.servers[0]!);
     await vi.advanceTimersByTimeAsync(61); // past the lease as first granted; renewals ran at 20, 40 and 60 ms
@@ -345,11 +369,11 @@ describe("one command per key, across servers sharing a store", () => {
     expect(f.runs()).toBe(1);
 
     const retry = book(f.servers[1]!);
-    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    await claims.until((c) => c.includes("inflight"), "the retry finding the key held");
     expect(f.runs()).toBe(1); // held, not taken over: the other server is still running it
 
     f.open();
-    const [a, b] = await Promise.all([first, retry]);
+    const [a, b] = await bounded(Promise.all([first, retry]), "both answered once the command finished");
     expect(a[0]).toMatchObject({ ok: { id: "t1" } });
     expect(b[0]).toMatchObject({ ok: { id: "t1" }, meta: { replay: true } });
     expect(f.runs()).toBe(1);
@@ -375,9 +399,9 @@ describe("one command per key, across servers sharing a store", () => {
     };
     const [a, b] = [0, 1].map(() => createRayfoldServer({ schema, resolvers, idempotency: store, now: () => t, idempotencyLeaseMs: 60 }));
     const stranded = book(a!);
-    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
-    expect(store.granted).toHaveLength(1);
-    store.lost.add(store.granted[0]!); // from here its renewals fail, as they would with the database gone
+    await store.granted.atLeast(1, "the first server taking the key");
+    expect(runs).toBe(1);
+    store.lost.add(store.granted.items[0]!); // from here its renewals fail, as they would with the database gone
     t += 61;
 
     const taken = await bounded(book(b!), "the retry taking over the lapsed key");
@@ -394,13 +418,7 @@ describe("one command per key, across servers sharing a store", () => {
 
   it("a retry waiting for a held key stops waiting when its caller goes away, never runs the command, and leaves the key with the holder", async () => {
     const store = new MemoryIdempotencyStore();
-    const claims = new Signal<string>();
-    const claim = store.claim.bind(store);
-    vi.spyOn(store, "claim").mockImplementation(async (scope: string, key: string, lease: number) => {
-      const c = await claim(scope, key, lease);
-      claims.push(c.state);
-      return c;
-    });
+    const claims = spyClaims(store);
     const f = fleet(2, { store, hold: true });
     const first = book(f.servers[0]!);
     await claims.until((s) => s.includes("owned"), "the first server taking the key");

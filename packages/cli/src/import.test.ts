@@ -1,13 +1,15 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadSchema, printSchemaText, typeRefToString } from "@rayfold/schema";
 import { openApiFor } from "@rayfold/server";
 import { irFromOpenApi } from "./import-openapi.ts";
 import { irFromGraphql } from "./import-graphql.ts";
+import { bounded } from "../../../e2e/wait.ts";
 
 const work = mkdtempSync(join(tmpdir(), "rayfold-import-"));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
@@ -158,12 +160,12 @@ describe("a schema from an OpenAPI document", () => {
     expect(both.ir.types["Book"]?.kind).toBe("entity");
     expect(both.ir.types["BookInput"]?.kind).toBe("input");
     expect(typeRefToString(both.ir.ops["putBook"]!.args[0]!.type)).toBe("BookInput");
-    expect(both.notes.some((n) => n.includes("BookInput"))).toBe(true);
+    expect(both.notes).toEqual(["Book: it is both sent and returned, so BookInput carries the sending side."]);
   });
 
   it("writes a schema that parses", () => {
     const text = printSchemaText(ir);
-    expect(loadSchema(text).hash).toBe(loadSchema(printSchemaText(loadSchema(text).ir)).hash);
+    expect(loadSchema(text).ir).toEqual(ir);
     expect(text).toContain('@http(method: GET, path: "/books/{id}")');
     expect(notes).toEqual([]); // this document says everything the importer needs, so it assumed nothing
   });
@@ -174,9 +176,16 @@ describe("a schema from an OpenAPI document", () => {
     expect(bound.length).toBeGreaterThan(0);
 
     const back = irFromOpenApi(openApiFor(bookstore.ir) as never);
-    for (const op of bound) expect(Object.keys(back.ir.ops)).toContain(op.name);
+    expect(Object.keys(back.ir.ops).sort()).toEqual(bound.map((op) => op.name).sort());
     expect(back.ir.types["Book"]?.kind).toBe("entity");
-    expect(() => loadSchema(printSchemaText(back.ir))).not.toThrow();
+    expect(back.notes).toEqual([
+      "PageArgs: the protocol defines it, so the document's version was left out and references point at the built-in.",
+      "Book.$type: the protocol owns that name, so the field was left out.",
+      "Author.$type: the protocol owns that name, so the field was left out.",
+      "Review.$type: the protocol owns that name, so the field was left out.",
+      "Order.$type: the protocol owns that name, so the field was left out.",
+    ]);
+    expect(loadSchema(printSchemaText(back.ir)).ir).toEqual(back.ir);
   });
 });
 
@@ -202,7 +211,12 @@ describe("a schema from a GraphQL SDL", () => {
       "tags: [String]",
       "rating: Int?",
     ]);
-    expect(notes.some((n) => n.includes("connection"))).toBe(true);
+    expect(notes).toEqual([
+      "BookConnection: a connection is not a page. Rayfold pages are Page<T> with @page(cursor) on the field.",
+      "sync: the name is reserved by the protocol, so the operation is syncOp.",
+      'restock: a mutation says nothing about what it can fail with; add "throws" once you know.',
+      'retire: a mutation says nothing about what it can fail with; add "throws" once you know.',
+    ]);
   });
 
   it("carries interfaces, unions, inputs with defaults, scalars and deprecations", async () => {
@@ -226,48 +240,54 @@ describe("a schema from a GraphQL SDL", () => {
     const { ir, notes } = await irFromGraphql(SDL);
     expect(ir.ops["syncOp"]?.kind).toBe("query");
     expect(ir.ops["sync"]).toBeUndefined();
-    expect(notes.some((n) => n.includes("reserved"))).toBe(true);
-    expect(() => loadSchema(printSchemaText(ir))).not.toThrow();
+    expect(notes.filter((n) => n.startsWith("sync"))).toEqual(["sync: the name is reserved by the protocol, so the operation is syncOp."]);
+    expect(loadSchema(printSchemaText(ir)).ir).toEqual(ir);
   });
 });
 
-describe("the command itself", () => {
+describe("the command itself", { timeout: 60_000 }, () => {
   const main = fileURLToPath(new URL("./main.ts", import.meta.url));
-  const root = fileURLToPath(new URL("../../../", import.meta.url));
+  // by URL, because the child runs in `work`, which has no node_modules to find `tsx` in
+  const tsx = pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href;
 
-  function rayfold(args: string[]): { stdout: string; stderr: string; status: number } {
-    const run = spawnSync(process.execPath, ["--import", "tsx", main, ...args], { cwd: root, encoding: "utf8" });
-    return { stdout: run.stdout ?? "", stderr: run.stderr ?? "", status: run.status ?? 1 };
+  /** The CLI run from `work`; a hung run fails the test instead of blocking the worker. */
+  async function rayfold(args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+    const child = spawn(process.execPath, ["--import", tsx, main, ...args], { cwd: work, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    const closed = new Promise<number | null>((resolve) => child.once("close", (code) => resolve(code)));
+    try {
+      return { status: await bounded(closed, `rayfold ${args.join(" ")} exits`, 15_000), stdout, stderr };
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill();
+        await bounded(closed, `rayfold ${args.join(" ")} is gone`);
+      }
+    }
   }
 
-  it("writes a schema file from an OpenAPI document, and says what it assumed", { timeout: 60_000 }, () => {
-    const document = join(work, "openapi.json");
-    const out = join(work, "api.rayfold");
-    writeFileSync(document, JSON.stringify(OPENAPI));
+  it("writes a schema file from an OpenAPI document, and says what it assumed", async () => {
+    writeFileSync(join(work, "openapi.json"), JSON.stringify(OPENAPI));
 
-    const run = rayfold(["import", "openapi", document, "--out", out]);
-    expect(run.status).toBe(0);
-    expect(run.stdout).toContain(`wrote ${out}`);
-    expect(run.stderr).toBe(""); // nothing had to be assumed about this one
-
-    const written = loadSchema(readFileSync(out, "utf8"));
-    expect(Object.keys(written.ir.ops).sort()).toEqual(["createBook", "getBook", "getBooks"]);
+    expect(await rayfold(["import", "openapi", "openapi.json", "--out", "api.rayfold"])).toEqual({ status: 0, stdout: "wrote api.rayfold\n", stderr: "" });
+    expect(readFileSync(join(work, "api.rayfold"), "utf8")).toBe(printSchemaText(irFromOpenApi(OPENAPI as never).ir));
 
     // and where the document leaves something out, the note goes to stderr, so the schema on stdout stays a schema
-    const thin = join(work, "thin.json");
     writeFileSync(
-      thin,
+      join(work, "thin.json"),
       JSON.stringify({ openapi: "3.1.0", info: { title: "Thin", version: "1" }, paths: { "/ping": { get: { operationId: "ping", responses: { "204": { description: "nothing" } } } } } }),
     );
-    const second = rayfold(["import", "openapi", thin]);
-    expect(second.status).toBe(0);
-    expect(second.stdout).toContain("query ping: JSON");
-    expect(second.stderr).toContain("no JSON response was described");
+    expect(await rayfold(["import", "openapi", "thin.json"])).toEqual({
+      status: 0,
+      stdout: 'query ping: JSON @http(method: GET, path: "/ping")\n',
+      stderr: "note      ping: no JSON response was described, so it returns JSON.\n",
+    });
   });
 
-  it("guard - it refuses a source it cannot read", { timeout: 60_000 }, () => {
-    const run = rayfold(["import", "wsdl", join(work, "openapi.json")]);
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("Unsupported source wsdl");
+  it("guard - it refuses a source it cannot read", async () => {
+    writeFileSync(join(work, "openapi.json"), JSON.stringify(OPENAPI));
+    expect(await rayfold(["import", "wsdl", "openapi.json"])).toEqual({ status: 1, stdout: "", stderr: "Unsupported source wsdl (openapi, graphql)\n" });
   });
 });

@@ -40,7 +40,11 @@ class InstrumentationBeanTest {
     fun `guard - without the bean the server runs its batches untraced`() {
         runner.run { ctx ->
             val frames = runBlocking { withTimeout(5_000) { ctx.getBean(RayfoldServer::class.java).collect(batch) } }
-            assertThat(frames).hasSize(2)
+            // ops in one batch may answer in either order
+            assertThat(frames).containsExactlyInAnyOrder(
+                Json.parseToJsonElement("""{"id":1,"error":{"code":"unimplemented","message":"No resolver for query me"},"fin":true}""").jsonObject,
+                Json.parseToJsonElement("""{"id":2,"error":{"code":"unimplemented","message":"No resolver for query books"},"fin":true}""").jsonObject,
+            )
         }
     }
 }

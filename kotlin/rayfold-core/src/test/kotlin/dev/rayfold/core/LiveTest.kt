@@ -165,7 +165,7 @@ class LiveTest {
         bs.store.books["b9"] = ebook
         bs.server.changes.publish(Change(emptySet(), setOf("books")))
         assertEquals(obj("""{"id":1,"data":{"items":[{"id":"b3"},{"id":"b9"}]}}"""), live.next())
-        live.stop()
+        assertEquals(listOf(canceled), live.stop())
         assertEquals(0, bs.server.changes.size)
     }
 
@@ -186,7 +186,8 @@ class LiveTest {
         bs.server.changes.publish(Change(setOf("Order:o7"), setOf("myOrders")))
         advanceUntilIdle()
         assertEquals(4, bs.store.calls["Query.book"], "guard: a change to an unreachable type and another op does not")
-        live.stop()
+        assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, bs.server.changes.size)
     }
 
     @Test
@@ -200,7 +201,8 @@ class LiveTest {
         assertEquals(1, bs.store.calls["Query.book"])
         command(bs.server, "placeOrder", """{"input":{"lines":[{"bookId":"b1","qty":2}]}}""", KEY, u1)
         assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":3}}]}"""), live.next())
-        live.stop()
+        assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, bs.server.changes.size)
     }
 
     @Test
@@ -260,6 +262,7 @@ class LiveTest {
         bs.server.changes.publish(Change(setOf("Author:a1"), emptySet()))
         assertEquals(obj("""{"id":1,"patch":[{"set":"Author:a1","value":{"bio":"Wrote Earthsea."}}]}"""), live.next(), "the first run's closing fin was held back, so the patch comes next")
         assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, bs.server.changes.size)
     }
 
     @Test
@@ -272,7 +275,7 @@ class LiveTest {
         fx.server.changes.publish(Change(setOf("Book:b2"), emptySet()))
         // the row that appeared travels on its own (spec 04 section 2b), and a union member keeps its type inside it
         assertEquals(obj("""{"id":1,"patch":[{"list":"","ins":[{"at":2,"value":{"${'$'}type":"Book","id":"b2","title":"T2"}}]}]}"""), live.next())
-        live.stop()
+        assertEquals(listOf(canceled), live.stop())
         assertEquals(0, fx.server.changes.size)
     }
 

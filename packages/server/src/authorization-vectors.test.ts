@@ -79,8 +79,8 @@ describe("conformance vectors: authorization", () => {
         case "partial": {
           expect(error, why).toBeUndefined();
           const frame = frames.find((f) => "data" in f) as { data: Record<string, unknown>; errors?: unknown[] };
-          expect(frame.data[c.field!], why).toBeNull();
-          expect(frame.errors?.length, why).toBeGreaterThan(0);
+          expect(frame.data, why).toEqual({ $type: "Note", id: "n1", [c.field!]: null });
+          expect(frame.errors, why).toEqual([{ code: "permission_denied", message: `Not allowed to access Note.${c.field}`, path: c.field }]);
           break;
         }
         case "null":

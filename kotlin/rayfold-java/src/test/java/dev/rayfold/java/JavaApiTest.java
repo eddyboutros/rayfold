@@ -99,6 +99,7 @@ class JavaApiTest {
     final List<Object> events = Collections.synchronizedList(new ArrayList<>());
     final List<Scalars> received = Collections.synchronizedList(new ArrayList<>());
     final HttpClient client = HttpClient.newHttpClient();
+    final List<HttpServer> extra = new ArrayList<>();
     RayfoldServer server;
     HttpServer http;
     String url;
@@ -167,13 +168,18 @@ class JavaApiTest {
     @AfterEach
     void stop() {
         http.stop(0);
+        extra.forEach(h -> h.stop(0));
         client.close();
     }
 
     /** POSTs a batch and returns its frames as Java maps. */
-    @SuppressWarnings("unchecked")
     List<Map<String, Object>> post(String user, String batch) throws Exception {
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+        return post(url, user, batch);
+    }
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> post(String to, String user, String batch) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(to))
             .timeout(Duration.ofSeconds(5))
             .header("Content-Type", "application/rayfold+json")
             .POST(HttpRequest.BodyPublishers.ofString(batch));
@@ -403,6 +409,115 @@ class JavaApiTest {
         assertInstanceOf(BindException.class, failure);
         // guard: a free port starts
         Rayfold.http(server).start(0).stop(0);
+    }
+
+    /** A second, smaller schema for the builder paths the bookshop above does not register. */
+    static final String SHOP = """
+        entity Author { id: ID name: String }
+        entity Book { id: ID stock: Int author: Author }
+        query books(authors: [ID]): [Book]
+        command restock(id: ID, qty: Int): Book
+        """;
+
+    /** Serves [s] over HTTP with alice signed in, and stops it after the test. */
+    String serve(RayfoldServer s) throws IOException {
+        HttpServer h = Rayfold.http(s).viewer(exchange -> Map.of("id", "alice", "role", "customer")).start(0);
+        extra.add(h);
+        return "http://127.0.0.1:" + h.getAddress().getPort() + "/rayfold";
+    }
+
+    static Map<String, Object> bookBy(int i, String authorId) {
+        return Map.of("id", "b" + i, "stock", i, "authorId", authorId);
+    }
+
+    static final String RESTOCK = """
+        {"rayfold":"0.1","ops":[{"id":1,"op":"restock","args":{"id":"b1","qty":%d},"key":"key-00000000000%02d","shape":"{ id stock }"}]}""";
+
+    @Test
+    void aCommandOutcomeSendsItsSetDeleteAndInvalidatePatchesAfterTheResultsOwn() throws Exception {
+        String to = serve(Rayfold.server(SHOP)
+            .command("restock", (args, ctx) -> Rayfold.result(Map.of("id", args.getString("id"), "stock", 4))
+                .set("Book:b2", Map.of("stock", 7))
+                .delete("Book:b3")
+                .invalidate("books"))
+            .build());
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"ok":{"$type":"Book","id":"b1","stock":4},"patch":[{"set":"Book:b1","value":{"$type":"Book","id":"b1","stock":4}},{"set":"Book:b2","value":{"stock":7}},{"del":"Book:b3"},{"invOp":["books"]}],"meta":{"cost":1},"fin":true}""")),
+            post(to, null, RESTOCK.formatted(1, 11)));
+    }
+
+    @Test
+    void anAsyncCommandAnswersWithItsOutcomeAndAFailedFutureFailsWithItsCause() throws Exception {
+        String to = serve(Rayfold.server(SHOP)
+            .commandAsync("restock", (args, ctx) -> {
+                int qty = args.getInt("qty");
+                if (qty < 0) return CompletableFuture.failedFuture(Rayfold.error(Code.FAILED_PRECONDITION, "qty must not be negative"));
+                return CompletableFuture.supplyAsync(() -> Rayfold.result(Map.of("id", "b1", "stock", 3 + qty)).invalidate("books"));
+            })
+            .build());
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"ok":{"$type":"Book","id":"b1","stock":5},"patch":[{"set":"Book:b1","value":{"$type":"Book","id":"b1","stock":5}},{"invOp":["books"]}],"meta":{"cost":1},"fin":true}""")),
+            post(to, null, RESTOCK.formatted(2, 12)));
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"error":{"code":"failed_precondition","message":"qty must not be negative"},"fin":true}""")),
+            post(to, null, RESTOCK.formatted(-1, 13)));
+    }
+
+    static final String BOOKS_BY = """
+        {"rayfold":"0.1","ops":[{"id":1,"op":"books","args":{"authors":%s},"shape":"{ id author { id name } }"}]}""";
+
+    @Test
+    void anAsyncFieldLoaderAnswersEveryParentInOneCallAndAFailedFutureFailsTheOp() throws Exception {
+        AtomicInteger loads = new AtomicInteger();
+        String to = serve(Rayfold.server(SHOP)
+            .query("books", (args, ctx) -> {
+                List<?> ids = args.getList("authors");
+                return java.util.stream.IntStream.range(0, ids.size()).mapToObj(i -> bookBy(i, (String) ids.get(i))).toList();
+            })
+            .fieldAsync("Book", "author", (parents, args, ctx) -> {
+                loads.incrementAndGet();
+                if (parents.stream().anyMatch(p -> "boom".equals(p.getString("authorId")))) {
+                    return CompletableFuture.failedFuture(Rayfold.error(Code.UNAVAILABLE, "authors offline"));
+                }
+                return CompletableFuture.supplyAsync(() -> parents.stream().map(p -> Map.of("id", p.getString("authorId"), "name", "Author " + p.getString("authorId"))).toList());
+            })
+            .build());
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"data":[{"$type":"Book","id":"b0","author":{"$type":"Author","id":"a1","name":"Author a1"}},{"$type":"Book","id":"b1","author":{"$type":"Author","id":"a2","name":"Author a2"}}],"meta":{"cost":2},"fin":true}""")),
+            post(to, null, BOOKS_BY.formatted("[\"a1\",\"a2\"]")));
+        assertEquals(1, loads.get(), "one call for both parents");
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"error":{"code":"unavailable","message":"authors offline","path":"0.author"},"fin":true}""")),
+            post(to, null, BOOKS_BY.formatted("[\"boom\"]")));
+    }
+
+    /**
+     * A loader that answers the wrong number of values would pair authors with the wrong books. Both builder paths
+     * refuse it as an internal error, which says nothing of the loader to the client.
+     */
+    @Test
+    void aFieldLoaderThatAnswersTheWrongNumberOfValuesFailsTheOpOnBothBuilderPaths() throws Exception {
+        List<Object> one = List.of(Map.of("id", "a1", "name", "Only one"));
+        String sync = serve(Rayfold.server(SHOP)
+            .query("books", (args, ctx) -> List.of(bookBy(0, "a1"), bookBy(1, "a2")))
+            .field("Book", "author", (parents, args, ctx) -> one)
+            .build());
+        String async = serve(Rayfold.server(SHOP)
+            .query("books", (args, ctx) -> List.of(bookBy(0, "a1"), bookBy(1, "a2")))
+            .fieldAsync("Book", "author", (parents, args, ctx) -> CompletableFuture.completedFuture(one))
+            .build());
+        var refused = List.of(Rayfold.parseJson("""
+            {"id":1,"error":{"code":"internal","message":"Internal error"},"fin":true}"""));
+        assertEquals(refused, post(sync, null, BOOKS_BY.formatted("[]")));
+        assertEquals(refused, post(async, null, BOOKS_BY.formatted("[]")));
+        // guard: the same loaders over one parent answer
+        String single = serve(Rayfold.server(SHOP)
+            .query("books", (args, ctx) -> List.of(bookBy(0, "a1")))
+            .fieldAsync("Book", "author", (parents, args, ctx) -> CompletableFuture.completedFuture(one))
+            .build());
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"data":[{"$type":"Book","id":"b0","author":{"$type":"Author","id":"a1","name":"Only one"}}],"meta":{"cost":2},"fin":true}""")),
+            post(single, null, BOOKS_BY.formatted("[]")));
     }
 
     @Test

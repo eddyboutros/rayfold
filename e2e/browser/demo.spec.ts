@@ -83,7 +83,16 @@ test("another website cannot place an order with the visitor's cookie, and the v
   await page.goto("http://localhost:4611/");
   await page.click("#run");
   await expect(page.locator("#run")).toHaveText("Done (results saved)", { timeout: 20_000 });
-  expect(await page.locator("#rows tr").count()).toBeGreaterThanOrEqual(6);
+  // one row per attempt, and each got nowhere: blocked, refused, or sent blind with nothing readable coming back
+  const observed = await page.locator("#rows tr td:nth-child(2)").allTextContents();
+  expect(observed).toEqual([
+    "sent; the response is opaque to this page (opaque)",
+    expect.stringMatching(/^the browser blocked it: /),
+    expect.stringMatching(/^form submitted; /),
+    "the handshake was refused (no socket)",
+    "sent; the response is opaque to this page (opaque)",
+    expect.stringMatching(/^the browser blocked it: /),
+  ]);
   expect(await mine(), "no cross-site attempt placed an order as the visitor").toBe(before);
 
   // guard: on the demo itself the same cookie places an order, so the check above is not vacuous

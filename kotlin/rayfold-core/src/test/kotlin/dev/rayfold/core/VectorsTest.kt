@@ -4,6 +4,7 @@ import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -68,7 +69,7 @@ class VectorsTest {
     @Test
     fun manifest() {
         val contract = Json.parseToJsonElement(File(File(root, "manifest"), "document.json").readText()).jsonObject
-        val named = (contract["members"] ?: error("no members")).jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }
+        val named = (contract["members"] ?: error("no members")).jsonArray.map { it.jsonObject.str("name") }
 
         val schema = """
             entity Book { id: ID title: String costPrice: Decimal? @allow(read: viewer.role == "admin") }
@@ -85,7 +86,7 @@ class VectorsTest {
             val hash = body["schemaHash"]?.jsonPrimitive?.content
             assertTrue(hash != null && Regex("^[0-9a-f]{64}$").matches(hash), "schemaHash is bare lower-case hex, not a prefixed shape id: was $hash")
             val limits = body["limits"]?.jsonObject ?: error("no limits")
-            val keys = (contract["members"]!!.jsonArray.first { it.jsonObject["name"]!!.jsonPrimitive.content == "limits" }).jsonObject["keys"]!!.jsonArray
+            val keys = (contract.req("members").jsonArray.first { it.jsonObject.str("name") == "limits" }).jsonObject.req("keys").jsonArray
             for (k in keys) assertTrue(limits.containsKey(k.jsonPrimitive.content), "limits.${k.jsonPrimitive.content} is missing")
         } finally {
             http.stop(0)
@@ -104,8 +105,8 @@ class VectorsTest {
                 out.add(
                     DynamicTest.dynamicTest("hashing/$file: binding: $name") {
                         val bound = buildJsonObject {
-                            put("op", c["op"]!!.jsonPrimitive.content)
-                            put("args", c["args"]!!)
+                            put("op", c.str("op"))
+                            put("args", c.req("args"))
                         }
                         // Canonical.hashed is the number-normalising form spec 12 section 4.2 requires here, and
                         // only here; the canonical text is asserted too, so a mismatch says which half is wrong
@@ -143,17 +144,17 @@ class VectorsTest {
     @TestFactory
     fun schemaHash(): List<DynamicTest> {
         val doc = Json.parseToJsonElement(File(File(root, "hashing"), "schema.json").readText()).jsonObject
-        val cases = doc["cases"]!!.jsonArray.map { it.jsonObject }
-        fun schemaOf(name: String) = cases.first { it["name"]!!.jsonPrimitive.content == name }["schema"]!!.jsonPrimitive.content
+        val cases = doc.req("cases").jsonArray.map { it.jsonObject }
+        fun schemaOf(name: String) = cases.first { it.str("name") == name }.str("schema")
         fun hashOf(schema: String) = SchemaText.load(schema).hash
 
         val out = mutableListOf<DynamicTest>()
         for (c in cases) {
-            val name = c["name"]!!.jsonPrimitive.content
+            val name = c.str("name")
             val why = c["why"]?.jsonPrimitive?.content ?: name
             out.add(
                 DynamicTest.dynamicTest("hashing/schema: $name") {
-                    val schema = c["schema"]!!.jsonPrimitive.content
+                    val schema = c.str("schema")
                     c["hash"]?.jsonPrimitive?.content?.let { assertEquals(it, hashOf(schema), why) }
                     c["canonicalBytes"]?.jsonPrimitive?.content?.toInt()?.let {
                         assertEquals(it, Canonical.json(IrJson.of(SchemaText.load(schema).ir)).length, "the canonical IR is this many bytes")
@@ -164,18 +165,18 @@ class VectorsTest {
                 },
             )
         }
-        for (case in doc["documentCases"]!!.jsonArray) {
+        for (case in doc.req("documentCases").jsonArray) {
             val c = case.jsonObject
-            val name = c["name"]!!.jsonPrimitive.content
+            val name = c.str("name")
             out.add(
                 DynamicTest.dynamicTest("hashing/schema: $name") {
-                    val loaded = SchemaText.load(c["schema"]!!.jsonPrimitive.content)
-                    val vendor = c["extensions"]!!.jsonObject
+                    val loaded = SchemaText.load(c.str("schema"))
+                    val vendor = c.req("extensions").jsonObject
                     val withVendor = loaded.ir.copy(extensions = vendor)
                     assertEquals(vendor, withVendor.extensions, "the member survives on the document")
                     // and survives a round trip through the document form, which is where it used to be dropped
                     assertEquals(vendor, RayfoldSchemaIR.parse(irWithExtensions(withVendor)).extensions, "the member survives a load")
-                    assertEquals(hashOf(schemaOf(c["sameAs"]!!.jsonPrimitive.content)), SchemaText.hash(withVendor), c["why"]?.jsonPrimitive?.content ?: name)
+                    assertEquals(hashOf(schemaOf(c.str("sameAs"))), SchemaText.hash(withVendor), c["why"]?.jsonPrimitive?.content ?: name)
                 },
             )
         }
@@ -194,7 +195,7 @@ class VectorsTest {
     @TestFactory
     fun authorization(): List<DynamicTest> {
         val doc = Json.parseToJsonElement(File(File(root, "authorization"), "denial-outcomes.json").readText()).jsonObject
-        val ir = SchemaText.load(doc["schema"]!!.jsonPrimitive.content).ir
+        val ir = SchemaText.load(doc.str("schema")).ir
         val secret = buildJsonObject { put("id", "s1"); put("code", "hunter2") }
         val note = buildJsonObject { put("id", "n1"); put("title", "A note"); put("owner", "u9"); put("sometimes", "s") }
 
@@ -222,27 +223,55 @@ class VectorsTest {
         )
 
         val out = mutableListOf<DynamicTest>()
-        for (case in doc["cases"]!!.jsonArray) {
+        for (case in doc.req("cases").jsonArray) {
             val c = case.jsonObject
-            val name = c["name"]!!.jsonPrimitive.content
+            val name = c.str("name")
             // the gap case needs a resolver that returns a null element; it is covered on the TypeScript side, and
             // the JVM's own LiveDiffTest covers null elements, so it is skipped rather than given a second server
-            if (c["expect"]!!.jsonPrimitive.content == "nullElement") continue
+            if (c.str("expect") == "nullElement") continue
             out.add(
                 DynamicTest.dynamicTest("authorization/$name") {
-                    val viewer = if (c.containsKey("viewer")) c["viewer"]!! else doc["viewer"]!!
+                    val viewer = if (c.containsKey("viewer")) c.req("viewer") else doc.req("viewer")
                     val shape = c["shape"]?.jsonPrimitive?.content
                     val op = buildJsonObject {
-                        put("id", 1); put("op", c["op"]!!.jsonPrimitive.content)
-                        put("args", buildJsonObject { put("id", if (c["op"]!!.jsonPrimitive.content.startsWith("box")) "b1" else "n1") })
+                        put("id", 1); put("op", c.str("op"))
+                        put("args", buildJsonObject { put("id", if (c.str("op").startsWith("box")) "b1" else "n1") })
                         shape?.let { put("shape", it) }
                     }
                     val frames = runBlocking { server().collect(buildJsonObject { put("ops", JsonArray(listOf(op))) }, viewer) }
                     val error = frames.firstOrNull { (it as? JsonObject)?.containsKey("error") == true } as? JsonObject
                     val why = c["why"]?.jsonPrimitive?.content ?: name
-                    when (c["expect"]!!.jsonPrimitive.content) {
-                        "error" -> assertEquals(c["code"]!!.jsonPrimitive.content, (error?.get("error") as? JsonObject)?.get("code")?.jsonPrimitive?.content, why)
-                        else -> assertTrue(error == null, "$why: expected no error, got $error")
+                    val expect = c.str("expect")
+                    if (expect == "error") {
+                        assertEquals(c.str("code"), (error?.get("error") as? JsonObject)?.get("code")?.jsonPrimitive?.content, why)
+                        return@dynamicTest
+                    }
+                    assertTrue(error == null, "$why: expected no error, got $error")
+                    val frame = frames.single { it.containsKey("data") }
+                    val data = frame.req("data").jsonObject
+                    val errors = (frame["errors"] as? JsonArray)?.map { it.jsonObject } ?: emptyList()
+                    when (expect) {
+                        "null" -> {
+                            assertEquals(JsonNull, data[c.str("at")], "$why: a denied entity at a nullable position reads as null")
+                            // absence carries no error, or the error itself would say the entity exists
+                            assertEquals(emptyList(), errors, why)
+                        }
+                        "omitted" -> {
+                            assertTrue(c.str("field") !in data, "$why: ${c.str("field")} was served: $data")
+                            assertEquals(emptyList(), errors, why)
+                        }
+                        "partial" -> {
+                            val field = c.str("field")
+                            assertEquals(buildJsonObject { put("\$type", "Note"); put("id", "n1"); put(field, JsonNull) }, data, why)
+                            assertEquals(1, errors.size, "$why: $errors")
+                            assertEquals(field, errors[0].str("path"), why)
+                            assertEquals("permission_denied", errors[0].str("code"), why)
+                        }
+                        "ok" -> {
+                            assertEquals(buildJsonObject { put("\$type", "Note"); put("id", "n1"); put("title", "A note") }, data, why)
+                            assertEquals(emptyList(), errors, why)
+                        }
+                        else -> error("$name: no assertion for expect=$expect")
                     }
                 },
             )
@@ -260,10 +289,10 @@ class VectorsTest {
     fun errors(): List<DynamicTest> {
         val doc = Json.parseToJsonElement(File(File(root, "errors"), "statuses-and-problems.json").readText()).jsonObject
         val out = mutableListOf<DynamicTest>()
-        for (case in doc["statuses"]!!.jsonArray) {
+        for (case in doc.req("statuses").jsonArray) {
             val c = case.jsonObject
-            val name = c["code"]!!.jsonPrimitive.content
-            val expected = c["status"]!!.jsonPrimitive.content.toInt()
+            val name = c.str("code")
+            val expected = c.str("status").toInt()
             out.add(
                 DynamicTest.dynamicTest("errors/$name is $expected") {
                     val code = Code.entries.first { it.wire == name }
@@ -282,13 +311,13 @@ class VectorsTest {
     @TestFactory
     fun idempotency(): List<DynamicTest> {
         val doc = Json.parseToJsonElement(File(File(root, "idempotency"), "keys-and-replays.json").readText()).jsonObject
-        val ir = SchemaText.load(doc["schema"]!!.jsonPrimitive.content).ir
+        val ir = SchemaText.load(doc.str("schema")).ir
         val defaultViewer = buildJsonObject { put("id", "u1") }
 
         val out = mutableListOf<DynamicTest>()
-        for (case in doc["cases"]!!.jsonArray) {
+        for (case in doc.req("cases").jsonArray) {
             val c = case.jsonObject
-            val name = c["name"]!!.jsonPrimitive.content
+            val name = c.str("name")
             val why = c["why"]?.jsonPrimitive?.content ?: name
             out.add(
                 DynamicTest.dynamicTest("idempotency/$name") {
@@ -302,14 +331,14 @@ class VectorsTest {
                     val server = RayfoldServer(ir, Resolvers(commands = mapOf("restock" to bump, "other" to bump, "free" to bump)))
 
                     val answers = mutableListOf<List<JsonObject>>()
-                    for (o in c["ops"]!!.jsonArray) {
+                    for (o in c.req("ops").jsonArray) {
                         val op = o.jsonObject
-                        val viewer = if (op.containsKey("viewer")) op["viewer"]!! else defaultViewer
+                        val viewer = if (op.containsKey("viewer")) op.req("viewer") else defaultViewer
                         val env = buildJsonObject {
                             put(
                                 "ops",
                                 JsonArray(listOf(buildJsonObject {
-                                    put("id", 1); put("op", op["op"]!!.jsonPrimitive.content); put("args", op["args"]!!)
+                                    put("id", 1); put("op", op.str("op")); put("args", op.req("args"))
                                     op["key"]?.let { put("key", it.jsonPrimitive.content) }
                                 })),
                             )
@@ -321,24 +350,32 @@ class VectorsTest {
                     val okFrame = last.firstOrNull { it.containsKey("ok") }
                     val replayed = ((okFrame?.get("meta") as? JsonObject)?.get("replay") as? JsonPrimitive)?.content == "true"
 
-                    when (c["expect"]!!.jsonPrimitive.content) {
-                        "error" -> assertEquals(c["code"]!!.jsonPrimitive.content, error?.get("code")?.jsonPrimitive?.content, why)
+                    when (c.str("expect")) {
+                        "error" -> assertEquals(c.str("code"), error?.get("code")?.jsonPrimitive?.content, why)
                         "replay" -> {
                             assertTrue(error == null, "$why: $error")
                             assertEquals(answers.first().firstOrNull { it.containsKey("ok") }?.get("ok"), okFrame?.get("ok"), why)
-                            assertEquals(c["runs"]!!.jsonPrimitive.content.toInt(), runs, "$why: the resolver ran $runs times")
+                            assertEquals(stocked(4), okFrame?.get("ok"), why)
                         }
-                        "replayMeta" -> assertTrue(replayed, "$why: meta.replay was not set on the retry")
+                        "replayMeta" -> {
+                            assertTrue(error == null, "$why: $error")
+                            assertTrue(replayed, "$why: meta.replay was not set on the retry")
+                            // replayed and not re-run: the first answer is the stock after one restock
+                            assertEquals(stocked(4), okFrame?.get("ok"), why)
+                        }
                         "bothRan" -> {
                             assertTrue(error == null, "$why: $error")
                             assertTrue(!replayed, "$why: the second caller got a replay of the first caller's answer")
-                            assertEquals(c["runs"]!!.jsonPrimitive.content.toInt(), runs, "$why: the resolver ran $runs times")
+                            assertEquals(stocked(5), okFrame?.get("ok"), why)
                         }
-                        else -> {
+                        "ok" -> {
                             assertTrue(error == null, "$why: $error")
-                            assertTrue(okFrame != null, "$why: no ok frame")
+                            assertTrue(!replayed, "$why: a first call is not a replay")
+                            assertEquals(stocked(4), okFrame?.get("ok"), why)
                         }
+                        else -> error("$name: no assertion for expect=${c.str("expect")}")
                     }
+                    c["runs"]?.let { assertEquals(it.jsonPrimitive.content.toInt(), runs, "$why: the resolver ran $runs times") }
                 },
             )
         }
@@ -438,6 +475,12 @@ class VectorsTest {
         assertTrue(out.size > 5, "no binary vectors were found under ${root.absolutePath}")
         return out
     }
+
+    private fun JsonObject.req(key: String): JsonElement = this[key] ?: error("vector is missing \"$key\"")
+    private fun JsonObject.str(key: String): String = req(key).jsonPrimitive.content
+
+    /** What restock answers: every case starts from a stock of 3. */
+    private fun stocked(stock: Int) = buildJsonObject { put("\$type", "Book"); put("id", "b1"); put("stock", stock) }
 
     private fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
 

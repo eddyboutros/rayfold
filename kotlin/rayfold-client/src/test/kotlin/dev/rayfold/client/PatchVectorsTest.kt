@@ -2,6 +2,7 @@ package dev.rayfold.client
 
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -24,24 +25,27 @@ import kotlin.test.assertTrue
 class PatchVectorsTest {
     private val root = File(System.getProperty("rayfold.vectors") ?: "../conformance/vectors")
 
+    private fun JsonObject.req(key: String): JsonElement = this[key] ?: error("vector is missing \"$key\"")
+    private fun JsonObject.str(key: String): String = req(key).jsonPrimitive.content
+
     @TestFactory
     fun patches(): List<DynamicTest> {
         val doc = Json.parseToJsonElement(File(File(root, "patch"), "apply.json").readText()).jsonObject
-        val op = doc["op"]!!.jsonPrimitive.content
+        val op = doc.str("op")
         val out = mutableListOf<DynamicTest>()
 
-        for (case in doc["cases"]!!.jsonArray) {
+        for (case in doc.req("cases").jsonArray) {
             val c = case.jsonObject
-            val name = c["name"]!!.jsonPrimitive.content
+            val name = c.str("name")
             out.add(
                 DynamicTest.dynamicTest("patch/$name") {
                     val cache = RayfoldCache()
                     val key = RayfoldCache.resultKey(op, JsonObject(emptyMap()), null, null)
-                    cache.putResult(key, op, c["result"]!!)
-                    cache.applyPatch(c["patch"]!!.jsonArray.map { it.jsonObject }, key)
+                    cache.putResult(key, op, c.req("result"))
+                    cache.applyPatch(c.req("patch").jsonArray.map { it.jsonObject }, key)
                     assertEquals(
-                        c["expect"]!!,
-                        cache.denormalize(cache.getResult(key)!!.data),
+                        c.req("expect"),
+                        cache.denormalize((cache.getResult(key) ?: error("the result under $key is gone")).data),
                         c["why"]?.jsonPrimitive?.content ?: name,
                     )
                 },

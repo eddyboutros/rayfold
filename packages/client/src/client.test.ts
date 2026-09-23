@@ -136,6 +136,43 @@ describe("client over the in-process transport", () => {
     expect(items.items).toEqual([{ bookId: "b1", stock: 9 }]);
   });
 
+  it("a stream that fails throws the error frame; a cancel it did not ask for is a failure too", async () => {
+    const drain = async (items: AsyncIterable<unknown>) => {
+      const got: unknown[] = [];
+      try {
+        for await (const x of items) got.push(x);
+      } catch (e) {
+        return { got, error: { name: (e as Error).name, code: (e as RayfoldClientError).code, message: (e as Error).message } };
+      }
+      return { got, error: null };
+    };
+    expect(await bounded(drain(client.stream("stockUpdates", {})), "the refused stream")).toEqual({ got: [], error: { name: "RayfoldClientError", code: "invalid_argument", message: "stockUpdates().bookIds: required" } });
+    const canceled: Transport = {
+      send: async function* () {
+        yield { id: 1, item: { bookId: "b1", stock: 1 } } as Frame;
+        yield { id: 1, error: { code: "canceled", message: "Canceled by the server" }, fin: true } as Frame;
+      },
+    };
+    const c = new RayfoldClient({ transport: canceled });
+    expect(await drain(c.stream("stockUpdates", { bookIds: ["b1"] }))).toEqual({ got: [{ bookId: "b1", stock: 1 }], error: { name: "RayfoldClientError", code: "canceled", message: "Canceled by the server" } });
+  });
+
+  it("an op the transport ends without answering is rejected as unavailable; the answered one resolves", async () => {
+    const partial: Transport = {
+      send: async function* () {
+        yield { id: 1, data: { $type: "Book", id: "b1" }, fin: true } as Frame;
+      },
+    };
+    const b = new RayfoldClient({ transport: partial }).batch();
+    const answered = b.query("book", { id: "b1" });
+    const dropped = b.query("book", { id: "b2" });
+    await b.run();
+    expect(await answered.promise).toEqual({ $type: "Book", id: "b1" });
+    const err = await bounded(dropped.promise.catch((e: unknown) => e), "the unanswered op settled");
+    expect(err).toBeInstanceOf(RayfoldClientError);
+    expect({ code: (err as RayfoldClientError).code, message: (err as Error).message }).toEqual({ code: "unavailable", message: "Batch ended without a result for this op" });
+  });
+
   it("batch-level errors reject every handle", async () => {
     const b = client.batch();
     const h1 = b.query("book", { id: { $ref: "2.id" } });
@@ -278,6 +315,45 @@ describe("client over HTTP", () => {
     expect(order.items[0]!.book.$type).toBe("Book");
   });
 
+  it("an all-query batch goes as a safe request, over QUERY when asked; a batch holding a command does not", async () => {
+    const manifest = await manifestOf();
+    const sent: Array<{ method: string | undefined; safe: string | null }> = [];
+    const recording: typeof fetch = (input, init) => {
+      sent.push({ method: init?.method, safe: new Headers(init?.headers).get("rayfold-safe") });
+      return fetch(input, init);
+    };
+    const auth = () => ({ authorization: "Bearer u1" });
+    const clientOf = (o: { useQueryMethod?: boolean; schema?: RayfoldSchemaIR }) =>
+      new RayfoldClient({ transport: createFetchTransport({ url, fetch: recording, headers: auth, ...(o.useQueryMethod ? { useQueryMethod: true } : {}) }), ...(o.schema ? { schema: o.schema } : {}) });
+    const reads = async (c: RayfoldClient) => {
+      const b = c.batch();
+      const one = b.query<{ id: string }>("book", { id: "b1" }, { shape: "{ id }" });
+      const two = b.query<{ id: string }>("book", { id: "b2" }, { shape: "{ id }" });
+      await b.run();
+      return [(await one.promise).id, (await two.promise).id];
+    };
+    const mixed = async (c: RayfoldClient) => {
+      const b = c.batch();
+      const read = b.query<{ id: string }>("book", { id: "b1" }, { shape: "{ id }" });
+      const placed = b.command<{ status: string }>("placeOrder", { input: { lines: [{ bookId: "b3", qty: 1 }] } }, { shape: "{ id status }" });
+      await b.run();
+      return [(await read.promise).id, (await placed.promise).status];
+    };
+    for (const c of [clientOf({ schema: manifest.schema }), clientOf({ schema: manifest.schema, useQueryMethod: true })]) {
+      expect(await reads(c)).toEqual(["b1", "b2"]);
+      expect(await mixed(c)).toEqual(["b1", "PLACED"]);
+    }
+    // without a schema the client cannot tell a query from a command, so nothing is claimed safe
+    expect(await reads(clientOf({}))).toEqual(["b1", "b2"]);
+    expect(sent).toEqual([
+      { method: "POST", safe: "true" },
+      { method: "POST", safe: null },
+      { method: "QUERY", safe: null },
+      { method: "POST", safe: null },
+      { method: "POST", safe: null },
+    ]);
+  });
+
   it("maps HTTP problem responses to errors", async () => {
     const c = new RayfoldClient({ transport: createFetchTransport({ url: url + "/nope" }) });
     await expect(c.query("book", { id: "b1" })).rejects.toMatchObject({ code: "not_found" });
@@ -308,7 +384,8 @@ describe("deleting an entity through the real command pipeline", () => {
       expect(b2After.reviews.items).toEqual([]);
       expect(b1After.reviews.items.map((r) => r.id)).toEqual(["r1", "r4"]); // guard: the delete is not blanket
       expect(c.cache.has("Review:r2")).toBe(false);
-      expect(c.cache.get("Book:b2")).toBeDefined(); // the containing entity survives, minus the reference
+      // the containing entity survives, minus the reference
+    expect(c.cache.denormalize(c.cache.get("Book:b2"))).toEqual({ $type: "Book", id: "b2", title: "Invisible Cities", reviews: { items: [] } });
       expect(notified.flat()).toContain("Book:b2"); // watchers of the page are told
       expect(store.store.calls["Query.book"]).toBe(2); // both reads after the delete came from the cache
     });

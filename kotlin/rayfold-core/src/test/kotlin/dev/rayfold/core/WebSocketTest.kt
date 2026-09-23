@@ -285,6 +285,26 @@ class WebSocketTest {
         assertEquals(101, upgrade(l.port).status, "guard")
     }
 
+    /** A handshake whose head, blank line included, is exactly [total] bytes. */
+    private fun handshakeOf(port: Int, total: Int): Ws {
+        fun head(pad: String) = "GET /rayfold/ws HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n" +
+            "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Protocol: rayfold.0.1\r\nX-Pad: $pad\r\n\r\n"
+        val text = head("x".repeat(total - head("").length))
+        assertEquals(total, text.length)
+        return Ws(port).also { it.write(text.toByteArray(Charsets.ISO_8859_1)) }.readHead()
+    }
+
+    @Test
+    fun `a handshake head one byte over maxHandshakeBytes is 431, and one of exactly the limit is upgraded (guard)`() {
+        assertEquals(16 * 1024, WsOptions().maxHandshakeBytes)
+        val l = listen(Bookstore())
+        // one over: the byte that crosses the limit is the head's last, so the server has read everything it was sent
+        val over = handshakeOf(l.port, 16 * 1024 + 1)
+        assertEquals(431, over.status, over.head)
+        assertEquals("Request head too large", over.rest())
+        assertEquals(101, handshakeOf(l.port, 16 * 1024).status)
+    }
+
     @Test
     fun `a frame announcing more than the limit is cut off with close code 1009 before it is buffered`() {
         assertEquals(1024 * 1024, WsOptions().maxMessageBytes, "spec 12 section 3 default")

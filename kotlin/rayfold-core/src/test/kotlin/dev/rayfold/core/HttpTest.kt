@@ -2,6 +2,8 @@ package dev.rayfold.core
 
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -210,7 +212,14 @@ class HttpTest {
         // bio is @lazy: data, then an `at` frame, then fin
         val deferred = post("""{"ops":[{"id":1,"op":"author","args":{"id":"a1"},"shape":"{ id name bio }"}]}""", "Accept", "application/json")
         assertEquals("application/rayfold-frames+json", header(deferred, "Content-Type"))
-        assertEquals(3, frames(deferred).size, deferred.body())
+        assertEquals(
+            listOf(
+                obj("""{"id":1,"data":{"${'$'}type":"Author","id":"a1","name":"Ann"},"meta":{"cost":1}}"""),
+                obj("""{"id":1,"at":"","data":{"bio":"Writes."}}"""),
+                obj("""{"id":1,"fin":true}"""),
+            ),
+            frames(deferred),
+        )
     }
 
     @Test
@@ -314,6 +323,16 @@ class HttpTest {
         assertEquals(JsonPrimitive("0.1"), body["rayfold"])
         assertEquals(JsonArray(listOf(JsonPrimitive("live"), JsonPrimitive("rb"))), body["extensions"], "this schema binds no REST routes")
         assertEquals(ir.withoutPolicies(), RayfoldSchemaIR.json.decodeFromJsonElement(RayfoldSchemaIR.serializer(), body["schema"] ?: error("manifest has no schema")))
+    }
+
+    @Test
+    fun `the manifest publishes the limits this server was configured with, each under its own name`() {
+        // every value differs from its default and from the others, so a limit read from the wrong option shows
+        port = serve(RayfoldServer(ir, FixtureResolvers.build(fixture, store), BatchOptions(trustedShapes = true, budget = 77, maxOps = 3, maxDepth = 4, maxFields = 55)))
+        assertEquals(
+            obj("""{"budget":77,"maxOps":3,"maxDepth":4,"maxFields":55,"trustedShapes":true}"""),
+            obj(get("/rayfold/manifest").body())["limits"],
+        )
     }
 
     /** A batch POST through [RayfoldHttp.serve], as a server of its own hands it over; the body stream throws [failure] on the first write. */
@@ -438,13 +457,16 @@ class HttpTest {
      * Identity and `GET /rayfold/stats`. Mirrors the TypeScript cases in `packages/server/src/fetch.test.ts`, since a
      * fleet console reads the same document from either runtime.
      */
-    private fun serveWithStats(allow: ((HttpCall) -> Boolean)?): Int {
-        val server = RayfoldServer(
-            ir,
-            FixtureResolvers.build(fixture, store),
-            identity = ServerIdentity(name = "bookshop", version = "1.4.0", labels = mapOf("region" to "eu-west")),
-        )
-        val http = RayfoldHttp(server, HttpOptions(stats = allow)) { JsonNull }.start(0)
+    private fun serveWithStats(allow: ((HttpCall) -> Boolean)?): Int = serveWithStats(allow, statsServer(FixtureResolvers.build(fixture, store)))
+
+    private fun statsServer(resolvers: Resolvers) = RayfoldServer(
+        ir,
+        resolvers,
+        identity = ServerIdentity(name = "bookshop", version = "1.4.0", labels = mapOf("region" to "eu-west")),
+    )
+
+    private fun serveWithStats(allow: ((HttpCall) -> Boolean)?, server: RayfoldServer, viewer: JsonObject? = null): Int {
+        val http = RayfoldHttp(server, HttpOptions(stats = allow)) { viewer ?: JsonNull }.start(0)
         started.add(http)
         return http.address.port
     }
@@ -457,7 +479,8 @@ class HttpTest {
 
     @Test
     fun `stats says who the server is and what it is doing`() {
-        val res = statsAt(serveWithStats { true })
+        val server = statsServer(FixtureResolvers.build(fixture, store))
+        val res = statsAt(serveWithStats({ true }, server))
         assertEquals(200, res.statusCode(), res.body())
         assertEquals("no-store", res.headers().firstValue("Cache-Control").orElse(null))
         val body = obj(res.body())
@@ -465,11 +488,58 @@ class HttpTest {
         assertEquals(JsonPrimitive("bookshop"), id["name"])
         assertEquals(JsonPrimitive("1.4.0"), id["version"])
         assertEquals(JsonPrimitive("eu-west"), (id["labels"] as JsonObject)["region"])
-        assertTrue((id["instance"] as JsonPrimitive).content.isNotEmpty())
+        assertEquals(JsonPrimitive(server.identity.instance), id["instance"])
         assertEquals(JsonPrimitive(0), body["inflight"])
         assertEquals(JsonPrimitive(false), body["draining"])
         assertEquals(JsonPrimitive(true), body["ready"])
         assertEquals(JsonPrimitive(0), body["live"])
+    }
+
+    /** The idle case above reads the same zeros from a server that counts nothing; this one has work to count. */
+    @Test
+    fun `stats counts a running command and an open live query, and says when it is draining`() {
+        val running = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val base = FixtureResolvers.build(fixture, store)
+        val held = command { _, _ ->
+            running.countDown()
+            // bounded: a test that fails before releasing must not leave the worker thread parked
+            assertTrue(release.await(5, TimeUnit.SECONDS), "the test never released the command")
+            obj("""{"id":"b1","title":"Dune","stock":3}""")
+        }
+        val server = statsServer(Resolvers(base.queries, base.commands + ("restock" to held), base.streams, base.fields))
+        val p = serveWithStats({ true }, server, obj("""{"id":"u1"}"""))
+        fun stats() = obj(statsAt(p).body()).let { b -> listOf("inflight", "live", "draining", "ready", "reasons").associateWith { b[it] } }
+        fun rayfold(body: String) = HttpRequest.newBuilder(URI("http://127.0.0.1:$p/rayfold")).timeout(Duration.ofSeconds(5))
+            .header("Content-Type", "application/rayfold+json").POST(HttpRequest.BodyPublishers.ofString(body)).build()
+
+        val command = client.sendAsync(rayfold("""{"ops":[{"id":1,"op":"restock","args":{"bookId":"b1","qty":1},"key":"0123456789abcdef"}]}"""), HttpResponse.BodyHandlers.ofString())
+        try {
+            assertTrue(running.await(5, TimeUnit.SECONDS), "the command running")
+            assertEquals(
+                mapOf("inflight" to JsonPrimitive(1), "live" to JsonPrimitive(0), "draining" to JsonPrimitive(false), "ready" to JsonPrimitive(true), "reasons" to JsonArray(emptyList())),
+                stats(),
+            )
+
+            val live = client.sendAsync(rayfold("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","live":true}]}"""), HttpResponse.BodyHandlers.ofLines())
+                .get(5, TimeUnit.SECONDS).body().iterator()
+            // a live query subscribes before its first frame is written, so the count is settled once the frame is here
+            assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1}}"""), obj(live.next()))
+            assertEquals(
+                mapOf("inflight" to JsonPrimitive(2), "live" to JsonPrimitive(1), "draining" to JsonPrimitive(false), "ready" to JsonPrimitive(true), "reasons" to JsonArray(emptyList())),
+                stats(),
+            )
+        } finally {
+            release.countDown()
+        }
+        assertEquals(200, command.get(5, TimeUnit.SECONDS).statusCode())
+
+        // drain ends the live query and returns once no batch is left running
+        runBlocking { withTimeout(5_000) { server.drain(timeoutMs = 5_000) } }
+        assertEquals(
+            mapOf("inflight" to JsonPrimitive(0), "live" to JsonPrimitive(0), "draining" to JsonPrimitive(true), "ready" to JsonPrimitive(false), "reasons" to JsonArray(listOf(JsonPrimitive("shutting down")))),
+            stats(),
+        )
     }
 
     @Test
@@ -515,7 +585,7 @@ class HttpTest {
         assertEquals(1, countOf(counters, "rayfold.refused", mapOf("reason" to "media")))
         // guard: the reasons are not interchangeable
         assertEquals(0, countOf(counters, "rayfold.refused", mapOf("reason" to "origin")))
-        assertTrue(countOf(counters, "rayfold.requests", mapOf("method" to "POST")) >= 1)
+        assertEquals(1L, countOf(counters, "rayfold.requests", mapOf("method" to "POST")))
     }
 
     @Test

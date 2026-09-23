@@ -30,8 +30,22 @@ beforeEach(async () => {
   now = 1_000;
 });
 
+/** What a test opened, closed after it whether it passed or not; each closes once, so a test may close it early. */
+let opened: Array<() => Promise<unknown>> = [];
+function closing<T>(close: () => Promise<T>): () => Promise<T> {
+  let closed: Promise<T> | undefined;
+  const once = () => (closed ??= close());
+  opened.push(once);
+  return once;
+}
+
 afterEach(async () => {
-  await db.close();
+  try {
+    await Promise.all(opened.map((close) => close()));
+  } finally {
+    opened = [];
+    await db.close();
+  }
 });
 
 async function relay(origin: string, opts: { ttlMs?: number; maxInline?: number } = {}): Promise<PgRelay> {
@@ -43,7 +57,7 @@ async function relay(origin: string, opts: { ttlMs?: number; maxInline?: number 
 /** A relay end that records what reaches it. */
 async function listener(origin: string): Promise<{ received: Signal<RelayMessage>; stop: () => Promise<void> }> {
   const received = new Signal<RelayMessage>();
-  const stop = await (await relay(origin)).subscribe((m) => received.push(m));
+  const stop = closing(await (await relay(origin)).subscribe((m) => received.push(m)));
   return { received, stop };
 }
 
@@ -85,10 +99,10 @@ function open(server: RayfoldServer, op: Omit<RequestEnvelope["ops"][number], "i
   })();
   return {
     frames,
-    stop: async () => {
+    stop: closing(async () => {
       ac.abort();
       await bounded(ended, "the open op ending on abort");
-    },
+    }),
   };
 }
 
@@ -97,6 +111,8 @@ describe("the relay over Postgres", () => {
     const books = new Map([["b1", { id: "b1", title: "Dune", stock: 3 }]]);
     const a = instance(books, await relay("a"));
     const b = instance(books, await relay("b"));
+    closing(() => a.close());
+    closing(() => b.close());
     await Promise.all([a.ready(), b.ready()]);
     // the stream subscribes as it starts; watch for that before opening it, so the command comes after
     const subscribed = new Signal<string>();
@@ -116,7 +132,6 @@ describe("the relay over Postgres", () => {
     expect(live.frames.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 5 } }] });
     expect(stream.frames.items[0]).toEqual({ id: 1, item: { bookId: "b1", stock: 5 } });
     expect(await rows()).toEqual([]); // both messages fit a payload: nothing went through the table
-    await Promise.all([live.stop(), stream.stop(), a.close(), b.close()]);
     // two servers over a WASM Postgres with LISTEN/NOTIFY between them: the default bound is the suite's, not this
     // test's, and under the whole suite it loses that race
   }, 20_000);
@@ -149,7 +164,6 @@ describe("the relay over Postgres", () => {
     await b.received.atLeast(2, "the small change arriving");
     expect(b.received.items[1]).toEqual(change("Book:b1"));
     expect(await rows()).toEqual([1]); // it fit: no row
-    await b.stop();
   });
 
   it("sweeps table rows past their lifetime as new ones are written", async () => {
@@ -167,19 +181,17 @@ describe("the relay over Postgres", () => {
     expect(await rows()).toEqual([4]);
     await b.received.atLeast(4, "every change arriving, swept afterwards or not");
     expect(b.received.items.map((m) => (m.kind === "change" ? m.keys[0] : ""))).toEqual(["Book:b1", "Book:b2", "Book:b3", "Book:b4"]);
-    await b.stop();
   });
 
   it("drops what it published itself, and hears what others publish", async () => {
     const a = await relay("a");
     const heardByA = new Signal<RelayMessage>();
-    const stopA = await a.subscribe((m) => heardByA.push(m));
+    closing(await a.subscribe((m) => heardByA.push(m)));
     const b = await relay("b");
     await a.publish(change("Book:mine"));
     await b.publish(change("Book:theirs")); // the barrier: a's own message was sent before it
     await heardByA.atLeast(1, "a hearing b");
     expect(heardByA.items).toEqual([change("Book:theirs")]);
-    await stopA();
   });
 
   it("stops delivering once unsubscribed, and delivered until then", async () => {
@@ -194,7 +206,6 @@ describe("the relay over Postgres", () => {
     await c.received.atLeast(1, "c hearing the third change");
     expect(c.received.items).toEqual([change("Book:3")]);
     expect(b.received.items).toEqual([change("Book:1")]);
-    await c.stop();
   });
 
   it("reports a message it cannot read instead of failing silently, and keeps listening", async () => {
@@ -202,13 +213,12 @@ describe("the relay over Postgres", () => {
     const r = new PgRelay(notifications, sql, { origin: "b", onError: (e) => errors.push(e) });
     await r.migrate();
     const received = new Signal<RelayMessage>();
-    const stop = await r.subscribe((m) => received.push(m));
+    closing(await r.subscribe((m) => received.push(m)));
     await notifications.notify("rayfold", '{"from":"a","ref":999}'); // a row that was swept before b read it
     await notifications.notify("rayfold", '{"from":"a","change":{"keys":["Book:b1"],"ops":[]}}');
     await received.atLeast(1, "the readable message after the unreadable one");
     expect(received.items).toEqual([change("Book:b1")]);
     expect(errors).toHaveLength(1);
     expect((errors[0] as Error).message).toBe("rayfold relay: message 999 is gone from rayfold_relay");
-    await stop();
   });
 });

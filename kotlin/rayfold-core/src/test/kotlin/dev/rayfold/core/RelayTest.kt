@@ -18,6 +18,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -45,6 +46,13 @@ class RelayTest {
     private val key = "0123456789abcdef"
     private val viewer = obj("""{"id":"u1"}""")
     private val opened = obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":3},"meta":{"cost":1}}""")
+    private val servers = mutableListOf<RayfoldServer>()
+
+    /** Every server stops hearing the relay, so no subscription outlives its test. */
+    @AfterEach
+    fun stop() = runBlocking {
+        for (s in servers) withTimeout(5_000) { s.close() }
+    }
 
     private fun patch(stock: Int) = obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":$stock}}]}""")
 
@@ -78,7 +86,8 @@ class RelayTest {
                 },
             ),
         )
-        return Instance(RayfoldServer(ir, resolvers, relay = relay, onRelayError = onRelayError), reads, subscribed)
+        val server = RayfoldServer(ir, resolvers, relay = relay, onRelayError = onRelayError).also { servers.add(it) }
+        return Instance(server, reads, subscribed)
     }
 
     /** An op that stays open (a live query or a stream): [next] takes its next frame, bounded, and [stop] ends it. */

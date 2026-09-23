@@ -211,6 +211,59 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
     expect(rows[0]).toMatchObject({ authorId: "a3", stock: 0 });
     expect(log).toHaveLength(1);
   });
+
+  it("find, page and screen keep only the rows `where` names: a value by parameter, null as IS NULL", async () => {
+    const { store } = bookstore(counted);
+    const ids = (rows: Row[]) => rows.map((r) => r["id"]);
+    expect(ids(await store.find("Book", { authorId: "a1" }))).toEqual(["b1", "b4", "b6"]);
+    expect(ids(await store.find("Book", { authorId: "a1", stock: 4 }))).toEqual(["b4"]);
+    expect(ids(await store.find("Order", { customerId: null }))).toEqual(["o4"]);
+
+    const first = await store.page("Book", { first: 2 }, { authorId: "a1" });
+    expect([ids(first.items), first.cursor, first.hasMore, first.total]).toEqual([["b1", "b4"], "b4", true, 3]);
+    const rest = await store.page("Book", { first: 2, after: "b4" }, { authorId: "a1" });
+    expect([ids(rest.items), rest.cursor, rest.hasMore, rest.total]).toEqual([["b6"], "b6", false, 3]);
+    // past the last row the total comes from a second count, which must filter the same way
+    expect(await store.page("Book", { first: 2, after: "b6" }, { authorId: "a1" })).toEqual({ items: [], cursor: null, hasMore: false, total: 3 });
+
+    const shape = parseShapeText("{ id title }");
+    expect(await store.screen("Book", shape, { first: 5 }, { authorId: "a2" })).toEqual({
+      items: [{ id: "b2", title: "Kindred" }, { id: "b5", title: "Dawn" }],
+      cursor: "b5",
+      hasMore: false,
+      total: 2,
+    });
+    expect(await store.screen("Book", shape, { first: 5, after: "b5" }, { authorId: "a2" })).toEqual({ items: [], cursor: null, hasMore: false, total: 2 });
+    // `where` and the pushed-down read policy in one statement: u1 may not see the order without a customer, an admin may
+    expect((await store.screen("Order", parseShapeText("{ id }"), { first: 5 }, { customerId: null }, { viewer: { id: "u1" } })).total).toBe(0);
+    expect(await store.screen("Order", parseShapeText("{ id }"), { first: 5 }, { customerId: null }, { viewer: { id: "u9", role: "admin" } })).toEqual({
+      items: [{ id: "o4" }],
+      cursor: "o4",
+      hasMore: false,
+      total: 1,
+    });
+  });
+
+  it("guard: a `where` on a field the type does not have is refused before any statement is sent", async () => {
+    const { store } = bookstore(counted);
+    const refusal = "@rayfold/postgres: Book has no field colour";
+    await expect(store.find("Book", { colour: "red" })).rejects.toThrow(refusal);
+    await expect(store.page("Book", { first: 2 }, { colour: "red" })).rejects.toThrow(refusal);
+    await expect(store.screen("Book", parseShapeText("{ id }"), { first: 2 }, { colour: "red" })).rejects.toThrow(refusal);
+    expect(log).toEqual([]);
+  });
+
+  it("pagesByField pages every parent's rows from one cursor, with each parent's total over all its rows", async () => {
+    const { store } = bookstore(counted);
+    const pages = await store.pagesByField("Book", "authorId", ["a1", "a2", "a3", "a9"], { first: 1, after: "b2" });
+    expect(pages.map((p) => [p.items.map((b) => b["id"]), p.cursor, p.hasMore, p.total])).toEqual([
+      [["b4"], "b4", true, 3],
+      [["b5"], "b5", false, 2],
+      [["b3"], "b3", true, 2],
+      [[], null, false, 0],
+    ]);
+    expect(log).toHaveLength(1);
+  });
 });
 
 describe("read policies pushed into SQL (spec 06 §4)", () => {
@@ -275,6 +328,8 @@ describe("read policies pushed into SQL (spec 06 §4)", () => {
       "customerId in viewer.teams",
       `viewer.role == "admin" || customerId == viewer.id`,
       `customerId == "7"`,
+      `!(customerId == "7")`,
+      "!(total == viewer.limit)",
       "total == viewer.limit",
       "total != viewer.limit",
       "qty > viewer.min",

@@ -3,6 +3,8 @@ package dev.rayfold.spring.shop;
 import dev.rayfold.core.RayfoldServer;
 import dev.rayfold.core.RbCodec;
 import dev.rayfold.java.Rayfold;
+import kotlin.coroutines.EmptyCoroutineContext;
+import kotlinx.coroutines.BuildersKt;
 import kotlinx.serialization.json.Json;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
@@ -67,7 +70,10 @@ class WebSocketStarterTest {
         client.shutdownNow();
     }
 
-    /** Whole messages as they arrive: text as parsed JSON, binary as the list of RB frames it holds. */
+    /** The close the server sent, as the last thing a [Messages] queue holds. */
+    record Closed(int code, String reason) {}
+
+    /** Whole messages as they arrive: text as parsed JSON, binary as the list of RB frames it holds, and the close. */
     final class Messages implements WebSocket.Listener {
         final BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
         final RbCodec codec = new RbCodec(server.getIr());
@@ -95,6 +101,12 @@ class WebSocketStarterTest {
                 binary.reset();
             }
             ws.request(1);
+            return null;
+        }
+
+        @Override
+        public CompletionStage<?> onClose(WebSocket ws, int statusCode, String reason) {
+            queue.add(new Closed(statusCode, reason));
             return null;
         }
 
@@ -191,5 +203,41 @@ class WebSocketStarterTest {
             {"ops":[{"id":1,"op":"me"}]}""", true).get(5, TimeUnit.SECONDS);
         assertThat(m.next()).as("guard: rayfold.allowed-origins lets this page in").isEqualTo(json("""
             {"id":1,"data":"anonymous","meta":{"cost":1},"fin":true}"""));
+    }
+
+    /** A text message of [bytes] bytes: a batch the server can answer, padded with whitespace after it. */
+    static String padded(int bytes) {
+        String batch = """
+            {"ops":[{"id":1,"op":"me"}]}""";
+        return batch + " ".repeat(bytes - batch.length());
+    }
+
+    @Test
+    void aMessageOverMaxBodyBytesClosesTheSocketWith1009AndOneOfExactlyTheLimitIsAnswered() throws Exception {
+        int limit = 1024 * 1024; // rayfold.max-body-bytes, left at its default here
+        Messages m = new Messages();
+        WebSocket ws = open(m);
+        ws.sendText(padded(limit), true).get(5, TimeUnit.SECONDS);
+        assertThat(m.next()).as("guard: a message of exactly the limit").isEqualTo(json("""
+            {"id":1,"data":"anonymous","meta":{"cost":1},"fin":true}"""));
+        ws.sendText(padded(limit + 1), true).get(5, TimeUnit.SECONDS);
+        // the reason text is the container's own, so only the code is the contract
+        assertThat(m.next()).isInstanceOfSatisfying(Closed.class, c -> assertThat(c.code()).isEqualTo(1009));
+    }
+
+    /** Draining is for good: the context goes with this test, so the other tests on it get a server that is not. */
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void drainEndsALiveQueryAndThenClosesTheSocketAsAServerGoingAway() throws Exception {
+        Messages m = new Messages();
+        WebSocket ws = open(m);
+        ws.sendText("""
+            {"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}]}""", true).get(5, TimeUnit.SECONDS);
+        assertThat(m.next()).isEqualTo(json("""
+            {"id":1,"data":{"$type":"Book","id":"b1","stock":3},"meta":{"cost":1}}"""));
+        BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, done) -> server.drain(5_000L, done));
+        assertThat(m.next()).isEqualTo(json("""
+            {"id":1,"error":{"code":"unavailable","message":"The server is shutting down"},"fin":true}"""));
+        assertThat(m.next()).isEqualTo(new Closed(1001, "server shutting down"));
     }
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { MemoryUploadStore, createRayfoldServer, listen, ok } from "@rayfold/server";
+import { MemoryUploadStore, RayfoldError, createRayfoldServer, listen, ok, type UploadStore } from "@rayfold/server";
 import { RayfoldClient, RayfoldClientError } from "./client.ts";
 import { createFetchTransport, createLocalTransport } from "./transport.ts";
 
@@ -29,14 +29,15 @@ afterEach(async () => {
   );
 });
 
-async function serve(opts: { maxBytes?: number; viewerRequired?: boolean; who?: unknown } = {}) {
+async function serve(opts: { maxBytes?: number; viewerRequired?: boolean; who?: unknown; store?: UploadStore } = {}) {
   const store = new MemoryUploadStore();
+  const held: UploadStore = opts.store ?? store;
   const server = createRayfoldServer({
     schema: SCHEMA,
     resolvers: {
       Command: {
         setAvatar: async ({ userId, upload }: { userId: string; upload: string }) => {
-          const kept = await store.open(upload);
+          const kept = await held.open(upload);
           if (!kept) return ok({ id: userId, bytes: 0, name: null });
           let size = 0;
           const reader = kept.body.getReader();
@@ -45,7 +46,7 @@ async function serve(opts: { maxBytes?: number; viewerRequired?: boolean; who?: 
             if (done) break;
             size += value?.length ?? 0;
           }
-          await store.delete(upload);
+          await held.delete(upload);
           return ok({ id: userId, bytes: size, name: kept.upload.name ?? null });
         },
       },
@@ -53,7 +54,7 @@ async function serve(opts: { maxBytes?: number; viewerRequired?: boolean; who?: 
   });
   const http = await listen(server, 0, {
     viewer: () => ("who" in opts ? opts.who : viewer),
-    uploads: { store, ...(opts.maxBytes !== undefined ? { maxBytes: opts.maxBytes } : {}), ...(opts.viewerRequired !== undefined ? { viewerRequired: opts.viewerRequired } : {}) },
+    uploads: { store: held, ...(opts.maxBytes !== undefined ? { maxBytes: opts.maxBytes } : {}), ...(opts.viewerRequired !== undefined ? { viewerRequired: opts.viewerRequired } : {}) },
   });
   open.push(http);
   const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/rayfold`;
@@ -97,6 +98,20 @@ describe("client.upload", () => {
     const anonymous = await serve({ who: null });
     const refused = await anonymous.client.upload(new Uint8Array(8)).catch((e: unknown) => e);
     expect((refused as RayfoldClientError).code).toBe("unauthenticated");
+    expect(refused as RayfoldClientError).toMatchObject({ retryable: false });
+
+    // a store that is down for now: the route answers 503, and that is worth trying again
+    const down: UploadStore = {
+      put: async () => {
+        throw new RayfoldError("unavailable", "The upload store is not reachable");
+      },
+      open: async () => undefined,
+      delete: async () => {},
+    };
+    const unavailable = await serve({ store: down });
+    const later = await unavailable.client.upload(new Uint8Array(8)).catch((e: unknown) => e);
+    expect(later).toBeInstanceOf(RayfoldClientError);
+    expect({ ...(later as RayfoldClientError), message: (later as Error).message }).toEqual({ name: "RayfoldClientError", code: "unavailable", type: undefined, data: undefined, path: undefined, retryable: true, message: "The upload store is not reachable" });
   });
 
   it("says plainly when the transport has nowhere to send bytes", async () => {

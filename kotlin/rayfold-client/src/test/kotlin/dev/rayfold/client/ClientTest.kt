@@ -2,6 +2,7 @@ package dev.rayfold.client
 
 import com.sun.net.httpserver.HttpServer
 import dev.rayfold.core.Code
+import dev.rayfold.core.CommandResult
 import dev.rayfold.core.HttpOptions
 import dev.rayfold.core.Instrumentation
 import dev.rayfold.core.OpInfo
@@ -43,6 +44,8 @@ import kotlinx.serialization.json.put
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -77,6 +80,10 @@ class ClientTest {
         command buy(id: ID, qty: Int): Book throws OutOfStock
         command addBook(input: NewBook): Book
         stream ticks(n: Int): Int
+        entity Note { id: ID text: String version: Int @version }
+        query note(id: ID): Note?
+        command restock(id: ID, qty: Int): Book
+        command editNote(id: ID, text: String): Note
     """
 
     private val authors = mapOf(
@@ -85,6 +92,10 @@ class ClientTest {
     )
     private val books = ConcurrentHashMap<String, JsonObject>()
     private val authorLoads = AtomicInteger()
+    private val notes = ConcurrentHashMap<String, JsonObject>()
+
+    /** The Rayfold-Safe header of every batch request, in order; "absent" when it was not sent. */
+    private val safeHeaders = CopyOnWriteArrayList<String>()
     private lateinit var server: RayfoldServer
     private lateinit var http: HttpServer
     private lateinit var ws: RayfoldWebSocket.Listener
@@ -105,18 +116,21 @@ class ClientTest {
     private fun JsonObject.str(k: String) = this[k]?.jsonPrimitive?.content ?: error("no $k in $this")
     private fun JsonElement.stock() = jsonObject["stock"]?.jsonPrimitive?.int ?: error("no stock in $this")
     private fun book(id: String, title: String, stock: Int, authorId: String) = buildJsonObject { put("id", id); put("title", title); put("stock", stock); put("authorId", authorId) }
+    private fun note(id: String, text: String, version: Int) = buildJsonObject { put("id", id); put("text", text); put("version", version) }
     private fun viewerOf(user: String?): JsonElement = user?.let { u -> buildJsonObject { put("id", u) } } ?: JsonNull
 
     @BeforeEach
     fun start() {
         books["b1"] = book("b1", "The Dispossessed", 3, "a1")
         books["b2"] = book("b2", "Kindred", 5, "a2")
+        notes["n1"] = note("n1", "draft", 1)
         server = RayfoldServer(
             SchemaText.load(schema).ir,
             Resolvers(
                 queries = mapOf(
                     "book" to { args, _ -> books[args.str("id")] },
                     "books" to { _, _ -> JsonArray(books.values.sortedBy { it.str("id") }) },
+                    "note" to { args, _ -> notes[args.str("id")] },
                 ),
                 commands = mapOf(
                     "buy" to { args, _ ->
@@ -132,13 +146,30 @@ class ClientTest {
                         val id = "b${books.size + 1}"
                         book(id, input.str("title"), 0, input.str("authorId")).also { books[id] = it }
                     },
+                    // answers with a patch that marks every cached `book` result stale, as a change the server cannot name would
+                    "restock" to { args, _ ->
+                        val id = args.str("id")
+                        val b = books[id] ?: throw RayfoldException(Code.NOT_FOUND, "No book $id")
+                        val next = JsonObject(b + ("stock" to JsonPrimitive((b["stock"]?.jsonPrimitive?.int ?: 0) + (args["qty"]?.jsonPrimitive?.int ?: 0))))
+                        books[id] = next
+                        CommandResult(next, patch = listOf(buildJsonObject { put("invOp", JsonArray(listOf(JsonPrimitive("book")))) }))
+                    },
+                    "editNote" to { args, ctx ->
+                        val id = args.str("id")
+                        val n = notes[id] ?: throw RayfoldException(Code.NOT_FOUND, "No note $id")
+                        ctx.checkVersion("Note:$id", n["version"], n)
+                        note(id, args.str("text"), (n["version"]?.jsonPrimitive?.int ?: 0) + 1).also { notes[id] = it }
+                    },
                 ),
                 streams = mapOf("ticks" to { args, _ -> ticks(args["n"]?.jsonPrimitive?.int ?: 0) }),
                 fields = mapOf("Book" to mapOf("author" to { parents, _, _ -> authorLoads.incrementAndGet(); parents.map { p -> authors[p.str("authorId")] } })),
             ),
             instrumentation = bookQueryEnds,
         )
-        http = RayfoldHttp(server, HttpOptions()) { ex -> viewerOf(ex.requestHeaders.getFirst("X-User")) }.start(0)
+        http = RayfoldHttp(server, HttpOptions()) { ex ->
+            safeHeaders.add(ex.requestHeaders.getFirst("Rayfold-Safe") ?: "absent")
+            viewerOf(ex.requestHeaders.getFirst("X-User"))
+        }.start(0)
         url = "http://127.0.0.1:${http.address.port}/rayfold"
         ws = RayfoldWebSocket(server) { req -> viewerOf(req.header("x-user")) }.start(0)
         wsUri = URI("ws://127.0.0.1:${ws.port}/rayfold/ws")
@@ -184,6 +215,58 @@ class ClientTest {
             Json.parseToJsonElement("""{"rayfold":"0.1","ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id title author { name } }"}],"meta":{"client":"test/1","deadline":5000}}"""),
             t.sent.single(),
         )
+    }
+
+    private fun stocked(stock: Int) = Json.parseToJsonElement("""{"${'$'}type":"Book","id":"b1","stock":$stock}""")
+
+    @Test
+    fun `Policy CACHE answers a fresh result without a request, and refetches once a patch made it stale`() = bounded {
+        val t = http("alice")
+        val client = RayfoldClient(t)
+        assertEquals(stocked(3), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE), "a miss asks the server")
+        assertEquals(1, t.sent.size)
+        books["b1"] = book("b1", "The Dispossessed", 7, "a1") // changed behind the client's back
+        assertEquals(stocked(3), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE), "a fresh hit is the cached answer")
+        assertEquals(1, t.sent.size, "and costs no request")
+        // guard: the same query under NETWORK asks anyway
+        assertEquals(stocked(7), client.query("book", args("id" to "b1"), "{ id stock }"))
+        assertEquals(2, t.sent.size)
+
+        // restock's patch invalidates the `book` op; its own result comes back in the same response
+        assertEquals(stocked(8), client.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }"))
+        assertEquals(3, t.sent.size)
+        books["b1"] = book("b1", "The Dispossessed", 9, "a1")
+        assertEquals(stocked(9), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE), "a stale result is fetched again")
+        assertEquals(4, t.sent.size)
+        assertEquals(listOf("book"), t.ops(3))
+    }
+
+    @Test
+    fun `batches of only known queries go out as safe requests, and anything else does not`() = bounded {
+        val client = RayfoldClient(http("alice"), ClientOptions(queries = setOf("book")))
+        client.query("book", args("id" to "b1"), "{ id }")
+        client.query("books", shape = "{ id }") // not known as a query yet
+        client.markQueries("books")
+        client.query("books", shape = "{ id }")
+        // guard: a batch holding a command is never marked safe
+        val b = client.batch()
+        b.query("book", args("id" to "b1"), "{ id }")
+        b.command("buy", args("id" to "b1", "qty" to 1), "{ id }")
+        b.run()
+        assertEquals(listOf("true", "absent", "true", "absent"), safeHeaders.toList())
+    }
+
+    @Test
+    fun `a version conflict puts the server's current entity into the cache before it fails the command`() = bounded {
+        val client = RayfoldClient(http("alice"))
+        client.query("note", args("id" to "n1"), "{ id text version }")
+        notes["n1"] = note("n1", "theirs", 2) // another writer got there first
+        val e = assertFailsWith<RayfoldClientException> {
+            client.command("editNote", args("id" to "n1", "text" to "mine"), "{ id text version }", ifVersion = JsonPrimitive(1))
+        }
+        assertEquals("failed_precondition" to "VersionConflict", e.code to e.type)
+        assertEquals<JsonElement?>(Json.parseToJsonElement("""{"${'$'}type":"Note","id":"n1","text":"theirs","version":2}"""), client.cache.get("Note:n1"))
+        assertEquals(note("n1", "theirs", 2), notes["n1"], "the refused edit changed nothing")
     }
 
     @Test
@@ -296,6 +379,11 @@ class ClientTest {
         }
     }
 
+    /**
+     * The JDK client's path only. The HttpURLConnection path drops the request through disconnect(), which closes the
+     * socket at once on Android; the JVM's own HttpURLConnection waits for the read blocked on it (see the KDoc on
+     * HttpTransport.viaUrlConnection), so on this JVM that path cannot show a prompt close. Its read timeout is below.
+     */
     @Test
     fun `cancelling a response the server keeps open closes its connection`() = runBlocking {
         SilentStream(ITEM).use { silent ->
@@ -314,14 +402,24 @@ class ClientTest {
         }
     }
 
-    @Test
-    fun `a read timeout fails a response that goes quiet, and drops its connection`() = runBlocking {
+    /** Both paths: the JDK client's, and HttpURLConnection's, the one Android takes. */
+    @ParameterizedTest(name = "jdkClient = {0}")
+    @ValueSource(booleans = [true, false])
+    fun `a read timeout fails a response that goes quiet, and drops its connection`(jdkClient: Boolean) = runBlocking {
         SilentStream(ITEM).use { silent ->
-            val failure = withTimeout(5_000) {
-                runCatching { HttpTransport(silent.url, { emptyMap() }, 10_000, 100).send(NO_OPS, false).collect {} }.exceptionOrNull()
+            // a scope of its own: without a timeout, HttpURLConnection's disconnect blocks behind the read it would
+            // end, so a collection cancelled on this thread would hold it; this way the test fails instead of hanging
+            val scope = CoroutineScope(Dispatchers.IO)
+            try {
+                val collected = scope.async {
+                    runCatching { HttpTransport(silent.url, { emptyMap() }, 10_000, 100, jdkClient).send(NO_OPS, false).collect {} }.exceptionOrNull()
+                }
+                val failure = withTimeoutOrNull(5_000) { collected.await() }
+                assertIs<SocketTimeoutException>(failure, "the read timed out within 5 s")
+                assertTrue(silent.closed.await(5, TimeUnit.SECONDS), "the connection was dropped")
+            } finally {
+                scope.cancel()
             }
-            assertIs<SocketTimeoutException>(failure)
-            assertTrue(silent.closed.await(5, TimeUnit.SECONDS), "the connection was dropped")
         }
     }
 

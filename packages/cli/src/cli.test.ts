@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { generateGraphql, loadSchema } from "@rayfold/schema";
+import { generateGraphql, generateJava, generateKotlin, generateTypeScript, loadSchema } from "@rayfold/schema";
 import { MCP_PROTOCOL_VERSION } from "@rayfold/server";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { bounded } from "../../../e2e/wait.ts";
@@ -334,6 +334,128 @@ describe("rayfold gen graphql", { timeout: 60_000 }, () => {
     writeFileSync(join(work, "roots.rayfold"), "entity Query { id: ID }\nquery q: Query\n");
     expect(await rayfold("gen", "graphql", "roots.rayfold", "--out", "roots.graphql")).toEqual({ status: 1, stdout: "", stderr: "Query is a type in this schema, and GraphQL needs that name for the query root type\n" });
     expect(existsSync(join(work, "roots.graphql"))).toBe(false);
+  });
+});
+
+const LIBRARY = [
+  "entity Author { id: ID name: String }",
+  "entity Book @allow(read: published == true) {",
+  "  id: ID",
+  "  title: String",
+  "  published: Boolean",
+  "  author: Author",
+  "  editor: Author? @load(single)",
+  "  blurb: String? @lazy",
+  "  notes: String? @allow(read: viewer != null)",
+  "}",
+  "query book(id: ID): Book? @allow(read: viewer != null)",
+  "command retitle(id: ID, title: String): Book",
+  "view Book.card = { id title }",
+];
+
+describe("rayfold gen ts|kotlin|java", { timeout: 60_000 }, () => {
+  const ir = () => loadSchema(LIBRARY.join("\n") + "\n").ir;
+
+  it("gen ts prints the TypeScript types on stdout", async () => {
+    expect(await rayfold("gen", "ts", file("lib.rayfold", LIBRARY))).toEqual({ status: 0, stdout: generateTypeScript(ir()), stderr: "" });
+  });
+
+  it("gen kotlin prints data classes in the default package, or the one --package names", async () => {
+    file("lib.rayfold", LIBRARY);
+    const kotlin = generateKotlin(ir(), { pkg: "dev.rayfold.generated" });
+    expect(kotlin.split("\n")[1]).toBe("package dev.rayfold.generated");
+    expect(await rayfold("gen", "kotlin", "lib.rayfold")).toEqual({ status: 0, stdout: kotlin, stderr: "" });
+    expect(await rayfold("gen", "kotlin", "lib.rayfold", "--package", "shop.api")).toEqual({ status: 0, stdout: generateKotlin(ir(), { pkg: "shop.api" }), stderr: "" });
+  });
+
+  it("gen java honours --package and --class, and --out writes the file instead", async () => {
+    file("lib.rayfold", LIBRARY);
+    const java = generateJava(ir(), { pkg: "shop.api", className: "Library" });
+    expect(await rayfold("gen", "java", "lib.rayfold", "--package", "shop.api", "--class", "Library")).toEqual({ status: 0, stdout: java, stderr: "" });
+    expect(await rayfold("gen", "java", "lib.rayfold", "--package", "shop.api", "--class", "Library", "--out", "Library.java")).toEqual({ status: 0, stdout: "wrote Library.java\n", stderr: "" });
+    expect(readFileSync(join(work, "Library.java"), "utf8")).toBe(java);
+  });
+
+  it("refuses a target it does not know", async () => {
+    expect(await rayfold("gen", "rust", file("lib.rayfold", LIBRARY))).toEqual({ status: 1, stdout: "", stderr: "Unsupported target rust (ts, kotlin, java, graphql)\n" });
+  });
+});
+
+describe("rayfold hash, explain and shapes", { timeout: 60_000 }, () => {
+  it("hash prints the schema hash and nothing else", async () => {
+    expect(await rayfold("hash", file("lib.rayfold", LIBRARY))).toEqual({ status: 0, stdout: `${hashOf(LIBRARY)}\n`, stderr: "" });
+  });
+
+  it("explain plans the default shape: cost, pushed-down policy, field policy", async () => {
+    expect(await rayfold("explain", file("lib.rayfold", LIBRARY), "book")).toEqual({
+      status: 0,
+      stdout: [
+        "query book(): cost 1, depth 1, 5 fields",
+        "shape: { blurb id notes published title }",
+        "policy: op-level policy",
+        "plan:",
+        "level 0: Book? [policy pushed down: this.published == true]",
+        "  id: property",
+        "  title: property",
+        "  published: property",
+        "  blurb: property [deferred]",
+        "  notes: property [field policy]",
+        "",
+      ].join("\n"),
+      stderr: "",
+    });
+  });
+
+  it("explain plans a --shape, with a loader per level", async () => {
+    const run = await rayfold("explain", file("lib.rayfold", LIBRARY), "book", "--shape", "{ title author { name } editor { name } }");
+    expect(run).toEqual({
+      status: 0,
+      stdout: [
+        "query book(): cost 3, depth 2, 5 fields",
+        "shape: { author { name } editor { name } title }",
+        "policy: op-level policy",
+        "plan:",
+        "level 0: Book? [policy pushed down: this.published == true]",
+        "  title: property",
+        "  author: loader (batch, 1 call)",
+        "  level 1: Author",
+        "    name: property",
+        "  editor: loader (single, per parent)",
+        "  level 1: Author?",
+        "    name: property",
+        "",
+      ].join("\n"),
+      stderr: "",
+    });
+  });
+
+  it("guard - a command without a policy says none", async () => {
+    const run = await rayfold("explain", file("lib.rayfold", LIBRARY), "retitle", "--shape", "{ id }");
+    expect(run).toEqual({
+      status: 0,
+      stdout: ["command retitle(): cost 1, depth 1, 1 field", "shape: { id }", "policy: none", "plan:", "level 0: Book [policy pushed down: this.published == true]", "  id: property", ""].join("\n"),
+      stderr: "",
+    });
+  });
+
+  it("explain refuses an operation the schema does not have", async () => {
+    expect(await rayfold("explain", file("lib.rayfold", LIBRARY), "nope")).toEqual({ status: 1, stdout: "", stderr: "Unknown operation nope\n" });
+  });
+
+  it("shapes prints one id per distinct canonical shape, skipping blank lines", async () => {
+    file("lib.rayfold", LIBRARY);
+    const run = await rayfold("shapes", "lib.rayfold", file("shapes.txt", ["{ id title }", "", "{ title id }", "{ ...Book.card author { name } }"]));
+    expect(run).toEqual({
+      status: 0,
+      stdout: [
+        "{",
+        '  "sha256:8a8a5652e83f7c956b9e4fc03e448cf08471167eecee40ea410460c7e17efa07": "{ id title }",',
+        '  "sha256:eeb499070703347b22ad0472013d1cb915ba512c63c1442116735fd38c69950f": "{ author { name } id title }"',
+        "}",
+        "",
+      ].join("\n"),
+      stderr: "",
+    });
   });
 });
 

@@ -278,7 +278,7 @@ class PgRelayTest {
         assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":3},"meta":{"cost":1}}"""), live.next())
         withTimeout(5_000) { subscribed.await() }
 
-        val ok = a.collect(obj("""{"ops":[{"id":1,"op":"restock","args":{"id":"b1","qty":2},"key":"0123456789abcdef"}]}"""), viewer).single()
+        val ok = withTimeout(5_000) { a.collect(obj("""{"ops":[{"id":1,"op":"restock","args":{"id":"b1","qty":2},"key":"0123456789abcdef"}]}"""), viewer) }.single()
         assertEquals(JsonPrimitive(5), (ok["ok"] as? JsonObject)?.get("stock"))
         assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":5}}]}"""), live.next(), "b's live query hearing a's change")
         assertEquals(obj("""{"id":1,"item":{"bookId":"b1","stock":5}}"""), stream.next(), "b's stream hearing a's event")

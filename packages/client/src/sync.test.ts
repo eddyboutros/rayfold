@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RequestEnvelope } from "@rayfold/server";
-import { Signal } from "../../../e2e/wait.ts";
+import { Signal, bounded } from "../../../e2e/wait.ts";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { RayfoldCache } from "./cache.ts";
 import { RayfoldClient, RayfoldClientError, type ClientOptions } from "./client.ts";
@@ -16,6 +16,7 @@ beforeEach(() => {
   bs = createBookstore();
   keyN = 0;
 });
+afterEach(() => vi.unstubAllGlobals());
 
 /** A network that is up, down (nothing reaches the server), lossy (the server runs the batch but the answer is lost), or held at a gate. */
 function network(inner: Transport) {
@@ -193,6 +194,38 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     expect(net.sent.map((e) => e.ops[0]!.key)).toEqual(["sync-key-00000001"]);
     expect(bs.store.books.get("b1")!.stock).toBe(6);
     expect(saved.has("orders")).toBe(false);
+  });
+
+  it("the browser coming back online sends the waiting commands; guard: drainOnReconnect false listens for nothing", async () => {
+    // Node has no window: a stand-in with a browser's addEventListener
+    const window = new EventTarget();
+    const listening: string[] = [];
+    vi.stubGlobal("addEventListener", (type: string, fn: () => void) => {
+      listening.push(type);
+      window.addEventListener(type, fn);
+    });
+    const { net, transport } = network(createLocalTransport(bs.server, () => admin));
+    const manual = clientOn(transport, { offline: { drainOnReconnect: false } });
+    const c = clientOn(transport, { offline: {} });
+    expect(listening).toEqual(["online"]);
+    const events = new Signal<QueueEvent>();
+    const manualEvents = new Signal<QueueEvent>();
+    c.onQueue((e) => events.push(e));
+    manual.onQueue((e) => manualEvents.push(e));
+    net.mode = "down";
+    const restocked = c.command("restock", { bookId: "b1", qty: 1 }, { shape: "{ id stock }" });
+    const held = manual.command("restock", { bookId: "b2", qty: 1 }, { shape: "{ id stock }" });
+    await events.atLeast(1, "queued while offline");
+    await manualEvents.atLeast(1, "the manual client's command queued while offline");
+    net.mode = "up";
+    window.dispatchEvent(new Event("online"));
+    expect(await bounded(restocked, "sent on the online event")).toEqual({ $type: "Book", id: "b1", stock: 6 });
+    expect(events.items.map((e) => e.type)).toEqual(["queued", "sent"]);
+    expect(manual.queued.map((q) => q.args["bookId"])).toEqual(["b2"]);
+    // the manual client sends only when told to
+    expect(await manual.drain()).toBe(0);
+    expect(await held).toEqual({ $type: "Book", id: "b2", stock: 3 });
+    expect(net.sent.map((e) => e.ops[0]!.args?.["bookId"])).toEqual(["b1", "b2"]);
   });
 
   it("guard: without `offline`, a failed network rejects as before, rolls the prediction back, and queues nothing", async () => {

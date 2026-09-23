@@ -7,11 +7,12 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import fc from "fast-check";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { RbCodec } from "@rayfold/rb";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { listen } from "./http.ts";
 import type { Frame, RequestEnvelope } from "./protocol.ts";
+import { bounded } from "../../../e2e/wait.ts";
 
 const runs = Number(process.env["FUZZ_RUNS"] ?? 200);
 const params = { numRuns: runs, seed: process.env["FUZZ_SEED"] ? Number(process.env["FUZZ_SEED"]) : 20260911 };
@@ -43,22 +44,36 @@ const internal = (frames: Frame[]) => frames.filter((f) => "error" in f && f.err
 
 describe("fuzzing what a client can send", () => {
   it("any envelope gets frames and never an internal error", async () => {
-    await fc.assert(
-      fc.asyncProperty(envelope, fc.constantFrom(...viewers), async (env, viewer) => {
-        const ac = new AbortController();
-        const frames: Frame[] = [];
-        const done = (async () => {
-          for await (const f of server.execute(env as RequestEnvelope, { viewer, signal: ac.signal })) {
-            frames.push(f);
-            // a live query stays open: its first frame is enough
-            if ((env as RequestEnvelope | null)?.ops?.some?.((o) => o && typeof o === "object" && o.live)) ac.abort();
-          }
-        })();
-        await done;
-        expect(internal(frames), JSON.stringify(env)).toEqual([]);
-      }),
-      params,
-    );
+    // A stream that got valid arguments stays open and says nothing until an event comes, so its subscribing is the
+    // signal to end the batch, as a live query's first frame is.
+    let subscribed = () => {};
+    const on = server.events.on.bind(server.events);
+    const spy = vi.spyOn(server.events, "on").mockImplementation((name, fn) => {
+      const off = on(name, fn);
+      subscribed();
+      return off;
+    });
+    try {
+      await fc.assert(
+        fc.asyncProperty(envelope, fc.constantFrom(...viewers), async (env, viewer) => {
+          const ac = new AbortController();
+          subscribed = () => ac.abort();
+          const frames: Frame[] = [];
+          const done = (async () => {
+            for await (const f of server.execute(env as RequestEnvelope, { viewer, signal: ac.signal })) {
+              frames.push(f);
+              // a live query stays open: its first frame is enough
+              if ((env as RequestEnvelope | null)?.ops?.some?.((o) => o && typeof o === "object" && o.live)) ac.abort();
+            }
+          })();
+          await bounded(done, `the batch ending: ${JSON.stringify(env)}`);
+          expect(internal(frames), JSON.stringify(env)).toEqual([]);
+        }),
+        params,
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("RB carries any JSON value unchanged, and any bytes decode or fail with the decoder's own error", () => {

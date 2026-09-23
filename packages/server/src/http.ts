@@ -96,7 +96,7 @@ export async function readiness(server: RayfoldServer, opts: HttpOptions = {}): 
 /** How much of an over-limit body is drained (so the refusal can be read) before the socket is dropped. */
 const DRAIN_LIMIT = 1_048_576;
 
-function readBody(req: IncomingMessage, max: number): Promise<Buffer> {
+export function readBody(req: IncomingMessage, max: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;

@@ -46,6 +46,10 @@ import kotlin.time.Duration.Companion.seconds
  * stops listeners and closes sockets, and every wait is bounded (5 s HTTP timeouts, runTest's 5 s, joins).
  */
 class SecurityTest {
+    private companion object {
+        const val MAX_REQ_TIME = "sun.net.httpserver.maxReqTime"
+    }
+
     private val fixture = Fixtures.load("core/03-pipelining.json")
     private val ir = Fixtures.ir(fixture)
     private val u1 = obj("""{"id":"u1","role":"customer"}""")
@@ -62,6 +66,9 @@ class SecurityTest {
         sockets.forEach { runCatching { it.close() } }
         started.forEach { it.stop(0) }
         client.shutdownNow()
+        // the JDK reads its request timer from this JVM-wide property once, when its server class loads, so which test
+        // ran first would decide it for all of them; build.gradle.kts pins it, and a test that moves it fails here
+        assertEquals("2", System.getProperty(MAX_REQ_TIME), "the JVM-wide request timer was changed")
     }
 
     // ------------------------------------------------------------------ helpers
@@ -941,7 +948,7 @@ class SecurityTest {
 
     @Test
     fun `H5 the server drops a client that never finishes its request, freeing the worker`() {
-        assertEquals("2", System.getProperty("sun.net.httpserver.maxReqTime"), "build.gradle.kts sets the JDK request timer for tests")
+        assertEquals("2", System.getProperty(MAX_REQ_TIME), "build.gradle.kts sets the JDK request timer for tests")
         val s = serve(HttpOptions(threads = 1))
         val stalled = rawSocket(s, "POST /rayfold HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{\"ops\":")
         // bounded by soTimeout (5 s): a SocketTimeoutException is not a SocketException, so a server that never drops it fails here
@@ -949,6 +956,20 @@ class SecurityTest {
         assertTrue(dropped, "the server closed the stalled connection")
         val res = post(s, bookQuery)
         assertEquals(200, res.statusCode(), "the only worker serves the next client")
+    }
+
+    /**
+     * requestTimeoutSeconds is JVM-wide (see its KDoc): the first start sets the property only when nothing has, so a
+     * later server with another value does not move the timer under the servers already running.
+     */
+    @Test
+    fun `H5 a server started with another request timeout leaves the JVM-wide timer as it was`() {
+        try {
+            serve(HttpOptions(requestTimeoutSeconds = 99))
+            assertEquals("2", System.getProperty(MAX_REQ_TIME))
+        } finally {
+            System.setProperty(MAX_REQ_TIME, "2") // so a failure here does not leak into the tests after it
+        }
     }
 
     @Test

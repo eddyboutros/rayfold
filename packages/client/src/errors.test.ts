@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Signal } from "../../../e2e/wait.ts";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { RayfoldClient, RayfoldClientError } from "./client.ts";
@@ -13,6 +13,7 @@ beforeEach(() => {
   bs = createBookstore();
   client = new RayfoldClient({ transport: createLocalTransport(bs.server, () => ({ id: "u1", role: "customer" })) });
 });
+afterEach(() => vi.restoreAllMocks());
 
 /** A transport whose every request waits for `release`, then fails as a lost connection would. */
 function gatedOffline(): { transport: Transport; release: () => void } {
@@ -29,8 +30,19 @@ function gatedOffline(): { transport: Transport; release: () => void } {
   };
 }
 
-/** One event-loop turn: every promise reaction queued so far has run. Not a timer on the clock. */
-const settle = () => new Promise<void>((r) => setImmediate(r));
+/** Counts live subscriptions the server drops from its change bus. */
+function unsubscribes(): Signal<"off"> {
+  const log = new Signal<"off">();
+  const subscribe = bs.server.changes.subscribe.bind(bs.server.changes);
+  vi.spyOn(bs.server.changes, "subscribe").mockImplementation((fn) => {
+    const off = subscribe(fn);
+    return () => {
+      off();
+      log.push("off");
+    };
+  });
+  return log;
+}
 
 describe("watch() reports failures to onError", () => {
   it("a rejected initial fetch reaches onError as a RayfoldClientError, and fn is never called", async () => {
@@ -94,17 +106,24 @@ describe("live() reports failures to onError", () => {
   });
 
   it("guard: unsubscribing aborts the stream without reporting the abort as an error", async () => {
+    const offs = unsubscribes();
     const stock = new Signal<number>();
+    const sibling = new Signal<number>();
     const errors: unknown[] = [];
     const stop = client.live<{ stock: number }>("book", { id: "b1" }, { shape: "{ id stock }" }, (b) => stock.push(b.stock), (e) => errors.push(e));
+    const stopSibling = client.live<{ stock: number }>("book", { id: "b1" }, { shape: "{ id stock }" }, (b) => sibling.push(b.stock));
     await stock.atLeast(1, "initial live data");
+    await sibling.atLeast(1, "sibling's initial live data");
     await client.command("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] } });
     await stock.atLeast(2, "pushed change");
     stop();
-    await settle();
+    await offs.atLeast(1, "server dropped the stopped live op");
     await client.command("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] } });
-    await settle();
-    expect(stock.items).toHaveLength(2);
+    // the sibling on the same book seeing the second change is the point by which the stopped one would have too
+    await sibling.until((xs) => xs.at(-1) === 3, "sibling saw the second change");
+    expect(sibling.items).toEqual([5, 4, 3]);
+    expect(stock.items).toEqual([5, 4]);
     expect(errors).toEqual([]);
+    stopSibling();
   });
 });

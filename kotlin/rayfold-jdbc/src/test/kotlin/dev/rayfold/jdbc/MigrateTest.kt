@@ -34,36 +34,49 @@ class MigrateTest {
         keepAlive.createStatement().use { it.execute("CREATE DOMAIN jsonb AS JSON") }
     }
 
+    /** Every real connection a [refusing] proxy opened, to see that migrate() gave each one back. */
+    private val opened = CopyOnWriteArrayList<Connection>()
+
     @AfterEach
     fun close() {
-        keepAlive.close()
+        try {
+            assertEquals(0, opened.count { !it.isClosed }, "every connection migrate() took was closed")
+        } finally {
+            opened.forEach { it.close() }
+            keepAlive.close()
+        }
     }
 
     /** Every DDL executed on the connection, in order. */
     private val executed = CopyOnWriteArrayList<String>()
 
-    /** A real H2 connection whose statements refuse, one each, with the SQL states in [refusals] before running. */
-    private fun refusing(refusals: ArrayDeque<String>): Connection = Proxy.newProxyInstance(MigrateTest::class.java.classLoader, arrayOf(Connection::class.java)) { _, method, args ->
-        val real = DriverManager.getConnection(url)
-        val result = try {
-            method.invoke(real, *(args ?: emptyArray()))
-        } catch (e: InvocationTargetException) {
-            throw e.targetException
-        }
-        if (method.name != "createStatement") return@newProxyInstance result
-        val statement = result as Statement
-        Proxy.newProxyInstance(MigrateTest::class.java.classLoader, arrayOf(Statement::class.java)) { _, m, a ->
-            if (m.name == "execute") {
-                executed.add(a?.get(0) as String)
-                refusals.removeFirstOrNull()?.let { state -> throw SQLException("another session got there first", state) }
-            }
-            try {
-                m.invoke(statement, *(a ?: emptyArray()))
+    /**
+     * One real H2 connection whose statements refuse, one each, with the SQL states in [refusals] before running. Every
+     * call, close() included, goes to that one connection.
+     */
+    private fun refusing(refusals: ArrayDeque<String>): Connection {
+        val real = DriverManager.getConnection(url).also { opened.add(it) }
+        return Proxy.newProxyInstance(MigrateTest::class.java.classLoader, arrayOf(Connection::class.java)) { _, method, args ->
+            val result = try {
+                method.invoke(real, *(args ?: emptyArray()))
             } catch (e: InvocationTargetException) {
                 throw e.targetException
             }
-        } as Statement
-    } as Connection
+            if (method.name != "createStatement") return@newProxyInstance result
+            val statement = result as Statement
+            Proxy.newProxyInstance(MigrateTest::class.java.classLoader, arrayOf(Statement::class.java)) { _, m, a ->
+                if (m.name == "execute") {
+                    executed.add(a?.get(0) as String)
+                    refusals.removeFirstOrNull()?.let { state -> throw SQLException("another session got there first", state) }
+                }
+                try {
+                    m.invoke(statement, *(a ?: emptyArray()))
+                } catch (e: InvocationTargetException) {
+                    throw e.targetException
+                }
+            } as Statement
+        } as Connection
+    }
 
     private val silent = object : Notifications {
         override suspend fun listen(channel: String, onPayload: (String) -> Unit): suspend () -> Unit = {}
