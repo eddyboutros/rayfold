@@ -415,7 +415,7 @@ class BatchRunner(
             raw?.get("deadline")?.let { d -> if (d !is JsonNull && deadlineOf(d) == null) throw RayfoldException(Code.INVALID_ARGUMENT, "ops[$i].deadline: $DEADLINE_RULE") }
             val resolved = views.resolveRequestShape(req.shape, op.returns, options.trustedShapes)
             p.shape = resolved.shape
-            val args = if (p.deps.isEmpty()) Args.coerce(ir, op.args, req.args, "${op.name}()").also { p.args = it } else req.args
+            val args = if (p.deps.isEmpty()) Args.coerce(ir, op.args, req.args, "${op.name}()", op.returns).also { p.args = it } else req.args
             val est = cost.estimate(op, args, p.shape, req.vars)
             if (est.depth > options.maxDepth) throw RayfoldException(Code.RESOURCE_EXHAUSTED, "Shape depth ${est.depth} exceeds ${options.maxDepth}")
             if (est.fields > options.maxFields) throw RayfoldException(Code.RESOURCE_EXHAUSTED, "Shape selects ${est.fields} fields, max ${options.maxFields}")
@@ -482,7 +482,7 @@ class BatchRunner(
         return try {
             val args = p.args ?: run {
                 val rawArgs = Args.resolveRefs(p.req.args, { opId, path -> Args.getPath(results[opId], path) }, "ops.$id.args") as JsonObject
-                Args.coerce(ir, p.op.args, rawArgs, "${p.op.name}()")
+                Args.coerce(ir, p.op.args, rawArgs, "${p.op.name}()", p.op.returns)
             }
             usage?.record(UsageEvent(p.op.name, "", opts.client), System.currentTimeMillis())
             // the op's own job, so a resolver (and Values.isCancelled() for Java) can see a deadline or a caller

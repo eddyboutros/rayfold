@@ -27,7 +27,8 @@ const hex = (b: Uint8Array): string => [...b].map((n) => n.toString(16).padStart
 const files = readdirSync(ROOT)
   .filter((f) => f.endsWith(".json"))
   .sort()
-  .map((f) => ({ file: f, doc: JSON.parse(readFileSync(join(ROOT, f), "utf8")) as { dictionary: string[]; values: ValueCase[] } }));
+  .map((f) => ({ file: f, doc: JSON.parse(readFileSync(join(ROOT, f), "utf8")) as { dictionary: string[]; values: ValueCase[]; refused?: Array<{ name: string; bytes: string; why: string }> } }));
+const bytesOf = (h: string): Uint8Array => Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
 
 describe("conformance vectors: binary", () => {
   it("there are vectors to run", () => {
@@ -53,6 +54,13 @@ describe("conformance vectors: binary", () => {
           const value = JSON.parse(c.json) as unknown;
           expect(hex(codec.encode(value)), c.why ?? c.name).toBe(c.bytes);
           expect(codec.decode(codec.encode(value)), "reads back as what went in").toEqual(value);
+          expect(codec.decode(bytesOf(c.bytes)), "and the bytes as written read as the value").toEqual(value);
+        });
+      }
+
+      for (const c of doc.refused ?? []) {
+        it(`refuses: ${c.name}`, () => {
+          expect(() => codec.decode(bytesOf(c.bytes)), c.why).toThrow(RangeError);
         });
       }
     });

@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import type { RayfoldServer } from "./server.ts";
-import { RayfoldError, type Frame, type RequestEnvelope } from "./protocol.ts";
+import { HTTP_STATUS, RayfoldError, type Frame, type RequestEnvelope } from "./protocol.ts";
 import { hostProblem, originProblem, type OriginOptions } from "./guard.ts";
 import { codecFor } from "./http.ts";
 
@@ -46,13 +46,25 @@ export function attachWebSocket(http: Server, server: RayfoldServer, opts: WsOpt
     }
     const accept = createHash("sha1").update(key + GUID).digest("base64");
     const proto = (req.headers["sec-websocket-protocol"] ?? "").split(",").map((s) => s.trim()).includes(SUBPROTOCOL) ? `Sec-WebSocket-Protocol: ${SUBPROTOCOL}\r\n` : "";
-    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n${proto}\r\n`);
-    void handleConnection(socket, head, req, server, opts);
+    // the viewer is settled before the socket is accepted, so a hook that refuses (a bad token) is answered as HTTP
+    // answers it, rather than rejecting with nothing to catch it: an unhandled rejection ends the process
+    void (async () => {
+      let viewer: unknown = null;
+      try {
+        if (opts.viewer) viewer = await opts.viewer(req);
+      } catch (e) {
+        const status = e instanceof RayfoldError ? HTTP_STATUS[e.code] : 500;
+        const detail = e instanceof RayfoldError ? e.message : "Internal error";
+        socket.end(`HTTP/1.1 ${status} Refused\r\nConnection: close\r\nContent-Type: text/plain\r\nX-Content-Type-Options: nosniff\r\n\r\n${detail}`, () => socket.destroy());
+        return;
+      }
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n${proto}\r\n`);
+      handleConnection(socket, head, viewer, server, opts);
+    })();
   });
 }
 
-async function handleConnection(socket: Duplex, head: Buffer, req: IncomingMessage, server: RayfoldServer, opts: WsOptions): Promise<void> {
-  const viewer = opts.viewer ? await opts.viewer(req) : null;
+function handleConnection(socket: Duplex, head: Buffer, viewer: unknown, server: RayfoldServer, opts: WsOptions): void {
   const ops = new Map<number, AbortController>();
   // text frames for a JSON batch; for an RB batch, binary messages of one length-prefixed RB frame each
   const send = (obj: unknown, binary = false) =>
@@ -90,21 +102,25 @@ async function handleConnection(socket: Duplex, head: Buffer, req: IncomingMessa
     if (Array.isArray(m["ops"])) {
       const env = m as unknown as RequestEnvelope;
       const ac = new AbortController();
-      for (const o of env.ops) {
-        if (ops.has(o?.id)) {
-          send({ error: { code: "invalid_argument", message: `op id ${o.id} is already in use on this connection` }, fin: true }, binary);
-          return;
-        }
+      // an op that is not an object with a numeric id is not tracked here; execute refuses the envelope for it
+      const ids = (env.ops as unknown[]).flatMap((o) => (o !== null && typeof o === "object" && typeof (o as { id?: unknown }).id === "number" ? [(o as { id: number }).id] : []));
+      const taken = ids.find((id) => ops.has(id));
+      if (taken !== undefined) {
+        send({ error: { code: "invalid_argument", message: `op id ${taken} is already in use on this connection` }, fin: true }, binary);
+        return;
       }
-      for (const o of env.ops) ops.set(o.id, ac);
+      for (const id of ids) ops.set(id, ac);
       void (async () => {
         try {
           for await (const f of server.execute(env, { viewer, signal: ac.signal })) {
             send(f, binary);
             if ("id" in f && "fin" in f && f.fin) ops.delete(f.id);
           }
+        } catch {
+          // execute answers its own failures as frames; anything that still escapes must not escape the socket's handler
+          send({ error: { code: "internal", message: "Internal error" }, fin: true }, binary);
         } finally {
-          for (const o of env.ops) if (ops.get(o.id) === ac) ops.delete(o.id);
+          for (const id of ids) if (ops.get(id) === ac) ops.delete(id);
           if (server.draining.aborted) goingAway();
         }
       })();

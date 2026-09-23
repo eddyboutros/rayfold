@@ -177,6 +177,34 @@ class HttpTest {
     }
 
     @Test
+    fun `a live query on a request that is otherwise answered whole streams its first result and each change`() {
+        // marked safe, sent as QUERY, or one op asked for as plain JSON: each was buffered until the batch ended,
+        // which a live query never does, so the caller heard nothing and the worker thread was held for good
+        val live = """{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}]}"""
+        val asks = listOf(
+            listOf("POST", "Rayfold-Safe", "true"),
+            listOf("QUERY", "X-Nothing", "-"),
+            listOf("POST", "Accept", "application/json"),
+        )
+        var stock = 2
+        for ((method, name, value) in asks) {
+            val req = HttpRequest.newBuilder(URI("http://127.0.0.1:$port/rayfold")).timeout(Duration.ofSeconds(5))
+                .header("Content-Type", "application/rayfold+json").header(name, value)
+                .method(method, HttpRequest.BodyPublishers.ofString(live)).build()
+            val res = client.sendAsync(req, HttpResponse.BodyHandlers.ofLines()).get(5, TimeUnit.SECONDS)
+            assertEquals("application/rayfold-frames+json", res.headers().firstValue("Content-Type").orElse(null), "$method $name")
+            assertEquals("no-store", res.headers().firstValue("Cache-Control").orElse(null), "never stored, though the request was safe")
+            val lines = res.body().filter { it.isNotEmpty() }.iterator()
+            assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":$stock},"meta":{"cost":1}}"""), obj(lines.next()))
+            val restock = post("""{"ops":[{"id":1,"op":"restock","args":{"bookId":"b1","qty":1},"key":"${"k$stock".padEnd(16, 'k')}"}]}""", "Authorization", "Bearer u1")
+            assertEquals(200, restock.statusCode(), restock.body())
+            stock++
+            assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":$stock}}]}"""), obj(lines.next()), "$method $name")
+            res.body().close()
+        }
+    }
+
+    @Test
     fun `GET op decodes base64url args, a shape and base64url vars`() {
         val shape = "{ id reviews(page: {first: ${'$'}n}) { total items { id } } }"
         val res = get("/rayfold/book?a=${b64("""{"id":"b1"}""")}&s=${url(shape)}&v=${b64("""{"n":1}""")}")

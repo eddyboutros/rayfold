@@ -1,6 +1,8 @@
 package dev.rayfold.core
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -120,6 +122,68 @@ class CostTest {
         val schema = ir.copy(ops = ir.ops + ("allBooks" to OpDef(kind = "query", name = "allBooks", returns = TypeRef("list", of = TypeRef("named", "Book")))))
         assertEquals(CostEstimate(1, 1, 1), estimate("allBooks", shape = "{ id }", schema = schema))
         assertEquals(CostEstimate(2, 2, 3), estimate("allBooks", shape = "{ id author { name } }", schema = schema), "author counts once, not once per element")
+    }
+
+    // ------------------------------------------------------------------ shapes that slipped past the model
+
+    private val shop = SchemaText.load(
+        """
+        entity Book { id: ID title: String reviews(page: PageArgs = { first: 10 }): Page<Review> }
+        entity Review { id: ID book: Book }
+        entity Author { id: ID name: String }
+        union Hit = Book | Author
+        query hit: Hit
+        query named(page: PageArgs = { first: 10 }): Page<Book>
+        query picks(p: PageArgs = { first: 10 }): Page<Book>
+        query list(first: Int = 20, after: String?): Page<Book>
+        query top(first: Int): [Book]
+        """.trimIndent(),
+    ).ir
+
+    private fun reviews(first: Int, inner: String) = "reviews(page: { first: $first }) { items { id book { $inner } } }"
+
+    @Test
+    fun `fields asked of a union are charged as each member would answer them, the dearest member counting`() {
+        // the executor hands the bare fields to every member; looked up on the union they found nothing and cost 1
+        val bare = estimate("hit", shape = "{ ${reviews(20, "id")} }", schema = shop)
+        assertEquals(estimate("hit", shape = "{ ...on Book { ${reviews(20, "id")} } }", schema = shop), bare)
+        // hit, the page and its 20 rows, items, a book on each row; summed over both members it would be one more
+        assertEquals(CostEstimate(cost = 1 + 1 + 20 + 1 + 20, depth = 4, fields = 5), bare)
+    }
+
+    @Test
+    fun `so a union can no longer nest pages past the depth limit`() = runTest(timeout = 5.seconds) {
+        val book = obj("""{"${'$'}type":"Book","id":"b1","title":"Dune","reviews":{"items":[],"hasMore":false}}""")
+        val server = RayfoldServer(shop, Resolvers(queries = mapOf("hit" to query { _, _ -> book })), BatchOptions(maxDepth = 8))
+        val deep = "{ ${reviews(20, reviews(20, reviews(20, reviews(20, "id"))))} }"
+        assertEquals("Shape depth 13 exceeds 8", server.collect(batch("""{"id":1,"op":"hit","shape":"$deep"}""")).single().errorMessage())
+        // guard: a shallow one under the same limit runs
+        assertNull(server.collect(batch("""{"id":1,"op":"hit","shape":"{ ${reviews(2, "id")} }"}""")).first().errorCode())
+    }
+
+    @Test
+    fun `a PageArgs argument is read by its type, whatever it is called`() {
+        val named = estimate("named", """{"page":{"first":200}}""", "{ items { id } }", schema = shop)
+        assertEquals(named, estimate("picks", """{"p":{"first":200}}""", "{ items { id } }", schema = shop), "`p` was charged as a page of 20")
+        assertEquals(1L + 200 + 1, named.cost)
+        assertEquals(1L + 10 + 1, estimate("picks", shape = "{ items { id } }", schema = shop).cost, "guard: its own default still applies")
+    }
+
+    @Test
+    fun `a page's own first argument is capped before the resolver sees it, and a negative one refused`() = runTest(timeout = 5.seconds) {
+        val seen = mutableListOf<JsonElement?>()
+        val page = obj("""{"items":[],"hasMore":false}""")
+        val server = RayfoldServer(shop, Resolvers(queries = mapOf(
+            "list" to query { args, _ -> seen.add(args["first"]); page },
+            "top" to query { args, _ -> seen.add(args["first"]); JsonArray(emptyList()) },
+        )))
+        server.collect(batch("""{"id":1,"op":"list","args":{"first":1000000},"shape":"{ items { id } }"}"""))
+        assertEquals(listOf<JsonElement?>(JsonPrimitive(200)), seen)
+        assertEquals("list().first: must be >= 0", server.collect(batch("""{"id":1,"op":"list","args":{"first":-1},"shape":"{ items { id } }"}""")).single().errorMessage())
+        // guard: a `first` on an op that returns no page means something else, and is left as sent
+        seen.clear()
+        server.collect(batch("""{"id":1,"op":"top","args":{"first":1000},"shape":"{ id }"}"""))
+        assertEquals(listOf<JsonElement?>(JsonPrimitive(1000)), seen)
     }
 
     // ------------------------------------------------------------------ pipeline

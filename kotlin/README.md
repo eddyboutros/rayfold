@@ -42,6 +42,11 @@ node ../scripts/smoke-maven.mjs       # publish locally, then build and run a se
 | `Uploads.kt` | the `upload` extension: the `POST /rayfold/uploads` route, `UploadStore` and the in-memory one |
 | `Rb.kt` | the RB binary encoding, byte for byte the TypeScript codec's (`RbTest` checks it against a seeded corpus) |
 | `Instrumentation.kt` | hooks around batches, ops and loaders, for tracing |
+| `Protocol.kt` | error codes, `RayfoldException`, the request envelope and frame builders |
+| `StrictJson.kt` | request bodies read strictly (RFC 8259): no duplicate keys, bounded depth, no NaN |
+| `MergePolicies.kt` | each field's `@merge` policy: what happens when a prediction and the server disagree |
+| `Usage.kt`, `Counters.kt` | which members each client still asks for (spec 11), and what the server did, for an operator |
+| `RayfoldExplorer.kt` | the explorer page, the same one `@rayfold/explorer` serves |
 
 Resolvers are suspend functions; entity field loaders are batch by default:
 

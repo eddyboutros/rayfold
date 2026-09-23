@@ -5,6 +5,7 @@ import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 import { attachWebSocket, decodeFrame, type WsOptions } from "./ws.ts";
 import type { RayfoldServer } from "./server.ts";
+import { RayfoldError } from "./protocol.ts";
 
 type Bookstore = ReturnType<typeof createBookstore>;
 const admin = { id: "u9", role: "admin" };
@@ -98,6 +99,46 @@ describe("the handshake applies the Origin rule", () => {
     expect(refused.status).toBe(403);
     expect(refused.headers["content-type"]).toBe("text/plain");
     expect(refused.body).toBe("Origin https://other.example is not allowed");
+  });
+
+  it("a viewer hook that refuses is answered as HTTP answers it, before the socket opens, and the process keeps serving", async () => {
+    const host = await serve(bs.server, {
+      viewer: (req) => {
+        const token = req.headers["x-token"];
+        if (token === "expired") throw new RayfoldError("unauthenticated", "Token expired");
+        if (token === "broken") return Promise.reject(new Error("key server down"));
+        return admin;
+      },
+    });
+    const withToken = (token: string) =>
+      new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = httpRequest({
+          host: "127.0.0.1",
+          port: Number(host.split(":")[1]),
+          path: "/rayfold/ws",
+          headers: { host, "x-token": token, upgrade: "websocket", connection: "Upgrade", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-websocket-version": "13" },
+        });
+        req.on("upgrade", (res, socket) => {
+          socket.destroy();
+          resolve({ status: res.statusCode ?? 0, body: "" });
+        });
+        req.on("response", (res) => {
+          let body = "";
+          res.setEncoding("utf8");
+          res.on("data", (c: string) => (body += c));
+          res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+        });
+        req.on("error", reject);
+        req.end();
+      });
+    expect(await withToken("expired")).toEqual({ status: 401, body: "Token expired" });
+    expect(await withToken("broken")).toEqual({ status: 500, body: "Internal error" }); // the hook's own message stays on the server
+    expect((await withToken("fine")).status).toBe(101); // guard: a viewer that answers opens the socket
+
+    // and the viewer it answered with is the one the socket's batches run as: restocking needs the admin it returned
+    const { ws, received } = await connect(host);
+    ws.send(JSON.stringify({ ops: [restock] }));
+    expect((await received.atLeast(1, "restock answered"))[0]).toMatchObject({ id: 1, ok: { $type: "Book", id: "b1" }, fin: true });
   });
 });
 
@@ -280,12 +321,17 @@ describe("frames as the protocol allows them", () => {
     c.send(TEXT, "{ not json");
     c.send(TEXT, JSON.stringify({ hello: "there" }));
     c.send(TEXT, "null");
+    // ops that are not objects with a numeric id reached the id bookkeeping before execute could refuse them
+    c.send(TEXT, JSON.stringify({ ops: [null] }));
+    c.send(TEXT, JSON.stringify({ ops: [readBook(3, "b1").ops[0], { op: "book" }] }));
     c.send(TEXT, JSON.stringify(readBook(2, "b2"))); // guard: the same socket still runs a batch
-    await c.frames.atLeast(4, "three refusals and an answer");
+    await c.frames.atLeast(6, "five refusals and an answer");
     expect(c.frames.items).toEqual([
       { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Message is not valid JSON" }, fin: true }) },
       { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true }) },
       { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true }) },
+      { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "ops[0]: expected an object" }, fin: true }) },
+      { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "ops[1].id: expected a positive integer" }, fin: true }) },
       { opcode: TEXT, text: JSON.stringify(bookFrame(2, "b2")) },
     ]);
   });

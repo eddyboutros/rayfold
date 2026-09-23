@@ -1,11 +1,11 @@
 /** Argument validation and coercion at the system boundary. */
-import { typeRefToString, type Annotation, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
+import { isPageRef, typeRefToString, type Annotation, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 import { RayfoldError } from "./protocol.ts";
 
 const MAX_PAGE_FIRST = 200;
 const NUMERIC = new Set(["Int", "Long", "Float", "Decimal"]);
 
-export function coerceArgs(ir: RayfoldSchemaIR, defs: ArgDef[], raw: unknown, path: string): Record<string, unknown> {
+export function coerceArgs(ir: RayfoldSchemaIR, defs: ArgDef[], raw: unknown, path: string, returns?: TypeRef): Record<string, unknown> {
   if (raw !== undefined && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
     throw new RayfoldError("invalid_argument", `${path}: expected an object`);
   }
@@ -33,6 +33,11 @@ export function coerceArgs(ir: RayfoldSchemaIR, defs: ArgDef[], raw: unknown, pa
     }
     out[d.name] = coerceValue(ir, d.type, v, p);
     checkConstraints(d.annotations, d.type, out[d.name], p);
+  }
+  // spec 01 §6: a page may take `first` as an argument of its own rather than inside PageArgs, and is capped the same
+  if (returns && isPageRef(returns) && typeof out["first"] === "number") {
+    if (out["first"] < 0) throw new RayfoldError("invalid_argument", `${path}.first: must be >= 0`);
+    if (out["first"] > MAX_PAGE_FIRST) out["first"] = MAX_PAGE_FIRST;
   }
   return out;
 }

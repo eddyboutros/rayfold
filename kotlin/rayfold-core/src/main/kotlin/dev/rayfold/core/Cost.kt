@@ -46,6 +46,27 @@ class Cost(private val ir: RayfoldSchemaIR, private val views: Views) {
         val isPage = t.isPage || (t.isList && t.of?.isPage == true)
         var total = 0L
         fun visit(items: List<ShapeItem>, ref: TypeRef) {
+            val union = ir.types[ref.baseName()]
+            if (union?.kind == "union") {
+                // every member answers a union's bare fields, spreads and deferred items, so the dearest member counts;
+                // looked up on the union itself they cost nothing (mirrors cost.ts)
+                val bare = items.filter { it.kind != "on" }
+                val total0 = total
+                val fields0 = acc.fields
+                var worst = 0L
+                var worstFields = 0
+                for (m in union.members) {
+                    total = 0L
+                    acc.fields = 0
+                    visit(bare, TypeRef("named", m))
+                    worst = maxOf(worst, total)
+                    worstFields = maxOf(worstFields, acc.fields)
+                }
+                total = Sat.add(total0, worst)
+                acc.fields = fields0 + worstFields
+                for (it in items) if (it.kind == "on") it.shape?.let { s -> visit(s.items, TypeRef("named", it.type)) }
+                return
+            }
             val fields = ir.fieldsOf(ref) ?: emptyList()
             for (it in items) when (it.kind) {
                 "field" -> {
@@ -77,7 +98,9 @@ class Cost(private val ir: RayfoldSchemaIR, private val views: Views) {
     }
 
     private fun pageFirst(args: JsonObject, defs: List<ArgDef>): Long {
-        when (val page = args["page"]) {
+        // the PageArgs argument by its type, whatever the schema calls it (mirrors cost.ts)
+        val name = defs.firstOrNull { it.type.baseName() == "PageArgs" }?.name ?: "page"
+        when (val page = args[name]) {
             null, JsonNull -> {}
             is JsonObject -> {
                 if (Args.isRef(page)) return MAX_PAGE
@@ -86,7 +109,7 @@ class Cost(private val ir: RayfoldSchemaIR, private val views: Views) {
             else -> return MAX_PAGE
         }
         args["first"]?.let { return pageSize(it) }
-        (defs.firstOrNull { it.name == "page" }?.default as? JsonObject)?.get("first")?.let { return pageSize(it) }
+        (defs.firstOrNull { it.name == name }?.default as? JsonObject)?.get("first")?.let { return pageSize(it) }
         defs.firstOrNull { it.name == "first" }?.default?.let { return pageSize(it) }
         return 20
     }

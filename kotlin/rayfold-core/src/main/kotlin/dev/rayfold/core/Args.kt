@@ -12,7 +12,7 @@ object Args {
     internal const val MAX_PAGE_FIRST = 200
     private const val MAX_FORMAT_INPUT = 10_000
 
-    fun coerce(ir: RayfoldSchemaIR, defs: List<ArgDef>, raw: JsonElement?, path: String): JsonObject {
+    fun coerce(ir: RayfoldSchemaIR, defs: List<ArgDef>, raw: JsonElement?, path: String, returns: TypeRef? = null): JsonObject {
         if (raw != null && raw !is JsonNull && raw !is JsonObject) throw RayfoldException(Code.INVALID_ARGUMENT, "$path: expected an object")
         val input = raw as? JsonObject ?: JsonObject(emptyMap())
         for (k in input.keys) if (defs.none { it.name == k }) throw RayfoldException(Code.INVALID_ARGUMENT, "$path.$k: unknown argument")
@@ -34,6 +34,10 @@ object Args {
             out[d.name] = coerced
             checkConstraints(ir, d.annotations, coerced, p, d.type)
         }
+        // spec 01 section 6: a page may take `first` as an argument of its own rather than inside PageArgs, and is capped the same
+        val first = (out["first"] as? JsonPrimitive)?.takeIf { returns?.isPage == true && !it.isString }?.contentOrNull?.toDoubleOrNull()
+        if (first != null && first < 0) throw RayfoldException(Code.INVALID_ARGUMENT, "$path.first: must be >= 0")
+        if (first != null && first > MAX_PAGE_FIRST) out["first"] = JsonPrimitive(MAX_PAGE_FIRST)
         return JsonObject(out)
     }
 

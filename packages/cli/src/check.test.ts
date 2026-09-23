@@ -107,4 +107,17 @@ describe("rayfold check --resolvers", { timeout: 60_000 }, () => {
       stderr: "empty.mjs: no resolvers found: export `resolvers`, a default export, or a function that returns them\n",
     });
   });
+
+  it("does not switch off --against: covered resolvers and a breaking change still fail the check", async () => {
+    // the CI line the guide recommends; the resolver check used to return first, so the breaking change passed
+    writeFileSync(join(work, "old.rayfold"), ["entity Book { id: ID title: String reviews(page: PageArgs = { first: 10 }): Page<Review> }", "entity Review { id: ID rating: Int }", "query book(id: ID): Book?", "query books: [Book]", ""].join("\n"));
+    const resolvers = module("covered-again.mjs", "export const resolvers = { Query: { book: () => null }, Book: { reviews: (books) => books.map(() => null) } };\n");
+    const both = await rayfold(["check", "schema.rayfold", "--resolvers", resolvers, "--against", "old.rayfold", "--strict"]);
+    expect(both.status).toBe(1);
+    expect(both.stdout).toContain(COVERED);
+    expect(both.stdout).toContain("FAILED: breaking changes against old.rayfold");
+    // guard: against itself there is no change, so the same pair of checks passes
+    const same = await rayfold(["check", "schema.rayfold", "--resolvers", resolvers, "--against", "schema.rayfold", "--strict"]);
+    expect(same).toEqual({ status: 0, stdout: `${COVERED}\nOK: compatible with schema.rayfold (0 changes)\n`, stderr: "" });
+  });
 });

@@ -1,5 +1,5 @@
 /** Static cost, depth and field-count estimation. Spec: spec/06 §5, spec/02 §5. */
-import { annotation, fieldsOf, isPageRef, type ArgDef, type OpDef, type RayfoldSchemaIR, type Shape, type ShapeItem, type TypeRef } from "@rayfold/schema";
+import { annotation, baseName, fieldsOf, isPageRef, type ArgDef, type OpDef, type RayfoldSchemaIR, type Shape, type ShapeItem, type TypeRef } from "@rayfold/schema";
 import { defaultShape, isScalarLike } from "./views.ts";
 
 export interface CostEstimate {
@@ -35,6 +35,23 @@ function walk(ir: RayfoldSchemaIR, t: TypeRef, shape: Shape, mult: number, items
   const isPage = isPageRef(t) || (t.kind === "list" && isPageRef(t.of));
   let total = 0;
   const visit = (items: ShapeItem[], ref: TypeRef): void => {
+    const union = ir.types[baseName(ref)];
+    if (union?.kind === "union") {
+      // The executor hands a union's bare fields, spreads and deferred items to every member, so each member is
+      // charged for them and the dearest one counts. Looked up on the union itself they find no field and cost nothing,
+      // which let a shape nest pages without limit under a union.
+      const bare = items.filter((i) => i.kind !== "on");
+      const [total0, fields0] = [total, acc.fields];
+      let [worst, worstFields] = [0, 0];
+      for (const m of union.members) {
+        [total, acc.fields] = [0, 0];
+        visit(bare, { kind: "named", name: m, nullable: false });
+        [worst, worstFields] = [Math.max(worst, total), Math.max(worstFields, acc.fields)];
+      }
+      [total, acc.fields] = [total0 + worst, fields0 + worstFields];
+      for (const it of items) if (it.kind === "on") visit(it.shape.items, { kind: "named", name: it.type, nullable: false });
+      return;
+    }
     const fields = fieldsOf(ir, ref) ?? [];
     for (const it of items) {
       switch (it.kind) {
@@ -77,13 +94,15 @@ function walk(ir: RayfoldSchemaIR, t: TypeRef, shape: Shape, mult: number, items
  * bad input can raise the estimate but never lower it.
  */
 function pageFirst(args: Record<string, unknown>, defs: ArgDef[]): number {
-  const page = args["page"];
+  // the PageArgs argument by its type: a schema may call it anything, and reading only `page` charged others 20
+  const name = defs.find((a) => baseName(a.type) === "PageArgs")?.name ?? "page";
+  const page = args[name];
   if (page !== undefined) {
     if (!page || typeof page !== "object" || Array.isArray(page)) return MAX_FIRST;
     if ("first" in page) return pageSize((page as Record<string, unknown>)["first"]);
   }
   if ("first" in args) return pageSize(args["first"]);
-  const def = defs.find((a) => a.name === "page")?.default;
+  const def = defs.find((a) => a.name === name)?.default;
   if (def && typeof def === "object" && !Array.isArray(def) && "first" in def) return pageSize((def as Record<string, unknown>)["first"]);
   const firstDef = defs.find((a) => a.name === "first")?.default;
   if (firstDef !== undefined) return pageSize(firstDef);

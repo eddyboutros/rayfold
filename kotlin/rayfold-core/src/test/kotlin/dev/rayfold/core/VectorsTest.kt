@@ -15,6 +15,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.assertThrows
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -468,6 +469,16 @@ class VectorsTest {
                         val value = Json.parseToJsonElement(json)
                         assertEquals(expected, hex(codec.encode(value)), why)
                         assertEquals(value, codec.decode(codec.encode(value)), "reads back as what went in")
+                        assertEquals(value, codec.decode(unhex(expected)), "and the bytes as written read as the value")
+                    },
+                )
+            }
+            for (case in doc["refused"]?.jsonArray ?: JsonArray(emptyList())) {
+                val c = case.jsonObject
+                val name = c.str("name")
+                out.add(
+                    DynamicTest.dynamicTest("binary/$file: refuses: $name") {
+                        assertThrows<RbException>(c.str("why")) { codec.decode(unhex(c.str("bytes"))) }
                     },
                 )
             }
@@ -483,6 +494,7 @@ class VectorsTest {
     private fun stocked(stock: Int) = buildJsonObject { put("\$type", "Book"); put("id", "b1"); put("stock", stock) }
 
     private fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
+    private fun unhex(h: String): ByteArray = h.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
     /** A general-purpose digest, so the vector checks the runtime rather than the runtime checking itself. */
     private fun sha256(s: String): String = hex(java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray()))

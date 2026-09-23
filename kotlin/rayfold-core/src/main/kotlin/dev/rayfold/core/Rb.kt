@@ -177,6 +177,9 @@ class RbCodec(ir: RayfoldSchemaIR? = null) {
     private inner class Reader(private val buf: ByteArray) {
         var pos = 0
         private val strings = ArrayList<String>()
+        /** UTF-8 length of each entry of [strings], and the bytes the references read so far stood for. */
+        private val lengths = ArrayList<Int>()
+        private var expanded = 0L
 
         private fun byte(): Int {
             if (pos >= buf.size) throw RbException("RB: unexpected end of input")
@@ -253,10 +256,13 @@ class RbCodec(ir: RayfoldSchemaIR? = null) {
                     pos += 8
                     number(d)
                 }
-                T_STR -> String(raw(varint()), Charsets.UTF_8).also { strings.add(it) }.let { JsonPrimitive(it) }
+                T_STR -> raw(varint()).let { bytes -> String(bytes, Charsets.UTF_8).also { strings.add(it); lengths.add(bytes.size) } }.let { JsonPrimitive(it) }
                 T_STR_REF -> {
                     val i = varint()
-                    JsonPrimitive(strings.getOrNull(if (i < strings.size) i.toInt() else -1) ?: throw RbException("RB: bad string reference"))
+                    val s = strings.getOrNull(if (i < strings.size) i.toInt() else -1) ?: throw RbException("RB: bad string reference")
+                    expanded += lengths[i.toInt()]
+                    if (expanded > maxOf(MAX_EXPANSION.toLong() * buf.size, EXPANSION_FLOOR)) throw RbException("RB: string references expand past $MAX_EXPANSION times the message")
+                    JsonPrimitive(s)
                 }
                 T_ARR -> {
                     val n = count(depth, 1)
@@ -304,6 +310,9 @@ class RbCodec(ir: RayfoldSchemaIR? = null) {
         private const val T_BYTES = 0x09
         private const val T_SMALL = 0x80
         private const val MAX_NESTING = 64
+        /** How far string references may expand a message: 16 times its length or 1 MiB; the TypeScript codec says why. */
+        private const val MAX_EXPANSION = 16
+        private const val EXPANSION_FLOOR = 1_048_576L
         private const val MAX_SAFE = 9007199254740991.0
         private const val VARINT_LIMIT = 72057594037927936.0 // 2^56
 

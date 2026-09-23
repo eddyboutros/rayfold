@@ -508,7 +508,9 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
       const wantsRb = accepted.has(RB_CONTENT_TYPE) && !accepted.has(FRAMES_TYPE) && !accepted.has("application/json") && !accepted.has("application/rayfold+json");
       const wantsSingle = !wantsRb && accepted.has("application/json") && Array.isArray(envelope.ops) && envelope.ops.length === 1;
 
-      if (wantsSingle || safe) {
+      // A live query or a stream has no complete result to buffer: it would never answer. It streams whatever asked.
+      const endless = Array.isArray(envelope.ops) && envelope.ops.some((o) => (o as { live?: unknown } | null)?.live === true || server.ir.ops[(o as { op?: string } | null)?.op ?? ""]?.kind === "stream");
+      if ((wantsSingle || safe) && !endless) {
         // Buffer so the status and cache headers come from the complete result.
         const frames: Frame[] = [];
         for await (const f of server.execute(envelope, { viewer, signal: request.signal })) frames.push(f);

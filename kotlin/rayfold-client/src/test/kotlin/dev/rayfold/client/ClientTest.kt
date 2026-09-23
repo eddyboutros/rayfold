@@ -257,6 +257,23 @@ class ClientTest {
     }
 
     @Test
+    fun `a live query of a known query never goes out as a safe request, so a server that buffers those still streams it`() = runBlocking {
+        val client = RayfoldClient(http("alice"), ClientOptions(queries = setOf("book")))
+        val stock = Channel<Int>(Channel.UNLIMITED)
+        val scope = CoroutineScope(Dispatchers.IO)
+        try {
+            val job = scope.launch { client.live("book", args("id" to "b1"), "{ id stock }").collect { stock.send(it.stock()) } }
+            assertEquals(3, withTimeout(5_000) { stock.receive() })
+            job.cancel()
+            assertNotNull(withTimeoutOrNull(5_000) { job.join() })
+        } finally {
+            scope.cancel()
+        }
+        withTimeout(5_000) { client.query("book", args("id" to "b1"), "{ id }") } // guard: the same op read once is still safe
+        assertEquals(listOf("absent", "true"), safeHeaders.toList())
+    }
+
+    @Test
     fun `a version conflict puts the server's current entity into the cache before it fails the command`() = bounded {
         val client = RayfoldClient(http("alice"))
         client.query("note", args("id" to "n1"), "{ id text version }")

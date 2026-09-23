@@ -384,7 +384,8 @@ export class RayfoldClient {
   /** @internal */
   async runBatch(handles: OpHandle[], opts: { signal?: AbortSignal; onFrame?: (f: Frame) => void }): Promise<BatchResult> {
     const byId = new Map(handles.map((h) => [h.id, h]));
-    const safe = handles.every((h) => this.isQuery(h.req.op));
+    // a live query never goes out as a safe read: servers up to 0.2.1 buffer a safe request whole, and one never ends
+    const safe = handles.every((h) => this.isQuery(h.req.op) && h.req.live !== true);
     const sendOpts: { signal?: AbortSignal; safe?: boolean } = { safe };
     if (opts.signal) sendOpts.signal = opts.signal;
     const frames: Frame[] = [];

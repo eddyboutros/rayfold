@@ -186,8 +186,9 @@ describe("client over the in-process transport", () => {
 describe("client over HTTP", () => {
   let http: Server;
   let url: string;
+  let store: Bookstore;
   beforeEach(async () => {
-    const store = createBookstore();
+    store = createBookstore();
     http = await listen(store.server, 0, { viewer: (req) => (req.headers.authorization ? { id: req.headers.authorization.slice(7), role: "customer" } : null) });
     url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/rayfold`;
   });
@@ -352,6 +353,24 @@ describe("client over HTTP", () => {
       { method: "POST", safe: null },
       { method: "POST", safe: null },
     ]);
+  });
+
+  it("a live query never goes as a safe request, so a server that buffers safe requests still streams it; a plain query still does", async () => {
+    const manifest = await manifestOf();
+    const sent: Array<string | null> = [];
+    const recording: typeof fetch = (input, init) => {
+      sent.push(new Headers(init?.headers).get("rayfold-safe"));
+      return fetch(input, init);
+    };
+    const c = new RayfoldClient({ transport: createFetchTransport({ url, fetch: recording }), schema: manifest.schema });
+    const seen = new Signal<number>();
+    const stop = c.live<{ stock: number }>("book", { id: "b1" }, { shape: "{ id stock }" }, (d) => seen.push(d.stock));
+    await seen.atLeast(1, "the first result");
+    await store.server.collect({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key: "0123456789abcdef" }] }, { viewer: { id: "u9", role: "admin" } });
+    expect(await seen.atLeast(2, "the change")).toEqual([5, 6]);
+    stop();
+    expect(await c.query<{ id: string }>("book", { id: "b2" }, { shape: "{ id }" })).toMatchObject({ id: "b2" }); // guard: a plain query is still safe
+    expect(sent).toEqual([null, "true"]);
   });
 
   it("maps HTTP problem responses to errors", async () => {

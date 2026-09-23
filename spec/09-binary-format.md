@@ -36,6 +36,10 @@ one-byte inline form rather than `0x03`, a key the dictionary has is its id rath
 already in this frame's table is a `0x06` reference rather than a second copy. A decoder MUST accept any of them, so
 this costs nothing to read — it is what makes the bytes a function of the value, and so something a vector can pin.
 
+A `0x06` reference is two bytes that stand for a string of any length, so a decoder MUST bound how far references
+expand a message: it refuses one whose references stand for more UTF-8 bytes than 16 times the message's own length
+or 1 MiB, whichever is more. The floor keeps a response that repeats a long string across many items readable.
+
 ## 3. Key dictionary
 
 Ids 0-39 are the protocol keys (`id`, `op`, `args`, `shape`, `vars`, `key`, `live`, `deadline`, `simulate`,

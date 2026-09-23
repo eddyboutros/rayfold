@@ -275,7 +275,10 @@ class RayfoldHttp(
             val accepted = (call.header("Accept") ?: "").split(",").map { it.substringBefore(';').trim().lowercase() }.toSet()
             val wantsRb = RbCodec.CONTENT_TYPE in accepted && accepted.none { it == FRAMES_TYPE || it == "application/json" || it == "application/rayfold+json" }
             val wantsSingle = !wantsRb && "application/json" in accepted && env.ops.size == 1
-            if (wantsSingle || safe) {
+            // a live query or a stream has no complete result to buffer: it would never answer, and would hold this
+            // worker thread for good. It streams whatever asked.
+            val endless = env.ops.any { it.live || server.ir.ops[it.op]?.kind == "stream" }
+            if ((wantsSingle || safe) && !endless) {
                 // buffered, so the status and the cache headers can come from the complete result
                 val frames = runBlocking { server.collect(batch, opts) }
                 val etag = if (safe) CacheHeaders.apply(server.ir, env.ops, frames, v, call::setHeader) else null

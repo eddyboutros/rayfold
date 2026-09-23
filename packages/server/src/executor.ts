@@ -600,7 +600,7 @@ export class Executor {
             const f = fields.find((x) => x.name === it.name);
             if (!f) throw new RayfoldError("invalid_argument", `${def.name} has no field ${it.name}`);
             const alias = it.alias ?? it.name;
-            const args = f.args.length ? coerceArgs(this.ir, f.args, substituteVars(it.args ?? {}, st.ctx), `${def.name}.${it.name}`) : {};
+            const args = f.args.length ? coerceArgs(this.ir, f.args, substituteVars(it.args ?? {}, st.ctx), `${def.name}.${it.name}`, f.type) : {};
             const existing = byAlias.get(alias);
             if (existing) {
               if (existing.field !== f || JSON.stringify(existing.args) !== JSON.stringify(args)) {

@@ -380,6 +380,77 @@ describe("keep-alives on a streaming response (spec 04 section 4)", () => {
   });
 });
 
+describe("a live query or a stream on a request that is otherwise answered whole", () => {
+  const admin = { id: "u9", role: "admin" };
+  const liveBook = { ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }] };
+  /** Reads NDJSON lines from a response that stays open, each wait bounded. */
+  const lines = (res: Response) => {
+    const reader = res.body!.getReader();
+    const text = new TextDecoder();
+    let buf = "";
+    const ready: string[] = [];
+    return async (): Promise<unknown> => {
+      while (!ready.length) {
+        buf += text.decode((await bounded(reader.read(), "a line of the open response")).value, { stream: true });
+        const parts = buf.split("\n");
+        buf = parts.pop()!;
+        ready.push(...parts.filter((l) => l !== ""));
+      }
+      return JSON.parse(ready.shift()!);
+    };
+  };
+
+  // every way of asking for a buffered answer: marked safe, the QUERY method, and one op asked for as plain JSON.
+  // Each was buffered until the batch ended, which a live query never does, so the caller never heard anything.
+  const asks: Array<[string, Record<string, string>, string]> = [
+    ["Rayfold-Safe", { "rayfold-safe": "true" }, "POST"],
+    ["QUERY", {}, "QUERY"],
+    ["Accept: application/json", { accept: "application/json" }, "POST"],
+  ];
+  for (const [label, headers, method] of asks) {
+    it(`streams a live query sent with ${label}, first result and then each change`, async () => {
+      const ac = new AbortController();
+      const res = await bounded(fetch(`${base}/rayfold`, { method, headers: { "content-type": "application/rayfold+json", ...headers }, body: JSON.stringify(liveBook), signal: ac.signal }), "the response starting");
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("application/rayfold-frames+json");
+      expect(res.headers.get("cache-control")).toBe("no-store"); // never stored, though the request was safe
+      const next = lines(res);
+      expect(await next()).toEqual({ id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 } });
+      await bs.server.collect({ ops: [restock] }, { viewer: admin });
+      expect(await next()).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 6 } }] });
+      ac.abort();
+    });
+  }
+
+  it("streams a stream op asked for as plain JSON", async () => {
+    const subscribed = new Signal<string>();
+    const subscribe = bs.server.events.subscribe.bind(bs.server.events);
+    vi.spyOn(bs.server.events, "subscribe").mockImplementation(((name: string, signal?: AbortSignal) => {
+      const source = subscribe(name, signal);
+      subscribed.push(name);
+      return source;
+    }) as typeof bs.server.events.subscribe);
+    const ac = new AbortController();
+    const body = { ops: [{ id: 1, op: "stockUpdates", args: { bookIds: ["b1"] } }] };
+    const res = await bounded(fetch(`${base}/rayfold`, { method: "POST", headers: { "content-type": "application/rayfold+json", accept: "application/json" }, body: JSON.stringify(body), signal: ac.signal }), "the response starting");
+    expect(res.headers.get("content-type")).toBe("application/rayfold-frames+json");
+    await subscribed.atLeast(1, "the stream listening");
+    await bs.server.collect({ ops: [restock] }, { viewer: admin });
+    expect(await lines(res)()).toMatchObject({ id: 1, item: { bookId: "b1", stock: 6 } });
+    ac.abort();
+  });
+
+  it("guard: the same requests without live are still answered whole, with the headers a complete answer allows", async () => {
+    const once = { ops: [{ ...liveBook.ops[0]!, live: undefined }] };
+    const safe = await post(once, { "rayfold-safe": "true" });
+    expect(safe.headers.get("etag")).toMatch(/^"sha256-/); // only a buffered answer can say what it hashes to
+    expect(await frames(safe)).toEqual([{ id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 }, fin: true }]);
+    const single = await post(once, { accept: "application/json" });
+    expect(single.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(await single.json()).toEqual({ id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 }, fin: true });
+  });
+});
+
 const RB_TYPE = "application/rayfold";
 
 describe("bodies that parse but are not envelopes (found by fuzzing)", () => {

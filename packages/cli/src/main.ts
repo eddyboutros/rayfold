@@ -180,7 +180,7 @@ async function main(argv: string[]): Promise<number> {
         }
         const ops = Object.keys(loaded.ir.ops).length;
         console.log(`OK: the resolvers cover all ${ops} operation${ops === 1 ? "" : "s"} and every field that takes arguments`);
-        return 0;
+        // the compatibility check below still runs: returning here let `--resolvers` switch a CI gate's `--against` off
       }
       const unused = flag(rest, "--unused");
       if (unused) {
@@ -211,7 +211,7 @@ async function main(argv: string[]): Promise<number> {
           return 1;
         }
         console.log(`\nOK: compatible with ${against} (${changes.length} change${changes.length === 1 ? "" : "s"})`);
-      } else console.log(`OK: ${path} is valid (hash ${loaded.hash.slice(0, 12)})`);
+      } else if (!wiring) console.log(`OK: ${path} is valid (hash ${loaded.hash.slice(0, 12)})`);
       return 0;
     }
     case "lock": {

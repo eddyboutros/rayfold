@@ -522,7 +522,7 @@ class Executor(
                 "field" -> {
                     val f = fields.firstOrNull { x -> x.name == it.name } ?: throw RayfoldException(Code.INVALID_ARGUMENT, "${def.name} has no field ${it.name}")
                     val alias = it.alias ?: it.fieldName
-                    val args = if (f.args.isNotEmpty()) Args.coerce(ir, f.args, substituteVarsStrict(JsonObject(it.args ?: emptyMap()), st.ctx.vars), "${def.name}.${it.name}") else JsonObject(emptyMap())
+                    val args = if (f.args.isNotEmpty()) Args.coerce(ir, f.args, substituteVarsStrict(JsonObject(it.args ?: emptyMap()), st.ctx.vars), "${def.name}.${it.name}", f.type) else JsonObject(emptyMap())
                     val existing = byAlias[alias]
                     if (existing != null) {
                         if (existing.field !== f || existing.args != args) throw RayfoldException(Code.INVALID_ARGUMENT, "Conflicting selections for $alias on ${def.name}")

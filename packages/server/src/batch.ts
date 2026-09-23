@@ -159,7 +159,7 @@ async function runBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: Execu
       // costs nothing (and reports its error when its turn comes). Only args with $ref, known after earlier ops, are
       // estimated from the raw request, where any page size the model cannot trust counts as the largest page.
       const raw = (req.args ?? {}) as Record<string, unknown>;
-      const planArgs = deps.length ? raw : coerceArgs(rt.ir, op.args, raw, `${op.name}()`);
+      const planArgs = deps.length ? raw : coerceArgs(rt.ir, op.args, raw, `${op.name}()`, op.returns);
       const est = estimateCost(rt.ir, op, planArgs, p.shape, req.vars ?? {});
       if (est.depth > rt.options.maxDepth) throw new RayfoldError("resource_exhausted", `Shape depth ${est.depth} exceeds ${rt.options.maxDepth}`);
       if (est.fields > rt.options.maxFields) throw new RayfoldError("resource_exhausted", `Shape selects ${est.fields} fields, max ${rt.options.maxFields}`);
@@ -359,7 +359,7 @@ async function runOp(
 
   try {
     const rawArgs = resolveRefs(p.req.args ?? {}, (opId, path) => getPath(results.get(opId), path), `ops.${id}.args`);
-    const args = coerceArgs(rt.ir, p.op.args, rawArgs, `${p.op.name}()`);
+    const args = coerceArgs(rt.ir, p.op.args, rawArgs, `${p.op.name}()`, p.op.returns);
     const ctx: RayfoldContext = {
       viewer: opts.viewer ?? null,
       signal: opAbort.signal,
@@ -450,7 +450,15 @@ async function runOp(
           }
           token = held.token;
         }
-        const renewal = token === undefined ? undefined : setInterval(() => void rt.idempotency.renew(viewerScope, key as string, token as string, rt.leaseMs), Math.max(1, Math.floor(rt.leaseMs / 3)));
+        // Renewals stop once the store says the claim is gone. A store that fails is asked again at the next tick: the
+        // lease outlives two missed renewals, and a rejection left unhandled here would end the process.
+        let holding = true;
+        const renew = () =>
+          (async () => rt.idempotency.renew(viewerScope, key as string, token as string, rt.leaseMs))().then(
+            (held) => void (held || (holding = false)),
+            () => undefined,
+          );
+        const renewal = token === undefined ? undefined : setInterval(() => void (holding && renew()), Math.max(1, Math.floor(rt.leaseMs / 3)));
         let committed = false;
         try {
           const { result, full, compact, patch } = await rt.executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, (f) => sink.push(stamp(f)), () => (committed = true));

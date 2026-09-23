@@ -171,10 +171,20 @@ class Writer {
 
 /** Nesting limit for decoded values; also bounds recursion on hostile input. */
 const MAX_NESTING = 64;
+/**
+ * How far string references may expand a message: 16 times its length, or 1 MiB if that is more. A reference is two
+ * bytes that stand for a string of any size, so without a bound a small body stands for gigabytes once anything hashes
+ * or prints it. The floor keeps a response that repeats a long string across many items readable.
+ */
+const MAX_EXPANSION = 16;
+const EXPANSION_FLOOR = 1_048_576;
 
 class Reader {
   pos = 0;
   private readonly strings: string[] = [];
+  /** UTF-8 length of each entry of `strings`, and the bytes the references read so far stood for. */
+  private readonly lengths: number[] = [];
+  private expanded = 0;
   constructor(
     private readonly buf: Uint8Array,
     private readonly dict: KeyDictionary,
@@ -252,13 +262,18 @@ class Reader {
         return v;
       }
       case T_STR: {
-        const s = utf8.decode(this.raw(this.varint()));
+        const bytes = this.raw(this.varint());
+        const s = utf8.decode(bytes);
         this.strings.push(s);
+        this.lengths.push(bytes.length);
         return s;
       }
       case T_STR_REF: {
-        const s = this.strings[this.varint()];
+        const i = this.varint();
+        const s = this.strings[i];
         if (s === undefined) throw new RangeError("RB: bad string reference");
+        this.expanded += this.lengths[i]!;
+        if (this.expanded > Math.max(MAX_EXPANSION * this.end, EXPANSION_FLOOR)) throw new RangeError(`RB: string references expand past ${MAX_EXPANSION} times the message`);
         return s;
       }
       case T_ARR: {

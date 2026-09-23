@@ -381,6 +381,32 @@ describe("one command per key, across servers sharing a store", () => {
     // there nothing renews, and the retry takes the key
   });
 
+  it("a renewal the store fails is asked again at the next tick, and one the store refuses stops the renewals", async () => {
+    // an unhandled rejection here once ended the process: vitest fails a test on one, so this also guards that
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const store = new MemoryIdempotencyStore(24 * 3_600_000, () => Date.now());
+    let calls = 0;
+    const renew = store.renew.bind(store);
+    vi.spyOn(store, "renew").mockImplementation(async (...a) => {
+      calls++;
+      if (calls === 1) throw new Error("connection terminated"); // the database dropped for a moment
+      if (calls === 3) return false; // then the claim is gone: another server took the key
+      return renew(...a);
+    });
+    const f = fleet(1, { store, now: () => Date.now(), hold: true, leaseMs: 60 });
+    const first = book(f.servers[0]!);
+    await vi.advanceTimersByTimeAsync(41); // renewals at 20 (fails) and 40 (renews)
+    expect(calls).toBe(2);
+    await vi.advanceTimersByTimeAsync(20); // at 60 the store refuses
+    expect(calls).toBe(3);
+    await vi.advanceTimersByTimeAsync(200); // ten more ticks, and nothing asks again
+    expect(calls).toBe(3);
+
+    f.open();
+    expect((await bounded(first, "the command finishing"))[0]).toMatchObject({ id: 1, ok: { id: "t1" }, fin: true }); // its caller still gets its answer
+    expect(f.runs()).toBe(1);
+  });
+
   it("a server that lost its database loses the key: the next retry takes it over, and the stranded server's answer is never recorded", async () => {
     let t = 1_000;
     const store = new LossyStore(24 * 3_600_000, () => t);

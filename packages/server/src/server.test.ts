@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import type { Frame, RequestEnvelope } from "./protocol.ts";
-import { createRayfoldServer } from "./server.ts";
+import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import { RayfoldError } from "./protocol.ts";
 import { MemoryIdempotencyStore } from "./context.ts";
 import { stripTypes } from "./executor.ts";
@@ -809,6 +809,65 @@ describe("security: cost cannot be lowered by bad input", () => {
     const stock = await costOf({ id: 1, op: "book", args: { id: "b1" }, shape: "{ stock }" });
     const cost = stock + largest; // the $ref op charged as the largest page, not as the 5 the stock turns out to be
     expect(frames).toEqual([{ error: { code: "resource_exhausted", message: `Batch cost ${cost} exceeds budget ${small + 20}`, data: { cost, budget: small + 20 } }, fin: true }]);
+  });
+});
+
+describe("security: a shape cannot slip past the cost model", () => {
+  const SCHEMA = `
+    entity Book { id: ID title: String reviews(page: PageArgs = { first: 10 }): Page<Review> }
+    entity Review { id: ID book: Book }
+    entity Author { id: ID name: String }
+    union Hit = Book | Author
+    query hit: Hit
+    query named(page: PageArgs = { first: 10 }): Page<Book>
+    query picks(p: PageArgs = { first: 10 }): Page<Book>
+    query list(first: Int = 20, after: String?): Page<Book>
+    query top(first: Int): [Book]
+  `;
+  const seen: Array<Record<string, unknown>> = [];
+  const book = { $type: "Book", id: "b1", title: "Dune", reviews: { items: [], hasMore: false } };
+  const page = (args: Record<string, unknown>) => (seen.push(args), { items: [book], hasMore: false });
+  const shop = (opts: { budget?: number; maxDepth?: number; maxFields?: number } = {}) =>
+    createRayfoldServer({ schema: SCHEMA, ...opts, resolvers: { Query: { hit: () => book, named: page, picks: page, list: page, top: (a: Record<string, unknown>) => (seen.push(a), [book]) } } });
+  const frame = async (server: RayfoldServer, op: RequestEnvelope["ops"][number]) => (await server.collect({ ops: [op] }))[0] as { meta?: { cost: number }; error?: { code: string; message: string } };
+  const reviews = (first: number, inner: string) => `reviews(page: { first: ${first} }) { items { id book { ${inner} } } }`;
+
+  it("fields asked of a union are charged as each member would answer them, the dearest member counting", async () => {
+    // the executor hands the bare fields to every member; looked up on the union they found nothing and cost 1
+    const body = reviews(20, "id");
+    const bare = await frame(shop(), { id: 1, op: "hit", shape: `{ ${body} }` });
+    const onBook = await frame(shop(), { id: 1, op: "hit", shape: `{ ...on Book { ${body} } }` });
+    expect(bare.meta?.cost).toBe(onBook.meta?.cost);
+    expect(bare.meta?.cost).toBe(1 + 1 + 20 + 1 + 20); // hit, the reviews page and its 20 rows, items, a book on each row
+  });
+
+  it("so a union can no longer nest pages past the depth and field limits or the budget", async () => {
+    const deep = `{ ${reviews(20, reviews(20, reviews(20, reviews(20, "id"))))} }`;
+    expect(await frame(shop({ maxDepth: 8 }), { id: 1, op: "hit", shape: deep })).toMatchObject({ error: { code: "resource_exhausted", message: "Shape depth 13 exceeds 8" } });
+    const wide = `{ ${reviews(200, reviews(200, "id"))} }`;
+    expect((await shop({ budget: 1000 }).collect({ ops: [{ id: 1, op: "hit", shape: wide }] }))[0]).toMatchObject({ error: { code: "resource_exhausted" } });
+    // guard: the same shape under a budget it fits runs
+    expect((await frame(shop(), { id: 1, op: "hit", shape: `{ ${reviews(2, "id")} }` })).meta?.cost).toBe(1 + 1 + 2 + 1 + 2);
+  });
+
+  it("a PageArgs argument is read by its type, whatever it is called", async () => {
+    const named = await frame(shop(), { id: 1, op: "named", args: { page: { first: 200 } }, shape: "{ items { id } }" });
+    const picks = await frame(shop(), { id: 1, op: "picks", args: { p: { first: 200 } }, shape: "{ items { id } }" });
+    expect(picks.meta?.cost).toBe(named.meta?.cost); // `p` was charged as a page of 20
+    expect(picks.meta?.cost).toBe(1 + 200 + 1);
+    // guard: its own default still applies when it is not sent
+    expect((await frame(shop(), { id: 1, op: "picks", shape: "{ items { id } }" })).meta?.cost).toBe(1 + 10 + 1);
+  });
+
+  it("a page's own `first` argument is capped before the resolver sees it, and a negative one refused", async () => {
+    seen.length = 0;
+    await frame(shop(), { id: 1, op: "list", args: { first: 1_000_000 }, shape: "{ items { id } }" });
+    expect(seen).toEqual([{ first: 200 }]);
+    expect(await frame(shop(), { id: 1, op: "list", args: { first: -1 }, shape: "{ items { id } }" })).toMatchObject({ error: { code: "invalid_argument", message: "list().first: must be >= 0" } });
+    // guard: a `first` on an op that returns no page means something else, and is left as sent
+    seen.length = 0;
+    await frame(shop(), { id: 1, op: "top", args: { first: 1_000 }, shape: "{ id }" });
+    expect(seen).toEqual([{ first: 1_000 }]);
   });
 });
 

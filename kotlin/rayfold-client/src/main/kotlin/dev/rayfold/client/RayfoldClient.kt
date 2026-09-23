@@ -296,7 +296,8 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
 
     internal suspend fun runBatch(handles: List<OpHandle>, onFrame: ((JsonObject) -> Unit)?) {
         val byId = handles.associateBy { it.id }
-        val safe = handles.all { (it.request["op"] as JsonPrimitive).content in queries }
+        // a live query never goes out as a safe read: servers up to 0.2.1 buffer a safe request whole, and one never ends
+        val safe = handles.all { (it.request["op"] as JsonPrimitive).content in queries && it.request["live"] != JsonPrimitive(true) }
         val resultKeys = handles.associate { h ->
             val r = h.request
             h.id to RayfoldCache.resultKey((r["op"] as JsonPrimitive).content, r["args"] as? JsonObject ?: EMPTY, (r["shape"] as? JsonPrimitive)?.content, r["vars"] as? JsonObject)

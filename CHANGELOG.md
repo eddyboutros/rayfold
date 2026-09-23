@@ -7,6 +7,34 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **A WebSocket message or a viewer hook can no longer end a Node server.** An envelope whose ops were not objects
+  (`{"ops":[null]}`) threw out of the socket's data handler, and a `viewer` hook that threw or rejected was an unhandled
+  rejection; either ended the process. The first is now refused like any malformed batch, and a refusing viewer is
+  answered before the socket opens, as HTTP answers it: 401 for `unauthenticated`, 500 for anything else.
+
+- **A store that fails to renew a lease no longer ends a Node server.** The renewal of a keyed command's lease was not
+  caught, so one failed call, a Postgres connection dropping mid-command, was an unhandled rejection. A failed renewal
+  is now asked again at the next tick, and renewals stop once the store says the claim is gone.
+
+- **A live query or a stream sent as a safe request answers.** A request marked safe (`QUERY`, `Rayfold-Safe: true`)
+  or asking for one plain JSON document was answered whole, and a live query never ends, so it never answered; on the
+  JVM it held a worker thread for good. Both runtimes now stream it, and both clients stop sending a live query as a
+  safe request, which is what `client.live()` over HTTP did whenever the client knew the op was a query.
+
+- **RB decoders bound what string references expand to.** A two-byte reference stands for a string of any length, so
+  a 208 KB body could stand for 800 MB, and the JVM ran out of memory hashing it. A decoder now refuses a message
+  whose references stand for more than 16 times its length or 1 MiB, whichever is more (spec 09 §2, with vectors).
+
+- **`rayfold check --resolvers` no longer switches `--against` off.** The resolver check returned before the
+  compatibility check ran, so the CI line the CLI guide recommends passed a breaking change whenever the resolvers
+  covered the schema. Both checks now run, and either fails the command.
+
+- **The cost model charges what a union and a renamed page argument select.** Fields asked of a union are handed to
+  every member, but were costed against the union, where they found nothing: a shape could nest pages without limit
+  under a union, past the budget and the depth and field limits. They are now charged as each member would answer
+  them, the dearest counting. A `PageArgs` argument not called `page` was charged as a page of 20, and a page's own
+  `first` argument was never capped; the argument is now found by its type, and `first` is capped at 200.
+
 - **The Node MCP endpoint limits what it reads.** `createMcpHandler` read a request body whole however large it was,
   so one POST could make a server hold as much as a client cared to send. It now takes `maxBody`, 1 MiB by default
   like the Rayfold endpoint, and refuses a larger body with the same 413 problem, drained so the client can read it.
