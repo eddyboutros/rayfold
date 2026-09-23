@@ -103,11 +103,9 @@ Everything the client reads goes into a normalized cache, and commands' patches 
 // the result now, then again whenever this book changes in the cache, with no refetch
 client.watch("book", args("id" to "b1"), "{ id title stock }").collect { render(it) }
 
-// pushed by the server whenever anyone changes it, over HTTP or WebSocket. Unlike the TypeScript client, the flow
-// is not reopened: when the connection drops or the server drains it fails, so retry it
-client.live("book", args("id" to "b1"), "{ id stock }")
-    .retryWhen { e, attempt -> (e is IOException || (e as? RayfoldClientException)?.retryable == true) && attempt < 10 }
-    .collect { render(it) }
+// pushed by the server whenever anyone changes it, over HTTP or WebSocket. A dropped connection or a server that is
+// draining reopens it by itself; onError hears each failure, and one that would recur ends the flow with it
+client.live("book", args("id" to "b1"), "{ id stock }", onError = { e, retrying -> log(e, retrying) }).collect { render(it) }
 
 // stream ops
 client.stream("ticks", args("n" to 10)).collect { println(it) }

@@ -15,13 +15,17 @@ const goingAway = ended("unavailable", "The server is shutting down");
  * A transport that answers each open of the live query with the next script: its frames, then held open until the
  * client goes away, as a server does; or a failure to connect at all.
  */
-function scripted(runs: Array<Frame[] | Error>): { transport: Transport; opened: () => number } {
+function scripted(runs: Array<Frame[] | Error | { dropped: Frame[] }>): { transport: Transport; opened: () => number } {
   let opened = 0;
   const transport: Transport = {
     send(_env, opts) {
       const script = runs[opened++] ?? [];
       return (async function* () {
         if (script instanceof Error) throw script;
+        if (!Array.isArray(script)) {
+          yield* script.dropped; // then the response just ends, as a connection closed underneath it does
+          return;
+        }
         for (const f of script) yield f;
         if (script.some((f) => "fin" in f && f.fin)) return;
         await new Promise<void>((resolve) => opts?.signal?.addEventListener("abort", () => resolve(), { once: true }));
@@ -134,5 +138,51 @@ describe("a live query reconnects", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(t.opened()).toBe(1);
     expect(seen).toEqual([3]);
+  });
+
+  // an error for the whole batch carries no op id: a draining server's 503, or a refused envelope
+  const refused = (code: ErrorCode, message: string): Frame => ({ error: { code, message }, fin: true }) as Frame;
+
+  it("a refusal of the whole batch is this query's too: a draining server's unavailable is reported and retried", async () => {
+    vi.useFakeTimers();
+    const t = scripted([[book(3), goingAway], [refused("unavailable", "The server is shutting down")], [book(4)]]);
+    const client = new RayfoldClient({ transport: t.transport });
+    const seen: number[] = [];
+    const errors: Array<{ code: string; retrying: boolean }> = [];
+    const stop = client.live<{ stock: number }>("book", { id: "b1" }, {}, (d) => seen.push(d.stock), (e, m) => errors.push({ code: (e as { code: string }).code, retrying: m.retrying }));
+    await vi.advanceTimersByTimeAsync(500); // the reopen reaches a server that is draining too
+    expect(t.opened()).toBe(2);
+    expect(errors).toEqual([{ code: "unavailable", retrying: true }, { code: "unavailable", retrying: true }]);
+    await vi.advanceTimersByTimeAsync(1000); // twice the wait, then a server that answers
+    expect(t.opened()).toBe(3);
+    expect(seen).toEqual([3, 4]);
+    stop();
+  });
+
+  it("guard: a refusal that would recur is reported and ends the query", async () => {
+    vi.useFakeTimers();
+    const t = scripted([[refused("invalid_argument", "unknown operation \"book\"")], [book(1)]]);
+    const client = new RayfoldClient({ transport: t.transport });
+    const errors: Array<{ code: string; retrying: boolean }> = [];
+    client.live("book", { id: "b1" }, {}, () => {}, (e, m) => errors.push({ code: (e as { code: string }).code, retrying: m.retrying }));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(errors).toEqual([{ code: "invalid_argument", retrying: false }]);
+    expect(t.opened()).toBe(1);
+  });
+
+  it("a response that ends without an error is a dropped connection: reported as unavailable and opened again", async () => {
+    vi.useFakeTimers();
+    const t = scripted([{ dropped: [book(3)] }, [book(4)]]);
+    const client = new RayfoldClient({ transport: t.transport });
+    const seen: number[] = [];
+    const errors: Array<{ code: string; retrying: boolean }> = [];
+    const stop = client.live<{ stock: number }>("book", { id: "b1" }, {}, (d) => seen.push(d.stock), (e, m) => errors.push({ code: (e as { code: string }).code, retrying: m.retrying }));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(errors).toEqual([{ code: "unavailable", retrying: true }]);
+    expect(t.opened()).toBe(2);
+    expect(seen).toEqual([3, 4]);
+    stop();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(t.opened()).toBe(2); // guard: stopping it is not a drop, and nothing reopens
   });
 });

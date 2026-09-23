@@ -2,6 +2,7 @@ package dev.rayfold.client
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.channelFlow
@@ -269,19 +270,45 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
     /**
      * A live query (extension `live`): the server keeps it open and pushes every change, whoever made it. The flow
      * gives the current result now and after each change; cancelling it unsubscribes.
+     *
+     * It outlives the server it was opened on, as the TypeScript client's does: a retryable end (a server draining in
+     * a rolling deploy, a dropped connection, a response that simply ended) opens it again after half a second,
+     * doubling to thirty while it keeps failing and starting over once data arrives. [onError] hears each failure and
+     * whether it is being retried; an error that would recur, such as `permission_denied`, ends the flow with it.
      */
     @JvmOverloads
-    fun live(op: String, args: JsonObject = EMPTY, shape: String? = null): Flow<JsonElement> = channelFlow {
+    fun live(op: String, args: JsonObject = EMPTY, shape: String? = null, onError: ((Throwable, Boolean) -> Unit)? = null): Flow<JsonElement> = channelFlow {
         val rk = RayfoldCache.resultKey(op, args, shape, null)
-        val b = batch()
-        val h = b.query(op, args, shape, live = true)
-        b.run { f ->
-            if ((f["id"] as? JsonPrimitive)?.intOrNull != h.id) return@run
-            val error = f["error"] as? JsonObject
-            when {
-                error != null -> close(RayfoldClientException.of(error))
-                ("data" in f && "at" !in f) || "patch" in f || "fin" in f -> cache.getResult(rk)?.let { trySend(cache.denormalize(it.data)) }
+        var failures = 0
+        while (true) {
+            val failure: Throwable = try {
+                var ended: Throwable? = null
+                val b = batch()
+                val h = b.query(op, args, shape, live = true)
+                b.run { f ->
+                    val id = (f["id"] as? JsonPrimitive)?.intOrNull
+                    val error = f["error"] as? JsonObject
+                    when {
+                        // an error for the whole batch is this query's too: a draining server's 503, a refused envelope
+                        id == null && error != null -> if (ended == null) ended = RayfoldClientException.of(error)
+                        id != h.id -> {}
+                        error != null -> if (ended == null) ended = RayfoldClientException.of(error)
+                        ("data" in f && "at" !in f) || "patch" in f || "fin" in f -> {
+                            failures = 0 // the connection is good again
+                            cache.getResult(rk)?.let { trySend(cache.denormalize(it.data)) }
+                        }
+                    }
+                }
+                ended ?: RayfoldClientException("unavailable", "The live query $op ended without an error")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e
             }
+            val retrying = failure !is RayfoldClientException || failure.retryable
+            onError?.invoke(failure, retrying)
+            if (!retrying) throw failure
+            delay(minOf(30_000L, 500L * (1L shl minOf(failures++, 6))))
         }
     }
 
@@ -324,6 +351,8 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
                         }
                         h.result.completeExceptionally(RayfoldClientException.of(error))
                     }
+                    // a dry run says what would happen; written to the cache it showed every watcher a change that never was
+                    "ok" in f && h.request["simulate"] == JsonPrimitive(true) -> h.result.complete(f["ok"] ?: JsonNull)
                     "ok" in f -> {
                         var r: CachedResult? = null
                         cache.transaction {

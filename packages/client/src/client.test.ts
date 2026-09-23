@@ -61,6 +61,22 @@ describe("client over the in-process transport", () => {
     expect(sent).toEqual([{ rayfold: "0.1", ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title author { id name } }" }], meta: { client: "test/1", deadline: 5000 } }]);
   });
 
+  it("a dry run answers with what would happen and changes nothing a watcher sees; the real run does", async () => {
+    viewer = { id: "u9", role: "admin" }; // restock is staff-only, and declares @simulate
+    const watched = new Signal<number>();
+    const stop = client.watch<{ id: string; stock: number }>("book", { id: "b1" }, { shape: "{ id stock }" }, (d) => watched.push(d.stock));
+    await watched.atLeast(1, "the book as the cache holds it");
+    const dry = await client.command<{ stock: number }>("restock", { bookId: "b1", qty: 100 }, { shape: "{ id stock }", simulate: true });
+    expect(dry).toMatchObject({ $type: "Book", id: "b1", stock: 105 }); // what the restock would leave
+    expect(watched.items).toEqual([5]); // written to the cache, it showed 105 as if it had happened
+    expect(await client.query<{ stock: number }>("book", { id: "b1" }, { shape: "{ id stock }", policy: "cache" })).toMatchObject({ stock: 5 });
+    // guard: the same command for real updates the cache, and the watcher with it
+    await client.command("restock", { bookId: "b1", qty: 100 }, { shape: "{ id stock }" });
+    await watched.atLeast(2, "the real restock");
+    expect(watched.items).toEqual([5, 105]);
+    stop();
+  });
+
   it("commands apply patches so an earlier query result updates without a refetch", async () => {
     const watched = new Signal<number>();
     const seen = watched.items;

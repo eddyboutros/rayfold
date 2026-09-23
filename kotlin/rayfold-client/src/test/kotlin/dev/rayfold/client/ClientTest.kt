@@ -82,7 +82,7 @@ class ClientTest {
         stream ticks(n: Int): Int
         entity Note { id: ID text: String version: Int @version }
         query note(id: ID): Note?
-        command restock(id: ID, qty: Int): Book
+        command restock(id: ID, qty: Int): Book @simulate
         command editNote(id: ID, text: String): Note
     """
 
@@ -147,11 +147,11 @@ class ClientTest {
                         book(id, input.str("title"), 0, input.str("authorId")).also { books[id] = it }
                     },
                     // answers with a patch that marks every cached `book` result stale, as a change the server cannot name would
-                    "restock" to { args, _ ->
+                    "restock" to { args, ctx ->
                         val id = args.str("id")
                         val b = books[id] ?: throw RayfoldException(Code.NOT_FOUND, "No book $id")
                         val next = JsonObject(b + ("stock" to JsonPrimitive((b["stock"]?.jsonPrimitive?.int ?: 0) + (args["qty"]?.jsonPrimitive?.int ?: 0))))
-                        books[id] = next
+                        if (!ctx.simulate) books[id] = next
                         CommandResult(next, patch = listOf(buildJsonObject { put("invOp", JsonArray(listOf(JsonPrimitive("book")))) }))
                     },
                     "editNote" to { args, ctx ->
@@ -239,6 +239,24 @@ class ClientTest {
         assertEquals(stocked(9), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE), "a stale result is fetched again")
         assertEquals(4, t.sent.size)
         assertEquals(listOf("book"), t.ops(3))
+    }
+
+    @Test
+    fun `a dry run answers with what would happen and changes nothing a watcher sees, and the real run does`() = bounded {
+        val client = RayfoldClient(http("alice"))
+        val stock = Channel<Int>(Channel.UNLIMITED)
+        val watching = launch { client.watch("book", args("id" to "b1"), "{ id stock }").collect { stock.send(it.stock()) } }
+        assertEquals(3, stock.receive())
+        val b = client.batch()
+        val dry = b.command("restock", args("id" to "b1", "qty" to 100), "{ id stock }", simulate = true)
+        b.run()
+        assertEquals(stocked(103), dry.await(), "what the restock would leave")
+        assertEquals(stocked(3), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE), "the cache still holds the real stock")
+        assertTrue(stock.tryReceive().isFailure, "and the watcher saw nothing: written to the cache, the dry run showed 103")
+        // guard: the same command for real reaches the cache
+        client.command("restock", args("id" to "b1", "qty" to 100), "{ id stock }")
+        assertEquals(stocked(103), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE))
+        watching.cancel()
     }
 
     @Test

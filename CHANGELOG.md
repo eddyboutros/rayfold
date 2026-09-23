@@ -7,6 +7,18 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **Live queries recover in both clients.** The TypeScript client dropped an error meant for the whole batch, such as
+  a draining server's 503 answering a reopen, and treated a response that simply ended as normal: either way the query
+  stopped with nothing said and nothing retried, and `useLive` and `injectLive` stayed loading. Both now count as a
+  retryable end. The Kotlin client never reopened a live query at all; `live()` now reopens after half a second,
+  doubling to thirty, and takes an `onError(error, retrying)`, as the TypeScript client does.
+
+- **The TypeScript WebSocket transport connects again after a refused connection.** It kept the failed attempt, so
+  every later request got the same rejection and the transport was dead for the life of the client.
+
+- **A dry run no longer changes the client cache.** Both clients stored a `simulate: true` command's result and applied
+  its patch, so every watcher showed a change that never happened.
+
 - **A command's answer, and every op after it in the batch, see what the command changed.** The batch shares one
   memo of loaded fields, and it outlived the command: a loader-backed field on the command's own result, and on any op
   after it, was answered from before the command ran, and that stale value went into the command's patch and into

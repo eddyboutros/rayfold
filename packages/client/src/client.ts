@@ -341,8 +341,12 @@ export class RayfoldClient {
         const retrying = !(e instanceof RayfoldClientError) || e.retryable;
         onError?.(e, { retrying });
         if (!retrying) return;
-        const timer = setTimeout(open, Math.min(30_000, 500 * 2 ** failures++));
-        ac.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+        const stop = () => clearTimeout(timer);
+        const timer = setTimeout(() => {
+          ac.signal.removeEventListener("abort", stop); // one listener per wait, not one more per reconnect
+          open();
+        }, Math.min(30_000, 500 * 2 ** failures++));
+        ac.signal.addEventListener("abort", stop, { once: true });
       };
       const b = this.batch();
       const h = b.query<T>(op, args, { ...o, live: true });
@@ -350,6 +354,12 @@ export class RayfoldClient {
         .run({
           signal: ac.signal,
           onFrame: (f) => {
+            // An error for the whole batch is this query's too: a draining server answering the reopen with 503, a
+            // refused envelope. Dropped, it ended the query with nothing said and nothing retried.
+            if (!("id" in f) && "error" in f) {
+              failed(new RayfoldClientError(f.error));
+              return;
+            }
             if (!("id" in f) || f.id !== h.id) return;
             if ("error" in f) {
               // after unsubscribing, the stream ends with a "canceled" frame: that is the stop, not a failure
@@ -365,7 +375,9 @@ export class RayfoldClient {
             }
           },
         })
-        .catch(failed);
+        // a live query ends only when stopped or with an error; a response that simply ended is a connection that
+        // dropped, and is opened again like one
+        .then(() => failed(new RayfoldClientError({ code: "unavailable", message: `The live query ${op} ended without an error` })), failed);
     };
     open();
     return () => ac.abort();
@@ -416,6 +428,9 @@ export class RayfoldClient {
           const current = f.error.type === "VersionConflict" ? (f.error.data as { current?: unknown } | undefined)?.current : undefined;
           if (current) this.cache.mergeEntities(current);
           reject(h, new RayfoldClientError(f.error));
+        } else if ("ok" in f && h.req.simulate) {
+          // a dry run says what would happen; written to the cache it showed every watcher a change that never was
+          resolve(h, this.typed(h.req.op, f.ok));
         } else if ("ok" in f) {
           let r!: ReturnType<RayfoldCache["putResult"]>;
           this.cache.transaction(() => {

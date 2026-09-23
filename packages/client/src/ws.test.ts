@@ -227,6 +227,23 @@ describe("WebSocket transport connections", () => {
     expect({ code: (err as RayfoldClientError).code, message: (err as Error).message }).toEqual({ code: "unavailable", message: "WebSocket connection failed" });
   });
 
+  it("a refused connection fails only that request: the next one connects again and is answered", async () => {
+    const gone = createServer();
+    await new Promise<void>((r) => gone.listen(0, r));
+    const port = (gone.address() as AddressInfo).port;
+    await new Promise<void>((r) => gone.close(() => r()));
+    // the first address refuses, as a server mid-deploy does; the next is the real one
+    const dialled: string[] = [];
+    const transport = createWebSocketTransport({ url: "ws://127.0.0.1:1/unused", connectUrl: () => (dialled.push(dialled.length ? wsUrl : `ws://127.0.0.1:${port}/rayfold/ws`), dialled.at(-1)!) });
+    const client = new RayfoldClient({ transport });
+    const first = await bounded(client.query("book", { id: "b1" }).catch((e: unknown) => e), "the refused connect");
+    expect((first as RayfoldClientError).code).toBe("unavailable");
+    // a failed attempt used to be kept, and every later request got the same rejection without dialling again
+    expect(await bounded(client.query<{ id: string }>("book", { id: "b1" }, { shape: "{ id }" }), "the second request")).toMatchObject({ id: "b1" });
+    expect(dialled.length).toBe(2);
+    transport.close();
+  });
+
   it("leaving a live op's frames early cancels exactly that op on the server", async () => {
     const subs = changeBusLog(bs.server);
     const transport = createWebSocketTransport({ url: `${wsUrl}?auth=Bearer%20u1` });

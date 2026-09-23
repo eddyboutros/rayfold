@@ -109,9 +109,9 @@ that book updates too, not only the live one. In React, only the components show
   browsers attach cookies to a WebSocket handshake, so without that check any site could open a socket as your user.
   `maxMessage` bounds an assembled message (1 MiB by default). One socket carries many operations, and
   `{ "cancel": <id> }` cancels one of them without closing it. On the JVM, `RayfoldWebSocket` does the same job.
-- A dropped connection is not the end of the subscription. The TypeScript client reopens it after half a second,
-  doubling to thirty, so a screen survives a deploy; `onError(e, { retrying })` says whether it is coming back, and
-  only an error that would recur ends it. The Kotlin client does not retry yet: reopen it yourself.
+- A dropped connection is not the end of the subscription. Both clients reopen it after half a second, doubling to
+  thirty, so a screen survives a deploy; `onError` says whether it is coming back (`{ retrying }` in TypeScript, the
+  second argument in Kotlin), and only an error that would recur ends it.
 - Reopening re-runs the query, so what comes back is the current answer rather than the changes you missed. The
   guarantee is that the screen catches up, not that you see every step it took to get there: a value that changed and
   changed back while you were away leaves no trace. If you need the steps, [an event stream](./streams.md) is the

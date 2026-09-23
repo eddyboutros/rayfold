@@ -50,7 +50,9 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
   const connect = async (): Promise<WebSocket> => {
     if (socket && socket.readyState === WS.OPEN) return socket;
     if (opening) return opening;
-    opening = (async () => {
+    // A failed attempt is forgotten, so the next request tries again: kept, it answered every later request with the
+    // same rejection and the transport was dead for the life of the client after one refused connection.
+    const attempt: Promise<WebSocket> = (async () => {
       const url = o.connectUrl ? await o.connectUrl() : o.url;
       const ws = new WS(url, o.protocols ?? ["rayfold.0.1"]);
       if (codec) ws.binaryType = "arraybuffer";
@@ -64,7 +66,7 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
         if (codec) for (const f of codec.decodeFrames(new Uint8Array(ev.data as ArrayBuffer))) route(f as Frame);
       });
       ws.addEventListener("close", () => {
-        socket = null;
+        if (socket === ws) socket = null; // a replacement may already be open; it is not this one's to forget
         for (const p of pending) {
           for (const id of p.ids) p.push({ id, error: { code: "unavailable", message: "Connection closed" }, fin: true });
           p.close();
@@ -72,10 +74,12 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
         pending.clear();
       });
       socket = ws;
-      opening = null;
       return ws;
-    })();
-    return opening;
+    })().finally(() => {
+      if (opening === attempt) opening = null;
+    });
+    opening = attempt;
+    return attempt;
   };
 
   return {

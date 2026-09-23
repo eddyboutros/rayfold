@@ -20,6 +20,8 @@ dependencies {
     testImplementation(project(":rayfold-core"))
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+    // virtual time, so the reconnect waits are asserted without waiting
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
