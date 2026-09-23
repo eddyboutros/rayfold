@@ -4,6 +4,7 @@
  * `{ $ref, $sel }` where `$sel` records which fields that result selected, so reading a result back
  * yields exactly the requested shape while the field values always come from the shared entity.
  */
+import { shapeLevel, type Shape, type ViewResolver } from "@rayfold/schema";
 import type { PatchOp } from "@rayfold/server/protocol";
 
 export type EntityKey = string;
@@ -12,6 +13,12 @@ export type Sel = true | { [field: string]: Sel };
 export interface Ref {
   $ref: EntityKey;
   $sel?: Sel;
+  /**
+   * Fields this result asked for that are not the entity's own under that name: an alias, or a field asked for with
+   * arguments (spec 07 §3). They stay with the result, so two results selecting the same entity differently each
+   * read back what they asked for.
+   */
+  $own?: Record<string, unknown>;
 }
 
 export interface CachedResult {
@@ -45,7 +52,7 @@ export function isRef(v: unknown): v is Ref {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const o = v as Record<string, unknown>;
   if (typeof o["$ref"] !== "string") return false;
-  return Object.keys(o).every((k) => k === "$ref" || k === "$sel");
+  return Object.keys(o).every((k) => k === "$ref" || k === "$sel" || k === "$own");
 }
 
 export class RayfoldCache {
@@ -124,12 +131,16 @@ export class RayfoldCache {
     return this.normalizeValue(data, touched).value;
   }
 
-  private normalizeValue(v: unknown, touched: Set<EntityKey>): { value: unknown; sel: Sel } {
+  /**
+   * [shape] is the selection that produced [v], when the client knows it: with it, the fields that belong to that
+   * selection are kept on the result's ref rather than written to the shared entity.
+   */
+  private normalizeValue(v: unknown, touched: Set<EntityKey>, shape?: Shape, views?: ViewResolver): { value: unknown; sel: Sel } {
     if (v === null || typeof v !== "object") return { value: v, sel: true };
     if (Array.isArray(v)) {
       let sel: Sel = true;
       const value = v.map((x) => {
-        const r = this.normalizeValue(x, touched);
+        const r = this.normalizeValue(x, touched, shape, views);
         if (r.sel !== true) sel = sel === true ? r.sel : mergeSel(sel, r.sel);
         return r.value;
       });
@@ -141,16 +152,19 @@ export class RayfoldCache {
     }
     const o = v as Record<string, unknown>;
     const key = entityKey(o);
+    const level = shapeLevel(shape, views);
     const sel: { [k: string]: Sel } = {};
     const out: Record<string, unknown> = {};
+    const own: Record<string, unknown> = {};
     for (const [k, x] of Object.entries(o)) {
-      const r = this.normalizeValue(x, touched);
-      out[k] = r.value;
+      const r = this.normalizeValue(x, touched, level.child.get(k), views);
+      if (key && level.bySelection.has(k)) own[k] = r.value;
+      else out[k] = r.value;
       sel[k] = r.sel;
     }
     if (key) {
       this.storeEntity(key, out, touched);
-      return { value: { $ref: key, $sel: sel }, sel };
+      return { value: Object.keys(own).length ? { $ref: key, $sel: sel, $own: own } : { $ref: key, $sel: sel }, sel };
     }
     return { value: out, sel };
   }
@@ -177,7 +191,10 @@ export class RayfoldCache {
         if (s === undefined || s === true) return walk(e, undefined, depth + 1);
         const out: Record<string, unknown> = {};
         if ("$type" in e) out["$type"] = e["$type"];
-        for (const [k, sub] of Object.entries(s)) if (k in e) out[k] = walk(e[k], sub, depth + 1);
+        for (const [k, sub] of Object.entries(s)) {
+          if (v.$own && k in v.$own) out[k] = walk(v.$own[k], sub, depth + 1);
+          else if (k in e) out[k] = walk(e[k], sub, depth + 1);
+        }
         return out;
       }
       const out: Record<string, unknown> = {};
@@ -196,9 +213,9 @@ export class RayfoldCache {
     return JSON.stringify([op, canonical(args ?? {}), shape ?? "", canonical(vars ?? {})]);
   }
 
-  putResult(key: string, op: string, data: unknown): CachedResult {
+  putResult(key: string, op: string, data: unknown, shape?: Shape, views?: ViewResolver): CachedResult {
     const keys = new Set<EntityKey>();
-    const normalized = this.normalizeValue(data, keys).value;
+    const normalized = this.normalizeValue(data, keys, shape, views).value;
     const r: CachedResult = { data: normalized, op, keys, storedAt: this.now(), stale: false };
     this.results.set(key, r);
     this.emit(keys, new Set([op]));
@@ -210,15 +227,24 @@ export class RayfoldCache {
   }
 
   /** Apply a deferred delta at a path inside a stored result (spec 04 §3). */
-  mergeAt(key: string, path: string, delta: unknown): void {
+  mergeAt(key: string, path: string, delta: unknown, shape?: Shape, views?: ViewResolver): void {
     const r = this.results.get(key);
     if (!r || !delta || typeof delta !== "object") return;
     const touched = new Set<EntityKey>();
-    const norm = this.normalizeValue(delta, touched);
+    // the selection at that path: the deferred block's fields are among its fields
+    let at = shape;
+    for (const seg of path === "" ? [] : path.split(".")) if (!/^\d+$/.test(seg)) at = shapeLevel(at, views).child.get(seg);
+    const norm = this.normalizeValue(delta, touched, at, views);
     const target = path === "" ? r.data : this.getPath(r.data, path.split("."));
     if (isRef(target)) {
+      const bySelection = shapeLevel(at, views).bySelection;
+      const shared: Record<string, unknown> = {};
+      for (const [k, x] of Object.entries(norm.value as Record<string, unknown>)) {
+        if (bySelection.has(k)) (target.$own ??= {})[k] = x;
+        else shared[k] = x;
+      }
       const e = this.baseOf(target.$ref);
-      if (e) this.setBase(target.$ref, { ...e, ...(norm.value as Record<string, unknown>) });
+      if (e) this.setBase(target.$ref, { ...e, ...shared });
       target.$sel = mergeSel(target.$sel ?? {}, norm.sel);
     } else if (target && typeof target === "object" && !Array.isArray(target)) {
       Object.assign(target as Record<string, unknown>, norm.value as Record<string, unknown>);
@@ -429,7 +455,7 @@ function mergeSel(a: Sel, b: Sel): Sel {
 function containsRef(data: unknown, key: EntityKey): boolean {
   if (data === null || typeof data !== "object") return false;
   if (Array.isArray(data)) return data.some((x) => containsRef(x, key));
-  if (isRef(data)) return data.$ref === key;
+  if (isRef(data)) return data.$ref === key || (data.$own !== undefined && containsRef(data.$own, key));
   return Object.values(data as Record<string, unknown>).some((x) => containsRef(x, key));
 }
 
@@ -453,7 +479,7 @@ function dropRef(data: unknown, key: EntityKey): unknown {
   if (data === null || typeof data !== "object") return data;
   // in a list the reference becomes a gap rather than going away, so later positions still line up
   if (Array.isArray(data)) return data.map((x) => (isRef(x) && x.$ref === key ? { $gone: key } : dropRef(x, key)));
-  if (isRef(data)) return data.$ref === key ? null : data;
+  if (isRef(data)) return data.$ref === key ? null : data.$own ? { ...data, $own: dropRef(data.$own, key) as Record<string, unknown> } : data;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data as Record<string, unknown>)) out[k] = dropRef(v, key);
   return out;
@@ -466,7 +492,8 @@ export interface RayfoldCache {
 RayfoldCache.prototype.getPath = function (this: RayfoldCache, v: unknown, path: string[]): unknown {
   let cur = v;
   for (const p of path) {
-    if (isRef(cur)) cur = this.get(cur.$ref);
+    // a field the result keeps for itself is read there, not from the entity
+    if (isRef(cur)) cur = cur.$own && p in cur.$own ? cur.$own : this.get(cur.$ref);
     if (cur === null || cur === undefined || typeof cur !== "object") return undefined;
     cur = Array.isArray(cur) ? cur[Number(p)] : (cur as Record<string, unknown>)[p];
   }

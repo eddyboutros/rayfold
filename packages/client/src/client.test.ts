@@ -5,6 +5,7 @@ import { RbCodec } from "@rayfold/rb";
 import { loadSchema, schemaHash, type RayfoldSchemaIR } from "@rayfold/schema";
 import { listen, type Frame, type RequestEnvelope, type RequestOp } from "@rayfold/server";
 import { Signal, bounded } from "../../../e2e/wait.ts";
+import { parseShapeText } from "@rayfold/schema";
 import { bookstoreSchemaText, createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { RayfoldCache } from "./cache.ts";
 import { RayfoldClient, RayfoldClientError } from "./client.ts";
@@ -36,6 +37,15 @@ describe("cache", () => {
     expect((c.denormalize(r.data) as { items: Array<{ title: string }> }).items.map((i) => i.title)).toEqual(["T2", "T2"]);
   });
 
+  it("a deferred part keeps its aliased fields with the result, and its plain fields on the entity", () => {
+    const c = new RayfoldCache(() => 0);
+    const shape = parseShapeText("{ id @defer { x: title stock } }");
+    c.putResult("k", "book", { $type: "Book", id: "b1" }, shape);
+    c.mergeAt("k", "", { x: "T", stock: 4 }, shape);
+    expect(c.denormalize(c.getResult("k")!.data)).toEqual({ $type: "Book", id: "b1", x: "T", stock: 4 });
+    expect(c.get("Book:b1")).toEqual({ $type: "Book", id: "b1", stock: 4 }); // no field x on the book
+  });
+
   it("applies set/del/inv/invOp patches and notifies affected ops", () => {
     const c = new RayfoldCache(() => 0);
     c.putResult("q1", "books", { items: [{ $type: "Book", id: "b1", stock: 5 }, { $type: "Book", id: "b2", stock: 1 }] });
@@ -59,6 +69,34 @@ describe("client over the in-process transport", () => {
     const book = await c.query<{ title: string; author: { name: string } }>("book", { id: "b1" }, { shape: "{ id title author { id name } }" });
     expect(book).toEqual({ $type: "Book", id: "b1", title: "The Dispossessed", author: { $type: "Author", id: "a1", name: "Ursula K. Le Guin" } });
     expect(sent).toEqual([{ rayfold: "0.1", ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title author { id name } }" }], meta: { client: "test/1", deadline: 5000 } }]);
+  });
+
+  it("the same entity selected with other arguments, or through an alias, reads back what each result asked for", async () => {
+    // a field asked for with arguments, or under an alias, was stored on the shared entity by its output name: the
+    // later result overwrote the earlier one's, and a watcher of the first saw the second's answer
+    const one = new Signal<number>();
+    const stopOne = client.watch<{ reviews: { items: unknown[] } }>("book", { id: "b1" }, { shape: "{ id reviews(page: { first: 1 }) { items { id } } }" }, (d) => one.push(d.reviews.items.length));
+    await one.atLeast(1, "the first page of one");
+    const two = await client.query<{ reviews: { items: unknown[] } }>("book", { id: "b1" }, { shape: "{ id reviews(page: { first: 2 }) { items { id } } }" });
+    expect(two.reviews.items).toHaveLength(2);
+    expect(one.items.at(-1)).toBe(1);
+    expect(await client.query<{ reviews: { items: unknown[] } }>("book", { id: "b1" }, { shape: "{ id reviews(page: { first: 1 }) { items { id } } }", policy: "cache" })).toMatchObject({ reviews: { items: [{ id: "r1" }] } });
+
+    const named = await client.query<{ x: unknown }>("book", { id: "b1" }, { shape: "{ id x: title }" });
+    const counted = await client.query<{ x: unknown }>("book", { id: "b1" }, { shape: "{ id x: stock }" });
+    expect([named.x, counted.x]).toEqual(["The Dispossessed", 5]);
+    expect(await client.query<{ x: unknown }>("book", { id: "b1" }, { shape: "{ id x: title }", policy: "cache" })).toMatchObject({ x: "The Dispossessed" });
+    expect(client.cache.get("Book:b1")).not.toHaveProperty("x"); // no entity has a field called x
+
+    // guard: a plain field is still the entity's, shared by every result that selects it
+    const stock = new Signal<number>();
+    const stopStock = client.watch<{ stock: number }>("book", { id: "b1" }, { shape: "{ id stock }" }, (d) => stock.push(d.stock));
+    await stock.atLeast(1, "the stock");
+    await client.command("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] } });
+    await stock.atLeast(2, "the stock after the order");
+    expect(stock.items).toEqual([5, 4]);
+    stopOne();
+    stopStock();
   });
 
   it("a dry run answers with what would happen and changes nothing a watcher sees; the real run does", async () => {

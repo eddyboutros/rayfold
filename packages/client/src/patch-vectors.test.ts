@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PatchOp } from "@rayfold/server/protocol";
+import { parseShapeText } from "@rayfold/schema";
 import { RayfoldCache } from "./cache.ts";
 
 /**
@@ -16,7 +17,7 @@ import { RayfoldCache } from "./cache.ts";
 const PATH = new URL("../../../conformance/vectors/patch/apply.json", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const doc = JSON.parse(readFileSync(PATH, "utf8")) as {
   op: string;
-  cases: Array<{ name: string; result: unknown; patch: PatchOp[]; expect: unknown; why?: string }>;
+  cases: Array<{ name: string; shape?: string; result: unknown; patch: PatchOp[]; expect: unknown; why?: string }>;
 };
 
 describe("conformance vectors: applying a patch", () => {
@@ -24,7 +25,8 @@ describe("conformance vectors: applying a patch", () => {
     it(c.name, () => {
       const cache = new RayfoldCache();
       const key = RayfoldCache.resultKey(doc.op, {}, undefined, undefined);
-      cache.putResult(key, doc.op, c.result);
+      // the shape the result was asked with, where it matters to how the result is stored
+      cache.putResult(key, doc.op, c.result, c.shape === undefined ? undefined : parseShapeText(c.shape));
       cache.applyPatch(c.patch, key);
       expect(cache.denormalize(cache.getResult(key)!.data), c.why ?? c.name).toEqual(c.expect);
     });

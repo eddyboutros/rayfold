@@ -578,7 +578,7 @@ async function runLive(
       rt.counters?.add("rayfold.live.reran", 1, { op: p.op.name });
       try {
         const next = await collect();
-        const d = diffResults(current, next.data);
+        const d = diffResults(current, next.data, p.shape, (t, v) => rt.ir.views[`${t}.${v}`]);
         current = next.data;
         readSet = readSetOf(current);
         results.set(id, current);

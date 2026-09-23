@@ -1,7 +1,7 @@
 /** RayfoldClient: batches with refs, cache-coherent commands, live-updating watches. */
 import type { Frame, PatchOp, RequestEnvelope, RequestOp, WireError } from "@rayfold/server/protocol";
 import type { RayfoldSchemaIR } from "@rayfold/schema";
-import { annotation } from "@rayfold/schema";
+import { annotation, isShapeId, parseShapeText, type Shape, type ViewResolver } from "@rayfold/schema";
 import { RayfoldCache, type CacheListener, type CachedResult, type MergePolicy, type OptimisticOp } from "./cache.ts";
 import { OfflineQueue, isUnreachable, memoryQueue, type QueueEvent, type QueueStorage, type QueuedCommand } from "./offline.ts";
 import type { Transport, UploadBody, UploadHandle } from "./transport.ts";
@@ -162,6 +162,17 @@ export class RayfoldClient {
   prepare(req: RequestOp): RequestOp {
     return this.schema ? { ...req, compact: true } : req;
   }
+  /**
+   * The shape a request asked with, which tells the cache what belongs to that selection (spec 07 §3). A trusted
+   * shape sent by id has no text here to read, so its result is stored as results always were.
+   */
+  private shapeOf(req: RequestOp): Shape | undefined {
+    return typeof req.shape === "string" && !isShapeId(req.shape) ? parseShapeText(req.shape) : undefined;
+  }
+
+  /** The schema's named views, so a spread in a shape is read as the fields it stands for. */
+  private readonly views: ViewResolver = (type, view) => this.schema?.views[`${type}.${view}`];
+
   private typed(op: string, data: unknown, at?: string): unknown {
     if (!this.schema) return data;
     const def = this.schema.ops[op];
@@ -434,15 +445,15 @@ export class RayfoldClient {
         } else if ("ok" in f) {
           let r!: ReturnType<RayfoldCache["putResult"]>;
           this.cache.transaction(() => {
-            r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.ok));
+            r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.ok), this.shapeOf(h.req), this.views);
             if (f.patch) this.cache.applyPatch(f.patch as PatchOp[]);
           });
           resolve(h, this.cache.denormalize(r.data));
         } else if ("data" in f && !("at" in f)) {
-          const r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.data));
+          const r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.data), this.shapeOf(h.req), this.views);
           if (f.fin) resolve(h, this.cache.denormalize(r.data));
         } else if ("at" in f) {
-          this.cache.mergeAt(resultKeys.get(h.id)!, f.at, this.typed(h.req.op, f.data, f.at));
+          this.cache.mergeAt(resultKeys.get(h.id)!, f.at, this.typed(h.req.op, f.data, f.at), this.shapeOf(h.req), this.views);
         } else if ("patch" in f) {
           // a live update: `at` and `list` ops describe this op's own stored result
           this.cache.applyPatch(f.patch as PatchOp[], resultKeys.get(h.id)!);

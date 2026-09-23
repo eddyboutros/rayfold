@@ -305,6 +305,37 @@ function canonItem(i: ShapeItem): string {
   }
 }
 
+/**
+ * One level of a shape as a cache sees it (spec 07 §3): the selection under each output name, and which output names
+ * belong to the selection rather than to the entity. An alias, or a field asked for with arguments, does: its value is
+ * what this selection asked for, and another selection of the same entity may ask for another, so it is neither
+ * written to the shared entity nor carried in a `set` patch under that name. Without a shape, nothing does.
+ */
+export interface ShapeLevel {
+  bySelection: Set<string>;
+  child: Map<string, Shape | undefined>;
+}
+
+export function shapeLevel(shape: Shape | undefined, views?: ViewResolver): ShapeLevel {
+  const level: ShapeLevel = { bySelection: new Set(), child: new Map() };
+  const visit = (items: ShapeItem[], seen: Set<string>): void => {
+    for (const it of items) {
+      if (it.kind === "field") {
+        const out = it.alias ?? it.name;
+        if ((it.alias !== undefined && it.alias !== it.name) || (it.args && Object.keys(it.args).length)) level.bySelection.add(out);
+        level.child.set(out, it.shape);
+      } else if (it.kind === "on" || it.kind === "defer") visit(it.shape.items, seen);
+      else {
+        const key = `${it.type}.${it.view}`;
+        const v = seen.has(key) ? undefined : views?.(it.type, it.view);
+        if (v) visit(v.shape.items, new Set([...seen, key]));
+      }
+    }
+  };
+  if (shape) visit(shape.items, new Set());
+  return level;
+}
+
 export function shapeIdOf(canonicalText: string): string {
   return `sha256:${sha256Hex(canonicalText)}`;
 }

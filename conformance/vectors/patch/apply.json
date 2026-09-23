@@ -106,6 +106,7 @@
         { "$type": "Book", "id": "b2", "title": "Emma (1815)" }
       ],
       "why": "normalisation is the point: one entity, however many results mention it"
-    }
+    },
+    {"name": "a field selected under an alias stays with the result, and a set changes only the entity's own fields", "shape": "{ id x: title stock }", "result": [{"$type": "Book", "id": "b1", "x": "Dune", "stock": 3}], "patch": [{"set": "Book:b1", "value": {"title": "Dune Messiah", "stock": 5}}], "expect": [{"$type": "Book", "id": "b1", "x": "Dune", "stock": 5}], "why": "x is what this result asked for, not a field of the book: kept on the entity it was overwritten by any other result selecting another field as x (spec 07 §3). A set names the book's own fields, so stock follows it and x waits for the result to be read again"}
   ]
 }

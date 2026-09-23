@@ -18,7 +18,7 @@ A client is not required to keep a cache at all: a script or a service can read 
 
 | | |
 |---|---|
-| **Entities** | keyed `Type:id`, each a set of fields. One entity, however many results mention it. |
+| **Entities** | keyed `Type:id`, each a set of fields under their own names. One entity, however many results mention it. A field selected under an alias or with arguments is not one of them ([07 §3](07-cache.md)). |
 | **Results** | keyed by the operation and its arguments, shape and vars. A result holds the answer's structure with entities replaced by references, plus the set of entity keys it contains. |
 | **Staleness** | which entities and which results have been marked as needing a refetch. |
 

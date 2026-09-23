@@ -9,6 +9,7 @@ import {
   base64urlBytes,
   baseName,
   fieldsOf,
+  shapeLevel,
   type Annotation,
   type FieldDef,
   type OpDef,
@@ -18,6 +19,7 @@ import {
   type ShapeValue,
   type TypeDef,
   type TypeRef,
+  type ViewResolver,
 } from "@rayfold/schema";
 import { coerceArgs } from "./args.ts";
 import type { RayfoldContext , PolicyHint } from "./context.ts";
@@ -182,7 +184,7 @@ export class Executor {
       await this.projectMany(job.slots, job.type, job.shape, st);
     }
     const extra = cr.patch ?? [];
-    const patch = derivePatches(data).concat(extra);
+    const patch = derivePatches(data, shape, (t, v) => this.ir.views[`${t}.${v}`]).concat(extra);
     if (!ctx.simulate) {
       for (const ev of cr.emit ?? []) {
         if (!op.emits.includes(ev.event)) throw new RayfoldError("internal", `${op.name} emitted undeclared event ${ev.event}`);
@@ -726,25 +728,28 @@ function serializeScalar(ir: RayfoldSchemaIR, t: TypeRef, v: unknown): unknown {
 }
 
 /** Every entity object in a projected result becomes a `set` patch (spec 04 §2). */
-export function derivePatches(data: unknown): PatchOp[] {
+export function derivePatches(data: unknown, shape?: Shape, views?: ViewResolver): PatchOp[] {
   const out = new Map<string, Record<string, unknown>>();
-  const walk = (v: unknown): void => {
+  const walk = (v: unknown, s: Shape | undefined): void => {
     if (v === null || typeof v !== "object") return;
     if (Array.isArray(v)) {
-      v.forEach(walk);
+      for (const x of v) walk(x, s);
       return;
     }
     const o = v as Record<string, unknown>;
+    // an alias, or a field asked for with arguments, is what this selection asked for, not the entity's field under
+    // that name: in a `set` patch it would overwrite the entity's own value in every client cache (spec 07 §3)
+    const level = shapeLevel(s, views);
     const tn = o["$type"];
     if (typeof tn === "string" && (typeof o["id"] === "string" || typeof o["id"] === "number")) {
       const key = `${tn}:${o["id"]}`;
       const shallow: Record<string, unknown> = out.get(key) ?? {};
-      for (const [k, x] of Object.entries(o)) shallow[k] = toRef(x);
+      for (const [k, x] of Object.entries(o)) if (!level.bySelection.has(k)) shallow[k] = toRef(x);
       out.set(key, shallow);
     }
-    for (const x of Object.values(o)) walk(x);
+    for (const [k, x] of Object.entries(o)) walk(x, level.child.get(k));
   };
-  walk(data);
+  walk(data, shape);
   return [...out.entries()].map(([key, value]) => ({ set: key, value }));
 }
 

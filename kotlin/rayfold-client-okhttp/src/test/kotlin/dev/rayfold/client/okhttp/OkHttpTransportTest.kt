@@ -236,31 +236,30 @@ class OkHttpTransportTest {
     }
 
     @Test
-    fun `after the socket drops, a live query ends with unavailable, and collected again it resumes on a new socket and gets the next patch`() = bounded {
+    fun `after the socket drops, a live query says so and reopens by itself on a new socket, and gets the next patch`() = bounded {
         val relay = Relay(listener.port).also { relays.add(it) }
         val alice = RayfoldClient(transport("alice", to = "ws://127.0.0.1:${relay.port}/rayfold/ws"))
         val bob = RayfoldClient(transport("bob"))
 
-        val first = Channel<Int>(Channel.UNLIMITED)
-        val dropped = async { runCatching { alice.live("book", args("id" to "b1"), "{ id stock }").collect { first.send(it.stock()) } }.exceptionOrNull() }
-        assertEquals(3, first.receive())
+        val stock = Channel<Int>(Channel.UNLIMITED)
+        val failures = Channel<Pair<String?, Boolean>>(Channel.UNLIMITED)
+        val live = launch {
+            alice.live("book", args("id" to "b1"), "{ id stock }", onError = { e, retrying -> failures.trySend((e as? RayfoldClientException)?.code to retrying) })
+                .collect { stock.send(it.stock()) }
+        }
+        assertEquals(3, stock.receive())
         assertEquals(1, server.changes.size)
         relay.cut()
-        val failure = assertIs<RayfoldClientException>(dropped.await())
-        assertEquals("unavailable", failure.code)
-        assertEquals("Connection failed: null", failure.message)
+        assertEquals("unavailable" to true, failures.receive(), "the drop is reported as one it is coming back from")
         bookQueryEnded.receive()
-        assertEquals(0, server.changes.size, "the server let go of the dropped live query")
-
-        val resumed = Channel<Int>(Channel.UNLIMITED)
-        val live = launch { alice.live("book", args("id" to "b1"), "{ id stock }").collect { resumed.send(it.stock()) } }
-        assertEquals(3, resumed.receive())
+        // it reopens after half a second, on a socket of its own: the application collects one flow throughout
+        assertEquals(3, stock.receive())
         assertEquals(1, server.changes.size, "subscribed again, on a new socket")
         bob.command("buy", args("id" to "b1", "qty" to 1))
-        assertEquals(2, resumed.receive())
+        assertEquals(2, stock.receive())
         live.cancelAndJoin()
         bookQueryEnded.receive()
         assertEquals(0, server.changes.size)
-        assertEquals(2, bookQueries.get() - 1, "two runs of the resumed query (first result, the patch re-run) after the one that dropped")
+        assertEquals(2, bookQueries.get() - 1, "two runs of the reopened query (first result, the patch re-run) after the one that dropped")
     }
 }

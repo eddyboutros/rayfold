@@ -102,12 +102,16 @@ class RayfoldCache(
     /** Replaces entity objects with skeleton refs, storing the entities. */
     fun normalize(data: JsonElement, touched: MutableSet<String> = mutableSetOf()): JsonElement = synchronized(lock) { normalizeValue(data, touched).first }
 
-    /** A value and its selection: [TRUE] for a leaf, an object of field selections otherwise. */
-    private fun normalizeValue(v: JsonElement, touched: MutableSet<String>): Pair<JsonElement, JsonElement> = when (v) {
+    /**
+     * A value and its selection: [TRUE] for a leaf, an object of field selections otherwise. With the [level] of the
+     * shape that produced it, the fields that belong to that selection are kept on the result's ref, under `$own`,
+     * rather than written to the shared entity (spec 07 section 3).
+     */
+    private fun normalizeValue(v: JsonElement, touched: MutableSet<String>, level: SelectionLevel? = null): Pair<JsonElement, JsonElement> = when (v) {
         is JsonArray -> {
             var sel: JsonElement = TRUE
             val value = JsonArray(v.map { x ->
-                val (nx, s) = normalizeValue(x, touched)
+                val (nx, s) = normalizeValue(x, touched, level)
                 if (s != TRUE) sel = if (sel == TRUE) s else mergeSel(sel, s)
                 nx
             })
@@ -122,16 +126,19 @@ class RayfoldCache(
                 val key = entityKey(v)
                 val sel = LinkedHashMap<String, JsonElement>()
                 val out = LinkedHashMap<String, JsonElement>()
+                val own = LinkedHashMap<String, JsonElement>()
                 for ((k, x) in v) {
-                    val (nx, s) = normalizeValue(x, touched)
-                    out[k] = nx
+                    val (nx, s) = normalizeValue(x, touched, level?.child?.get(k))
+                    if (key != null && level != null && k in level.bySelection) own[k] = nx else out[k] = nx
                     sel[k] = s
                 }
                 if (key != null) {
                     setBase(key, JsonObject(LinkedHashMap(baseOf(key) ?: JsonObject(emptyMap())).apply { putAll(out) }))
                     staleKeys.remove(key)
                     touched.add(key)
-                    JsonObject(mapOf("\$ref" to JsonPrimitive(key), "\$sel" to JsonObject(sel))) to JsonObject(sel)
+                    val ref = linkedMapOf<String, JsonElement>("\$ref" to JsonPrimitive(key), "\$sel" to JsonObject(sel))
+                    if (own.isNotEmpty()) ref["\$own"] = JsonObject(own)
+                    JsonObject(ref) to JsonObject(sel)
                 } else JsonObject(out) to JsonObject(sel)
             }
         }
@@ -155,7 +162,8 @@ class RayfoldCache(
                     else -> {
                         val out = LinkedHashMap<String, JsonElement>()
                         e["\$type"]?.let { out["\$type"] = it }
-                        for ((k, sub) in s as JsonObject) e[k]?.let { out[k] = walk(it, sub, depth + 1, maxDepth) }
+                        val own = v["\$own"] as? JsonObject
+                        for ((k, sub) in s as JsonObject) (own?.get(k) ?: e[k])?.let { out[k] = walk(it, sub, depth + 1, maxDepth) }
                         JsonObject(out)
                     }
                 }
@@ -168,9 +176,11 @@ class RayfoldCache(
 
     // ------------------------------------------------------------ results
 
-    fun putResult(key: String, op: String, data: JsonElement): CachedResult = synchronized(lock) {
+    fun putResult(key: String, op: String, data: JsonElement): CachedResult = putResult(key, op, data, null)
+
+    internal fun putResult(key: String, op: String, data: JsonElement, level: SelectionLevel?): CachedResult = synchronized(lock) {
         val keys = mutableSetOf<String>()
-        val normalized = normalizeValue(data, keys).first
+        val normalized = normalizeValue(data, keys, level).first
         val r = CachedResult(normalized, op, keys, now())
         results[key] = r
         emit(keys, setOf(op))
@@ -180,19 +190,28 @@ class RayfoldCache(
     fun getResult(key: String): CachedResult? = synchronized(lock) { results[key] }
 
     /** Applies a deferred delta at a path inside a stored result (spec 04 section 3). */
-    fun mergeAt(key: String, path: String, delta: JsonElement) = synchronized(lock) {
+    fun mergeAt(key: String, path: String, delta: JsonElement) = mergeAt(key, path, delta, null)
+
+    internal fun mergeAt(key: String, path: String, delta: JsonElement, shape: SelectionLevel?) = synchronized(lock) {
         val r = results[key] ?: return@synchronized
         if (delta !is JsonObject) return@synchronized
         val touched = mutableSetOf<String>()
-        val (norm, sel) = normalizeValue(delta, touched)
-        val fields = norm as? JsonObject ?: return@synchronized
         val parts = if (path.isEmpty()) emptyList() else path.split(".")
+        // the selection at that path: the deferred block's fields are among its fields
+        var level = shape
+        for (seg in parts) if (seg.toIntOrNull() == null) level = level?.child?.get(seg)
+        val (norm, sel) = normalizeValue(delta, touched, level)
+        val fields = norm as? JsonObject ?: return@synchronized
         val data = updateAt(r.data, parts) { target ->
             val ref = (target as? JsonObject)?.let(::refKey)
             when {
                 ref != null -> {
-                    baseOf(ref)?.let { e -> setBase(ref, JsonObject(LinkedHashMap(e).apply { putAll(fields) })) }
-                    JsonObject(mapOf("\$ref" to JsonPrimitive(ref), "\$sel" to mergeSel(target["\$sel"] ?: JsonObject(emptyMap()), sel)))
+                    val (own, shared) = fields.entries.partition { level != null && it.key in level.bySelection }
+                    baseOf(ref)?.let { e -> setBase(ref, JsonObject(LinkedHashMap(e).apply { shared.forEach { put(it.key, it.value) } })) }
+                    val next = linkedMapOf<String, JsonElement>("\$ref" to JsonPrimitive(ref), "\$sel" to mergeSel(target["\$sel"] ?: JsonObject(emptyMap()), sel))
+                    val kept = LinkedHashMap((target["\$own"] as? JsonObject) ?: JsonObject(emptyMap())).apply { own.forEach { put(it.key, it.value) } }
+                    if (kept.isNotEmpty()) next["\$own"] = JsonObject(kept)
+                    JsonObject(next)
                 }
                 target is JsonObject -> JsonObject(LinkedHashMap(target).apply { putAll(fields) })
                 else -> target
@@ -210,6 +229,12 @@ class RayfoldCache(
         if (v is JsonObject) {
             val ref = refKey(v)
             if (ref != null) {
+                // a field the result keeps for itself is updated there, not on the entity
+                val own = v["\$own"] as? JsonObject
+                if (own != null && path[0] in own) {
+                    val updated = updateAt(own.getValue(path[0]), path.drop(1), fn)
+                    return JsonObject(LinkedHashMap(v).apply { put("\$own", JsonObject(LinkedHashMap(own).apply { put(path[0], updated) })) })
+                }
                 val e = baseOf(ref) ?: return v
                 setBase(ref, updateAt(e, path, fn) as? JsonObject ?: e)
                 return v
@@ -433,7 +458,7 @@ class RayfoldCache(
 
         private fun refKey(o: JsonObject): String? {
             val ref = (o["\$ref"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
-            return if (o.keys.all { it == "\$ref" || it == "\$sel" }) ref else null
+            return if (o.keys.all { it == "\$ref" || it == "\$sel" || it == "\$own" }) ref else null
         }
 
         private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -448,7 +473,7 @@ class RayfoldCache(
 
         private fun containsRef(v: JsonElement, key: String): Boolean = when (v) {
             is JsonArray -> v.any { containsRef(it, key) }
-            is JsonObject -> refKey(v)?.let { it == key } ?: v.values.any { containsRef(it, key) }
+            is JsonObject -> refKey(v)?.let { it == key || (v["\$own"]?.let { own -> containsRef(own, key) } ?: false) } ?: v.values.any { containsRef(it, key) }
             else -> false
         }
 
@@ -469,7 +494,7 @@ class RayfoldCache(
             is JsonObject -> when (refKey(v)) {
                 null -> JsonObject(v.mapValues { dropRef(it.value, key) })
                 key -> JsonNull
-                else -> v
+                else -> (v["\$own"] as? JsonObject)?.let { own -> JsonObject(LinkedHashMap(v).apply { put("\$own", dropRef(own, key)) }) } ?: v
             }
             else -> v
         }

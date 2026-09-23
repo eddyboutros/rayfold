@@ -7,6 +7,14 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **A field asked for with arguments, or under an alias, no longer overwrites another result's.** The client caches
+  stored every field of an entity by its output name, so `reviews(page: { first: 1 })` in one result and
+  `reviews(page: { first: 3 })` in another, or `x: title` beside `x: stock`, overwrote each other through the shared
+  entity, and a screen showed another screen's answer. The servers made it worse: the `set` patches they derive named
+  those fields too, writing one selection's value into every cache. Now both clients keep such a field with the result
+  that asked for it (read from the request's shape), and both servers leave it out of `set` patches, resending a live
+  result whose value for one changed. Spec 07 §3 states the rule, with a patch vector.
+
 - **Live queries recover in both clients.** The TypeScript client dropped an error meant for the whole batch, such as
   a draining server's 503 answering a reopen, and treated a response that simply ended as normal: either way the query
   stopped with nothing said and nothing retried, and `useLive` and `injectLive` stayed loading. Both now count as a

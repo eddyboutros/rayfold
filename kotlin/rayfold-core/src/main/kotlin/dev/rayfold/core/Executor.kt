@@ -198,7 +198,7 @@ class Executor(
             val st = State(ctx, explicit)
             val data = projectValue(cr.result, op.returns, shape, "", st)
             while (st.deferred.isNotEmpty()) { val job = st.deferred.removeFirst(); projectMany(job.slots, job.type, job.shape, st, job.nullable) }
-            val patch = derivePatches(data) + cr.patch
+            val patch = derivePatches(data, shape) { t, v -> ir.views["$t.$v"]?.shape } + cr.patch
             if (!ctx.simulate) for ((ev, payload) in cr.emit) {
                 if (ev !in op.emits) throw RayfoldException(Code.INTERNAL, "${op.name} emitted undeclared event $ev")
                 ctx.events.publish(ev, payload)
@@ -597,24 +597,27 @@ class Executor(
         }
 
         /** Every entity object in a projected result becomes a `set` patch (spec/04 section 2). */
-        fun derivePatches(data: JsonElement): List<JsonObject> {
+        fun derivePatches(data: JsonElement, shape: Shape? = null, views: (String, String) -> Shape? = { _, _ -> null }): List<JsonObject> {
             val out = linkedMapOf<String, MutableMap<String, JsonElement>>()
-            fun walk(v: JsonElement) {
+            fun walk(v: JsonElement, s: Shape?) {
                 when (v) {
-                    is JsonArray -> v.forEach { walk(it) }
+                    is JsonArray -> v.forEach { walk(it, s) }
                     is JsonObject -> {
+                        // an alias, or a field asked for with arguments, is what this selection asked for, not the
+                        // entity's field under that name: in a `set` patch it would overwrite that field in every cache
+                        val level = Shapes.level(s, views)
                         val tn = (v["\$type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
                         val id = (v["id"] as? JsonPrimitive)?.content
                         if (tn != null && id != null) {
                             val shallow = out.getOrPut("$tn:$id") { linkedMapOf() }
-                            for ((k, x) in v) shallow[k] = toRef(x)
+                            for ((k, x) in v) if (k !in level.bySelection) shallow[k] = toRef(x)
                         }
-                        v.values.forEach { walk(it) }
+                        for ((k, x) in v) walk(x, level.child[k])
                     }
                     else -> {}
                 }
             }
-            walk(data)
+            walk(data, shape)
             return out.map { (key, value) -> buildJsonObject { put("set", key); put("value", JsonObject(value)) } }
         }
 

@@ -330,6 +330,9 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
             h.id to RayfoldCache.resultKey((r["op"] as JsonPrimitive).content, r["args"] as? JsonObject ?: EMPTY, (r["shape"] as? JsonPrimitive)?.content, r["vars"] as? JsonObject)
         }
         fun opOf(h: OpHandle) = (h.request["op"] as JsonPrimitive).content
+        // the shape each op asked with, which tells the cache what belongs to that selection (spec 07 section 3)
+        val levels = handles.associate { it.id to SelectionLevel.of((it.request["shape"] as? JsonPrimitive)?.contentOrNull) }
+        fun levelOf(h: OpHandle) = levels[h.id]
         fun unsettled() = handles.filter { !it.result.isCompleted }
         try {
             transport.send(envelope(handles.map { it.request }), safe).collect { f ->
@@ -356,16 +359,16 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
                     "ok" in f -> {
                         var r: CachedResult? = null
                         cache.transaction {
-                            r = cache.putResult(key, opOf(h), f["ok"] ?: JsonNull)
+                            r = cache.putResult(key, opOf(h), f["ok"] ?: JsonNull, levelOf(h))
                             (f["patch"] as? JsonArray)?.let { p -> cache.applyPatch(p.mapNotNull { it as? JsonObject }) }
                         }
                         h.result.complete(r?.let { cache.denormalize(it.data) } ?: JsonNull)
                     }
                     "data" in f && "at" !in f -> {
-                        val r = cache.putResult(key, opOf(h), f["data"] ?: JsonNull)
+                        val r = cache.putResult(key, opOf(h), f["data"] ?: JsonNull, levelOf(h))
                         if (fin) h.result.complete(cache.denormalize(r.data))
                     }
-                    "at" in f -> cache.mergeAt(key, (f["at"] as? JsonPrimitive)?.contentOrNull ?: "", f["data"] ?: JsonNull)
+                    "at" in f -> cache.mergeAt(key, (f["at"] as? JsonPrimitive)?.contentOrNull ?: "", f["data"] ?: JsonNull, levelOf(h))
                     // a live update: `at` and `list` describe this op's own stored result
                     "patch" in f -> (f["patch"] as? JsonArray)?.let { p -> cache.applyPatch(p.mapNotNull { it as? JsonObject }, key) }
                     fin && !h.result.isCompleted -> h.result.complete(cache.getResult(key)?.let { cache.denormalize(it.data) } ?: JsonNull)

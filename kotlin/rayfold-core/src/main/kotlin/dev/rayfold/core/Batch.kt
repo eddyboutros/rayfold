@@ -699,7 +699,7 @@ class BatchRunner(
                 if (!dirty.getAndSet(false)) continue
                 counters?.add("rayfold.live.reran", mapOf("op" to p.op.name))
                 val next = collect()
-                val d = Live.diffResults(current, next.data)
+                val d = Live.diffResults(current, next.data, p.shape) { t, v -> ir.views["$t.$v"]?.shape }
                 current = next.data
                 readSet.set(Live.readSetOf(current))
                 results[id] = current

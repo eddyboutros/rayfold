@@ -201,6 +201,35 @@ object Shapes {
 
     fun isShapeId(s: String) = Regex("^sha256:[0-9a-f]{64}$").matches(s)
 
+    /**
+     * One level of a shape as a cache sees it (spec 07 section 3), mirroring `shapeLevel` in shape.ts: the selection
+     * under each output name, and which output names belong to the selection rather than to the entity. An alias, or a
+     * field asked for with arguments, does: its value is what this selection asked for, so it is neither written to
+     * the shared entity nor carried in a `set` patch under that name. Without a shape, nothing does.
+     */
+    data class Level(val bySelection: Set<String>, val child: Map<String, Shape?>)
+
+    fun level(shape: Shape?, views: (String, String) -> Shape? = { _, _ -> null }): Level {
+        val bySelection = mutableSetOf<String>()
+        val child = mutableMapOf<String, Shape?>()
+        fun visit(items: List<ShapeItem>, seen: Set<String>) {
+            for (it in items) when (it.kind) {
+                "field" -> {
+                    val out = it.alias ?: it.name ?: continue
+                    if ((it.alias != null && it.alias != it.name) || !it.args.isNullOrEmpty()) bySelection.add(out)
+                    child[out] = it.shape
+                }
+                "on", "defer" -> it.shape?.let { s -> visit(s.items, seen) }
+                else -> {
+                    val key = "${it.type}.${it.view}"
+                    if (key !in seen) views(it.type ?: "", it.view ?: "")?.let { v -> visit(v.items, seen + key) }
+                }
+            }
+        }
+        if (shape != null) visit(shape.items, emptySet())
+        return Level(bySelection, child)
+    }
+
     /** Canonical text: views expanded, sorted items, canonical args (spec/02 section 3). */
     fun canonical(shape: Shape, ir: RayfoldSchemaIR): String = canon(expand(shape, ir, emptySet()))
 

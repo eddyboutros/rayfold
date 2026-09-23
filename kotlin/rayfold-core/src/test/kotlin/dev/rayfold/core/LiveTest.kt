@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -78,6 +79,32 @@ class LiveTest {
     fun `changeFromPatch reads set, del and inv keys and invOp operations`() {
         val c = Live.changeFromPatch(listOf(obj("""{"set":"Book:b1","value":{}}"""), obj("""{"del":"Review:r1"}"""), obj("""{"inv":["Author:a1"]}"""), obj("""{"invOp":["books"]}""")))
         assertEquals(Change(setOf("Book:b1", "Review:r1", "Author:a1"), setOf("books")), c)
+    }
+
+    @Test
+    fun `a live query whose aliased field changed gets its result again, and one whose plain field changed a patch (mirrors live test)`() = runTest(timeout = 5.seconds) {
+        // a `set` patch names entity fields: `{ left: 3 }` would give every client cache a field `left` on the book
+        val bs = Bookstore()
+        val live = LiveRun(this, bs.server, """{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock left: stock }","live":true}""")
+        live.next()
+        command(bs.server, "placeOrder", """{"input":{"lines":[{"bookId":"b1","qty":2}]}}""", KEY, u1)
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":3,"left":3},"meta":{"cost":1}}"""), live.next())
+        live.stop()
+
+        val plain = LiveRun(this, bs.server, """{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}""")
+        plain.next()
+        command(bs.server, "placeOrder", """{"input":{"lines":[{"bookId":"b1","qty":1}]}}""", KEY + "2", u1)
+        assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":2}}]}"""), plain.next(), "guard: without the alias it is the patch it always was")
+        plain.stop()
+    }
+
+    @Test
+    fun `a command's own set patch leaves out an alias and a field asked for with arguments`() = runTest(timeout = 5.seconds) {
+        val bs = Bookstore()
+        val frame = bs.server.collect(obj("""{"ops":[{"id":1,"op":"restock","args":{"bookId":"b1","qty":1},"key":"$KEY","shape":"{ id stock left: stock reviews(page: { first: 1 }) { items { id } } }"}]}"""), admin).single()
+        val patch = (frame["patch"] as JsonArray).map { it as JsonObject }
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1","stock":6}"""), patch.single { it["set"] == JsonPrimitive("Book:b1") }["value"])
+        assertTrue(patch.any { (it["set"] as JsonPrimitive).content.startsWith("Review:") }, "guard: the reviews in the page are still patched as themselves")
     }
 
     @Test

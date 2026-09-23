@@ -134,6 +134,10 @@ The TypeScript and Kotlin clients store every entity they receive once, under it
 each query result as references to those entities. A command's patch updates the entity, so every stored result that
 contains it changes too.
 
+A field asked for under an alias (`left: stock`) or with arguments (`reviews(page: { first: 3 })`) is kept with the
+result that asked for it instead: another screen may ask for the same field with other arguments, and one answer
+must not overwrite the other. It updates when that result is read again, or when a live query resends it.
+
 With `policy: "cache"`, a query is answered from the cache when it holds a result for the same operation, arguments,
 shape and vars, and nothing marked it stale. Otherwise the client asks the server, as it always does by default:
 

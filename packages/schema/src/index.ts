@@ -11,6 +11,8 @@ export {
   canonicalShape,
   shapeIdOf,
   isShapeId,
+  shapeLevel,
+  type ShapeLevel,
   type ViewResolver,
 } from "./shape.ts";
 export { ExprError,

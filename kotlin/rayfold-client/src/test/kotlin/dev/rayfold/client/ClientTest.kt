@@ -242,6 +242,35 @@ class ClientTest {
     }
 
     @Test
+    fun `the same entity selected through an alias reads back what each result asked for, and plain fields stay shared`() = bounded {
+        // a field under an alias was stored on the shared entity by its output name: the later result overwrote the
+        // earlier one's, and a watcher of the first saw the second's answer
+        val client = RayfoldClient(http("alice"))
+        val named = Channel<JsonElement>(Channel.UNLIMITED)
+        val watching = launch { client.watch("book", args("id" to "b1"), "{ id x: title }").collect { named.send(it.jsonObject.getValue("x")) } }
+        assertEquals(JsonPrimitive("The Dispossessed"), named.receive())
+        assertEquals(JsonPrimitive(3), client.query("book", args("id" to "b1"), "{ id x: stock }").jsonObject.getValue("x"))
+        // the second query touched the same book, so the watcher may hear again; what it hears is still the title
+        val heard = generateSequence { named.tryReceive().getOrNull() }.toList()
+        assertTrue(heard.all { it == JsonPrimitive("The Dispossessed") }, "the first result's x is still the title, not $heard")
+        assertEquals(JsonPrimitive("The Dispossessed"), client.query("book", args("id" to "b1"), "{ id x: title }", Policy.CACHE).jsonObject.getValue("x"))
+        assertEquals(null, client.cache.get("Book:b1")?.get("x"), "no book has a field called x")
+        // guard: a plain field is still the entity's, so a command's patch reaches every result that selects it
+        assertEquals(stocked(3), client.query("book", args("id" to "b1"), "{ id stock }"))
+        client.command("buy", args("id" to "b1", "qty" to 1), "{ id stock }")
+        assertEquals(stocked(2), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE))
+        watching.cancel()
+    }
+
+    @Test
+    fun `the shape reader finds what belongs to a selection at each level, through on and defer`() {
+        val level = SelectionLevel.of("""{ id x: title reviews(page: { first: 1 }) { items { id n: rating } } plain() ...on Book { y: stock } @defer(label: "later") { z: id } stock @eager }""")
+        assertEquals(setOf("x", "reviews", "y", "z"), level?.bySelection)
+        assertEquals(setOf("n"), level?.child?.get("reviews")?.child?.get("items")?.bySelection)
+        assertEquals(null, SelectionLevel.of("sha256:" + "0".repeat(64)), "a trusted shape id has no text to read")
+    }
+
+    @Test
     fun `a dry run answers with what would happen and changes nothing a watcher sees, and the real run does`() = bounded {
         val client = RayfoldClient(http("alice"))
         val stock = Channel<Int>(Channel.UNLIMITED)

@@ -5,6 +5,7 @@
  * client receives either a minimal `patch` frame (same result structure, changed fields) or a fresh
  * `data` frame (membership/order changed).
  */
+import { shapeLevel, type Shape, type ViewResolver } from "@rayfold/schema";
 import type { Frame, PatchOp } from "./protocol.ts";
 import type { Relay } from "./relay.ts";
 
@@ -191,7 +192,16 @@ function listDiff(a: unknown[], b: unknown[], path: string, ops: StructuralOp[],
  * changed fields of a plain object, rows added to or removed from a list), a full `data` replacement when it
  * cannot, or null when nothing changed. A patch that would cost more than the result itself is not worth sending.
  */
-export function diffResults(prev: unknown, next: unknown): { patch: PatchOp[] } | { data: unknown } | null {
+export function diffResults(prev: unknown, next: unknown, shape?: Shape, views?: ViewResolver): { patch: PatchOp[] } | { data: unknown } | null {
+  if (shape) {
+    // A field that belongs to the selection (an alias, a field asked for with arguments) cannot travel in a `set`
+    // patch, which names entity fields: a change to one resends the result, and the rest is diffed without them.
+    const before = splitBySelection(prev, shape, views);
+    const after = splitBySelection(next, shape, views);
+    if (!sameJson(before.own, after.own)) return { data: next };
+    const d = diffResults(before.shared, after.shared);
+    return d && "data" in d ? { data: next } : d;
+  }
   const a = normalizeResult(prev);
   const b = normalizeResult(next);
   const structural: StructuralOp[] = [];
@@ -213,6 +223,30 @@ export function diffResults(prev: unknown, next: unknown): { patch: PatchOp[] } 
   if (structural.length && JSON.stringify(structural).length >= JSON.stringify(next).length) return { data: next };
   patch.push(...(structural as PatchOp[]));
   return patch.length ? { patch } : null;
+}
+
+/**
+ * `v` with the fields that belong to the selection removed from its entities, and those fields alone with the path
+ * each sits at (spec 07 §3). A plain object is the result's own already, so its fields are left where they are, and
+ * `at` and `list` patches keep describing them.
+ */
+export function splitBySelection(v: unknown, shape: Shape | undefined, views?: ViewResolver): { shared: unknown; own: Array<[string, unknown]> } {
+  const own: Array<[string, unknown]> = [];
+  const walk = (x: unknown, s: Shape | undefined, path: string): unknown => {
+    if (x === null || typeof x !== "object") return x;
+    if (Array.isArray(x)) return x.map((e, i) => walk(e, s, joinPath(path, i)));
+    const level = shapeLevel(s, views);
+    const o = x as Record<string, unknown>;
+    const entity = typeof o["$type"] === "string" && (typeof o["id"] === "string" || typeof o["id"] === "number");
+    const out: Record<string, unknown> = {};
+    for (const [k, y] of Object.entries(o)) {
+      const p = path ? `${path}.${k}` : k;
+      if (entity && level.bySelection.has(k)) own.push([p, y]);
+      else out[k] = walk(y, level.child.get(k), p);
+    }
+    return out;
+  };
+  return { shared: walk(v, shape, ""), own };
 }
 
 /** Fold `at` frames into a data value so deferred parts take part in diffs. */

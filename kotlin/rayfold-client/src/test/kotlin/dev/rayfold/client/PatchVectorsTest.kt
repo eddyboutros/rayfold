@@ -41,7 +41,8 @@ class PatchVectorsTest {
                 DynamicTest.dynamicTest("patch/$name") {
                     val cache = RayfoldCache()
                     val key = RayfoldCache.resultKey(op, JsonObject(emptyMap()), null, null)
-                    cache.putResult(key, op, c.req("result"))
+                    // the shape the result was asked with, where it matters to how the result is stored
+                    cache.putResult(key, op, c.req("result"), SelectionLevel.of(c["shape"]?.jsonPrimitive?.content))
                     cache.applyPatch(c.req("patch").jsonArray.map { it.jsonObject }, key)
                     assertEquals(
                         c.req("expect"),

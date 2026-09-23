@@ -5,6 +5,7 @@ import { createRayfoldServer, type Resolvers } from "./index.ts";
 import { RayfoldError, type Frame } from "./protocol.ts";
 import { MemoryCounters } from "./counters.ts";
 import { diffResults } from "./live.ts";
+import { parseShapeText } from "@rayfold/schema";
 
 type Bookstore = ReturnType<typeof createBookstore>;
 let bs: Bookstore;
@@ -41,6 +42,46 @@ describe("diffResults", () => {
     expect(diffResults(a, { items: [{ $type: "Book", id: "b1", stock: 3 }, { $type: "Book", id: "b2", stock: 1 }] })).toEqual({ patch: [{ set: "Book:b1", value: { stock: 3 } }] });
     const reordered = { items: [{ $type: "Book", id: "b2", stock: 1 }, { $type: "Book", id: "b1", stock: 5 }] };
     expect(diffResults(a, reordered)).toEqual({ data: reordered });
+  });
+});
+
+describe("fields that belong to the selection (spec 07 §3)", () => {
+  it("a live query whose aliased field changed gets its result again, and one whose plain field changed a patch naming it", async () => {
+    // a `set` patch names entity fields: `{ set: "Book:b1", value: { left: 3 } }` would give every client cache a
+    // field `left` on the book, overwriting whatever another result keeps under that name
+    const live = startLive([{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock left: stock }", live: true }]);
+    await live.until(1);
+    await bs.server.collect({ ops: [{ id: 1, op: "placeOrder", args: { input: { lines: [{ bookId: "b1", qty: 2 }] } }, key: KEY }] }, { viewer: u1 });
+    await live.until(2);
+    expect(live.frames[1]).toEqual({ id: 1, data: { $type: "Book", id: "b1", stock: 3, left: 3 }, meta: { cost: 1 } });
+    await live.stop();
+
+    // guard: without the alias, the same change is still the patch it always was
+    const plain = startLive([{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }]);
+    await plain.until(1);
+    await bs.server.collect({ ops: [{ id: 1, op: "placeOrder", args: { input: { lines: [{ bookId: "b1", qty: 1 }] } }, key: KEY + "2" }] }, { viewer: u1 });
+    await plain.until(2);
+    expect(plain.frames[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 2 } }] });
+    await plain.stop();
+  });
+
+  it("a command's own set patch leaves out an alias and a field asked for with arguments, and keeps the entity's fields", async () => {
+    const frames = await bs.server.collect(
+      { ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key: KEY, shape: "{ id stock left: stock reviews(page: { first: 1 }) { items { id } } }" }] },
+      { viewer: admin },
+    );
+    const patch = (frames[0] as { patch: Array<{ set: string; value: Record<string, unknown> }> }).patch;
+    expect(patch.find((p) => p.set === "Book:b1")?.value).toEqual({ $type: "Book", id: "b1", stock: 6 });
+    // guard: the entities inside the page are still the reviews' own, and patched as such
+    expect(patch.find((p) => p.set === "Review:r1")?.value).toEqual({ $type: "Review", id: "r1" });
+  });
+
+  it("the diff alone: a changed field under an alias resends, an unchanged one does not stand in the way of a patch", () => {
+    const shape = parseShapeText("{ id stock left: stock }");
+    const before = { $type: "Book", id: "b1", stock: 5, left: 5 };
+    expect(diffResults(before, { ...before, stock: 3, left: 3 }, shape)).toEqual({ data: { $type: "Book", id: "b1", stock: 3, left: 3 } });
+    const other = parseShapeText("{ id stock title: stock }");
+    expect(diffResults({ ...before, title: 5 }, { ...before, title: 5, stock: 4 }, other)).toEqual({ patch: [{ set: "Book:b1", value: { stock: 4 } }] });
   });
 });
 

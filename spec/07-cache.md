@@ -48,6 +48,14 @@ payload) so that a later patch to an entity is visible in every query that conta
 choice. The reference clients do not do this yet: they mark a result stale when an `inv` or `invOp` patch says so,
 and have no time-based expiry or `swr` refetch.
 
+A field is the entity's own only under its name and without arguments. A field the shape selects under an alias, or
+with arguments, is what that selection asked for: another result may select the same field with other arguments, or
+another field under the same alias. A client MUST NOT store such a value on the shared entity, and a server MUST NOT
+carry it in a `set` patch. The reference clients keep it with the result that asked for it, read from the request's
+shape (a shape sent by trusted id is stored as before, since the client has no text to read); the reference servers
+leave it out of the `set` patches they derive, and resend a live result whose value for one changed rather than
+describing the change.
+
 What a client holds and how a patch changes it are defined in [13](13-patches.md). Optimistic updates, offline
 queues and live invalidation are defined in [08](08-live-and-sync.md).
 

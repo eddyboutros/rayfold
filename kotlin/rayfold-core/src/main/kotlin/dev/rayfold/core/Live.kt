@@ -211,7 +211,16 @@ object Live {
     /**
      * Null when nothing changed. Values compare by their serialized text, key order included, as the TS runtime does.
      */
-    fun diffResults(prev: JsonElement?, next: JsonElement?): Diff? {
+    fun diffResults(prev: JsonElement?, next: JsonElement?, shape: Shape? = null, views: (String, String) -> Shape? = { _, _ -> null }): Diff? {
+        if (shape != null) {
+            // a field that belongs to the selection cannot travel in a `set` patch, which names entity fields: a change
+            // to one resends the result, and the rest is diffed without them (mirrors live.ts)
+            val before = splitBySelection(prev ?: JsonNull, shape, views)
+            val after = splitBySelection(next ?: JsonNull, shape, views)
+            if (before.second.toString() != after.second.toString()) return Diff.Data(next ?: JsonNull)
+            val d = diffResults(before.first, after.first)
+            return if (d is Diff.Data) Diff.Data(next ?: JsonNull) else d
+        }
         val a = normalize(prev)
         val b = normalize(next)
         val ops = Ops()
@@ -233,6 +242,29 @@ object Live {
         }
         patch.addAll(ops.out)
         return if (patch.isEmpty()) null else Diff.Patch(patch)
+    }
+
+    /**
+     * [v] without the fields that belong to the selection on its entities, and those fields alone with the path each
+     * sits at. A plain object is the result's own already, so its fields stay and `at` and `list` keep describing them.
+     */
+    fun splitBySelection(v: JsonElement, shape: Shape?, views: (String, String) -> Shape?): Pair<JsonElement, JsonArray> {
+        val own = mutableListOf<JsonElement>()
+        fun walk(x: JsonElement, s: Shape?, path: String): JsonElement = when (x) {
+            is JsonArray -> JsonArray(x.mapIndexed { i, e -> walk(e, s, if (path.isEmpty()) "$i" else "$path.$i") })
+            is JsonObject -> {
+                val level = Shapes.level(s, views)
+                val entity = (x["\$type"] as? JsonPrimitive)?.isString == true && x["id"] is JsonPrimitive
+                val out = linkedMapOf<String, JsonElement>()
+                for ((k, y) in x) {
+                    val p = if (path.isEmpty()) k else "$path.$k"
+                    if (entity && k in level.bySelection) own.add(JsonArray(listOf(JsonPrimitive(p), y))) else out[k] = walk(y, level.child[k], p)
+                }
+                JsonObject(out)
+            }
+            else -> x
+        }
+        return walk(v, shape, "") to JsonArray(own)
     }
 
     /** The query result with deferred `at` frames folded in, so deferred parts take part in read sets and diffs. */
