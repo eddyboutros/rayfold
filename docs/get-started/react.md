@@ -53,7 +53,7 @@ a development key: print one with that server's token command (`npm run token` f
 in `.env.local`:
 
 ```sh
-VITE_DEV_TOKEN=eyJhbGciOiJIUzI1NiJ9...
+VITE_DEV_TOKEN=<the token the command printed>
 ```
 
 Development tokens last eight hours; when one expires every request fails with `unauthenticated`, so print a new one

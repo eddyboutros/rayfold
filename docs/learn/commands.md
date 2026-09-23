@@ -72,7 +72,7 @@ write patches by hand; the server derives them from what the command returns.
 ```http [HTTP]
 POST /rayfold
 Content-Type: application/rayfold+json
-Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
+Authorization: Bearer <access token>
 
 {"rayfold":"0.1","ops":[{"id":1,"op":"buy","args":{"bookId":"b3"},"key":"6c1f0d2e-buy-b3-0001"}]}
 ```
