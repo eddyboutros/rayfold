@@ -81,6 +81,9 @@
       "shape": "{ id @defer(label: 5) { blurb } }",
       "rejected": true,
       "why": "an implementation that quietly treats a non-string label as absent produces different canonical text for this shape, and so a different id, without anything failing"
-    }
+    },
+    {"name": "numbers print as ECMAScript prints them", "shape": "{ f(x: 0.0001 y: 12345678.5 z: 12345678901234567 w: 1e21 v: 1.0 u: 1e3) }", "canonical": "{ f(u: 1000 v: 1 w: 1e+21 x: 0.0001 y: 12345678.5 z: 12345678901234568) }", "id": "sha256:0f47ddee902de529ca7960f603a420f29d9443120d2aff42f5a2a4c2b3373706", "why": "the canonical text is what the id hashes, so a runtime that prints 1.0E-4 or 1.23456785E7 (Java's forms) gives the same shape another id, and a trusted-shape list built by one runtime refuses what the other sends"},
+    {"name": "a duration is its milliseconds", "shape": "{ f(ttl: 60s grace: 5m) }", "canonical": "{ f(grace: 300000 ttl: 60000) }", "id": "sha256:a047f2097fa73b11ad829aa27906fbedf5f78d1ec91ed80f7f7c58add97a24bc", "why": "the schema reads 60s as 60000 ms, and a shape argument is read by the same lexer"},
+    {"name": "comments are whitespace", "shape": "{ id // the key\n  title /* shown on the spine */ }", "canonical": "{ id title }", "id": "sha256:8a8a5652e83f7c956b9e4fc03e448cf08471167eecee40ea410460c7e17efa07", "why": "a shape kept in a file may carry comments; they are not part of its identity"}
   ]
 }

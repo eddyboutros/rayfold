@@ -94,6 +94,15 @@ jobs:
           DATABASE_URL: postgres://postgres:rayfold@localhost:5432/rayfold
           # the cross-runtime suite is skipped when the JVM member is missing, so here it must be there
           FLEET_JVM: "1"
+      # H2 and PGlite stand in for Postgres elsewhere; what only Postgres does (typed comparisons, a dropped LISTEN
+      # connection) is tested here, where there is one
+      - name: The stores and relays against a real Postgres, in both runtimes
+        run: |
+          npx vitest run packages/postgres
+          kotlin/gradlew -p kotlin :rayfold-jdbc:test --tests 'dev.rayfold.jdbc.JdbcStorePostgresTest'
+        env:
+          DATABASE_URL: postgres://postgres:rayfold@localhost:5432/rayfold
+          RAYFOLD_JDBC_URL: jdbc:postgresql://localhost:5432/rayfold?user=postgres&password=rayfold
 
   docs:
     name: Docs site and web example

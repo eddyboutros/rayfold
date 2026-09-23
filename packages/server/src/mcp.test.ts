@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { createMcpHandler, handleMcp, mcpResources, mcpTools } from "./mcp.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
+import { MemoryIdempotencyStore } from "./context.ts";
 
 type Bookstore = ReturnType<typeof createBookstore>;
 type Reply = { result: Record<string, unknown> };
@@ -119,6 +120,36 @@ describe("MCP tool calls run through the normal pipeline", () => {
     expect(await call("placeOrder", order("b4", 1), u1)).toMatchObject({
       result: { isError: true, content: [{ type: "text", text: expect.stringContaining("OutOfStock") }], structuredContent: { error: { code: "domain", type: "OutOfStock", data: { bookId: "b4", available: 0 } } } },
     });
+  });
+
+  it("two commands called with the same arguments are two calls, each keyed by its operation, and a repeat of one replays", async () => {
+    // a key made of the arguments alone was the same for both, so the second was refused as a reuse of the first's key
+    const runs: string[] = [];
+    const store = new MemoryIdempotencyStore();
+    const claimed: string[] = [];
+    const claim = store.claim.bind(store);
+    store.claim = (scope, key, leaseMs) => (claimed.push(key), claim(scope, key, leaseMs));
+    const orders = createRayfoldServer({
+      schema: `entity Order { id: ID state: String } command cancelOrder(id: ID): Order command refundOrder(id: ID): Order`,
+      idempotency: store,
+      resolvers: {
+        Command: {
+          cancelOrder: ({ id }: { id: string }) => (runs.push(`cancel ${id}`), { id, state: "cancelled" }),
+          refundOrder: ({ id }: { id: string }) => (runs.push(`refund ${id}`), { id, state: "refunded" }),
+        },
+      } as never,
+    });
+    const resultOf = async (name: string) => ((await call(name, { id: "r1" }, u1, 1, orders)) as Reply).result;
+    expect(await resultOf("cancelOrder")).toMatchObject({ structuredContent: { result: { state: "cancelled" } } });
+    expect(await resultOf("refundOrder")).toMatchObject({ structuredContent: { result: { state: "refunded" } } });
+    expect(await resultOf("cancelOrder")).toMatchObject({ structuredContent: { result: { state: "cancelled" } } }); // guard: the same call replays
+    expect(runs).toEqual(["cancel r1", "refund r1"]);
+    // the key the JVM bridge derives too: mcp- and the SHA-256 of {"args":{"id":"r1"},"op":"cancelOrder"}
+    expect(claimed).toEqual([
+      "mcp-0e33ac87ef0b7d8778fdb3e71157a86b69fc870673ffb6e45216915a20fd86a0",
+      "mcp-a2e471d5d53e28ddd7f6e5176f511dc3612878c5062a0f9cbf225886886b022a",
+      "mcp-0e33ac87ef0b7d8778fdb3e71157a86b69fc870673ffb6e45216915a20fd86a0",
+    ]);
   });
 
   it("repeating a call with the same arguments replays the first result; different arguments place a new order (guard)", async () => {

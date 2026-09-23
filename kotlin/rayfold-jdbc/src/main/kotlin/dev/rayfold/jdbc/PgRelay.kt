@@ -29,6 +29,9 @@ interface Notifications {
     /** Delivers every payload sent on [channel], by this process or any other, until the function returned is called. */
     suspend fun listen(channel: String, onPayload: (String) -> Unit): suspend () -> Unit
 
+    /** As [listen], and [onLost] is called if the connection listening ends first. */
+    suspend fun listen(channel: String, onPayload: (String) -> Unit, onLost: (Throwable) -> Unit): suspend () -> Unit = listen(channel, onPayload)
+
     suspend fun notify(channel: String, payload: String)
 }
 
@@ -104,14 +107,16 @@ class PgRelay(
         notifications.notify(opts.channel, buildJsonObject { put("from", opts.origin); put("ref", id) }.toString())
     }
 
-    override suspend fun subscribe(onMessage: (RelayMessage) -> Unit): suspend () -> Unit =
-        notifications.listen(opts.channel) { payload ->
+    override suspend fun subscribe(onMessage: (RelayMessage) -> Unit): suspend () -> Unit = subscribe(onMessage) {}
+
+    override suspend fun subscribe(onMessage: (RelayMessage) -> Unit, onLost: (Throwable) -> Unit): suspend () -> Unit =
+        notifications.listen(opts.channel, { payload ->
             try {
                 receive(payload, onMessage)
             } catch (e: Throwable) {
                 opts.onError(e)
             }
-        }
+        }, onLost)
 
     private fun receive(payload: String, onMessage: (RelayMessage) -> Unit) {
         val wire = Json.parseToJsonElement(payload).jsonObject
@@ -149,7 +154,7 @@ class PgNotifications(
     private val notifier: () -> Connection = { listener },
     private val pollMs: Int = 250,
 ) : Notifications {
-    private class Listener(val channel: String, val onPayload: (String) -> Unit)
+    private class Listener(val channel: String, val onPayload: (String) -> Unit, val onLost: (Throwable) -> Unit = {})
 
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -167,8 +172,10 @@ class PgNotifications(
     @Volatile
     private var poller: Job? = null
 
-    override suspend fun listen(channel: String, onPayload: (String) -> Unit): suspend () -> Unit {
-        val l = Listener(channel, onPayload)
+    override suspend fun listen(channel: String, onPayload: (String) -> Unit): suspend () -> Unit = listen(channel, onPayload) {}
+
+    override suspend fun listen(channel: String, onPayload: (String) -> Unit, onLost: (Throwable) -> Unit): suspend () -> Unit {
+        val l = Listener(channel, onPayload, onLost)
         withContext(Dispatchers.IO) {
             turn.withLock {
                 if (listeners.none { it.channel == channel }) listener.createStatement().use { it.execute("LISTEN ${quote(channel)}") }
@@ -205,7 +212,16 @@ class PgNotifications(
 
     private fun CoroutineScope.poll() {
         while (isActive) {
-            val batch = turn.withLock { listener.unwrap(PGConnection::class.java).getNotifications(pollMs) } ?: continue
+            val batch = try {
+                turn.withLock { listener.unwrap(PGConnection::class.java).getNotifications(pollMs) }
+            } catch (e: Exception) {
+                // LISTEN lived on this connection and died with it: every listener hears nobody from here on, and is
+                // told so, where the loop used to end with no word to anyone while publishing went on working
+                if (!isActive) return
+                turn.withLock { poller = null }
+                for (l in listeners) l.onLost(e)
+                return
+            } ?: continue
             for (n in batch) for (l in listeners) if (l.channel == n.name) l.onPayload(n.parameter ?: "")
         }
     }

@@ -214,7 +214,7 @@ class JdbcStoreTest {
         val s = Sent(args[0] as String).also { sent.add(it) }
         intercept(PreparedStatement::class.java, result as PreparedStatement) { n, a, r ->
             when (n) {
-                "setObject" -> r.also { s.params.add(a[1]) }
+                "setObject", "setString" -> r.also { s.params.add(a[1]) }
                 "executeQuery" -> intercept(ResultSet::class.java, r as ResultSet) { rn, _, rr -> rr.also { if (rn == "next" && rr == true) s.rows.incrementAndGet() } }
                 else -> r
             }

@@ -65,6 +65,7 @@ view Book.default = { id title }
 view Book.card = { id }
 query book(id: ID, lang: String?): Book
 query cover(id: ID): Card?
+query shelf(page: PageArgs = { first: 10 }): Page<Book>?
 command draft(input: Draft): Book throws Gone @allow(write: viewer != null)
 `;
 
@@ -81,6 +82,9 @@ const rows: [string, string, string, string[]][] = [
   ["result-nullable", "String?): Book", "String?): Book?", ["breaking:result-nullable@book()"]],
   ["result-non-null", "): Card?", "): Card", ["compatible:result-non-null@cover()"]],
   ["result-type-changed", "): Card?", "): Book?", ["breaking:result-type-changed@cover()"]],
+  // a page of another type shares only the name Page; read as the same base, this passed as a compatible change
+  ["page of another type", "Page<Book>?", "Page<Card>", ["breaking:result-type-changed@shelf()"]],
+  ["page result non-null", "Page<Book>?", "Page<Book>", ["compatible:result-non-null@shelf()"]],
   ["arg-removed", "book(id: ID, lang: String?)", "book(id: ID)", ["breaking:arg-removed@book().lang"]],
   ["arg-type-changed", "book(id: ID,", "book(id: Int,", ["breaking:arg-type-changed@book().id"]],
   ["arg-optional", "book(id: ID,", "book(id: ID?,", ["compatible:arg-optional@book().id"]],

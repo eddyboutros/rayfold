@@ -4,7 +4,7 @@
  * commands -> tools (plus a `simulate` variant), queries -> tools and resources, schema docs -> descriptions.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { annotation, baseName, type ArgDef, type FieldDef, type OpDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
+import { annotation, baseName, hashJson, type ArgDef, type FieldDef, type OpDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 import type { RayfoldServer } from "./server.ts";
 import type { Frame } from "./protocol.ts";
 import { jsonSchemaFor, withRange } from "./json-schema.ts";
@@ -107,7 +107,10 @@ async function callTool(server: RayfoldServer, name: string, args: Record<string
   const req: import("./protocol.ts").RequestOp = { id: 1, op: opName, args };
   if (op.kind === "command") {
     const optedOut = op.annotations.some((a) => a.name === "idempotent" && a.args["value"] === false);
-    if (!optedOut) req.key = `mcp-${hashKey(JSON.stringify(args))}`;
+    // derived from the call, so a retried call replays instead of running twice. The operation is part of it: two
+    // commands called with the same arguments are two calls, and one keyed by the arguments alone was refused as a
+    // reuse of the other's key. Canonical JSON, so both runtimes derive one key whatever order the arguments came in.
+    if (!optedOut) req.key = `mcp-${hashJson({ op: opName, args })}`;
     if (simulate) req.simulate = true;
   }
   const frames = await server.collect({ ops: [req], meta: { client: "mcp" } }, { viewer });
@@ -145,12 +148,6 @@ function getPath(v: unknown, path: string[]): unknown {
     cur = Array.isArray(cur) ? cur[Number(p)] : (cur as Record<string, unknown>)[p];
   }
   return cur;
-}
-
-function hashKey(s: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return (h >>> 0).toString(16).padStart(8, "0") + s.length.toString(16).padStart(8, "0");
 }
 
 /**

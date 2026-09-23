@@ -7,6 +7,40 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **A command's answer, and every op after it in the batch, see what the command changed.** The batch shares one
+  memo of loaded fields, and it outlived the command: a loader-backed field on the command's own result, and on any op
+  after it, was answered from before the command ran, and that stale value went into the command's patch and into
+  every client cache. Both runtimes now forget what was loaded once a command commits; a dry run keeps it.
+
+- **On the JVM, one op's deadline no longer ends the batch.** An op that shared another op's field load, and was
+  still waiting on it when that op ran out of time, received the other op's cancellation and ended the whole batch. It
+  now loads for itself.
+
+- **A stream whose resolver ignores the signal ends at its deadline.** The Node runtime waited for the resolver to
+  finish before reporting `deadline_exceeded`, which a resolver stuck on an await never does, so the op never ended.
+
+- **A server whose relay connection drops stops being ready.** When the connection Postgres `LISTEN`s on died, the
+  server silently stopped hearing the other servers while going on publishing and reporting ready. `Relay.subscribe`
+  now takes an optional callback for a lost subscription; `PgRelay` in both runtimes calls it, and the server reports
+  the loss through `onRelayError` and its readiness.
+
+- **`JdbcStore` works with Postgres column types and more policies.** Values were bound untyped, so a policy or a
+  `find` on a `uuid`, `boolean` or `integer` column failed with "operator does not exist"; they are now bound as
+  Postgres types a literal, from the column. An untranslatable comparison under `!` left its value among the
+  statement's parameters and every read of the type failed, a list holding `null` dropped rows whose column is null,
+  and a field on the right of `in` was read as the other way round; all three are now left to the runtime.
+
+- **Shape ids agree between the runtimes.** The JVM wrote numbers in shape arguments as Java prints them (`1.0E-4`),
+  and did not read `60s` or comments in shapes, so the same shape had another id there. It now reads and writes them as
+  the TypeScript runtime does, with conformance vectors for each.
+
+- **MCP tool calls are keyed by operation and arguments.** Two commands called with the same arguments shared an
+  idempotency key, so the second was refused as a reuse of the first's. The key is now `mcp-` and the SHA-256 of the
+  canonical `{op, args}`, the same in both runtimes (spec 10).
+
+- **`rayfold check` sees a page of another type as a breaking change.** `Page<Book>?` to `Page<Author>` was reported as
+  a compatible change of nullability.
+
 - **A WebSocket message or a viewer hook can no longer end a Node server.** An envelope whose ops were not objects
   (`{"ops":[null]}`) threw out of the socket's data handler, and a `viewer` hook that threw or rejected was an unhandled
   rejection; either ended the process. The first is now refused like any malformed batch, and a refusing viewer is

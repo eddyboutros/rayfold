@@ -38,9 +38,10 @@ commands that declare `@simulate`, and a tool call that uses an idempotency key 
 
 ### Calling
 
-`tools/call` runs one Rayfold op with the default view (agents get the curated shape). Commands use an
-idempotency key derived from the argument hash, so a retried tool call with identical arguments replays
-instead of double-executing. Results:
+`tools/call` runs one Rayfold op with the default view (agents get the curated shape). Commands use the
+idempotency key `mcp-` followed by the SHA-256 of the canonical JSON of `{"op": <name>, "args": <arguments>}`, so a
+retried tool call with identical arguments replays instead of double-executing, and two commands called with the same
+arguments are two calls. Results:
 
 * success -> `content: [{ type: "text", text: <pretty JSON of result> }]`, `structuredContent: { result, effects? }`
   where `effects` is the command's patch list, `resultType: "complete"`;

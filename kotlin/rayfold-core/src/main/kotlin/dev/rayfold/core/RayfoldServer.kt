@@ -90,7 +90,10 @@ class RayfoldServer(
     private val listening: Deferred<suspend () -> Unit>? = relay?.let { r ->
         CoroutineScope(SupervisorJob() + Dispatchers.Default).async {
             try {
-                r.subscribe(::receive)
+                r.subscribe(::receive) { lost ->
+                    relayStopped = lost
+                    relayError(lost)
+                }
             } catch (e: Throwable) {
                 relayStopped = e
                 relayError(e) // ready() reports it too; this keeps the failure from going unobserved

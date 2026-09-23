@@ -26,6 +26,9 @@ import { RayfoldError, VersionConflict, toWireError, type Frame, type PatchOp, t
 import type { UsageSink } from "./usage.ts";
 import { defaultShape, isScalarLike } from "./views.ts";
 
+/** Where the loads of a batch are remembered in `ctx.batch`, beside anything resolvers keep there. */
+const LOADS = "rayfold.loads";
+
 export type FieldResolver<P = unknown, A = Record<string, unknown>, R = unknown> = (
   parents: P[],
   args: A,
@@ -167,6 +170,9 @@ export class Executor {
       throw this.checkDeclaredError(op, e);
     }
     onCommitted?.();
+    // What was loaded before the command ran may be what it just changed: its own result, and every op after it, load
+    // again. A dry run changed nothing, so it keeps them.
+    if (!ctx.simulate) ctx.batch.delete(LOADS);
     const cr: CommandResult = isCommandResult(raw) ? raw : ok(raw);
     const st: ProjectState = { ctx, errors: [], deferred: [], explicit };
     const data = await this.projectValue(cr.result, op.returns, shape, "", st);
@@ -246,7 +252,10 @@ export class Executor {
         emit(frame);
       }
     } finally {
-      await iterator.return?.();
+      // A resolver that ignores ctx.signal may be suspended at an await that never settles, and return() waits behind
+      // it: awaited, the op would never end and never say why. Once aborted it is asked to finish, not waited for.
+      if (ctx.signal.aborted) void Promise.resolve(iterator.return?.()).catch(() => {});
+      else await iterator.return?.();
     }
     if (ctx.signal.aborted) throw ctx.signal.reason instanceof RayfoldError ? ctx.signal.reason : new RayfoldError("canceled", "Canceled");
     emit({ id: ctx.opId, fin: true });
@@ -516,7 +525,8 @@ export class Executor {
     // One load per (field, arguments, entity) for the whole batch: an entity another op already loaded, or is
     // loading right now, or that appears twice at this level, is not loaded again. What is remembered is the load
     // in flight, not its result, so ops running at the same time share it. Only entities take part: they have identity.
-    const memo = ctx.batch as Map<string, Promise<unknown>>;
+    let memo = ctx.batch.get(LOADS) as Map<string, Promise<unknown>> | undefined;
+    if (!memo) ctx.batch.set(LOADS, (memo = new Map()));
     const prefix = `${def.name}.${field.name}|${JSON.stringify(args)}`;
     const keys = targets.map((s): string | null => {
       if (def.kind !== "entity") return null;

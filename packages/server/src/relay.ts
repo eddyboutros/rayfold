@@ -14,8 +14,12 @@ export type RelayMessage =
 export interface Relay {
   /** Carries the message to every other server on the relay. Resolves once it is handed over, not once delivered. */
   publish(message: RelayMessage): Promise<void>;
-  /** Starts delivering the other servers' messages; resolves once this server is listening. The function returned stops it. */
-  subscribe(onMessage: (message: RelayMessage) => void): Promise<() => Promise<void>>;
+  /**
+   * Starts delivering the other servers' messages; resolves once this server is listening. The function returned stops
+   * it. `onLost` is called if listening ends without being stopped, such as a dropped connection: from then on this
+   * server hears nobody, and says so by no longer being ready (spec 08 §3).
+   */
+  subscribe(onMessage: (message: RelayMessage) => void, onLost?: (error: unknown) => void): Promise<() => Promise<void>>;
 }
 
 /** Joins servers that run in one process: `join()` gives each server its own end of the relay. */

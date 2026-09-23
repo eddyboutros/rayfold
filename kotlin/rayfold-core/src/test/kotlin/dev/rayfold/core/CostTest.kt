@@ -75,8 +75,10 @@ class CostTest {
             assertEquals(at200, estimate("books", """{"page":{"first":$v}}""", shape).cost, "first = $v")
         }
         assertEquals(at200, estimate("books", """{"page":{"${'$'}ref":"1.page"}}""", shape).cost, "a page that is itself a ref")
-        // book 1 + reviews 1 + 200 rows + items 1; before, Int arithmetic turned 1e999 into -2147483646
-        assertEquals(203L, estimate("book", shape = "{ reviews(page: {first: 1e999}) { items { id } } }").cost)
+        // book 1 + reviews 1 + 200 rows + items 1; before, Int arithmetic turned a huge page into -2147483646
+        assertEquals(203L, estimate("book", shape = "{ reviews(page: {first: 1e300}) { items { id } } }").cost)
+        // 1e999 is not a number JSON can carry: the shape itself is refused, as the TypeScript lexer refuses it
+        assertEquals("Bad shape: bad number 1e999", kotlin.runCatching { estimate("book", shape = "{ reviews(page: {first: 1e999}) { items { id } } }") }.exceptionOrNull()?.message)
         for ((v, want) in listOf("0" to 6L, "3" to 9L)) assertEquals(want, estimate("books", """{"page":{"first":$v}}""", shape).cost, "guard: first = $v")
     }
 

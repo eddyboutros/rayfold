@@ -1,5 +1,5 @@
 /** Breaking-change detection between two IRs. Spec: spec/11-evolution.md. */
-import { annotation, typeRefToString, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeDef } from "./ir.ts";
+import { annotation, typeRefToString, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeDef, type TypeRef } from "./ir.ts";
 
 export type ChangeLevel = "breaking" | "warning" | "compatible";
 
@@ -94,8 +94,9 @@ export function diffSchemas(oldIR: RayfoldSchemaIR, newIR: RayfoldSchemaIR, opts
   return out;
 }
 
-function sameBase(a: { kind: string; name?: string }, b: { kind: string; name?: string }): boolean {
-  return a.kind === "named" && b.kind === "named" && a.name === b.name;
+/** The same type but for its own nullability: `Page<Book>` and `Page<Author>` share a name and nothing else. */
+function sameBase(a: TypeRef, b: TypeRef): boolean {
+  return typeRefToString({ ...a, nullable: false }) === typeRefToString({ ...b, nullable: false });
 }
 
 type Push = (level: ChangeLevel, code: string, at: string, message: string) => void;

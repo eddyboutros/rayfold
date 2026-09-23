@@ -163,6 +163,34 @@ class McpTest {
     }
 
     @Test
+    fun `two commands called with the same arguments are two calls, keyed as the TypeScript bridge keys them, and a repeat replays`() = runTest(timeout = 5.seconds) {
+        val runs = mutableListOf<String>()
+        val claimed = mutableListOf<String>()
+        val memory = MemoryIdempotencyStore()
+        val store = object : IdempotencyStore by memory {
+            override fun claim(scope: String, key: String, leaseMs: Long): IdempotencyClaim = memory.claim(scope, key, leaseMs).also { claimed.add(key) }
+        }
+        val schema = SchemaText.load("entity Order { id: ID state: String } command cancelOrder(id: ID): Order command refundOrder(id: ID): Order").ir
+        fun order(state: String): RootResolver = { args, _ -> runs.add("$state ${args.s("id")}"); obj("""{"id":"${args.s("id")}","state":"$state"}""") }
+        val server = RayfoldServer(schema, Resolvers(commands = mapOf("cancelOrder" to order("cancelled"), "refundOrder" to order("refunded"))), idempotency = store)
+        fun state(r: JsonObject) = r.at("result", "structuredContent", "result", "state")
+        val r1 = obj("""{"id":"r1"}""")
+        assertEquals(JsonPrimitive("cancelled"), state(call(server, "cancelOrder", r1, u1)))
+        assertEquals(JsonPrimitive("refunded"), state(call(server, "refundOrder", r1, u1)), "a key of the arguments alone refused this as a reuse")
+        assertEquals(JsonPrimitive("cancelled"), state(call(server, "cancelOrder", r1, u1)), "guard: the same call replays")
+        assertEquals(listOf("cancelled r1", "refunded r1"), runs)
+        // mcp- and the SHA-256 of {"args":{"id":"r1"},"op":"cancelOrder"}: byte for byte the key mcp.test.ts pins
+        assertEquals(
+            listOf(
+                "mcp-0e33ac87ef0b7d8778fdb3e71157a86b69fc870673ffb6e45216915a20fd86a0",
+                "mcp-a2e471d5d53e28ddd7f6e5176f511dc3612878c5062a0f9cbf225886886b022a",
+                "mcp-0e33ac87ef0b7d8778fdb3e71157a86b69fc870673ffb6e45216915a20fd86a0",
+            ),
+            claimed,
+        )
+    }
+
+    @Test
     fun `repeating a call with the same arguments replays the first result, and different arguments place a new order (guard)`() = runTest(timeout = 5.seconds) {
         val bs = Bookstore()
         val first = call(bs.server, "placeOrder", order("b3", 2), u1)

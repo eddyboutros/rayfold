@@ -190,6 +190,9 @@ class Executor(
             throw e
         }
         committed()
+        // what was loaded before the command ran may be what it just changed: its own result, and every op after it,
+        // load again. A dry run changed nothing, so it keeps them (mirrors executor.ts)
+        if (!ctx.simulate) ctx.batch.clear()
         try {
             val cr = raw as? CommandResult ?: CommandResult(raw as JsonElement?)
             val st = State(ctx, explicit)
@@ -506,12 +509,22 @@ class Executor(
                 loaded.forEachIndexed { n, v -> settlers[n].complete(v ?: JsonNull) }
             } catch (e: Throwable) {
                 for (k in mine.keys) ctx.batch.remove(k) // a load that failed is not remembered
-                settlers.forEach { it.completeExceptionally(e) }
+                // A load abandoned because this op was cancelled has not failed for anyone else: an op sharing it gets
+                // a marker and loads for itself, where the cancellation itself would have ended that op, and the batch
+                val shared = if (e is CancellationException) LoadAbandoned() else e
+                settlers.forEach { it.completeExceptionally(shared) }
                 throw e
             }
         }
-        return waiting.map { it.await() }
+        return try {
+            waiting.map { it.await() }
+        } catch (e: LoadAbandoned) {
+            loadField(def, field, targets, args, ctx) // the abandoned keys are gone from the memo, so this loads them
+        }
     }
+
+    /** What an op waiting on another op's load gets when that op was cancelled mid-load. */
+    private class LoadAbandoned : RuntimeException("a shared load was abandoned by the op that started it")
 
     private fun flatten(shape: Shape, def: TypeDef, fields: List<FieldDef>, st: State): Pair<List<Group>, List<Shape>> {
         val groups = mutableListOf<Group>()

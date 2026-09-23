@@ -22,8 +22,11 @@ import type { Queryable } from "./index.ts";
 
 /** What the relay needs from a Postgres client: `pgNotifications` and `pgliteNotifications` provide it. */
 export interface Notifications {
-  /** Delivers every payload sent on `channel`, by this process or any other, until the function returned is called. */
-  listen(channel: string, onPayload: (payload: string) => void): Promise<() => Promise<void>>;
+  /**
+   * Delivers every payload sent on `channel`, by this process or any other, until the function returned is called.
+   * `onLost` is called if the connection listening ends first.
+   */
+  listen(channel: string, onPayload: (payload: string) => void, onLost?: (error: unknown) => void): Promise<() => Promise<void>>;
   notify(channel: string, payload: string): Promise<void>;
 }
 
@@ -90,10 +93,14 @@ export class PgRelay implements Relay {
     await this.notifications.notify(this.channel, JSON.stringify({ from: this.origin, ref: Number(rows[0]?.id) }));
   }
 
-  async subscribe(onMessage: (message: RelayMessage) => void): Promise<() => Promise<void>> {
-    return this.notifications.listen(this.channel, (payload) => {
-      this.receive(payload, onMessage).catch(this.onError);
-    });
+  async subscribe(onMessage: (message: RelayMessage) => void, onLost?: (error: unknown) => void): Promise<() => Promise<void>> {
+    return this.notifications.listen(
+      this.channel,
+      (payload) => {
+        this.receive(payload, onMessage).catch(this.onError);
+      },
+      onLost,
+    );
   }
 
   private async receive(payload: string, onMessage: (message: RelayMessage) => void): Promise<void> {
@@ -125,20 +132,35 @@ interface PgNotification {
 interface NotificationClient {
   query(text: string, params?: unknown[]): Promise<unknown>;
   on(event: "notification", listener: (message: PgNotification) => void): unknown;
+  on(event: "end" | "error", listener: (error?: unknown) => void): unknown;
   off(event: "notification", listener: (message: PgNotification) => void): unknown;
+  off(event: "end" | "error", listener: (error?: unknown) => void): unknown;
 }
 
 /** LISTEN/NOTIFY through a `pg` `Client`. A dedicated one: LISTEN ties the subscription to that connection. */
 export function pgNotifications(client: NotificationClient): Notifications {
   return {
-    async listen(channel, onPayload) {
+    async listen(channel, onPayload, onLost) {
       const listener = (message: PgNotification) => {
         if (message.channel === channel) onPayload(message.payload ?? "");
       };
+      // LISTEN lives and dies with this connection, and pg says so only through these events: without them a server
+      // whose connection dropped would go on publishing, and look ready, while hearing nobody
+      let gone = false;
+      const ended = (error?: unknown) => {
+        if (gone) return;
+        gone = true;
+        onLost?.(error instanceof Error ? error : new Error("rayfold relay: the listening connection ended"));
+      };
       client.on("notification", listener);
+      client.on("error", ended);
+      client.on("end", ended);
       await client.query(`LISTEN ${quoteIdentifier(channel)}`);
       return async () => {
+        gone = true;
         client.off("notification", listener);
+        client.off("error", ended);
+        client.off("end", ended);
         await client.query(`UNLISTEN ${quoteIdentifier(channel)}`);
       };
     },

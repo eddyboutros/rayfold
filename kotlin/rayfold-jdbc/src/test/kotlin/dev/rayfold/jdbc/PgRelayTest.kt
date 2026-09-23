@@ -308,4 +308,56 @@ class PgRelayTest {
         val turn = PgNotifications::class.java.getDeclaredField("turn").apply { isAccessible = true }.get(notifications)
         assertTrue((turn as ReentrantLock).isFair, "an unfair lock lets the poll loop starve a publish and an unsubscribe")
     }
+
+    /**
+     * A listening connection that works until [dies] is set, then fails every poll the way pgjdbc does once the
+     * connection is gone. The real [PgNotifications] poll loop runs over it.
+     */
+    private class Dying {
+        @Volatile var dies = false
+        private val loader = PgRelayTest::class.java.classLoader
+        private val statement = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(java.sql.Statement::class.java)) { _, m, _ ->
+            if (m.name == "execute") false else null
+        }
+        private val pg = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(org.postgresql.PGConnection::class.java)) { _, m, _ ->
+            if (m.name != "getNotifications") null
+            else if (dies) throw org.postgresql.util.PSQLException("This connection has been closed.", org.postgresql.util.PSQLState.CONNECTION_DOES_NOT_EXIST)
+            else emptyArray<org.postgresql.PGNotification>()
+        }
+        val connection = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(Connection::class.java)) { _, m, _ ->
+            when (m.name) {
+                "createStatement" -> statement
+                "unwrap" -> pg
+                else -> null
+            }
+        } as Connection
+    }
+
+    @Test
+    fun `when the listening connection dies, the server stops being ready and names the relay`() = runBlocking {
+        val dying = Dying()
+        val lost = Channel<Throwable>(Channel.UNLIMITED)
+        val server = RayfoldServer(ir, Resolvers(), relay = PgRelay(PgNotifications(dying.connection, pollMs = 1), { DriverManager.getConnection(url) }), onRelayError = { lost.trySend(it) })
+        withTimeout(5_000) { server.ready() }
+        assertEquals(emptyList(), server.readiness().reasons)
+
+        dying.dies = true
+        val e = withTimeout(5_000) { lost.receive() }
+        assertEquals("This connection has been closed.", e.message)
+        assertEquals(listOf("relay: This connection has been closed."), server.readiness().reasons)
+        assertEquals(false, server.readiness().ready)
+        withTimeout(5_000) { server.close() }
+    }
+
+    @Test
+    fun `guard - a server that stops listening itself is not told it lost the relay`() = runBlocking {
+        val dying = Dying()
+        val lost = CopyOnWriteArrayList<Throwable>()
+        val server = RayfoldServer(ir, Resolvers(), relay = PgRelay(PgNotifications(dying.connection, pollMs = 1), { DriverManager.getConnection(url) }), onRelayError = { lost.add(it) })
+        withTimeout(5_000) { server.ready() }
+        withTimeout(5_000) { server.close() } // stops the poll loop before the connection goes
+        dying.dies = true
+        assertEquals(emptyList(), lost.toList())
+        assertEquals(emptyList(), server.readiness().reasons)
+    }
 }

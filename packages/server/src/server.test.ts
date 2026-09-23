@@ -261,6 +261,49 @@ describe("loads shared across a batch", () => {
     expect(bs.store.calls["Book.author"]).toBe(2);
   });
 
+  it("a command's own result, and every op after it, load again: what was loaded before it ran may be what it changed", async () => {
+    // spec 03 §3: "do A, then B" means B sees A. A loader-backed field served from the memo answered the command with
+    // the stock from before it ran, and that stale value went into its patch and into every client cache.
+    const store = { b1: { id: "b1", stock: 1 } };
+    let loads = 0;
+    const shop = createRayfoldServer({
+      schema: `entity Book { id: ID stock: Int } query book(id: ID): Book? command restock(id: ID, qty: Int): Book @simulate`,
+      resolvers: {
+        Query: { book: ({ id }: { id: "b1" }) => ({ id }) },
+        Command: {
+          restock: ({ id, qty }: { id: "b1"; qty: number }, ctx: { simulate: boolean }) => {
+            if (!ctx.simulate) store[id].stock += qty;
+            return { id };
+          },
+        },
+        Book: { stock: (books: Array<{ id: "b1" }>) => (loads++, books.map((b) => store[b.id].stock)) },
+      } as never,
+    });
+    const run = async (simulate: boolean) =>
+      shop.collect(
+        {
+          ops: [
+            { id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }" },
+            { id: 2, op: "restock", args: { id: "b1", qty: 10 }, shape: "{ id stock }", key: `restock-000000000${simulate ? 1 : 2}`, ...(simulate ? { simulate: true } : {}) },
+            { id: 3, op: "book", args: { id: { $ref: "2.id" } }, shape: "{ id stock }" },
+          ],
+        },
+        { viewer: { id: "u1" } },
+      );
+    const stockIn = (frames: Frame[], id: number) => frames.map((f) => f as { id?: number; data?: { stock: number }; ok?: { stock: number } }).find((f) => f.id === id)!;
+
+    // guard: a dry run changed nothing, so the ops after it keep the load the first op made
+    const dry = await run(true);
+    expect([stockIn(dry, 1).data?.stock, stockIn(dry, 2).ok?.stock, stockIn(dry, 3).data?.stock]).toEqual([1, 1, 1]);
+    expect(loads).toBe(1);
+
+    loads = 0;
+    const frames = await run(false);
+    expect([stockIn(frames, 1).data?.stock, stockIn(frames, 2).ok?.stock, stockIn(frames, 3).data?.stock]).toEqual([1, 11, 11]);
+    expect(frames.find((f) => (f as { id?: number }).id === 2)).toMatchObject({ patch: [{ set: "Book:b1", value: { stock: 11 } }] });
+    expect(loads).toBe(2); // before the command, then once for the command's result and the op after it
+  });
+
   it("the same entity twice at one level is loaded once", async () => {
     const frames = await bs.server.collect({
       ops: [{ id: 1, op: "books", args: { filter: { authorId: "a1" }, page: { first: 10 } }, shape: "{ items { id author { name } } }" }],
@@ -365,6 +408,37 @@ describe("streams", () => {
     ac.abort();
     await bounded(consumer, "stream ended on abort");
     expect(frames.items).toEqual([{ id: 1, item: { bookId: "b1", stock: 6 } }, { id: 1, error: { code: "canceled", message: "Canceled" }, fin: true }]);
+  });
+
+  it("a stream whose resolver ignores the signal still ends at its deadline, and is asked to finish once it can", async () => {
+    // the resolver waits on something that never comes; awaiting its return() queued behind that wait for good
+    let release = () => {};
+    const stuck = new Promise<void>((r) => (release = r));
+    const cleaned = new Signal<true>();
+    const server = createRayfoldServer({
+      schema: `event Tick { n: Int } stream ticks: Tick`,
+      resolvers: {
+        Stream: {
+          ticks: async function* () {
+            try {
+              yield { n: 1 };
+              await stuck;
+              yield { n: 2 };
+            } finally {
+              cleaned.push(true);
+            }
+          },
+        },
+      } as never,
+    });
+    const frames = await bounded(server.collect({ ops: [{ id: 1, op: "ticks", deadline: 50 }] }), "the stream ending at its deadline");
+    expect(frames).toEqual([
+      { id: 1, item: { n: 1 } },
+      { id: 1, error: { code: "deadline_exceeded", message: "Deadline exceeded" }, fin: true },
+    ]);
+    // guard: the generator is still asked to return, so its cleanup runs as soon as it wakes, and it yields no more
+    release();
+    await cleaned.atLeast(1, "the generator's finally block");
   });
 
   it("stream items are projected like query data: $type in full frames, stripped in compact ones except on union members", async () => {

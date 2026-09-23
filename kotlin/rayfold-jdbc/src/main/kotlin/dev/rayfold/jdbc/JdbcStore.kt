@@ -39,6 +39,11 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
             idField = columns.entries.firstOrNull { it.value == idColumn }?.key ?: "id",
             columns = columns,
             fieldOf = columns.entries.associate { (f, c) -> c to f },
+            // what a value compared with each column must be; an enum compares as its name
+            scalars = def.fields.associate { f ->
+                val base = f.type.baseName()
+                f.name to if (f.type.isList) "list" else if (opts.ir.types[base]?.kind == "enum") "String" else base
+            },
         )
     }
 
@@ -142,7 +147,14 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
         return when (e["k"]?.jsonPrimitive?.content) {
             // SQL reads a comparison with a null column as unknown, and NOT unknown drops the row; the policy reads it as
             // false, so its negation keeps the row. COALESCE gives SQL the policy's reading before negating.
-            "not" -> compile(e["e"] as? JsonObject ?: return loose, env, t, params).let { if (it.exact) Frag("(NOT COALESCE(${it.sql}, FALSE))", true) else loose }
+            "not" -> {
+                val before = params.size
+                val inner = compile(e["e"] as? JsonObject ?: return loose, env, t, params)
+                // negating a superset would give a subset, so only an exact fragment can be negated. The values a
+                // dropped fragment bound go with it: JDBC refuses a statement handed more parameters than it reads
+                if (!inner.exact) while (params.size > before) params.removeAt(params.size - 1)
+                if (inner.exact) Frag("(NOT COALESCE(${inner.sql}, FALSE))", true) else loose
+            }
             "bin" -> binary(e, env, t, params)
             else -> loose
         }
@@ -158,33 +170,77 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
             val r = compile(right, env, t, params)
             return Frag("(${l.sql} ${if (op == "&&") "AND" else "OR"} ${r.sql})", l.exact && r.exact)
         }
-        val column = columnOf(left, t) ?: columnOf(right, t) ?: return loose
-        val other = if (columnOf(left, t) != null) right else left
+        val field = fieldOf(left, t) ?: fieldOf(right, t) ?: return loose
+        val onLeft = fieldOf(left, t) != null
+        // `list in field` asks whether a list is an element of the field, which no column comparison says
+        if (op == "in" && !onLeft) return loose
+        val other = if (onLeft) right else left
         if (readsRow(other)) return loose
         val value = try {
             Expr.eval(other, env)
         } catch (_: Throwable) {
             return loose
         }
+        val column = quote(t.columns.getValue(field))
         return when (op) {
-            "==" -> if (value is JsonNull) Frag("($column IS NULL)", true) else Frag("($column = ?)", true).also { params.add(bind(value) ?: return loose) }
+            "==" -> if (value is JsonNull) Frag("($column IS NULL)", true) else operand(t, field, column, value)?.let { (expr, p) -> params.add(p); Frag("($expr = ?)", true) } ?: loose
             // a null column is not equal to a value, and SQL would drop it, so it is named here
-            "!=" -> if (value is JsonNull) Frag("($column IS NOT NULL)", true) else Frag("($column IS NULL OR $column <> ?)", true).also { params.add(bind(value) ?: return loose) }
+            "!=" -> if (value is JsonNull) Frag("($column IS NOT NULL)", true) else operand(t, field, column, value)?.let { (expr, p) -> params.add(p); Frag("($column IS NULL OR $expr <> ?)", true) } ?: loose
             "in" -> {
-                val items = (value as? JsonArray)?.mapNotNull { bind(it) } ?: return loose
-                if (items.isEmpty()) Frag("FALSE", true) else Frag("($column IN (${items.joinToString(", ") { "?" }}))", true).also { params.addAll(items) }
+                val list = value as? JsonArray ?: return loose
+                // every item must be a value the column can be compared with: a null in the list matches a null
+                // column in the policy, which IN does not say, so a list holding one is left to the runtime
+                val items = list.map { operand(t, field, column, it) ?: return loose }
+                if (items.isEmpty()) Frag("FALSE", true) else Frag("(${items[0].first} IN (${items.joinToString(", ") { "?" }}))", true).also { params.addAll(items.map { it.second }) }
             }
             else -> loose // ordering comparisons differ between SQL and the expression language: leave them
         }
     }
 
-    /** The column a single-segment path into the row names, or null for anything else. */
-    private fun columnOf(e: JsonObject, t: Table): String? {
+    /** The field a single-segment path into the row names, when it has a column; null for anything else. */
+    private fun fieldOf(e: JsonObject, t: Table): String? {
         if (e["k"]?.jsonPrimitive?.content != "path") return null
         if ((e["root"]?.jsonPrimitive?.content ?: "this") != "this") return null
         val path = e["path"] as? JsonArray ?: return null
         if (path.size != 1) return null
-        return t.columns[path[0].jsonPrimitive.content]?.let { quote(it) }
+        return path[0].jsonPrimitive.content.takeIf { it in t.columns }
+    }
+
+    /**
+     * The column and the parameter that compare [field] with [v] as the policy would, or null when they cannot: a
+     * value of another kind than the field's, which the runtime compares by its own rules.
+     */
+    private fun operand(t: Table, field: String, column: String, v: JsonElement): Pair<String, Any>? {
+        val p = v as? JsonPrimitive ?: return null
+        if (p is JsonNull) return null
+        val param: Any? = when (t.scalars[field]) {
+            "ID", "String" -> if (p.isString) Literal(p.content) else null
+            "Int" -> if (p.isString) null else p.content.toLongOrNull()?.let { Literal(it.toString()) }
+            "Float" -> if (p.isString) null else p.content.toBigDecimalOrNull()?.let { Literal(it.toPlainString()) }
+            // Long and Decimal may travel as text
+            "Long" -> p.content.toLongOrNull()?.let { Literal(it.toString()) }
+            "Decimal" -> p.content.toBigDecimalOrNull()?.let { Literal(it.toPlainString()) }
+            "Boolean" -> if (p.isString) null else p.content.toBooleanStrictOrNull()
+            else -> null
+        }
+        return param?.let { column to it }
+    }
+
+    /**
+     * A value the database types from the column it meets, as it types a literal. Bound as text it would be `varchar`,
+     * and Postgres has no `uuid = varchar`, `int = varchar` or enum equivalent; bound as `numeric`, an integer column
+     * would be cast and lose its index. Postgres is handed it untyped, so it takes the column's type; other databases
+     * convert text themselves.
+     */
+    private class Literal(val text: String)
+
+    private val postgres: Boolean by lazy { connections().use { it.metaData.databaseProductName == "PostgreSQL" } }
+
+    private fun bindAll(statement: java.sql.PreparedStatement, params: List<Any?>) = params.forEachIndexed { i, p ->
+        when (p) {
+            is Literal -> if (postgres) statement.setObject(i + 1, p.text, java.sql.Types.OTHER) else statement.setString(i + 1, p.text)
+            else -> statement.setObject(i + 1, p)
+        }
     }
 
     private fun readsRow(e: JsonElement): Boolean = when (e) {
@@ -203,8 +259,10 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
             if (value == null || value is JsonNull) {
                 "$column IS NULL"
             } else {
-                params.add(bind(value))
-                "$column = ?"
+                // a resolver asking for equality means it, whatever kind the value arrived as: the database converts it
+                val (expr, p) = operand(t, field, column, value) ?: (column to Literal(text(value) ?: error("rayfold-jdbc: ${t.name}.$field cannot be compared with $value")))
+                params.add(p)
+                "$expr = ?"
             }
         }
 
@@ -225,14 +283,14 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
 
     private fun query(t: Table, sql: String, params: List<Any?>): List<JsonObject> = connections().use { connection ->
         connection.prepareStatement(sql).use { statement ->
-            params.forEachIndexed { i, p -> statement.setObject(i + 1, p) }
+            bindAll(statement, params)
             statement.executeQuery().use { rows -> read(t, rows) }
         }
     }
 
     private fun scalarInt(sql: String, params: List<Any?>): Int = connections().use { connection ->
         connection.prepareStatement(sql).use { statement ->
-            params.forEachIndexed { i, p -> statement.setObject(i + 1, p) }
+            bindAll(statement, params)
             statement.executeQuery().use { rows -> if (rows.next()) rows.getInt(1) else 0 }
         }
     }
@@ -262,6 +320,8 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
         val idField: String,
         val columns: Map<String, String>,
         val fieldOf: Map<String, String>,
+        /** Each field's scalar type, as `operand` compares it. */
+        val scalars: Map<String, String>,
     )
 
     private companion object {
@@ -284,13 +344,6 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
             else -> JsonPrimitive(v.toString())
         }
 
-        /** A JSON value as a JDBC parameter; null when it is not a value a column can be compared with. */
-        fun bind(v: JsonElement): Any? = when {
-            v is JsonNull -> null
-            v is JsonPrimitive && v.isString -> v.content
-            v is JsonPrimitive -> v.content.toLongOrNull() ?: v.content.toDoubleOrNull() ?: v.content
-            else -> null
-        }
     }
 }
 

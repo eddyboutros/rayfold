@@ -23,6 +23,13 @@ interface Relay {
 
     /** Starts delivering the other servers' messages; returns once this server is listening. The function returned stops it. */
     suspend fun subscribe(onMessage: (RelayMessage) -> Unit): suspend () -> Unit
+
+    /**
+     * As [subscribe], and [onLost] is called if listening ends without being stopped, such as a dropped connection:
+     * from then on this server hears nobody, and says so by no longer being ready (spec 08 section 3). A relay that
+     * cannot lose its connection, as one in memory cannot, need not implement it.
+     */
+    suspend fun subscribe(onMessage: (RelayMessage) -> Unit, onLost: (Throwable) -> Unit): suspend () -> Unit = subscribe(onMessage)
 }
 
 /** Joins servers that run in one process: [join] gives each server its own end of the relay. */

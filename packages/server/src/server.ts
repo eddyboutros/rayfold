@@ -111,7 +111,12 @@ export class RayfoldServer {
     this.changes = new ChangeBus(opts.relay, relayError);
     if (opts.relay) {
       this.relayState = "pending";
-      this.listening = opts.relay.subscribe((message) => this.receive(message));
+      const lost = (error: unknown) => {
+        this.relayState = "failed";
+        this.relayStopped = error;
+        relayError(error);
+      };
+      this.listening = opts.relay.subscribe((message) => this.receive(message), lost);
       this.listening.then(
         () => (this.relayState = "listening"),
         (error: unknown) => {

@@ -111,8 +111,10 @@ await server.ready(); // listening to the other servers
 A message travels in one notification unless it is large; then it goes through the `rayfold_relay` table and the
 notification names the row, which is swept later. A relay never hands a server back what that server published, so
 nothing is applied twice. If the relay refuses a message, the command that made the change still succeeds on its own
-server; `onRelayError` and `server.relayFailure` say what the other servers missed. `server.close()` stops listening,
-for a shutdown.
+server; `onRelayError` and `server.relayFailure` say what the other servers missed. If the listening connection
+drops, the server hears nobody from then on: it reports that through `onRelayError` and stops being ready, so the
+balancer takes it out and the orchestrator replaces it, rather than serving live queries that no longer update.
+`server.close()` stops listening, for a shutdown.
 
 ## Why pass `ctx`
 

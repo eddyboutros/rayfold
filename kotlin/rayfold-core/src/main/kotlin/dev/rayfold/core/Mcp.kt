@@ -166,8 +166,8 @@ object Mcp {
             put("id", 1); put("op", opName); put("args", args)
             if (op.kind == "command") {
                 val optedOut = op.annotations.find("idempotent")?.args?.get("value") == JsonPrimitive(false)
-                // derived from the arguments, so a retried call with identical arguments replays instead of running twice
-                if (!optedOut) put("key", "mcp-${hashKey(args.toString())}")
+                // derived from the call, operation and arguments, as the TypeScript bridge derives it (see mcp.ts)
+                if (!optedOut) put("key", "mcp-${callKey(opName, args)}")
                 if (simulate) put("simulate", true)
             }
         }
@@ -203,12 +203,10 @@ object Mcp {
         )
     }
 
-    /** FNV-1a over the UTF-16 units of the argument text, plus its length, as the TS bridge derives its keys. */
-    private fun hashKey(s: String): String {
-        var h = 2166136261L.toInt()
-        for (c in s) h = (h xor c.code) * 16777619
-        return Integer.toUnsignedString(h, 16).padStart(8, '0') + s.length.toString(16).padStart(8, '0')
-    }
+    /** SHA-256 of the canonical `{op, args}`, the hash an idempotency record is bound to. */
+    private fun callKey(op: String, args: JsonElement): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(Canonical.hashed(buildJsonObject { put("op", op); put("args", args) }).toByteArray())
+            .joinToString("") { "%02x".format(it) }
 }
 
 /** Query-string decoding shared with [RayfoldBindings]. */

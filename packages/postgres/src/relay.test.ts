@@ -1,7 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
 import { createRayfoldServer, ok, type RayfoldContext, type RayfoldServer, type RelayMessage, type RequestEnvelope } from "@rayfold/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PgRelay, pgliteNotifications, type Notifications, type Queryable } from "./index.ts";
+import { EventEmitter } from "node:events";
+import pg from "pg";
+import { PgRelay, pgNotifications, pgliteNotifications, type Notifications, type Queryable } from "./index.ts";
 import { bounded, Signal } from "../../../e2e/wait.ts";
 
 /**
@@ -220,5 +222,66 @@ describe("the relay over Postgres", () => {
     expect(received.items).toEqual([change("Book:b1")]);
     expect(errors).toHaveLength(1);
     expect((errors[0] as Error).message).toBe("rayfold relay: message 999 is gone from rayfold_relay");
+  });
+});
+
+describe("a server whose relay stops listening says so", () => {
+  const shop = (r: PgRelay, lost: Signal<unknown>) =>
+    createRayfoldServer({ schema: SCHEMA, resolvers: {} as never, relay: r, onRelayError: (e) => lost.push(e) });
+
+  it("when the listening connection ends, the server stops being ready and names the relay", async () => {
+    // a pg Client as the relay sees one: what it says about its connection comes through these events
+    const client = Object.assign(new EventEmitter(), { query: async () => ({}) });
+    const lost = new Signal<unknown>();
+    const server = shop(new PgRelay(pgNotifications(client), sql, { origin: "b" }), lost);
+    await bounded(server.ready(), "the relay listening");
+    expect(server.readiness()).toEqual({ ready: true, reasons: [] });
+
+    client.emit("end");
+    await lost.atLeast(1, "the loss reported");
+    expect(server.readiness()).toEqual({ ready: false, reasons: ["relay: rayfold relay: the listening connection ended"] });
+
+    // an error the driver reports names itself instead, and a later end is the same loss, reported once
+    const second = Object.assign(new EventEmitter(), { query: async () => ({}) });
+    const lostAgain = new Signal<unknown>();
+    const other = shop(new PgRelay(pgNotifications(second), sql, { origin: "c" }), lostAgain);
+    await bounded(other.ready(), "the second relay listening");
+    second.emit("error", new Error("terminating connection due to administrator command"));
+    second.emit("end");
+    await lostAgain.atLeast(1, "the error reported");
+    expect(lostAgain.items.map((e) => (e as Error).message)).toEqual(["terminating connection due to administrator command"]);
+    expect(other.readiness().reasons).toEqual(["relay: terminating connection due to administrator command"]);
+  });
+
+  it("guard: a server that stops listening itself reports nothing, and one whose connection stays up stays ready", async () => {
+    const client = Object.assign(new EventEmitter(), { query: async () => ({}) });
+    const lost = new Signal<unknown>();
+    const server = shop(new PgRelay(pgNotifications(client), sql, { origin: "b" }), lost);
+    await bounded(server.ready(), "the relay listening");
+    await server.close();
+    client.emit("end"); // the application closing its client after the server
+    expect(lost.items).toEqual([]);
+    expect(server.readiness().reasons).toEqual([]);
+  });
+
+  it.skipIf(!process.env["DATABASE_URL"])("on a real Postgres, a terminated listening backend takes the server out of the pool", async () => {
+    const listening = new pg.Client({ connectionString: process.env["DATABASE_URL"] });
+    const admin = new pg.Client({ connectionString: process.env["DATABASE_URL"] });
+    listening.on("error", () => {}); // the loss is the relay's to report; this keeps pg's own copy from being unhandled
+    await listening.connect();
+    await admin.connect();
+    try {
+      const real: Queryable = { query: async (text, params) => (await admin.query(text, params as unknown[])) as never };
+      const lost = new Signal<unknown>();
+      const server = shop(new PgRelay(pgNotifications(listening), real, { origin: "b" }), lost);
+      await bounded(server.ready(), "the relay listening");
+      const { rows } = await listening.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await admin.query("SELECT pg_terminate_backend($1)", [rows[0]?.pid]);
+      await lost.atLeast(1, "the terminated connection reported");
+      expect(server.readiness().ready).toBe(false);
+    } finally {
+      await admin.end();
+      await listening.end().catch(() => {});
+    }
   });
 });

@@ -93,6 +93,55 @@ class RuntimeTest {
         assertEquals(listOf(2, 1), frames.map { (it["id"] as kotlinx.serialization.json.JsonPrimitive).content.toInt() }, "the fast query's frame is not held back")
     }
 
+    private val stockShop = SchemaText.load("entity Book { id: ID stock: Int } query book(id: ID): Book? command restock(id: ID, qty: Int): Book @simulate").ir
+
+    @Test
+    fun `a command's own result, and every op after it, load again, and a dry run keeps what was loaded (mirrors server test)`() = runTest(timeout = 5.seconds) {
+        var stock = 1
+        var loads = 0
+        val server = RayfoldServer(stockShop, Resolvers(
+            queries = mapOf("book" to { args, _ -> buildJsonObject { put("id", args.getValue("id")) } }),
+            commands = mapOf("restock" to { args, ctx -> if (!ctx.simulate) stock += 10; CommandResult(buildJsonObject { put("id", args.getValue("id")) }) }),
+            fields = mapOf("Book" to mapOf("stock" to { parents, _, _ -> loads++; parents.map { kotlinx.serialization.json.JsonPrimitive(stock) } })),
+        ))
+        suspend fun run(simulate: Boolean): Map<Int, JsonObject> = server.collect(obj(
+            """{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }"},""" +
+                """{"id":2,"op":"restock","args":{"id":"b1","qty":10},"shape":"{ id stock }","key":"restock-00000000${if (simulate) 1 else 2}"${if (simulate) ""","simulate":true""" else ""}},""" +
+                """{"id":3,"op":"book","args":{"id":{"${'$'}ref":"2.id"}},"shape":"{ id stock }"}]}""",
+        ), u1).filter { it["fin"] != null }.associateBy { (it["id"] as kotlinx.serialization.json.JsonPrimitive).content.toInt() }
+        fun stockOf(f: JsonObject?) = ((f?.get("data") ?: f?.get("ok")) as JsonObject)["stock"].toString()
+
+        val dry = run(simulate = true)
+        assertEquals(listOf("1", "1", "1"), (1..3).map { stockOf(dry[it]) }, "a dry run changed nothing")
+        assertEquals(1, loads, "so the ops after it keep the first op's load")
+
+        loads = 0
+        val frames = run(simulate = false)
+        assertEquals(listOf("1", "11", "11"), (1..3).map { stockOf(frames[it]) })
+        assertEquals(2, loads, "before the command, then once for its result and the op after it")
+    }
+
+    @Test
+    fun `one op's deadline ends that op, and an op sharing its load loads for itself instead of failing the batch`() = runTest(timeout = 5.seconds) {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var loads = 0
+        val server = RayfoldServer(stockShop, Resolvers(
+            queries = mapOf("book" to { args, _ -> buildJsonObject { put("id", args.getValue("id")) } }),
+            fields = mapOf("Book" to mapOf("stock" to { parents, _, _ ->
+                if (++loads == 1) gate.await() // the first load hangs until its op has run out of time
+                parents.map { kotlinx.serialization.json.JsonPrimitive(7) }
+            })),
+        ))
+        val frames = server.collect(obj(
+            """{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","deadline":50},""" +
+                """{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ id stock }"}]}""",
+        ))
+        assertEquals(listOf("deadline_exceeded"), frames.filter { it["id"].toString() == "1" }.mapNotNull { code(it) })
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1","stock":7}"""), frames.single { it["id"].toString() == "2" }["data"])
+        assertEquals(2, loads, "op 2 loaded for itself once op 1 abandoned the load they shared")
+        assertEquals(2, frames.size, "and nothing ended the batch: no frame without an id")
+    }
+
     @Test
     fun `an idempotency key replays for the same viewer and never across viewers`() = runTest(timeout = 5.seconds) {
         var runs = 0

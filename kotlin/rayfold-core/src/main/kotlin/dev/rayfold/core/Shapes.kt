@@ -24,6 +24,14 @@ object Shapes {
             val c = src[i]
             when {
                 c.isWhitespace() || c == ',' -> i++
+                // comments, as the TypeScript lexer reads them: a shape file may carry them, and both runtimes must
+                // read it to the same shape and so the same id
+                src.startsWith("//", i) -> while (i < src.length && src[i] != '\n') i++
+                src.startsWith("/*", i) -> {
+                    val end = src.indexOf("*/", i + 2)
+                    if (end < 0) throw RayfoldException(Code.INVALID_ARGUMENT, "Bad shape: unterminated block comment")
+                    i = end + 2
+                }
                 c == '"' -> {
                     val sb = StringBuilder(); i++
                     while (i < src.length && src[i] != '"') {
@@ -47,9 +55,24 @@ object Shapes {
                     i++; out.add(Tok.Str(sb.toString()))
                 }
                 c.isDigit() || (c == '-' && i + 1 < src.length && src[i + 1].isDigit()) -> {
+                    // the TypeScript lexer's grammar: digits, a fraction only when digits follow the point, an exponent
+                    // only when digits follow the e; then a duration suffix on a whole number counts in milliseconds
                     val s = i; i++
-                    while (i < src.length && (src[i].isDigit() || src[i] == '.' || src[i] == 'e' || src[i] == 'E' || src[i] == '-' || src[i] == '+')) i++
-                    out.add(Tok.Num(src.substring(s, i)))
+                    fun digitAt(k: Int) = k < src.length && src[k] in '0'..'9'
+                    while (digitAt(i)) i++
+                    var fractional = false
+                    if (i < src.length && src[i] == '.' && digitAt(i + 1)) { fractional = true; i++; while (digitAt(i)) i++ }
+                    if (i < src.length && (src[i] == 'e' || src[i] == 'E')) {
+                        var k = i + 1
+                        if (k < src.length && (src[k] == '+' || src[k] == '-')) k++
+                        if (digitAt(k)) { fractional = true; i = k; while (digitAt(i)) i++ }
+                    }
+                    val text = src.substring(s, i)
+                    val unit = Regex("^(ms|s|m|h|d)(?![A-Za-z0-9_])").find(src.substring(i, minOf(i + 3, src.length)))?.value
+                    if (unit != null && !fractional) {
+                        i += unit.length
+                        out.add(Tok.Num(jsNumber(text.toDouble() * DURATION_MS.getValue(unit))))
+                    } else out.add(Tok.Num(text))
                 }
                 c.isLetter() || c == '_' -> {
                     val s = i; i++
@@ -167,10 +190,12 @@ object Shapes {
     }
 
     private const val MAX_SAFE_INTEGER = 9007199254740991.0
+    private val DURATION_MS = mapOf("ms" to 1.0, "s" to 1_000.0, "m" to 60_000.0, "h" to 3_600_000.0, "d" to 86_400_000.0)
 
     /** Literals are JSON numbers: an integral value has no fraction (1.0 and 1e3 are 1 and 1000), as in the TS runtime, so shape ids agree. */
     private fun number(text: String): JsonPrimitive {
-        val d = text.toDoubleOrNull() ?: throw RayfoldException(Code.INVALID_ARGUMENT, "Bad shape: bad number $text")
+        // 1e999 reads as Infinity, which JSON cannot carry: refused, as the TypeScript lexer refuses it
+        val d = text.toDoubleOrNull()?.takeIf { it.isFinite() } ?: throw RayfoldException(Code.INVALID_ARGUMENT, "Bad shape: bad number $text")
         return if (d == Math.floor(d) && Math.abs(d) <= MAX_SAFE_INTEGER) JsonPrimitive(d.toLong()) else JsonPrimitive(d)
     }
 
@@ -227,7 +252,9 @@ object Shapes {
 
     private fun valueText(v: JsonElement): String = when (v) {
         is JsonNull -> "null"
-        is JsonPrimitive -> if (v.isString) Json.quote(v.content) else v.content
+        // numbers in the ECMAScript form the TypeScript runtime prints (0.0001, 1e+21, not 1.0E-4 or 1.0E21): the
+        // canonical text is what the shape id hashes, so the two runtimes must print it byte for byte alike
+        is JsonPrimitive -> if (v.isString) Json.quote(v.content) else v.content.toDoubleOrNull()?.let { jsNumber(it) } ?: v.content
         is JsonArray -> "[" + v.joinToString(",") { valueText(it) } + "]"
         is JsonObject -> {
             val varName = (v["\$var"] as? JsonPrimitive)?.takeIf { it.isString }?.content

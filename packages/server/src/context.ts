@@ -111,7 +111,8 @@ export interface RayfoldContext<V = unknown> {
   state: Map<string, unknown>;
   /**
    * Scratch space shared by every op of the batch. The executor keeps loaded field values here, so an entity one op
-   * already loaded is not loaded again by another op of the same request (spec 03 section 2).
+   * already loaded is not loaded again by another op of the same request (spec 03 section 2), until a command changes
+   * something: then everything after it loads again.
    */
   batch: Map<string, unknown>;
   /** Wall clock, injectable for tests. */
