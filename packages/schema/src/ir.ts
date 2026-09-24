@@ -172,6 +172,12 @@ export function annotation(defs: { annotations: Annotation[] }, name: string): A
   return defs.annotations.find((a) => a.name === name);
 }
 
+/** What an argument or input field is called in HTTP bindings: its `@http(name:)`, else its own name (spec 04 §8). */
+export function wireName(member: { name: string; annotations: Annotation[] }): string {
+  const name = annotation(member, "http")?.args["name"];
+  return typeof name === "string" ? name : member.name;
+}
+
 /** Built-in definitions present in every IR. */
 export function builtinTypes(): Record<string, TypeDef> {
   const out: Record<string, TypeDef> = {};

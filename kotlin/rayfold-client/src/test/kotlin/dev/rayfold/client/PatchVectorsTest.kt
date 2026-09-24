@@ -47,11 +47,12 @@ class PatchVectorsTest {
                     val cache = RayfoldCache()
                     val key = RayfoldCache.resultKey(op, JsonObject(emptyMap()), null, null)
                     // the shape the result was asked with, where it matters to how the result is stored
-                    cache.putResult(key, op, c.req("result"), SelectionLevel.of(c["shape"]?.jsonPrimitive?.content))
+                    val shape = SelectionLevel.of(c["shape"]?.jsonPrimitive?.content)
+                    cache.putResult(key, op, c.req("result"), shape)
                     val unheld = c["unheld"]?.jsonPrimitive?.boolean == true
                     // same operation, other arguments: a result the client never stored, so nothing may be found by the op name
                     val target = if (unheld) RayfoldCache.resultKey(op, buildJsonObject { put("page", 2) }, null, null) else key
-                    cache.applyPatch(c.req("patch").jsonArray.map { it.jsonObject }, target)
+                    cache.applyPatch(c.req("patch").jsonArray.map { it.jsonObject }, target, shape)
                     val why = c["why"]?.jsonPrimitive?.content ?: name
                     val held = cache.getResult(key) ?: error("the result under $key is gone")
                     assertEquals(c.req("expect"), cache.denormalize(held.data), why)

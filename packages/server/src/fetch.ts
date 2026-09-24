@@ -10,7 +10,7 @@
  */
 import { annotation, canonicalJson, fieldsOf, fromBase64url, referencesViewer, sha256Hex, type Expr, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 import { RbCodec, RB_CONTENT_TYPE } from "@rayfold/rb";
-import { hostProblemOf, mediaTypeOf, originProblemOf, PROBLEM_TYPE_BASE, reachedOverTls, type OriginOptions } from "./guard.ts";
+import { checkQueryEscapes, hostProblemOf, mediaTypeOf, originProblemOf, PROBLEM_TYPE_BASE, reachedOverTls, type OriginOptions } from "./guard.ts";
 import { openApiFor } from "./openapi.ts";
 import { HTTP_STATUS, RayfoldError, type ErrorCode, type Frame, type RequestEnvelope, type WireError } from "./protocol.ts";
 import type { RayfoldServer } from "./server.ts";
@@ -496,6 +496,7 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
         }
       } else if (request.method === "GET") {
         // GET /rayfold/{op}?a=<b64url json>&s=<shape id>&v=<b64url json>
+        checkQueryEscapes(url.search);
         const op = sub.slice(1);
         const a = url.searchParams.get("a");
         const s = url.searchParams.get("s");

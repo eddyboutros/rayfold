@@ -44,7 +44,9 @@ book?.stock;         // a type error: the shape did not ask for it
 
 It is the same client underneath, so caching, patches, live queries and everything else are unchanged; only the types
 are sharper. Lists and pages are followed through (`{ items { title } hasMore }` narrows the items), nulls are kept,
-and a field the schema does not have is `unknown` rather than an error.
+and a field the schema does not have is `unknown` rather than an error. A call with no shape is typed as the
+result's default view, since that is what the server sends: `api.query("book", { id })` has the book's scalar fields
+and no `author`, so ask for `{ ... author { name } }` when you need it.
 
 ## What the types say about delivery
 

@@ -13,6 +13,7 @@ import {
   type Shape,
   type TypeDef,
   type TypeRef,
+  wireName,
 } from "./ir.ts";
 import { exprPaths } from "./expr.ts";
 
@@ -57,7 +58,8 @@ export const KNOWN_ANNOTATIONS: Record<string, Set<string>> = {
   example: new Set(["scalar", "field", "arg", "query", "command", "stream", "entity", "object", "input"]),
   ordinal: new Set(["field", "enumValue"]),
   version: new Set(["field"]),
-  http: new Set(["query", "command"]),
+  // on an argument or an input field it only renames the member in HTTP bindings (spec 04 §8)
+  http: new Set(["query", "command", "arg", "field"]),
   simulate: new Set(["command"]),
   merge: new Set(["field"]),
 };
@@ -161,6 +163,12 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
           else err("bad-input", at, `@input takes the type of what a client sends, as in @input(ChatMessage)`);
         }
       }
+      if (a.name === "http" && (on === "arg" || on === "field")) {
+        const name = a.args["name"];
+        if (Object.keys(a.args).length !== 1 || typeof name !== "string" || name === "") {
+          err("bad-http-name", at, `@http on an argument or input field takes exactly one argument, name: "<wire name>", a non-empty string`);
+        }
+      }
       if (a.name === "load") {
         const v = a.args["value"];
         if (!(v && typeof v === "object" && "$ident" in v && ["batch", "single"].includes(String((v as { $ident: string }).$ident)))) {
@@ -181,8 +189,12 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
       checkName(f.name, "Field name", at);
       checkRef(f.type, at, allowed, ctx, params);
       checkAnnotations(f.annotations, "field", at);
+      if (owner.kind !== "input" && annotation(f, "http")) err("annotation-position", at, `@http is not allowed on a field of ${owner.kind} ${owner.name}; only input fields take a wire name`);
       checkUnique(f.args.map((a) => a.name), "argument", at);
-      for (const a of f.args) checkArg(a, `${at}(${a.name})`);
+      for (const a of f.args) {
+        checkArg(a, `${at}(${a.name})`);
+        if (annotation(a, "http")) err("annotation-position", `${at}(${a.name})`, `@http is not allowed on a field argument; only operation arguments take a wire name`);
+      }
       if (owner.kind !== "entity" && owner.kind !== "object" && f.args.length) {
         err("args-not-allowed", at, `Only entity and object fields take arguments`);
       }
@@ -198,6 +210,16 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
       if (f.annotations.some((a) => a.name === "partial") && !f.type.nullable) {
         err("partial-non-null", at, `@partial fields must be nullable (they become null on failure)`);
       }
+    }
+  };
+
+  /** A binding reads a member by its wire name, so within one operation or input type a wire name stands for one member only. */
+  const checkWireNames = (members: Array<{ name: string; annotations: Annotation[] }>, at: (name: string) => string): void => {
+    for (const m of members) {
+      const w = annotation(m, "http")?.args["name"];
+      if (typeof w !== "string") continue;
+      const other = members.find((o) => o !== m && (o.name === w || wireName(o) === w));
+      if (other) err("http-name-collision", at(m.name), `@http name ${JSON.stringify(w)} of ${m.name} is also the ${other.name === w ? "name" : "wire name"} of ${other.name}`);
     }
   };
 
@@ -241,6 +263,7 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
         break;
       case "input":
         checkFields(t.fields, t, INPUT_KINDS, "an input field");
+        checkWireNames(t.fields, (name) => `${t.name}.${name}`);
         break;
       case "union":
         checkUnique(t.members, "union member", at);
@@ -272,6 +295,7 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
     if (ir.types[op.name] && !ir.types[op.name]!.builtin) warn("shadowed-name", at, `Operation ${op.name} shares its name with a type`);
     checkUnique(op.args.map((a) => a.name), "argument", at);
     for (const a of op.args) checkArg(a, `${at}.${a.name}`);
+    checkWireNames(op.args, (name) => `${at}.${name}`);
     checkRef(op.returns, at, op.kind === "stream" ? STREAM_KINDS : OUTPUT_KINDS, "a result");
     checkAnnotations(op.annotations, op.kind, at);
     for (const e of op.throws) {

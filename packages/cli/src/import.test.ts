@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadSchema, printSchemaText, typeRefToString } from "@rayfold/schema";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createBindingHandler, createRayfoldServer, openApiFor } from "@rayfold/server";
+import { createBindingHandler, createHttpHandler, createRayfoldServer, openApiFor } from "@rayfold/server";
 import { irFromOpenApi } from "./import-openapi.ts";
 import { irFromGraphql } from "./import-graphql.ts";
 import { bounded } from "../../../e2e/wait.ts";
@@ -258,12 +258,14 @@ describe("an OpenAPI document the importer used to misread", () => {
     expect((ir.types["UserProfile"] as { fields: Array<{ name: string }> }).fields.map((f) => f.name)).toEqual(["firstName", "_2fa", "last_name"]);
     expect(args(ir, "u")).toEqual(["userId: String", "sortBy: String?"]);
     expect(text).toContain('@http(method: GET, path: "/users/{userId}")');
+    // the arguments keep what clients send as their wire names, so they need no note
+    expect(text).toContain('query u(userId: String @http(name: "user-id"), sortBy: String? @http(name: "sort-by"))');
+    // a result has no wire names: its renamed fields stay renamed on the wire, and are noted
+    expect((ir.types["UserProfile"] as { fields: Array<{ annotations: unknown[] }> }).fields.map((f) => f.annotations)).toEqual([[], [], []]);
     expect(notes).toEqual([
       "user-profile: not a name a schema can hold, so the type is UserProfile.",
       "UserProfile.first-name: not a name a schema can hold, so the field is firstName.",
       "UserProfile.2fa: not a name a schema can hold, so the field is _2fa.",
-      "u(user-id): not a name a schema can hold, so the argument is userId.",
-      "u(sort-by): not a name a schema can hold, so the argument is sortBy.",
     ]);
   });
 
@@ -441,6 +443,146 @@ describe("an imported schema served over its HTTP bindings", () => {
   });
 });
 
+describe("an imported schema reads the names its REST clients already send", () => {
+  const returnsPerson = { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/Person" } } } } };
+  const DOC = {
+    openapi: "3.1.0",
+    info: { title: "People", version: "1" },
+    components: {
+      schemas: {
+        Person: { type: "object", required: ["id"], properties: { id: { type: "string" }, echo: { type: "string" } } },
+        NewPerson: { type: "object", required: ["first-name", "home-address"], properties: { "first-name": { type: "string" }, "home-address": { $ref: "#/components/schemas/Address" } } },
+        Address: { type: "object", properties: { "zip-code": { type: "string" } } },
+      },
+    },
+    paths: {
+      "/people": {
+        get: {
+          operationId: "findPeople",
+          parameters: [{ name: "first-name", in: "query", schema: { type: "string" } }, { name: "max-count", in: "query", schema: { type: "integer" } }],
+          responses: returnsPerson,
+        },
+        post: { operationId: "addPerson", requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/NewPerson" } } } }, responses: returnsPerson },
+      },
+      "/people/{person-id}": {
+        patch: {
+          operationId: "renamePerson",
+          parameters: [{ name: "person-id", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: { content: { "application/json": { schema: { type: "object", properties: { "first-name": { type: "string" }, "nick-names": { type: "array", items: { type: "string" } } } } } } },
+          responses: returnsPerson,
+        },
+      },
+    },
+  };
+  const KEY = "key-0123456789abcdef";
+  const servers: Server[] = [];
+  afterAll(() => servers.forEach((s) => (s.closeAllConnections(), s.close())));
+
+  /** Every resolver answers with the arguments it received, so a test sees exactly what the binding read. */
+  async function serve(text: string): Promise<string> {
+    const echo = (id: string) => (args: unknown) => ({ id, echo: JSON.stringify(args) });
+    const server = createRayfoldServer({ schema: text, resolvers: { Query: { findPeople: echo("p0") }, Command: { addPerson: echo("p1"), renamePerson: echo("p2") } } });
+    const bindings = createBindingHandler(server, { viewer: () => ({ id: "u1" }) });
+    const rayfold = createHttpHandler(server, { viewer: () => ({ id: "u1" }) });
+    const http = createServer((req, res) => void bindings(req, res).then((handled) => (handled ? undefined : rayfold(req, res))));
+    servers.push(http);
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", () => resolve()));
+    return `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+  }
+
+  const send = async (url: string, method: string, body?: unknown, headers: Record<string, string> = {}) => {
+    const res = await fetch(url, { method, headers: { "content-type": "application/json", ...headers }, signal: AbortSignal.timeout(5_000), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  };
+  const person = (id: string, args: unknown) => ({ $type: "Person", id, echo: JSON.stringify(args) });
+
+  const imported = () => {
+    const { ir, notes } = irFromOpenApi(DOC);
+    const text = printSchemaText(ir);
+    expect(loadSchema(text).ir).toEqual(ir);
+    return { ir, notes, text };
+  };
+
+  it("writes each renamed parameter and property with its original name, and notes none of them", () => {
+    const { notes, text } = imported();
+    expect(text).toContain('query findPeople(firstName: String? @http(name: "first-name"), maxCount: Int? @http(name: "max-count")): Person @http(method: GET, path: "/people")');
+    expect(text).toContain('command renamePerson(personId: String @http(name: "person-id"), firstName: String? @http(name: "first-name"), nickNames: [String]? @http(name: "nick-names")): Person @http(method: PATCH, path: "/people/{personId}", body: "*")');
+    expect(text).toMatch(/input NewPerson \{\s+firstName: String @http\(name: "first-name"\)\s+homeAddress: Address @http\(name: "home-address"\)\s+\}/);
+    expect(text).toMatch(/input Address \{\s+zipCode: String\? @http\(name: "zip-code"\)\s+\}/);
+    expect(notes).toEqual([]);
+  });
+
+  it("serves query parameters, a spread body and a body-bound input, nested, under the names clients send", async () => {
+    const base = await serve(imported().text);
+    expect(await send(`${base}/people?first-name=Ada&max-count=2`, "GET")).toEqual({ status: 200, body: person("p0", { firstName: "Ada", maxCount: 2 }) });
+    const added = await send(`${base}/people`, "POST", { "first-name": "Ada", "home-address": { "zip-code": "02139" } }, { "idempotency-key": KEY });
+    expect(added).toEqual({ status: 200, body: person("p1", { input: { firstName: "Ada", homeAddress: { zipCode: "02139" } } }) });
+    const renamed = await send(`${base}/people/p7`, "PATCH", { "first-name": "Grace", "nick-names": ["Amazing"] });
+    expect(renamed).toEqual({ status: 200, body: person("p2", { personId: "p7", firstName: "Grace", nickNames: ["Amazing"] }) });
+  });
+
+  it("an invalid value is reported under the name the client sent", async () => {
+    const base = await serve(imported().text);
+    const count = await send(`${base}/people?max-count=many`, "GET");
+    expect([count.status, count.body["detail"]]).toEqual([400, "findPeople().max-count: expected Int"]);
+    const zip = await send(`${base}/people`, "POST", { "first-name": "Ada", "home-address": { "zip-code": 2139 } }, { "idempotency-key": KEY });
+    expect([zip.status, zip.body["detail"]]).toEqual([400, "addPerson().input.home-address.zip-code: expected String"]);
+  });
+
+  it("guard - a binding does not take the schema name in place of the wire name, at any depth", async () => {
+    const base = await serve(imported().text);
+    const query = await send(`${base}/people?firstName=Ada`, "GET");
+    expect([query.status, query.body["detail"]]).toEqual([400, "findPeople().firstName: unknown argument"]);
+    const spread = await send(`${base}/people/p7`, "PATCH", { firstName: "Grace" });
+    expect([spread.status, spread.body["detail"]]).toEqual([400, "renamePerson().firstName: unknown argument"]);
+    const nested = await send(`${base}/people`, "POST", { "first-name": "Ada", "home-address": { zipCode: "02139" } }, { "idempotency-key": KEY });
+    expect([nested.status, nested.body["detail"]]).toEqual([400, "addPerson().input.home-address.zipCode: unknown argument"]);
+  });
+
+  it("guard - /rayfold keeps the schema names, and does not read the wire names", async () => {
+    const base = await serve(imported().text);
+    const call = async (args: unknown) => {
+      const res = await fetch(`${base}/rayfold`, {
+        method: "POST",
+        headers: { "content-type": "application/rayfold+json" },
+        body: JSON.stringify({ ops: [{ id: 1, op: "addPerson", key: KEY, args }] }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      return (await res.text()).trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>)[0];
+    };
+    const ok = await call({ input: { firstName: "Ada", homeAddress: { zipCode: "02139" } } });
+    expect(ok?.["ok"]).toEqual(person("p1", { input: { firstName: "Ada", homeAddress: { zipCode: "02139" } } }));
+    const wire = await call({ input: { "first-name": "Ada" } });
+    expect(wire?.["error"]).toMatchObject({ code: "invalid_argument", message: "addPerson().input.first-name: unknown argument" });
+  });
+
+  it("publishes the names clients send in its OpenAPI document, so importing that document gives the same schema", async () => {
+    const { ir } = imported();
+    const base = await serve(printSchemaText(ir));
+    const doc = (await (await fetch(`${base}/rayfold/openapi.json`, { signal: AbortSignal.timeout(5_000) })).json()) as {
+      paths: Record<string, Record<string, { parameters: Array<{ name: string; in: string }>; requestBody?: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } }>>;
+      components: { schemas: Record<string, { properties: Record<string, unknown>; required?: string[] }> };
+    };
+    expect(Object.keys(doc.paths)).toEqual(["/people", "/people/{person-id}"]);
+    expect(doc.paths["/people"]!["get"]!.parameters.map((p) => `${p.in} ${p.name}`)).toEqual(["query first-name", "query max-count", "query shape"]);
+    const patch = doc.paths["/people/{person-id}"]!["patch"]!;
+    expect(patch.parameters.filter((p) => p.in === "path").map((p) => p.name)).toEqual(["person-id"]);
+    expect(Object.keys(patch.requestBody!.content["application/json"]!.schema.properties)).toEqual(["first-name", "nick-names"]);
+    expect(Object.keys(doc.components.schemas["NewPerson"]!.properties)).toEqual(["first-name", "home-address"]);
+    expect(doc.components.schemas["NewPerson"]!.required).toEqual(["first-name", "home-address"]);
+    expect(Object.keys(doc.components.schemas["Address"]!.properties)).toEqual(["zip-code"]);
+    // results keep their schema names
+    expect(Object.keys(doc.components.schemas["Person"]!.properties)).toEqual(["$type", "id", "echo"]);
+
+    const back = irFromOpenApi(doc as never);
+    // the document also offers every GET the `shape` parameter, which comes back as an argument of its own
+    const wire = (op: string) => back.ir.ops[op]!.args.filter((a) => a.name !== "shape").map((a) => [a.name, a.annotations]);
+    for (const op of ["findPeople", "renamePerson"]) expect(wire(op)).toEqual(ir.ops[op]!.args.map((a) => [a.name, a.annotations]));
+    const fields = (i: typeof ir, type: string) => (i.types[type] as { fields: Array<{ name: string; annotations: unknown[] }> }).fields.map((f) => [f.name, f.annotations]);
+    for (const type of ["NewPerson", "Address"]) expect(fields(back.ir, type)).toEqual(fields(ir, type));
+  });
+});
+
 describe("the command itself", { timeout: 60_000 }, () => {
   const main = fileURLToPath(new URL("./main.ts", import.meta.url));
   // by URL, because the child runs in `work`, which has no node_modules to find `tsx` in
@@ -482,7 +624,7 @@ describe("the command itself", { timeout: 60_000 }, () => {
     });
   });
 
-  it("writes a schema that checks from documents it used to misread, saying what it renamed", async () => {
+  it("writes a schema that checks from documents it used to misread, keeping the parameter names clients send", async () => {
     writeFileSync(
       join(work, "dashed.json"),
       JSON.stringify({
@@ -492,12 +634,9 @@ describe("the command itself", { timeout: 60_000 }, () => {
         paths: { "/users/{user-id}": { parameters: [{ $ref: "#/components/parameters/Id" }], get: { operationId: "user", responses: { "200": { content: { "application/json": { schema: { type: "string" } } } } } } } },
       }),
     );
-    expect(await rayfold(["import", "openapi", "dashed.json", "--out", "dashed.rayfold"])).toEqual({
-      status: 0,
-      stdout: "wrote dashed.rayfold\n",
-      stderr: "note      user(user-id): not a name a schema can hold, so the argument is userId.\n",
-    });
-    expect(readFileSync(join(work, "dashed.rayfold"), "utf8")).toBe('query user(userId: String): String @http(method: GET, path: "/users/{userId}")\n');
+    // the renamed parameter keeps the name clients send as its wire name, so nothing is left to note
+    expect(await rayfold(["import", "openapi", "dashed.json", "--out", "dashed.rayfold"])).toEqual({ status: 0, stdout: "wrote dashed.rayfold\n", stderr: "" });
+    expect(readFileSync(join(work, "dashed.rayfold"), "utf8")).toBe('query user(userId: String @http(name: "user-id")): String @http(method: GET, path: "/users/{userId}")\n');
 
     writeFileSync(join(work, "page.graphql"), `type Page { id: String! } type Query { page: Page }`);
     const graphql = await rayfold(["import", "graphql", "page.graphql", "--out", "page.rayfold"]);

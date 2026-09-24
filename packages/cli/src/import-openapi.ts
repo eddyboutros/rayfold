@@ -8,8 +8,11 @@
  * It is a starting point, not a finished schema: an OpenAPI document says nothing about which fields belong to an
  * entity's identity, what may be cached, or who may read what. Whatever cannot be mapped is reported in `notes`
  * rather than guessed at.
+ *
+ * A parameter or property whose name is not a name is renamed (`first-name` is `firstName`) and keeps its original as
+ * its wire name, `@http(name: "first-name")`, so the bindings still read what existing clients send.
  */
-import { RESERVED_FIELD_NAMES, assertValid, named, list, type Annotation, type ArgDef, type FieldDef, type JsonValue, type OpDef, type RayfoldSchemaIR, type TypeDef, type TypeRef, builtinTypes } from "@rayfold/schema";
+import { RESERVED_FIELD_NAMES, annotation, assertValid, named, list, type Annotation, type ArgDef, type FieldDef, type JsonValue, type OpDef, type RayfoldSchemaIR, type TypeDef, type TypeRef, builtinTypes } from "@rayfold/schema";
 
 type Json = Record<string, unknown>;
 
@@ -62,6 +65,7 @@ export function irFromOpenApi(doc: Json): Imported {
 
   if (!Object.keys(ir.ops).length) notes.push("No operations were found: the document has no paths this importer could read.");
   toInputs(ir, notes);
+  settleWireNames(ir, notes);
   assertValid(ir);
   return { ir, notes };
 }
@@ -111,6 +115,35 @@ function toInputs(ir: RayfoldSchemaIR, notes: string[]): void {
     if (def.kind !== "input") continue;
     for (const f of def.fields) f.type = renameRef(f.type, renamed);
   }
+}
+
+/**
+ * Renamed fields carry their original name as a wire name, which a binding reads on input types only: there the rename
+ * is invisible to clients and needs no note. A result has no wire names (spec 04 §8), so there it stays renamed, and noted.
+ */
+function settleWireNames(ir: RayfoldSchemaIR, notes: string[]): void {
+  for (const def of Object.values(ir.types)) {
+    if (!("fields" in def)) continue;
+    for (const f of def.fields) {
+      const wire = annotation(f, "http")?.args["name"];
+      if (typeof wire !== "string") continue;
+      if (def.kind !== "input") {
+        f.annotations = f.annotations.filter((a) => a.name !== "http");
+        continue;
+      }
+      const note = notes.indexOf(renamedNote(`${def.name}.${wire}`, f.name));
+      if (note >= 0) notes.splice(note, 1);
+    }
+  }
+}
+
+function renamedNote(at: string, as: string): string {
+  return `${at}: not a name a schema can hold, so the field is ${as}.`;
+}
+
+/** `@http(name:)`: the name a binding reads the member by, where the schema has to call it something else. */
+function wireAs(raw: string): Annotation {
+  return { name: "http", args: { name: raw } };
 }
 
 function renameRef(t: TypeRef, renamed: Map<string, string>): TypeRef {
@@ -166,7 +199,7 @@ function typeFrom(name: string, schema: Json, ir: RayfoldSchemaIR, notes: string
   const fieldNames = new Set<string>();
   const kept = declared.filter(([field]) => {
     const as = memberName(field);
-    if (as !== field) notes.push(`${name}.${field}: not a name a schema can hold, so the field is ${as}.`);
+    if (as !== field) notes.push(renamedNote(`${name}.${field}`, as));
     if (fieldNames.has(as)) {
       notes.push(`${name}.${field}: another property already reads as ${as}, so this one was left out.`);
       return false;
@@ -179,7 +212,8 @@ function typeFrom(name: string, schema: Json, ir: RayfoldSchemaIR, notes: string
     ...describe(sub as Json),
     type: typeRefFrom(sub as Json, !required.has(field), ir, `${name}_${field}`, notes),
     args: [],
-    annotations: [],
+    // kept only if the type turns out to be an input (settleWireNames)
+    annotations: memberName(field) === field ? [] : [wireAs(field)],
     ordinal: i + 1,
   }));
 
@@ -260,12 +294,11 @@ function opFrom(method: string, path: string, operation: Json, parameters: Json[
   /** The first argument of a name keeps it: parameters come before body properties, which carry the same value. */
   const add = (raw: string, arg: Omit<ArgDef, "name">, what: string): boolean => {
     const as = memberName(raw);
-    if (as !== raw) notes.push(`${name}(${raw}): not a name a schema can hold, so the argument is ${as}.`);
     if (args.some((a) => a.name === as)) {
       notes.push(`${name}(${raw}): the ${what} has the name of an argument already taken, so it was left out.`);
       return false;
     }
-    args.push({ name: as, ...arg });
+    args.push({ name: as, ...arg, annotations: as === raw ? arg.annotations : [...arg.annotations, wireAs(raw)] });
     return true;
   };
 

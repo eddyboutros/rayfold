@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { command, defineSchema, entity, query, t, type Infer, type InferResult } from "./index.ts";
 import { typedClient, type Select, type SelectResult, type ShapedClient } from "./select.ts";
 import { createRayfoldServer } from "@rayfold/server";
+import { RayfoldClient, createLocalTransport } from "@rayfold/client";
 
 const Author = entity("Author", { id: t.id(), name: t.string(), bio: t.string().nullable() });
 const Book = entity("Book", {
@@ -179,13 +180,58 @@ describe("a client typed by the schema", () => {
     const book = await api.query("book", { id: "b1" }, { shape: "{ id title author { name } }" });
     expectTypeOf(book).toEqualTypeOf<{ $type: "Book"; id: string; title: string; author: { $type: "Author"; name: string } } | null>();
 
-    const whole = await api.query("book", { id: "b1" });
-    expectTypeOf(whole).toEqualTypeOf<InferResult<typeof schema, "book">>();
+    const bare = await api.query("book", { id: "b1" });
+    expectTypeOf(bare).toEqualTypeOf<{ $type: "Book"; id: string; title: string; stock: number; costPrice?: string | null } | null>();
+    // @ts-expect-error with no shape the server sends the default view, which leaves the author out
+    void bare?.author;
+
+    const page = await api.query("books", { page: { first: 20 } });
+    expectTypeOf(page.items).toEqualTypeOf<Array<{ $type: "Book"; id: string; title: string; stock: number; costPrice?: string | null }>>();
+
+    const restocked = await api.command("restock", { bookId: "b1", qty: 1 });
+    expectTypeOf(restocked).toEqualTypeOf<{ $type: "Book"; id: string; title: string; stock: number; costPrice?: string | null }>();
 
     // @ts-expect-error restock takes bookId and qty
     await api.command("restock", { bookId: "b1" });
 
     // @ts-expect-error there is no such operation
     await api.query("nonsense", {});
+  });
+
+  it("with no shape, the typed value is what a real server sends: the default view, for an entity, a page and a command", async () => {
+    const book = { id: "b1", title: "Dune", stock: 3, costPrice: "4.50", authorId: "a1" };
+    const server = createRayfoldServer({
+      schema: schema.ir,
+      resolvers: {
+        Query: {
+          book: () => ({ ...book }),
+          books: () => ({ items: [{ ...book }], cursor: null, hasMore: false, total: 1 }),
+        },
+        Command: { restock: ({ qty }: { qty: number }) => ({ ...book, stock: book.stock + qty }) },
+        Book: { author: (parents: unknown[]) => parents.map(() => ({ id: "a1", name: "Frank", bio: null })) },
+      },
+    });
+    const api = typedClient<typeof schema>(new RayfoldClient({ transport: createLocalTransport(server, () => ({ id: "u1" })) }));
+    const view = { $type: "Book", id: "b1", title: "Dune", stock: 3, costPrice: "4.50" } as const;
+
+    const one: { $type: "Book"; id: string; title: string; stock: number; costPrice?: string | null } | null = await api.query("book", { id: "b1" });
+    expect(one).toEqual(view);
+    const page = await api.query("books", { page: { first: 20 } });
+    expect(page).toEqual({ items: [view], hasMore: false, cursor: null, total: 1 });
+    expect(await api.command("restock", { bookId: "b1", qty: 2 }, { key: "restock-typed-01" })).toEqual({ ...view, stock: 5 });
+  });
+
+  it("guard - with a shape, the typed value reaches the nested author the server sends", async () => {
+    const server = createRayfoldServer({
+      schema: schema.ir,
+      resolvers: {
+        Query: { book: () => ({ id: "b1", title: "Dune", stock: 3, costPrice: null, authorId: "a1" }) },
+        Book: { author: (parents: unknown[]) => parents.map(() => ({ id: "a1", name: "Frank", bio: null })) },
+      },
+    });
+    const api = typedClient<typeof schema>(new RayfoldClient({ transport: createLocalTransport(server, () => ({ id: "u1" })) }));
+    const book = await api.query("book", { id: "b1" }, { shape: "{ id author { name } }" });
+    expect(book?.author.name).toBe("Frank");
+    expect(book).toEqual({ $type: "Book", id: "b1", author: { $type: "Author", name: "Frank" } });
   });
 });

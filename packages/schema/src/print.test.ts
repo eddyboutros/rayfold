@@ -119,6 +119,20 @@ or a slug
     expect(loadSchema(printed).hash).toBe(original.hash);
   });
 
+  it("keeps the wire names @http(name:) gives arguments and input fields", () => {
+    const text = [
+      'input Address { zipCode: String @http(name: "zip-code") }',
+      "entity Person { id: ID }",
+      'command add(firstName: String @http(name: "first-name"), address: Address?): Person @http(method: POST, path: "/people", body: "*")',
+    ].join("\n");
+    const original = loadSchema(text);
+    const printed = printSchemaText(original.ir);
+    expect(printed).toContain('zipCode: String @http(name: "zip-code")');
+    expect(printed).toContain('command add(firstName: String @http(name: "first-name"), address: Address?): Person @http(method: POST, path: "/people", body: "*")');
+    expect(loadSchema(printed).ir).toEqual(original.ir);
+    expect(loadSchema(printed).hash).toBe(original.hash);
+  });
+
   it("keeps every interface an entity implements", () => {
     const text = [
       "object Node @interface { id: ID }",

@@ -87,6 +87,14 @@ export function mediaTypeOf(contentType: string | null | undefined): string {
   return (contentType ?? "").split(";")[0]!.trim().toLowerCase();
 }
 
+/**
+ * Refuses a query string with a malformed escape (`%zz`, a truncated `%2`) as the client's error. URLSearchParams would
+ * read it literally and hand the op a value the client never meant; the JVM's decoder refuses it with this message.
+ */
+export function checkQueryEscapes(search: string): void {
+  if (/%(?![0-9A-Fa-f]{2})/.test(search)) throw new RayfoldError("invalid_argument", "Query string is not valid percent-encoding");
+}
+
 /** null when the Host header is acceptable, otherwise the reason. */
 export function hostProblem(req: NodeRequestLike, o: OriginOptions = {}): string | null {
   return hostProblemOf(one(req.headers.host), isLoopbackAddress(req.socket.localAddress), o);

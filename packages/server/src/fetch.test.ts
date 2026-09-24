@@ -99,6 +99,31 @@ describe("the fetch handler answers a batch", () => {
     expect(await commandOverGet.json()).toMatchObject({ detail: "Safe requests (GET/QUERY) may only contain queries" });
   });
 
+  it("a malformed percent-escape in a GET query string is a 400 problem, as on the JVM, and the op never runs", async () => {
+    const b64 = Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url");
+    for (const query of ["s=%zz", `a=${b64}&s=%7B%20id%zz`, "a=%zz", `a=${b64}&s=%7B%20id%20%7D%2`]) {
+      const res = await get(`/rayfold/book?${query}`);
+      expect(res.status, query).toBe(400);
+      expect(res.headers.get("content-type"), query).toBe("application/problem+json");
+      expect(await res.json(), query).toEqual({
+        type: "https://eddyboutros.github.io/rayfold/errors/invalid_argument",
+        title: "invalid argument",
+        status: 400,
+        detail: "Query string is not valid percent-encoding",
+        code: "invalid_argument",
+      });
+    }
+    expect(bs.store.calls["Query.book"]).toBeUndefined();
+  });
+
+  it("guard: well-formed escapes in a GET query string still decode (%20 in the shape, %2F in another parameter)", async () => {
+    const b64 = Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url");
+    const res = await get(`/rayfold/book?a=${b64}&s=%7B%20id%20title%20%7D&x=a%2Fb`, { accept: "application/json" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: 1, data: { $type: "Book", id: "b1", title: "The Dispossessed" } });
+    expect(bs.store.calls["Query.book"]).toBe(1);
+  });
+
   it("answers only the mount and paths under it: a path that merely begins with the mount's text is not Rayfold's", async () => {
     const b64 = Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url");
     for (const path of [`/rayfoldbook?a=${b64}`, `/rayfold-admin/manifest`, `/rayfoldx`]) {

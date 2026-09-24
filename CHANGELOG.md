@@ -7,6 +7,29 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **Arguments and input fields can keep the names REST clients send.** `@http(name: "first-name")` on an argument or
+  input field makes the HTTP bindings read it from the query string or the JSON body (spread, or nested in input
+  objects at any depth) under that name, and report errors under it. `/rayfold`, MCP and results keep the schema name.
+  The OpenAPI document of both runtimes publishes the wire names in parameters, path templates and request-body
+  schemas. A bad form or a name two members share is a schema error (`bad-http-name`, `http-name-collision`).
+
+- **`rayfold import openapi` keeps imported APIs wire-compatible.** A query parameter, path parameter or request-body
+  property whose name had to change (`first-name` became `firstName`) now carries `@http(name: "first-name")`, so
+  existing clients keep working against the imported schema, and serving it publishes the original names again.
+
+- **`typedClient` types a call with no shape as the result's default view.** The server sends the default view when
+  no shape is given (spec 02 §2), but the type claimed the whole result, so reading `book.author` compiled and was
+  `undefined` at runtime. Now it is a type error; add the shape you need, such as `{ id author { name } }`.
+
+- **A patch `at` whose path lands on an entity merges into that entity, as a deferred frame does.** Spec 13 did not say
+  what should happen. The TypeScript cache wrote the fields onto the result's reference and left the stored entity
+  stale, and the Kotlin cache ignored the operation. Both now update the shared entity, and a field the result
+  selected under an alias or with arguments stays on the result (spec 07 §3). New `patch/apply` vectors cover it.
+
+- **A malformed percent-escape in a query string is a 400 in TypeScript, as on the JVM.** `GET /rayfold/book?s=%zz`
+  and a bound route with `?q=%zz` handed the op the literal text and failed inside a 200 response. They are now
+  refused with a 400 `invalid_argument` problem, "Query string is not valid percent-encoding".
+
 - **The endpoint answers only its own mount.** The fetch and Node handlers treated any path that merely began with the
   mount's text as theirs, so `/rayfoldbook` ran the op `book` and `/rayfold-admin/...` was routed into Rayfold. Only
   the mount and paths under it are answered now.

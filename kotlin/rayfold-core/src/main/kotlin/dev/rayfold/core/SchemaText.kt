@@ -903,7 +903,8 @@ internal object SchemaValidator {
         "example" to setOf("scalar", "field", "arg", "query", "command", "stream", "entity", "object", "input"),
         "ordinal" to setOf("field", "enumValue"),
         "version" to setOf("field"),
-        "http" to setOf("query", "command"),
+        // on an argument or an input field it only renames the member in HTTP bindings (spec 04 section 8)
+        "http" to setOf("query", "command", "arg", "field"),
         "simulate" to setOf("command"),
         "merge" to setOf("field"),
     )
@@ -990,8 +991,23 @@ internal object SchemaValidator {
                         else err("bad-input", at, "@input takes the type of what a client sends, as in @input(ChatMessage)")
                     }
                 }
+                if (a.name == "http" && (on == "arg" || on == "field")) {
+                    val name = (a.args["name"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    if (a.args.size != 1 || name.isNullOrEmpty()) {
+                        err("bad-http-name", at, "@http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string")
+                    }
+                }
                 if (a.name == "load" && a.args["value"].identOrNull() !in setOf("batch", "single")) err("bad-load", at, "@load must be batch or single")
                 if (a.name == "merge" && a.args["value"].identOrNull() !in MERGE_POLICIES) err("bad-merge", at, "@merge takes one of " + MERGE_POLICIES.joinToString(", "))
+            }
+        }
+
+        /** A binding reads a member by its wire name, so within one operation or input type a wire name stands for one member only. */
+        fun checkWireNames(members: List<Pair<String, List<Annotation>>>, at: (String) -> String) {
+            for ((i, m) in members.withIndex()) {
+                val w = (m.second.find("http")?.args?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+                val other = members.withIndex().firstOrNull { (j, o) -> j != i && (o.first == w || o.second.wireName(o.first) == w) }?.value ?: continue
+                err("http-name-collision", at(m.first), "@http name ${jsJson(w)} of ${m.first} is also the ${if (other.first == w) "name" else "wire name"} of ${other.first}")
             }
         }
 
@@ -1011,8 +1027,14 @@ internal object SchemaValidator {
                 checkName(f.name, "Field name", at)
                 checkRef(f.type, at, allowed, ctx, scope)
                 checkAnnotations(f.annotations, "field", at)
+                if (owner.kind != "input" && f.annotations.find("http") != null) {
+                    err("annotation-position", at, "@http is not allowed on a field of ${owner.kind} ${owner.name}; only input fields take a wire name")
+                }
                 checkUnique(f.args.map { it.name }, "argument", at)
-                for (a in f.args) checkArg(a, "$at(${a.name})")
+                for (a in f.args) {
+                    checkArg(a, "$at(${a.name})")
+                    if (a.annotations.find("http") != null) err("annotation-position", "$at(${a.name})", "@http is not allowed on a field argument; only operation arguments take a wire name")
+                }
                 if (owner.kind != "entity" && owner.kind != "object" && f.args.isNotEmpty()) err("args-not-allowed", at, "Only entity and object fields take arguments")
                 if (f.annotations.any { it.name == "version" }) {
                     val vt = f.type
@@ -1048,7 +1070,10 @@ internal object SchemaValidator {
                     checkFields(t.fields, t, OUTPUT_KINDS, "a result field")
                 }
                 "object", "error", "event" -> checkFields(t.fields, t, if (t.kind == "object") OUTPUT_KINDS else EVENT_FIELD_KINDS, "a field")
-                "input" -> checkFields(t.fields, t, INPUT_KINDS, "an input field")
+                "input" -> {
+                    checkFields(t.fields, t, INPUT_KINDS, "an input field")
+                    checkWireNames(t.fields.map { it.name to it.annotations }) { "${t.name}.$it" }
+                }
                 "union" -> {
                     checkUnique(t.members, "union member", at)
                     for (m in t.members) {
@@ -1076,6 +1101,7 @@ internal object SchemaValidator {
             ir.types[op.name]?.let { if (!it.builtin) warn("shadowed-name", at, "Operation ${op.name} shares its name with a type") }
             checkUnique(op.args.map { it.name }, "argument", at)
             for (a in op.args) checkArg(a, "$at.${a.name}")
+            checkWireNames(op.args.map { it.name to it.annotations }) { "$at.$it" }
             checkRef(op.returns, at, if (op.kind == "stream") STREAM_KINDS else OUTPUT_KINDS, "a result")
             checkAnnotations(op.annotations, op.kind, at)
             for (e in op.throws) {

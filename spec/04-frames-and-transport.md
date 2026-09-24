@@ -59,7 +59,7 @@ result of that operation ignores them.
 
 | Operation | Meaning |
 |---|---|
-| `at` | `{ "at": "columns.2", "value": { "count": 9 } }` merges these fields into the plain object at this path of the result. The path is dotted, array positions included; `""` is the result itself. |
+| `at` | `{ "at": "columns.2", "value": { "count": 9 } }` merges these fields into the object at this path of the result. The path is dotted, array positions included; `""` is the result itself. A path that lands on an entity merges into that entity as a deferred frame does (§3), fields under an alias or with arguments staying with the result ([07 §3](07-cache.md)). |
 | `list` | `{ "list": "items", "del": [3], "ins": [{ "at": 0, "value": { ... } }] }` removes those positions of the list at that path, then inserts those elements at those positions. `del` names positions in the list as the client currently holds it; `ins` positions are in the list after the removals, applied in order. |
 
 An `ins` carries the projected element in full form — `$type` retained even when the op asked for compact frames,
@@ -261,12 +261,21 @@ curl scripts, webhooks, gateways and teams that expect resources.
 * A path that matches with another method answers `405` with `Allow`.
 * Path and query-string values are text, read by the argument's declared type. A `Long` too large for a JSON number
   to hold exactly (past 2^53) stays text, as a client sends it in a body, so it reaches the resolver digit for digit.
+* **Wire names.** An argument or input field annotated `@http(name: "first-name")` ([01 §4](01-schema.md)) is read by
+  the binding under that name, and only under it: from the query string, from a body spread with `body: "*"`, and
+  inside a body-bound or spread input object at any depth. The schema name is then an unknown argument on the route,
+  and an `invalid_argument` names the member as the client sent it (`people().first-name: expected String`). The
+  values reach the resolver under their schema names. Path templates in the schema use schema names (`{firstName}`);
+  a path parameter's value is positional, so its wire name only names it in errors and in the OpenAPI document. Wire
+  names apply to what a client sends: results, `/rayfold`, WebSocket and MCP always use schema names.
 
 `GET /rayfold/openapi.json` returns an **OpenAPI 3.2** document generated from the IR and the bindings (3.2 is the
 first version with a `query` operation): parameters, request bodies, result schemas, the `Idempotency-Key` and
 `If-Match` headers, and one `422` schema per declared error. `@range` becomes `minimum`/`maximum` on `Int`, `Long` and
 `Float`, and `minLength`/`maxLength` on `String`; on a `Decimal` or a list, where JSON Schema's keywords do not carry
-the same meaning, it becomes the extension `x-rayfold-range`. The published contract and the enforced rules come from
+the same meaning, it becomes the extension `x-rayfold-range`. Parameters, path templates and the properties of request
+bodies and of input types carry their wire names, so a schema imported from an OpenAPI document publishes the names
+it was imported with; result schemas carry schema names. The published contract and the enforced rules come from
 the same source and cannot drift.
 
 ## 9. Uploads (extension `upload`)

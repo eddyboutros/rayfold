@@ -161,6 +161,7 @@ Annotations attach machine-readable policy to a definition or field. Core annota
 | `@example(value)` | scalar, field, arg, any operation, and `entity`, `object` and `input` types | A sample value for docs, the explorer and agents. |
 | `@version` | entity field (`Int`, `Long`, `String` or `Instant`) | The entity's version for conditional commands ([03 §4a](03-batch-and-pipelining.md)). Bumped by the resolver on every write. |
 | `@http(method: M, path: String, body: Name \| "*"?, location: String?)` | query, command | HTTP binding ([04 §8](04-frames-and-transport.md)). Queries bind `GET` or `QUERY`; commands bind `POST`, `PUT`, `PATCH` or `DELETE`. `{name}` path segments are arguments. |
+| `@http(name: String)` | operation argument, input field | Wire name: HTTP bindings read the member under this name instead of its own ([04 §8](04-frames-and-transport.md)). Exactly one argument, a non-empty string; within one operation or input type it may not be another member's name or wire name. Nothing else changes: `/rayfold`, MCP and results keep the schema name. |
 | `@ordinal(Int)` | field, enum value | Fixes the wire ordinal used by RB ([09](09-binary-format.md)). Normally assigned by the lockfile. |
 
 Unknown annotations MUST be rejected unless namespaced (`@vendor.name(...)`), in which case they are preserved on the
@@ -225,6 +226,9 @@ An IR is valid when:
 8. `@page` appears only on fields and queries returning `Page<T>`; `@input` only on streams; `@live` only on queries.
 9. Every entity, object and union type is reachable from at least one operation, event or view (unreachable types are a warning, not an error).
 10. Reference cycles between entities are allowed; the executor bounds depth per [02 §5](02-shapes.md).
+11. `@http(name: String)` appears only on operation arguments and input fields, with `name` its only argument and a
+    non-empty string; within one operation's arguments, or one input type's fields, no wire name equals another
+    member's name or wire name.
 
 ## 9. IR
 

@@ -56,7 +56,8 @@ book?.title;   // string
 book?.stock;   // a type error: the shape did not ask for it
 ```
 
-Lists, pages and nulls are followed through, and a shape that spreads a named view falls back to the whole type,
+A call with no shape is typed as the result's default view (scalar fields, no nested entities), which is what the
+server sends. Lists, pages and nulls are followed through, and a shape that spreads a named view falls back to the whole type,
 since the view's text lives in the schema rather than in the call. The
 [TypeScript guide](../../docs/guide/typescript.md) has the rest.
 

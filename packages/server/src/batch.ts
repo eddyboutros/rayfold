@@ -53,6 +53,11 @@ export interface ExecuteOptions {
    */
   keyOptional?: boolean;
   /**
+   * Set by HTTP bindings: arguments and input fields arrive under their wire names (`@http(name:)`, spec 04 §8).
+   * Never settable from the wire envelope.
+   */
+  wireNames?: boolean;
+  /**
    * A signal per op id that stops that op alone, as `{ "cancel": id }` does on a WebSocket (spec 04 section 5): it ends
    * `canceled` (or with the signal's reason), and the batch's other ops keep running.
    */
@@ -167,7 +172,7 @@ async function runBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: Execu
       // costs nothing (and reports its error when its turn comes). Only args with $ref, known after earlier ops, are
       // estimated from the raw request, where any page size the model cannot trust counts as the largest page.
       const raw = (req.args ?? {}) as Record<string, unknown>;
-      const planArgs = deps.length ? raw : coerceArgs(rt.ir, op.args, raw, `${op.name}()`, op.returns);
+      const planArgs = deps.length ? raw : coerceArgs(rt.ir, op.args, raw, `${op.name}()`, op.returns, opts.wireNames);
       const est = estimateCost(rt.ir, op, planArgs, p.shape, req.vars ?? {});
       if (est.depth > rt.options.maxDepth) throw new RayfoldError("resource_exhausted", `Shape depth ${est.depth} exceeds ${rt.options.maxDepth}`);
       if (est.fields > rt.options.maxFields) throw new RayfoldError("resource_exhausted", `Shape selects ${est.fields} fields, max ${rt.options.maxFields}`);
@@ -389,7 +394,7 @@ async function runOp(
 
   try {
     const rawArgs = resolveRefs(p.req.args ?? {}, (opId, path) => getPath(results.get(opId), path), `ops.${id}.args`);
-    const args = coerceArgs(rt.ir, p.op.args, rawArgs, `${p.op.name}()`, p.op.returns);
+    const args = coerceArgs(rt.ir, p.op.args, rawArgs, `${p.op.name}()`, p.op.returns, opts.wireNames);
     const ctx: RayfoldContext = {
       viewer: opts.viewer ?? null,
       signal: opAbort.signal,

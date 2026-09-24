@@ -254,7 +254,19 @@ export class RayfoldCache {
     const r = this.results.get(key);
     if (!r || !delta || typeof delta !== "object") return;
     const touched = new Set<EntityKey>();
-    // the selection at that path: the deferred block's fields are among its fields
+    this.mergeIntoPath(r, path, delta as Record<string, unknown>, touched, shape, views);
+    for (const k of touched) r.keys.add(k);
+    // a new record for the same data, so a watcher comparing records sees that this result changed
+    this.results.set(key, { ...r });
+    this.emit(touched, new Set([r.op]));
+  }
+
+  /**
+   * Merge fields into what sits at a path of a stored result. An entity there takes them as its own, except the
+   * fields this result's selection keeps on its ref (spec 07 §3); a plain object takes them all.
+   */
+  private mergeIntoPath(r: CachedResult, path: string, delta: Record<string, unknown>, touched: Set<EntityKey>, shape?: Shape, views?: ViewResolver): void {
+    // the selection at that path: the delta's fields are among its fields
     let at = shape;
     for (const seg of path === "" ? [] : path.split(".")) if (!/^\d+$/.test(seg)) at = shapeLevel(at, views).child.get(seg);
     const norm = this.normalizeValue(delta, touched, at, views);
@@ -269,16 +281,13 @@ export class RayfoldCache {
       const e = this.baseOf(target.$ref);
       if (e) {
         this.setBase(target.$ref, { ...e, ...shared });
+        touched.add(target.$ref);
         this.overrule(target.$ref, Object.keys(shared));
       }
       target.$sel = mergeSel(target.$sel ?? {}, norm.sel);
     } else if (target && typeof target === "object" && !Array.isArray(target)) {
       Object.assign(target as Record<string, unknown>, norm.value as Record<string, unknown>);
     }
-    for (const k of touched) r.keys.add(k);
-    // a new record for the same data, so a watcher comparing records sees that this result changed
-    this.results.set(key, { ...r });
-    this.emit(touched, new Set([r.op]));
   }
 
   // ------------------------------------------------------------ patches
@@ -287,13 +296,13 @@ export class RayfoldCache {
    * `set`, `del`, `inv` and `invOp` act on the whole cache. `at` and `list` describe one stored result and are
    * applied only when the frame's result key is known (spec 04 section 2b).
    */
-  applyPatch(ops: PatchOp[], resultKey?: string): void {
+  applyPatch(ops: PatchOp[], resultKey?: string, shape?: Shape, views?: ViewResolver): void {
     const keys = new Set<EntityKey>();
     const opNames = new Set<string>();
     for (const p of ops) {
       if ("set" in p) this.merge(p.set, p.value, keys);
       else if ("list" in p) this.applyList(resultKey, p, keys, opNames);
-      else if ("at" in p) this.applyAt(resultKey, p.at, p.value, keys, opNames);
+      else if ("at" in p) this.applyAt(resultKey, p.at, p.value, keys, opNames, shape, views);
       else if ("del" in p) {
         this.setBase(p.del, undefined);
         keys.add(p.del);
@@ -323,14 +332,11 @@ export class RayfoldCache {
     this.emit(keys, opNames);
   }
 
-  /** Merge fields into the plain object at a path inside one stored result. */
-  private applyAt(resultKey: string | undefined, path: string, value: Record<string, unknown>, touched: Set<EntityKey>, opNames: Set<string>): void {
+  /** Merge fields into what sits at a path inside one stored result, as a deferred frame's fields are merged. */
+  private applyAt(resultKey: string | undefined, path: string, value: Record<string, unknown>, touched: Set<EntityKey>, opNames: Set<string>, shape?: Shape, views?: ViewResolver): void {
     const r = resultKey === undefined ? undefined : this.results.get(resultKey);
     if (!r) return;
-    const target = path === "" ? r.data : this.getPath(r.data, path.split("."));
-    if (!target || typeof target !== "object" || Array.isArray(target)) return;
-    const norm = this.normalizeValue(value, touched);
-    Object.assign(target as Record<string, unknown>, norm.value as Record<string, unknown>);
+    this.mergeIntoPath(r, path, value, touched, shape, views);
     for (const k of touched) r.keys.add(k);
     opNames.add(r.op);
     this.results.set(resultKey!, { ...r });

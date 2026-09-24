@@ -12,14 +12,19 @@ object Args {
     internal const val MAX_PAGE_FIRST = 200
     private const val MAX_FORMAT_INPUT = 10_000
 
-    fun coerce(ir: RayfoldSchemaIR, defs: List<ArgDef>, raw: JsonElement?, path: String, returns: TypeRef? = null): JsonObject {
+    /**
+     * [wire] reads each member under its wire name (`@http(name:)`, spec 04 section 8), as an HTTP binding receives it, and
+     * names it that way in errors; the result is keyed by schema names either way.
+     */
+    fun coerce(ir: RayfoldSchemaIR, defs: List<ArgDef>, raw: JsonElement?, path: String, returns: TypeRef? = null, wire: Boolean = false): JsonObject {
+        fun key(d: ArgDef) = if (wire) d.wireName else d.name
         if (raw != null && raw !is JsonNull && raw !is JsonObject) throw RayfoldException(Code.INVALID_ARGUMENT, "$path: expected an object")
         val input = raw as? JsonObject ?: JsonObject(emptyMap())
-        for (k in input.keys) if (defs.none { it.name == k }) throw RayfoldException(Code.INVALID_ARGUMENT, "$path.$k: unknown argument")
+        for (k in input.keys) if (defs.none { key(it) == k }) throw RayfoldException(Code.INVALID_ARGUMENT, "$path.$k: unknown argument")
         val out = linkedMapOf<String, JsonElement>()
         for (d in defs) {
-            val v = input[d.name]
-            val p = "$path.${d.name}"
+            val v = input[key(d)]
+            val p = "$path.${key(d)}"
             if (v == null) {
                 if (d.default != null) { out[d.name] = value(ir, d.type, d.default, p); continue }
                 if (!d.type.nullable) throw RayfoldException(Code.INVALID_ARGUMENT, "$p: required")
@@ -30,7 +35,7 @@ object Args {
                 if (d.type.nullable) { out[d.name] = JsonNull; continue }
                 throw RayfoldException(Code.INVALID_ARGUMENT, if (d.default != null) "$p: must not be null" else "$p: required")
             }
-            val coerced = value(ir, d.type, v, p)
+            val coerced = value(ir, d.type, v, p, wire)
             out[d.name] = coerced
             checkConstraints(ir, d.annotations, coerced, p, d.type)
         }
@@ -83,14 +88,14 @@ object Args {
 
     private fun fmtNum(d: Double): String = if (d == Math.floor(d) && !d.isInfinite()) d.toLong().toString() else d.toString()
 
-    fun value(ir: RayfoldSchemaIR, t: TypeRef, v: JsonElement, path: String): JsonElement {
+    fun value(ir: RayfoldSchemaIR, t: TypeRef, v: JsonElement, path: String, wire: Boolean = false): JsonElement {
         if (v is JsonNull) {
             if (t.nullable) return JsonNull
             throw RayfoldException(Code.INVALID_ARGUMENT, "$path: must not be null")
         }
         if (t.isList) {
             val arr = v as? JsonArray ?: throw RayfoldException(Code.INVALID_ARGUMENT, "$path: expected a list")
-            return JsonArray(arr.mapIndexed { i, x -> value(ir, t.element, x, "$path.$i") })
+            return JsonArray(arr.mapIndexed { i, x -> value(ir, t.element, x, "$path.$i", wire) })
         }
         val def = ir.types[t.name] ?: throw RayfoldException(Code.INTERNAL, "$path: unknown type ${t.name}")
         return when (def.kind) {
@@ -102,7 +107,7 @@ object Args {
             }
             "input" -> {
                 if (v !is JsonObject) throw RayfoldException(Code.INVALID_ARGUMENT, "$path: expected ${t.name}")
-                val obj = coerce(ir, def.fields.map { ArgDef(it.name, it.description, it.type, it.default, it.annotations) }, v, path).toMutableMap()
+                val obj = coerce(ir, def.fields.map { ArgDef(it.name, it.description, it.type, it.default, it.annotations) }, v, path, wire = wire).toMutableMap()
                 if (t.name == "PageArgs") {
                     val first = (obj["first"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()
                     if (first != null && first > MAX_PAGE_FIRST) obj["first"] = JsonPrimitive(MAX_PAGE_FIRST)

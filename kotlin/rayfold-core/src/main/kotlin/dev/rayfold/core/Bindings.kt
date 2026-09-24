@@ -228,11 +228,16 @@ class RayfoldBindings(
     }
 
     private fun serve(ex: HttpExchange, b: Binding, m: MatchResult) {
+        // keyed by wire name (`@http(name:)`), which the execution below reads them by; fromText goes by schema name
         val args = linkedMapOf<String, JsonElement>()
-        b.params.forEachIndexed { i, name -> args[name] = fromText(b.op, name, decodePathSegment(m.groupValues[i + 1], name)) }
+        val schemaName = b.op.args.associate { it.wireName to it.name }
+        b.params.forEachIndexed { i, name ->
+            val wire = b.op.args.firstOrNull { it.name == name }?.wireName ?: name
+            args[wire] = fromText(b.op, name, decodePathSegment(m.groupValues[i + 1], wire))
+        }
         val query = parseQuery(ex.requestURI.rawQuery)
         val shape = query.firstOrNull { it.first == "shape" }?.second
-        if (b.method == "GET") for ((k, v) in query) if (k != "shape" && k !in args) args[k] = fromText(b.op, k, v)
+        if (b.method == "GET") for ((k, v) in query) if (k != "shape" && k !in args) args[k] = fromText(b.op, schemaName[k] ?: k, v)
         b.body?.let { bodyArg ->
             val raw = Guard.readBody(ex, options.maxBodyBytes)
             if (raw.isNotEmpty()) {
@@ -244,7 +249,7 @@ class RayfoldBindings(
                 }
                 val parsed = StrictJson.parse(raw.toString(Charsets.UTF_8), "body", "Body is not valid JSON")
                 if (bodyArg == "*") args.putAll(parsed as? JsonObject ?: throw RayfoldException(Code.INVALID_ARGUMENT, "Body must be a JSON object"))
-                else args[bodyArg] = parsed
+                else args[b.op.args.firstOrNull { it.name == bodyArg }?.wireName ?: bodyArg] = parsed
             }
         }
         val key = ex.requestHeaders.getFirst("Idempotency-Key")?.takeIf { it.isNotEmpty() }
@@ -263,7 +268,7 @@ class RayfoldBindings(
         }
         val envelope = buildJsonObject { put("ops", JsonArray(listOf(op))) }
         val v = viewer(ex)
-        val frames = runBlocking { server.collect(envelope, ExecuteOptions(v, keyOptional = b.method in IDEMPOTENT_METHODS)) }
+        val frames = runBlocking { server.collect(envelope, ExecuteOptions(v, keyOptional = b.method in IDEMPOTENT_METHODS, wireNames = true)) }
         val folded = fold(frames)
         folded.error?.let { e ->
             val code = Code.entries.firstOrNull { it.wire == (e["code"] as? JsonPrimitive)?.content } ?: Code.INTERNAL

@@ -33,6 +33,22 @@ schema becomes an `input` argument (`body: input`), and a body written inline be
 what gives the cache and the patches something to address. Parameters become arguments, those declared on the path
 and through `$ref` included, and a name like `first-name` becomes `firstName`, with the `@http` path following it.
 
+A renamed parameter or request-body property keeps its original name as its wire name, so existing clients go on
+sending what they send today:
+
+```rayfold
+input NewPerson {
+  firstName: String @http(name: "first-name")
+}
+
+query people(maxCount: Int? @http(name: "max-count")): [Person]
+  @http(method: GET, path: "/people")
+```
+
+The bindings read `?max-count=` and `{"first-name": ...}`, and the published OpenAPI document names them that way
+again (see [REST routes and OpenAPI](rest-bindings.md#names-your-clients-already-send)). A response has no wire names,
+so a renamed field of a result type is the one rename still listed on stderr.
+
 What the document cannot say, the importer does not invent: what may be cached, who may read what, which errors a
 command throws, which events it emits. Those are the parts that make the schema worth having, and they go in by hand.
 Everything it had to assume is listed on stderr, so the schema on stdout stays a schema.

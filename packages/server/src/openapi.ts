@@ -3,18 +3,19 @@
  * the runtime enforces, so the published contract and the validation rules cannot drift apart.
  * 3.2 is required for the QUERY operation.
  */
-import { annotation, baseName, type Annotation, type ArgDef, type OpDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
+import { annotation, baseName, wireName, type Annotation, type ArgDef, type OpDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 import { bindingsOf } from "./routes.ts";
 import { jsonSchemaFor, withRange } from "./json-schema.ts";
 
 export function openApiFor(ir: RayfoldSchemaIR, opts: { title?: string; version?: string; prefix?: string } = {}): Record<string, unknown> {
   const defs: Record<string, unknown> = {};
-  const schema = (t: TypeRef, input: boolean) => jsonSchemaFor(ir, t, defs, input);
+  // input types are named as the bindings read them (`@http(name:)`); results keep their schema names
+  const schema = (t: TypeRef, input: boolean) => jsonSchemaFor(ir, t, defs, input, false, input);
   const paths: Record<string, Record<string, unknown>> = {};
 
   for (const b of bindingsOf(ir)) {
     const op = b.op;
-    const p = (opts.prefix ?? "") + b.path;
+    const p = (opts.prefix ?? "") + b.path.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => `{${wireName(op.args.find((a) => a.name === name)!)}}`);
     const parameters: unknown[] = b.params.map((name) => param(ir, op, name, "path", true, defs));
     if (b.method === "GET") {
       for (const a of op.args) if (!b.params.includes(a.name)) parameters.push(param(ir, op, a.name, "query", !a.type.nullable && a.default === undefined, defs));
@@ -77,8 +78,8 @@ function domainProblem(type: string, dataSchema: unknown): unknown {
 
 function param(ir: RayfoldSchemaIR, op: OpDef, name: string, where: "path" | "query", required: boolean, defs: Record<string, unknown>): unknown {
   const a = op.args.find((x) => x.name === name);
-  const s = a ? jsonSchemaFor(ir, a.type, defs, true) : { type: "string" };
-  const out: Record<string, unknown> = { name, in: where, required: where === "path" ? true : required, schema: a ? withRange(s, a.annotations, baseName(a.type)) : s };
+  const s = a ? jsonSchemaFor(ir, a.type, defs, true, false, true) : { type: "string" };
+  const out: Record<string, unknown> = { name: a ? wireName(a) : name, in: where, required: where === "path" ? true : required, schema: a ? withRange(s, a.annotations, baseName(a.type)) : s };
   if (a?.description) out["description"] = a.description;
   return out;
 }
@@ -87,8 +88,8 @@ function argsObject(ir: RayfoldSchemaIR, args: ArgDef[], defs: Record<string, un
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
   for (const a of args) {
-    properties[a.name] = withRange(jsonSchemaFor(ir, a.type, defs, true), a.annotations, baseName(a.type));
-    if (!a.type.nullable && a.default === undefined) required.push(a.name);
+    properties[wireName(a)] = withRange(jsonSchemaFor(ir, a.type, defs, true, false, true), a.annotations, baseName(a.type));
+    if (!a.type.nullable && a.default === undefined) required.push(wireName(a));
   }
   return required.length ? { type: "object", properties, required } : { type: "object", properties };
 }

@@ -1,0 +1,339 @@
+{
+ "openapi": "3.2.0",
+ "info": {
+  "title": "Rayfold API",
+  "version": "0.1"
+ },
+ "paths": {
+  "/find": {
+   "get": {
+    "operationId": "find",
+    "parameters": [
+     {
+      "name": "first-name",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     {
+      "name": "max-count",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "x-rayfold-range": {
+        "min": 1,
+        "max": 9
+       },
+       "minimum": 1,
+       "maximum": 9
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Hit"
+         }
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/hits/{hit-id}": {
+   "get": {
+    "operationId": "hit",
+    "parameters": [
+     {
+      "name": "hit-id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "shape",
+      "in": "query",
+      "required": false,
+      "description": "Rayfold shape text or sha256: shape id; default view when absent",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Hit"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "operationId": "tag",
+    "parameters": [
+     {
+      "name": "hit-id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Where"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Hit"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/search": {
+   "query": {
+    "operationId": "search",
+    "parameters": [],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "first-name": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         },
+         "where": {
+          "$ref": "#/components/schemas/Where"
+         }
+        },
+        "required": [
+         "where"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Result in the requested shape (default view when no shape is given)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Hit"
+         }
+        }
+       }
+      }
+     },
+     "304": {
+      "description": "Not modified (ETag revalidation)"
+     },
+     "400": {
+      "description": "Invalid argument, including schema constraints such as @range",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/Problem"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Hit": {
+    "type": "object",
+    "properties": {
+     "$type": {
+      "const": "Hit"
+     },
+     "id": {
+      "type": "string"
+     },
+     "first": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id"
+    ]
+   },
+   "Where": {
+    "type": "object",
+    "properties": {
+     "zip-code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "near-by": {
+      "$ref": "#/components/schemas/Near"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "near-by"
+    ]
+   },
+   "Near": {
+    "type": "object",
+    "properties": {
+     "max-km": {
+      "type": "integer"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "max-km"
+    ]
+   },
+   "Problem": {
+    "type": "object",
+    "description": "RFC 9457 problem details; Rayfold errors keep code, type and data",
+    "properties": {
+     "type": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "status": {
+      "type": "integer"
+     },
+     "detail": {
+      "type": "string"
+     },
+     "code": {
+      "type": "string"
+     },
+     "path": {
+      "type": "string"
+     },
+     "data": {}
+    },
+    "required": [
+     "type",
+     "title",
+     "status",
+     "code"
+    ]
+   }
+  }
+ }
+}

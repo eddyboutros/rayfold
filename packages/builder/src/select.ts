@@ -208,18 +208,21 @@ interface CallOptions {
   [option: string]: unknown;
 }
 
+/** With no shape the server sends the result's default view (spec 02 §2), so that is the type. */
+type Shaped<S, Op extends string, Shape extends string> = Shape extends "" ? DefaultView<InferResult<S, Op>> : Select<InferResult<S, Op>, Shape>;
+
 export interface TypedClient<S> {
   query<Op extends OpNames<S>, Shape extends string = "">(
     op: Op,
     args: InferArgs<S, Op>,
     options?: CallOptions & { shape?: Shape },
-  ): Promise<Shape extends "" ? InferResult<S, Op> : Select<InferResult<S, Op>, Shape>>;
+  ): Promise<Shaped<S, Op, Shape>>;
 
   command<Op extends OpNames<S>, Shape extends string = "">(
     op: Op,
     args: InferArgs<S, Op>,
     options?: CallOptions & { shape?: Shape },
-  ): Promise<Shape extends "" ? InferResult<S, Op> : Select<InferResult<S, Op>, Shape>>;
+  ): Promise<Shaped<S, Op, Shape>>;
 }
 
 /**
@@ -229,6 +232,8 @@ export interface TypedClient<S> {
  *     const book = await api.query("book", { id: "b1" }, { shape: "{ id title author { name } }" });
  *     book.author.name;   // string
  *     book.stock;         // a type error: it was not asked for
+ *
+ * With no shape the result is typed as its default view, which is what the server sends.
  */
 export function typedClient<S>(client: ShapedClient): TypedClient<S> {
   return {

@@ -10,14 +10,14 @@
  *   query   books(filter: ..., page: ...)  @http(method: QUERY,  path: "/books", body: "*")
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { annotation, type OpDef, type RayfoldSchemaIR } from "@rayfold/schema";
+import { annotation, wireName, type OpDef, type RayfoldSchemaIR } from "@rayfold/schema";
 import { COMMAND_METHODS, IDEMPOTENT_METHODS, QUERY_METHODS, bindingsOf, type Binding } from "./routes.ts";
 import type { RayfoldServer } from "./server.ts";
 import { HTTP_STATUS, RayfoldError, type Frame, type RequestEnvelope, type RequestOp, type WireError } from "./protocol.ts";
 // from fetch.ts, not http.ts: openapi.ts reads `bindingsOf` from here, and going through the Node transport for it
 // would pull node:http into every runtime that imports the endpoint
 import { cacheHeadersFor, etagMatches } from "./fetch.ts";
-import { BodyTooLarge, PROBLEM_TYPE_BASE, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
+import { BodyTooLarge, PROBLEM_TYPE_BASE, checkQueryEscapes, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
 
 // where the route model lived before the OpenAPI document needed it without a transport
 export { COMMAND_METHODS, QUERY_METHODS, bindingsOf, type Binding };
@@ -57,11 +57,17 @@ export function createBindingHandler(server: RayfoldServer, opts: BindingOptions
     }
     const { b, m } = hit as { b: Binding; m: RegExpExecArray };
     try {
+      // keyed by wire name (`@http(name:)`), which the execution below reads them by; fromText goes by schema name
       const args: Record<string, unknown> = {};
-      b.params.forEach((name, i) => (args[name] = fromText(b.op, name, decodePathSegment(m[i + 1]!, name))));
+      const schemaName = new Map(b.op.args.map((a) => [wireName(a), a.name]));
+      b.params.forEach((name, i) => {
+        const wire = wireName(b.op.args.find((a) => a.name === name)!);
+        args[wire] = fromText(b.op, name, decodePathSegment(m[i + 1]!, wire));
+      });
+      checkQueryEscapes(url.search);
       const shapeParam = url.searchParams.get("shape");
       if (b.method === "GET") {
-        for (const [k, v] of url.searchParams) if (k !== "shape" && !(k in args)) args[k] = fromText(b.op, k, v);
+        for (const [k, v] of url.searchParams) if (k !== "shape" && !(k in args)) args[k] = fromText(b.op, schemaName.get(k) ?? k, v);
       }
       if (b.body) {
         const raw = await readBody(req, maxBody);
@@ -82,7 +88,7 @@ export function createBindingHandler(server: RayfoldServer, opts: BindingOptions
             if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new RayfoldError("invalid_argument", "Body must be a JSON object");
             // own properties, as JSON.parse made them: Object.assign would turn a "__proto__" key into the prototype of args
             for (const [k, v] of Object.entries(parsed)) Object.defineProperty(args, k, { value: v, enumerable: true, writable: true, configurable: true });
-          } else args[b.body] = parsed;
+          } else args[wireName(b.op.args.find((a) => a.name === b.body)!)] = parsed;
         }
       }
       const op: RequestOp = { id: 1, op: b.op.name, args };
@@ -103,7 +109,7 @@ export function createBindingHandler(server: RayfoldServer, opts: BindingOptions
       const envelope: RequestEnvelope = { ops: [op] };
       const viewer = opts.viewer ? await opts.viewer(req) : null;
       const frames: Frame[] = [];
-      for await (const f of server.execute(envelope, { viewer, keyOptional: IDEMPOTENT_METHODS.has(b.method) })) frames.push(f);
+      for await (const f of server.execute(envelope, { viewer, keyOptional: IDEMPOTENT_METHODS.has(b.method), wireNames: true })) frames.push(f);
       const folded = fold(frames);
       if ("error" in folded) {
         const e = folded.error;

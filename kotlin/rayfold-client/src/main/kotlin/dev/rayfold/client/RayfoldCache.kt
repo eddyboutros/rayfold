@@ -216,19 +216,33 @@ class RayfoldCache(
         val r = results[key] ?: return@synchronized
         if (delta !is JsonObject) return@synchronized
         val touched = mutableSetOf<String>()
+        val data = mergeIntoPath(r.data, path, delta, shape, touched)
+        r.keys.addAll(touched)
+        // a new record for the result, so a watcher comparing records sees that this result changed
+        results[key] = CachedResult(data, r.op, r.keys, r.storedAt, r.stale)
+        emit(touched, setOf(r.op))
+    }
+
+    /**
+     * Merges [delta]'s fields into what sits at [path] of a stored result, and returns the result rebuilt. An entity
+     * there takes them as its own, except the fields this result's selection keeps on its ref (spec 07 section 3); a
+     * plain object takes them all.
+     */
+    private fun mergeIntoPath(result: JsonElement, path: String, delta: JsonObject, shape: SelectionLevel?, touched: MutableSet<String>): JsonElement {
         val parts = if (path.isEmpty()) emptyList() else path.split(".")
-        // the selection at that path: the deferred block's fields are among its fields
+        // the selection at that path: the delta's fields are among its fields
         var level = shape
         for (seg in parts) if (seg.toIntOrNull() == null) level = level?.child?.get(seg)
         val (norm, sel) = normalizeValue(delta, touched, level)
-        val fields = norm as? JsonObject ?: return@synchronized
-        val data = updateAt(r.data, parts) { target ->
+        val fields = norm as? JsonObject ?: return result
+        return updateAt(result, parts) { target ->
             val ref = (target as? JsonObject)?.let(::refKey)
             when {
                 ref != null -> {
                     val (own, shared) = fields.entries.partition { level != null && it.key in level.bySelection }
                     baseOf(ref)?.let { e ->
                         setBase(ref, JsonObject(LinkedHashMap(e).apply { shared.forEach { put(it.key, it.value) } }))
+                        touched.add(ref)
                         overrule(ref, shared.map { it.key }.toSet())
                     }
                     val next = linkedMapOf<String, JsonElement>("\$ref" to JsonPrimitive(ref), "\$sel" to mergeSel(target["\$sel"] ?: JsonObject(emptyMap()), sel))
@@ -240,10 +254,6 @@ class RayfoldCache(
                 else -> target
             }
         }
-        r.keys.addAll(touched)
-        // a new record for the result, so a watcher comparing records sees that this result changed
-        results[key] = CachedResult(data, r.op, r.keys, r.storedAt, r.stale)
-        emit(touched, setOf(r.op))
     }
 
     /** Rebuilds [v] with the value at [path] replaced by [fn]; a ref on the way leads into its stored entity. */
@@ -278,7 +288,10 @@ class RayfoldCache(
      * Applies patch operations. `set`, `del`, `inv` and `invOp` act on the whole cache; `at` and `list` describe one
      * stored result (spec 04 section 2b) and are applied only when that result's key is known.
      */
-    fun applyPatch(ops: List<JsonObject>, resultKey: String? = null) = synchronized(lock) {
+    fun applyPatch(ops: List<JsonObject>, resultKey: String? = null) = applyPatch(ops, resultKey, null)
+
+    /** [shape] is the selection the result at [resultKey] was asked with, which an `at` onto an entity follows. */
+    internal fun applyPatch(ops: List<JsonObject>, resultKey: String?, shape: SelectionLevel?) = synchronized(lock) {
         val keys = mutableSetOf<String>()
         val opNames = mutableSetOf<String>()
         for (p in ops) {
@@ -287,7 +300,7 @@ class RayfoldCache(
             when {
                 set != null -> merge(set, p["value"] as? JsonObject ?: JsonObject(emptyMap()), keys)
                 "list" in p -> applyList(resultKey, p, keys, opNames)
-                "at" in p -> applyAt(resultKey, p, keys, opNames)
+                "at" in p -> applyAt(resultKey, p, keys, opNames, shape)
                 del != null -> {
                     setBase(del, null)
                     keys.add(del)
@@ -313,15 +326,12 @@ class RayfoldCache(
 
     // ------------------------------------------------------------ predictions
 
-    /** Merges fields into the plain object at a path inside one stored result (spec 04 section 2b). */
-    private fun applyAt(resultKey: String?, p: JsonObject, touched: MutableSet<String>, opNames: MutableSet<String>) {
+    /** Merges fields into what sits at a path inside one stored result (spec 04 section 2b), as a deferred frame does. */
+    private fun applyAt(resultKey: String?, p: JsonObject, touched: MutableSet<String>, opNames: MutableSet<String>, shape: SelectionLevel?) {
         val r = resultKey?.let { results[it] } ?: return
         val path = p.str("at") ?: return
-        val fields = (p["value"] as? JsonObject)?.let { normalizeValue(it, touched).first as? JsonObject } ?: return
-        val parts = if (path.isEmpty()) emptyList() else path.split(".")
-        val data = updateAt(r.data, parts) { target ->
-            if (target is JsonObject && refKey(target) == null) JsonObject(LinkedHashMap(target).apply { putAll(fields) }) else target
-        }
+        val value = p["value"] as? JsonObject ?: return
+        val data = mergeIntoPath(r.data, path, value, shape, touched)
         r.keys.addAll(touched)
         opNames.add(r.op)
         results[resultKey] = CachedResult(data, r.op, r.keys, r.storedAt, r.stale)

@@ -48,7 +48,17 @@ command keyed(n: Int): Item @http(method: POST, path: "/keyed", body: "*")
 command drop(id: ID): Item? @http(method: "delete", path: "/items/{id}")
 `;
 
-const MCP_RANGE = `entity A { id: ID } command set(qty: Int @range(min: 1, max: 5), name: String @range(min: 2, max: 3), price: Decimal @range(min: 0), free: Int): A @idempotent(false)`;
+const OPENAPI_WIRE = `
+entity Hit { id: ID first: String? }
+input Near { maxKm: Int @http(name: "max-km") }
+input Where { zipCode: String? @http(name: "zip-code") near: Near @http(name: "near-by") }
+query find(firstName: String? @http(name: "first-name"), maxCount: Int @http(name: "max-count") @range(min: 1, max: 9)): [Hit] @http(method: GET, path: "/find")
+query hit(hitId: ID @http(name: "hit-id")): Hit? @http(method: GET, path: "/hits/{hitId}")
+query search(firstName: String? @http(name: "first-name"), where: Where): [Hit] @http(method: QUERY, path: "/search", body: "*")
+command tag(hitId: ID @http(name: "hit-id"), where: Where): Hit @http(method: PUT, path: "/hits/{hitId}", body: where)
+`;
+
+const MCP_RANGE =`entity A { id: ID } command set(qty: Int @range(min: 1, max: 5), name: String @range(min: 2, max: 3), price: Decimal @range(min: 0), free: Int): A @idempotent(false)`;
 
 const bs = createBookstore();
 write("bookstore.ir.json", bs.server.ir);
@@ -60,6 +70,10 @@ write("bookstore.mcp-resources.json", mcpResources(bs.server));
 const custom = loadSchema(OPENAPI_CUSTOM).ir;
 write("openapi-custom.ir.json", custom);
 write("openapi-custom.openapi.json", openApiFor(custom));
+
+const wire = loadSchema(OPENAPI_WIRE).ir;
+write("openapi-wire.ir.json", wire);
+write("openapi-wire.openapi.json", openApiFor(wire));
 
 write("items.ir.json", loadSchema(ITEMS_SCHEMA).ir);
 
@@ -297,6 +311,20 @@ query pagedFirst(first: Int): Page<A>
 stream s: Ev @http(method: GET, path: "/s")
 query __hidden: A
 `,
+  "findings: http wire names": `
+entity A { id: ID }
+input I { a: Int @http(name: "x") b: Int @http(name: "x") c: Int @http(name: 3) d: Int @http(name: "b") }
+entity B { id: ID n: Int @http(name: "n-1") m(x: Int @http(name: "x-1")): Int }
+event E { n: Int @http(name: "n-2") }
+query q1(n: Int @http): A
+query q2(n: Int @http(name: "")): A
+query q3(n: Int @http(name: "n-1", method: GET)): A
+query q4(n: Int @http("n-1")): A
+query q5(a: Int @http(name: "b"), b: Int): A
+query q6(a: Int @http(name: "b"), b: Int @http(name: "a")): A
+query q7(i: I, a: Int @http(name: "a"), c: Int @http(name: "c-1")): B
+command c: A emits E
+`,
   "findings: views": `
 entity A { id: ID n: Int b: B? }
 entity B { id: ID }
@@ -320,7 +348,7 @@ query u: U
 const schemaCases: Array<{ name: string; text: string }> = [];
 const fixtureDir = fileURLToPath(new URL("../conformance/fixtures/core", import.meta.url));
 for (const f of readdirSync(fixtureDir).sort()) schemaCases.push({ name: `fixture ${f}`, text: (JSON.parse(readFileSync(`${fixtureDir}/${f}`, "utf8")) as { schema: string }).schema });
-schemaCases.push({ name: "bookstore", text: bookstoreSchemaText() }, { name: "openapi-custom", text: OPENAPI_CUSTOM }, { name: "items", text: ITEMS_SCHEMA }, { name: "mcp-range", text: MCP_RANGE });
+schemaCases.push({ name: "bookstore", text: bookstoreSchemaText() }, { name: "openapi-custom", text: OPENAPI_CUSTOM }, { name: "items", text: ITEMS_SCHEMA }, { name: "mcp-range", text: MCP_RANGE }, { name: "openapi-wire", text: OPENAPI_WIRE });
 for (const [name, text] of Object.entries(SCHEMA_CASES)) schemaCases.push({ name, text });
 
 // Seeded mutations of the fixture schemas: whatever the TypeScript reader makes of each (an IR, diagnostics, a hash,

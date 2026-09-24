@@ -897,4 +897,80 @@ class BindingsTest {
         assertEquals("application/rayfold-frames+json", rayfold.h("content-type"))
         assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), obj(rayfold.body().trim())["data"])
     }
+
+    // ------------------------------------------------------------------ wire names: @http(name:)
+
+    /** The OPENAPI_WIRE schema of scripts/kotlin-oracle.ts, its resolvers recording exactly the arguments they received. */
+    private fun wireServer(): Items {
+        val seen = Collections.synchronizedList(mutableListOf<Pair<String, JsonObject>>())
+        val hit = obj("""{"id":"h1","first":null}""")
+        fun record(op: String, many: Boolean = false): RootResolver = { args, _ -> seen.add(op to args); if (many) JsonArray(listOf(hit)) else hit }
+        val resolvers = Resolvers(
+            queries = mapOf("find" to record("find", many = true), "hit" to record("hit"), "search" to record("search", many = true)),
+            commands = mapOf("tag" to record("tag")),
+        )
+        return Items(RayfoldServer(Oracle.ir("openapi-wire.ir.json"), resolvers), seen)
+    }
+
+    private fun HttpResponse<String>.detail(): Pair<Int, String?> = statusCode() to ((json() as JsonObject)["detail"] as? JsonPrimitive)?.content
+
+    @Test
+    fun `wire names - query-string parameters and path parameters are read under their wire names`() {
+        val wire = wireServer()
+        val base = serve(wire.server)
+        assertEquals(200, get("$base/find?first-name=Ada&max-count=2").statusCode())
+        assertEquals(200, get("$base/hits/h3").statusCode())
+        assertEquals(listOf("find" to obj("""{"firstName":"Ada","maxCount":2}"""), "hit" to obj("""{"hitId":"h3"}""")), wire.seen.toList())
+    }
+
+    @Test
+    fun `wire names - a spread body and a body-bound input are read under their wire names, at any depth`() {
+        val wire = wireServer()
+        val base = serve(wire.server)
+        assertEquals(200, send("$base/search", "QUERY", """{"first-name":"Ada","where":{"zip-code":"02139","near-by":{"max-km":5}}}""").statusCode())
+        assertEquals(200, send("$base/hits/h7", "PUT", """{"zip-code":"02139","near-by":{"max-km":5}}""").statusCode())
+        assertEquals(listOf(
+            "search" to obj("""{"firstName":"Ada","where":{"zipCode":"02139","near":{"maxKm":5}}}"""),
+            "tag" to obj("""{"hitId":"h7","where":{"zipCode":"02139","near":{"maxKm":5}}}"""),
+        ), wire.seen.toList())
+    }
+
+    @Test
+    fun `wire names - an invalid value is reported under the name the client sent`() {
+        val wire = wireServer()
+        val base = serve(wire.server)
+        assertEquals(400 to "find().max-count: expected Int", get("$base/find?max-count=many").detail())
+        assertEquals(400 to "Path parameter hit-id is not valid percent-encoding", get("$base/hits/%E0").detail())
+        assertEquals(400 to "search().where.near-by.max-km: expected Int", send("$base/search", "QUERY", """{"where":{"near-by":{"max-km":"far"}}}""").detail())
+        assertEquals(400 to "tag().where.near-by.max-km: required", send("$base/hits/h7", "PUT", """{"near-by":{}}""").detail())
+        assertEquals(emptyList(), wire.seen.toList())
+    }
+
+    @Test
+    fun `wire names - guard - a binding reads only the wire name, the schema name is an unknown argument at any depth`() {
+        val wire = wireServer()
+        val base = serve(wire.server)
+        assertEquals(400 to "find().firstName: unknown argument", get("$base/find?firstName=Ada&max-count=2").detail())
+        assertEquals(400 to "search().firstName: unknown argument", send("$base/search", "QUERY", """{"firstName":"Ada"}""").detail())
+        assertEquals(400 to "search().where.zipCode: unknown argument", send("$base/search", "QUERY", """{"where":{"zipCode":"02139"}}""").detail())
+        assertEquals(400 to "tag().where.near-by.maxKm: unknown argument", send("$base/hits/h7", "PUT", """{"near-by":{"maxKm":5}}""").detail())
+        assertEquals(emptyList(), wire.seen.toList())
+    }
+
+    @Test
+    fun `wire names - guard - the Rayfold protocol and the MCP bridge keep the schema names`() = runTest(timeout = 5.seconds) {
+        val wire = wireServer()
+        val ok = wire.server.collect(obj("""{"ops":[{"id":1,"op":"search","args":{"firstName":"Ada","where":{"zipCode":"02139","near":{"maxKm":5}}}}]}""")).single()
+        assertEquals(Json.parseToJsonElement("""[{"${'$'}type":"Hit","id":"h1","first":null}]"""), ok["data"])
+        assertEquals(listOf("search" to obj("""{"firstName":"Ada","where":{"zipCode":"02139","near":{"maxKm":5}}}""")), wire.seen.toList())
+        val refused = wire.server.collect(obj("""{"ops":[{"id":1,"op":"search","args":{"where":{"zip-code":"02139","near":{"maxKm":5}}}}]}""")).single()
+        assertEquals("search().where.zip-code: unknown argument", ((refused["error"] as JsonObject)["message"] as JsonPrimitive).content)
+
+        val tool = Mcp.tools(wire.server.ir).map { it as JsonObject }.single { it["name"] == JsonPrimitive("search") }
+        val input = tool["inputSchema"] as JsonObject
+        assertEquals(listOf("firstName", "where"), (input["properties"] as JsonObject).keys.toList())
+        val defs = input["\$defs"] as JsonObject
+        assertEquals(listOf("zipCode", "near"), ((defs["Where"] as JsonObject)["properties"] as JsonObject).keys.toList())
+        assertEquals(listOf("maxKm"), ((defs["Near"] as JsonObject)["properties"] as JsonObject).keys.toList())
+    }
 }

@@ -148,6 +148,53 @@ describe("validation", () => {
     expect(code(`query q(id: ID, p: P?): A @http(method: QUERY, path: "/a", body: "*")`)).toEqual([]);
   });
 
+  describe("@http(name:) gives an argument or an input field its name in HTTP bindings", () => {
+    const code = (text: string) => errorsOf(`entity A { id: ID } ${text}`);
+    const detail = (text: string) => validateIR(parseSchemaText(`entity A { id: ID } ${text}`)).filter((d) => d.severity === "error").map((d) => [d.code, d.at, d.message]);
+
+    it("on an operation argument and on an input field, with exactly one non-empty string name", () => {
+      expect(code(`input I { firstName: String @http(name: "first-name") } query q(maxCount: Int @http(name: "max-count"), i: I?): A`)).toEqual([]);
+      const bad = `@http on an argument or input field takes exactly one argument, name: "<wire name>", a non-empty string`;
+      expect(detail(`query q(n: Int @http): A`)).toEqual([["bad-http-name", "q().n", bad]]);
+      expect(detail(`query q(n: Int @http(name: 3)): A`)).toEqual([["bad-http-name", "q().n", bad]]);
+      expect(detail(`query q(n: Int @http(name: "")): A`)).toEqual([["bad-http-name", "q().n", bad]]);
+      expect(detail(`query q(n: Int @http(name: "n-1", method: GET)): A`)).toEqual([["bad-http-name", "q().n", bad]]);
+      expect(detail(`query q(n: Int @http("n-1")): A`)).toEqual([["bad-http-name", "q().n", bad]]);
+      expect(detail(`input I { n: Int @http(name: count) } query q(i: I): A`)).toEqual([["bad-http-name", "I.n", bad]]);
+    });
+
+    it("guard - @http on an operation keeps its own arguments, and is not held to the name form", () => {
+      expect(code(`query q(id: ID @http(name: "the-id")): A @http(method: GET, path: "/a/{id}")`)).toEqual([]);
+    });
+
+    it("not on a result field, an error or event field, or a field argument", () => {
+      expect(detail(`entity B { id: ID n: Int @http(name: "n-1") } query q: B`)).toEqual([
+        ["annotation-position", "B.n", "@http is not allowed on a field of entity B; only input fields take a wire name"],
+      ]);
+      expect(code(`object O { n: Int @http(name: "n-1") } query q: O`)).toEqual(["annotation-position"]);
+      expect(code(`event E { n: Int @http(name: "n-1") } command c: A emits E`)).toEqual(["annotation-position"]);
+      expect(detail(`entity B { id: ID n(x: Int @http(name: "x-1")): Int } query q: B`)).toEqual([
+        ["annotation-position", "B.n(x)", "@http is not allowed on a field argument; only operation arguments take a wire name"],
+      ]);
+    });
+
+    it("a wire name stands for one member of its operation or input type", () => {
+      expect(detail(`query q(a: Int @http(name: "x"), b: Int @http(name: "x")): A`)).toEqual([
+        ["http-name-collision", "q().a", '@http name "x" of a is also the wire name of b'],
+        ["http-name-collision", "q().b", '@http name "x" of b is also the wire name of a'],
+      ]);
+      expect(detail(`query q(a: Int @http(name: "b"), b: Int): A`)).toEqual([["http-name-collision", "q().a", '@http name "b" of a is also the name of b']]);
+      // a swap is refused too: each wire name is the other member's schema name
+      expect(code(`query q(a: Int @http(name: "b"), b: Int @http(name: "a")): A`)).toEqual(["http-name-collision", "http-name-collision"]);
+      expect(detail(`input I { a: Int @http(name: "b") b: Int } query q(i: I): A`)).toEqual([["http-name-collision", "I.a", '@http name "b" of a is also the name of b']]);
+    });
+
+    it("guard - the same wire name in another operation or input type, or a member's own name as its wire name, is fine", () => {
+      expect(code(`input I { a: Int @http(name: "x") } input J { a: Int @http(name: "x") } query q(a: Int @http(name: "x"), i: I?, j: J?): A query r(a: Int @http(name: "x")): A`)).toEqual([]);
+      expect(code(`query q(a: Int @http(name: "a"), b: Int): A`)).toEqual([]);
+    });
+  });
+
   it("validates views against fields", () => {
     expect(errorsOf(`entity A { id: ID } view A.default = { id nope }`)).toEqual(["unknown-field"]);
     expect(errorsOf(`entity A { id: ID } view A.default = { id }`)).toEqual([]);

@@ -249,6 +249,20 @@ describe("client over the in-process transport", () => {
     await expect(h1.promise).rejects.toMatchObject({ code: "invalid_argument" });
     await expect(h2.promise).rejects.toMatchObject({ code: "invalid_argument" });
   });
+
+  it("a live patch's `at` onto an entity follows the op's shape: an aliased field stays with the result, an own field reaches the entity", async () => {
+    const live: Transport = {
+      send: async function* () {
+        yield { id: 1, data: { featured: { $type: "Book", id: "b1", x: "Dune", stock: 3 } } } as Frame;
+        yield { id: 1, patch: [{ at: "featured", value: { x: "Dune (1965)", stock: 5 } }] } as Frame;
+        yield { id: 1, fin: true } as Frame;
+      },
+    };
+    const c = new RayfoldClient({ transport: live });
+    const data = await bounded(c.query("shelf", {}, { shape: "{ featured { id x: title stock } }" }), "the patched query");
+    expect(data).toEqual({ featured: { $type: "Book", id: "b1", x: "Dune (1965)", stock: 5 } });
+    expect(c.cache.get("Book:b1")).toEqual({ $type: "Book", id: "b1", stock: 5 });
+  });
 });
 
 describe("client over HTTP", () => {

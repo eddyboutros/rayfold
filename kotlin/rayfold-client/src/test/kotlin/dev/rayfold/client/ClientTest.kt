@@ -446,6 +446,22 @@ class ClientTest {
     }
 
     @Test
+    fun `a live patch's at onto an entity follows the op's shape - an aliased field stays with the result, an own field reaches the entity`() = bounded {
+        val frames = listOf(
+            """{"id":1,"data":{"featured":{"${'$'}type":"Book","id":"b1","x":"Dune","stock":3}}}""",
+            """{"id":1,"patch":[{"at":"featured","value":{"x":"Dune (1965)","stock":5}}]}""",
+            """{"id":1,"fin":true}""",
+        )
+        val live = Transport { _, _ -> flow { for (f in frames) emit(Json.parseToJsonElement(f).jsonObject) } }
+        val client = RayfoldClient(live)
+        assertEquals(
+            Json.parseToJsonElement("""{"featured":{"${'$'}type":"Book","id":"b1","x":"Dune (1965)","stock":5}}"""),
+            client.query("shelf", shape = "{ featured { id x: title stock } }"),
+        )
+        assertEquals(Json.parseToJsonElement("""{"${'$'}type":"Book","id":"b1","stock":5}""").jsonObject, client.cache.get("Book:b1"))
+    }
+
+    @Test
     fun `a problem response becomes an exception with the server's code`() = bounded {
         val client = RayfoldClient(HttpTransport("$url/nope"))
         val e = assertFailsWith<RayfoldClientException> { client.query("book", args("id" to "b1")) }

@@ -29,6 +29,16 @@ query prices(cap: Decimal? @range(min: 0, max: 100), qn: String? @range(min: 1, 
 `;
 const customDoc = (): Obj => openApiFor(loadSchema(CUSTOM).ir);
 
+const WIRE = `
+entity Hit { id: ID first: String? }
+input Near { maxKm: Int @http(name: "max-km") }
+input Where { zipCode: String? @http(name: "zip-code") near: Near @http(name: "near-by") }
+query find(firstName: String? @http(name: "first-name"), maxCount: Int @http(name: "max-count") @range(min: 1, max: 9)): [Hit] @http(method: GET, path: "/find")
+query hit(hitId: ID @http(name: "hit-id")): Hit? @http(method: GET, path: "/hits/{hitId}")
+query search(firstName: String? @http(name: "first-name"), where: Where): [Hit] @http(method: QUERY, path: "/search", body: "*")
+command tag(hitId: ID @http(name: "hit-id"), where: Where): Hit @http(method: PUT, path: "/hits/{hitId}", body: where)
+`;
+
 /** Every operation as "method path", in document order. */
 function operations(doc: Obj): Array<[string, Obj]> {
   return Object.entries(doc.paths as Obj).flatMap(([path, ops]) => Object.entries(ops as Obj).map(([method, op]): [string, Obj] => [`${method} ${path}`, op]));
@@ -176,6 +186,41 @@ describe("openApiFor", () => {
     });
     const bodiless = operations(doc).filter(([, op]) => !op.requestBody).map(([k]) => k);
     expect(bodiless).toEqual(["get /books/{id}", "get /reviews/{id}", "delete /reviews/{id}", "get /orders/{id}", "post /orders/{id}/pay"]);
+  });
+
+  it("names parameters, path templates and request-body properties as the bindings read them (@http(name:)); results keep schema names", () => {
+    const doc = openApiFor(loadSchema(WIRE).ir) as Obj;
+    expect(Object.keys(doc.paths)).toEqual(["/find", "/hits/{hit-id}", "/search"]);
+    expect(doc.paths["/find"].get.parameters).toEqual([
+      { name: "first-name", in: "query", required: false, schema: { anyOf: [{ type: "string" }, { type: "null" }] } },
+      { name: "max-count", in: "query", required: true, schema: { type: "integer", minimum: 1, maximum: 9, "x-rayfold-range": { min: 1, max: 9 } } },
+      SHAPE_PARAM,
+    ]);
+    expect(doc.paths["/hits/{hit-id}"].get.parameters[0]).toEqual({ name: "hit-id", in: "path", required: true, schema: { type: "string" } });
+    expect(doc.paths["/hits/{hit-id}"].put.parameters[0]).toEqual({ name: "hit-id", in: "path", required: true, schema: { type: "string" } });
+    expect(doc.paths["/search"].query.requestBody.content["application/json"].schema).toEqual({
+      type: "object",
+      properties: { "first-name": { anyOf: [{ type: "string" }, { type: "null" }] }, where: { $ref: "#/components/schemas/Where" } },
+      required: ["where"],
+    });
+    expect(doc.paths["/hits/{hit-id}"].put.requestBody.content["application/json"].schema).toEqual({ $ref: "#/components/schemas/Where" });
+    expect(doc.components.schemas["Where"]).toEqual({
+      type: "object",
+      properties: { "zip-code": { anyOf: [{ type: "string" }, { type: "null" }] }, "near-by": { $ref: "#/components/schemas/Near" } },
+      additionalProperties: false,
+      required: ["near-by"],
+    });
+    expect(doc.components.schemas["Near"]).toEqual({ type: "object", properties: { "max-km": { type: "integer" } }, additionalProperties: false, required: ["max-km"] });
+    expect(Object.keys(doc.components.schemas["Hit"].properties)).toEqual(["$type", "id", "first"]);
+  });
+
+  it("guard - without @http(name:) every name in the document is the schema name", () => {
+    const plain = WIRE.replace(/ @http\(name: "[^"]+"\)/g, "");
+    const doc = openApiFor(loadSchema(plain).ir) as Obj;
+    expect(Object.keys(doc.paths)).toEqual(["/find", "/hits/{hitId}", "/search"]);
+    expect((doc.paths["/find"].get.parameters as Obj[]).map((p) => p.name)).toEqual(["firstName", "maxCount", "shape"]);
+    expect(Object.keys(doc.paths["/search"].query.requestBody.content["application/json"].schema.properties)).toEqual(["firstName", "where"]);
+    expect(Object.keys(doc.components.schemas["Where"].properties)).toEqual(["zipCode", "near"]);
   });
 
   it("GET query parameters are required exactly when non-null without a default; path parameters always; `shape` only on GET", () => {

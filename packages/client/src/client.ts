@@ -483,7 +483,7 @@ export class RayfoldClient {
           this.cache.mergeAt(resultKeys.get(h.id)!, f.at, this.typed(h.req.op, f.data, f.at), this.shapeOf(h.req), this.views);
         } else if ("patch" in f) {
           // a live update: `at` and `list` ops describe this op's own stored result
-          this.cache.applyPatch(f.patch as PatchOp[], resultKeys.get(h.id)!);
+          this.cache.applyPatch(f.patch as PatchOp[], resultKeys.get(h.id)!, this.shapeOf(h.req), this.views);
         } else if ("fin" in f && f.fin && !settled.has(h.id)) {
           const r = this.cache.getResult(resultKeys.get(h.id)!);
           resolve(h, r ? this.cache.denormalize(r.data) : undefined);

@@ -222,6 +222,14 @@ data class RayfoldSchemaIR(
 
 fun List<Annotation>.find(name: String): Annotation? = firstOrNull { it.name == name }
 
+/** What a member is called in HTTP bindings: its `@http(name:)`, else [name] (spec 04 section 8). */
+internal fun List<Annotation>.wireName(name: String): String =
+    (find("http")?.args?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content ?: name
+
+/** What an argument or input field is called in HTTP bindings: its `@http(name:)`, else its own name (spec 04 section 8). */
+val ArgDef.wireName: String get() = annotations.wireName(name)
+val FieldDef.wireName: String get() = annotations.wireName(name)
+
 /** The IR a public manifest shows: `allow` and `deny` keep their names but lose their expressions. */
 fun RayfoldSchemaIR.withoutPolicies(): RayfoldSchemaIR {
     fun strip(a: List<Annotation>) = a.map { if (it.name == "allow" || it.name == "deny") Annotation(it.name) else it }

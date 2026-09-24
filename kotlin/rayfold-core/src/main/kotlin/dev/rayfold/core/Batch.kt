@@ -56,6 +56,8 @@ data class ExecuteOptions(
     val viewer: JsonElement = JsonNull,
     /** Set by transports whose HTTP method is itself idempotent (PUT, PATCH, DELETE bindings): commands may run without an idempotency key. */
     val keyOptional: Boolean = false,
+    /** Set by HTTP bindings: arguments and input fields arrive under their wire names (`@http(name:)`, spec 04 section 8). Never read from the wire. */
+    val wireNames: Boolean = false,
     /** Completing this job cancels the batch: every op still open ends with `canceled`, and live queries unsubscribe. */
     val cancel: Job? = null,
     /**
@@ -333,7 +335,7 @@ class BatchRunner(
         validate(envelope)?.let { sink.send(Frames.batchError(it)); return Outcome(it.code.wire, it.message) }
 
         val rawOps = envelope.raw["ops"] as? JsonArray
-        val planned = envelope.ops.mapIndexed { i, req -> plan(i, req, rawOps?.getOrNull(i) as? JsonObject) }
+        val planned = envelope.ops.mapIndexed { i, req -> plan(i, req, rawOps?.getOrNull(i) as? JsonObject, opts.wireNames) }
         val total = planned.fold(0L) { acc, p -> Sat.add(acc, p.cost) }
         if (total > options.budget) {
             val over = RayfoldException(Code.RESOURCE_EXHAUSTED, "Batch cost $total exceeds budget ${options.budget}",
@@ -455,14 +457,14 @@ class BatchRunner(
      * Shape, args, cost and limits for one op. An op whose args fail coercion never runs, so it costs nothing and
      * reports the error when its turn comes; args holding a `$ref` are costed raw, where unknown page sizes count high.
      */
-    private fun plan(i: Int, req: RequestOp, raw: JsonObject?): Planned {
+    private fun plan(i: Int, req: RequestOp, raw: JsonObject?, wire: Boolean): Planned {
         val op = ir.ops[req.op] ?: error("validate() admits known operations only")
         val p = Planned(req, op, req.shape != null, Args.collectRefs(req.args).toList())
         try {
             raw?.get("deadline")?.let { d -> if (d !is JsonNull && deadlineOf(d) == null) throw RayfoldException(Code.INVALID_ARGUMENT, "ops[$i].deadline: $DEADLINE_RULE") }
             val resolved = views.resolveRequestShape(req.shape, op.returns, options.trustedShapes)
             p.shape = resolved.shape
-            val args = if (p.deps.isEmpty()) Args.coerce(ir, op.args, req.args, "${op.name}()", op.returns).also { p.args = it } else req.args
+            val args = if (p.deps.isEmpty()) Args.coerce(ir, op.args, req.args, "${op.name}()", op.returns, wire).also { p.args = it } else req.args
             val est = cost.estimate(op, args, p.shape, req.vars)
             if (est.depth > options.maxDepth) throw RayfoldException(Code.RESOURCE_EXHAUSTED, "Shape depth ${est.depth} exceeds ${options.maxDepth}")
             if (est.fields > options.maxFields) throw RayfoldException(Code.RESOURCE_EXHAUSTED, "Shape selects ${est.fields} fields, max ${options.maxFields}")
@@ -537,7 +539,7 @@ class BatchRunner(
         return try {
             val args = p.args ?: run {
                 val rawArgs = Args.resolveRefs(p.req.args, { opId, path -> Args.getPath(results[opId], path) }, "ops.$id.args") as JsonObject
-                Args.coerce(ir, p.op.args, rawArgs, "${p.op.name}()", p.op.returns)
+                Args.coerce(ir, p.op.args, rawArgs, "${p.op.name}()", p.op.returns, opts.wireNames)
             }
             // A capability may call only the operations it names (spec 06 section 6). A viewer hook can hand this runtime
             // a viewer carrying one (a token verified by a TypeScript server sharing the secret, or by the app itself),

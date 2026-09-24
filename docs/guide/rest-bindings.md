@@ -41,6 +41,27 @@ command deleteReview(id: ID): Review
 Path segments fill their arguments. On `GET` the rest come from the query string. Any other method reads the request
 body only when the binding names `body`, one argument or `"*"` for all of them; without `body`, the body is ignored.
 
+### Names your clients already send
+
+A route may have to accept a name the schema cannot hold, such as `?first-name=` or `{"zip-code": "02139"}`. Give the
+argument or the input field its wire name with `@http(name:)`:
+
+```rayfold
+input Address { zipCode: String @http(name: "zip-code") }
+
+query people(firstName: String? @http(name: "first-name")): [Person]
+  @http(method: GET, path: "/people")
+
+command addPerson(firstName: String @http(name: "first-name"), address: Address): Person
+  @http(method: POST, path: "/people", body: "*")
+```
+
+The routes then read `first-name` from the query string or the body, and `zip-code` inside `address`, at any depth,
+and an invalid value is reported under the name the client sent. Only the routes use the wire name: the route does
+not take `firstName` instead, while `/rayfold`, MCP and the generated clients keep using `firstName`. Path templates
+still name the argument (`{firstName}`), and responses keep the schema's names. The OpenAPI document publishes the
+wire names.
+
 ## Serve them
 
 The route handler sits beside the batch endpoint and answers `false` for a path that is not one of its routes, so it

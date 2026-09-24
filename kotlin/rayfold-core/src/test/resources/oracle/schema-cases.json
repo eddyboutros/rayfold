@@ -16001,6 +16001,504 @@
   "hash": "06af42bff813bf01c8c76c3c3732c1402940fa9bed1bd8054972d683330698ed"
  },
  {
+  "name": "openapi-wire",
+  "text": "\nentity Hit { id: ID first: String? }\ninput Near { maxKm: Int @http(name: \"max-km\") }\ninput Where { zipCode: String? @http(name: \"zip-code\") near: Near @http(name: \"near-by\") }\nquery find(firstName: String? @http(name: \"first-name\"), maxCount: Int @http(name: \"max-count\") @range(min: 1, max: 9)): [Hit] @http(method: GET, path: \"/find\")\nquery hit(hitId: ID @http(name: \"hit-id\")): Hit? @http(method: GET, path: \"/hits/{hitId}\")\nquery search(firstName: String? @http(name: \"first-name\"), where: Where): [Hit] @http(method: QUERY, path: \"/search\", body: \"*\")\ncommand tag(hitId: ID @http(name: \"hit-id\"), where: Where): Hit @http(method: PUT, path: \"/hits/{hitId}\", body: where)\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "Hit": {
+     "kind": "entity",
+     "name": "Hit",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    },
+    "Near": {
+     "kind": "input",
+     "name": "Near",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "maxKm",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "max-km"
+         }
+        }
+       ],
+       "ordinal": 1
+      }
+     ]
+    },
+    "Where": {
+     "kind": "input",
+     "name": "Where",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "zipCode",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "zip-code"
+         }
+        }
+       ],
+       "ordinal": 1
+      },
+      {
+       "name": "near",
+       "type": {
+        "kind": "named",
+        "name": "Near",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "near-by"
+         }
+        }
+       ],
+       "ordinal": 2
+      }
+     ]
+    }
+   },
+   "ops": {
+    "find": {
+     "kind": "query",
+     "name": "find",
+     "args": [
+      {
+       "name": "firstName",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "first-name"
+         }
+        }
+       ]
+      },
+      {
+       "name": "maxCount",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "max-count"
+         }
+        },
+        {
+         "name": "range",
+         "args": {
+          "min": 1,
+          "max": 9
+         }
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "list",
+      "of": {
+       "kind": "named",
+       "name": "Hit",
+       "nullable": false
+      },
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "http",
+       "args": {
+        "method": {
+         "$ident": "GET"
+        },
+        "path": "/find"
+       }
+      }
+     ]
+    },
+    "hit": {
+     "kind": "query",
+     "name": "hit",
+     "args": [
+      {
+       "name": "hitId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "hit-id"
+         }
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Hit",
+      "nullable": true
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "http",
+       "args": {
+        "method": {
+         "$ident": "GET"
+        },
+        "path": "/hits/{hitId}"
+       }
+      }
+     ]
+    },
+    "search": {
+     "kind": "query",
+     "name": "search",
+     "args": [
+      {
+       "name": "firstName",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "first-name"
+         }
+        }
+       ]
+      },
+      {
+       "name": "where",
+       "type": {
+        "kind": "named",
+        "name": "Where",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "list",
+      "of": {
+       "kind": "named",
+       "name": "Hit",
+       "nullable": false
+      },
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "http",
+       "args": {
+        "method": {
+         "$ident": "QUERY"
+        },
+        "path": "/search",
+        "body": "*"
+       }
+      }
+     ]
+    },
+    "tag": {
+     "kind": "command",
+     "name": "tag",
+     "args": [
+      {
+       "name": "hitId",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "hit-id"
+         }
+        }
+       ]
+      },
+      {
+       "name": "where",
+       "type": {
+        "kind": "named",
+        "name": "Where",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "Hit",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "http",
+       "args": {
+        "method": {
+         "$ident": "PUT"
+        },
+        "path": "/hits/{hitId}",
+        "body": {
+         "$ident": "where"
+        }
+       }
+      }
+     ]
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [],
+  "hash": "85e7083ee4a9c4c48b9e7847208d07af9d61eb40f9eedc436009d5ad1cb94fde"
+ },
+ {
   "name": "lexical",
   "text": "\n// a line comment\n/* a block\n   comment spanning lines */\n\"\"\"\n    A described entity.\n      This line keeps two extra spaces.\n\n\"\"\"\nentity Doc @cache(maxAge: 90s, scope: private) @vendor.flag(on: true) {\n  id: ID\n  \"\"\"Title with \"quotes\".\"\"\"\n  title: String @example(\"A \\\"quoted\\\" \\\\ title\\n\\té \\/ \\b\\f\\r\")\n  tags: [String]? @range(min: 0, max: 10)\n  score: Float @range(min: -1.5, max: 1e3)\n  big: Long @example(12345678901234567890)\n  tiny: Float @example(0.0000001)\n  small: Float @example(0.000001)\n  neg: Int @example(-0)\n  huge: Float @example(1e21)\n  wait: Duration @example(250ms) @unit(\"ms\")\n  day: Duration @example(2d)\n  mins: Duration @example(5m)\n  hours: Duration @example(1h)\n  secs: Duration @example(30s)\n  notDuration: Int @example(5)\n}\nquery doc(id: ID): Doc?\n",
   "ir": {
@@ -23984,6 +24482,743 @@
   ],
   "hash": "f98294b922140c18839f1bb1cba5b2fcf67d72be3fefc14dfeb3d8972aeda070",
   "loadError": "Invalid schema:\n  subscribe(): Operation name subscribe is reserved [reserved-name]\n  throwsEntity(): throws A: not an error type [bad-throws]\n  emitsError(): emits E: not an event type [bad-emits]\n  emitsOnQuery(): Only commands emit events [emits-on-non-command]\n  unknownThrows(): Unknown error Nope [unknown-type]\n  unknownThrows(): Unknown event Nope2 [unknown-type]\n  getCommand(): @http method must be one of POST, PUT, PATCH, DELETE [bad-http-method]\n  noSlash(): @http path must be a string starting with \"/\" [bad-http-path]\n  missingParam(): @http path parameter {id} is not an argument [bad-http-param]\n  badBody(): @http body nope is not an argument [bad-http-body]\n  getBody(): GET bindings cannot take a body [bad-http-body]\n  paged(): An operation returning Page<T> must accept page: PageArgs (or first/after) [page-args]\n  s(): @http is not allowed on stream [annotation-position]\n  s(): @http method must be one of (none for streams) [bad-http-method]\n  __hidden(): Operation name __hidden is reserved [reserved-name]"
+ },
+ {
+  "name": "findings: http wire names",
+  "text": "\nentity A { id: ID }\ninput I { a: Int @http(name: \"x\") b: Int @http(name: \"x\") c: Int @http(name: 3) d: Int @http(name: \"b\") }\nentity B { id: ID n: Int @http(name: \"n-1\") m(x: Int @http(name: \"x-1\")): Int }\nevent E { n: Int @http(name: \"n-2\") }\nquery q1(n: Int @http): A\nquery q2(n: Int @http(name: \"\")): A\nquery q3(n: Int @http(name: \"n-1\", method: GET)): A\nquery q4(n: Int @http(\"n-1\")): A\nquery q5(a: Int @http(name: \"b\"), b: Int): A\nquery q6(a: Int @http(name: \"b\"), b: Int @http(name: \"a\")): A\nquery q7(i: I, a: Int @http(name: \"a\"), c: Int @http(name: \"c-1\")): B\ncommand c: A emits E\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "A": {
+     "kind": "entity",
+     "name": "A",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ],
+     "implements": []
+    },
+    "I": {
+     "kind": "input",
+     "name": "I",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "a",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "x"
+         }
+        }
+       ],
+       "ordinal": 1
+      },
+      {
+       "name": "b",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "x"
+         }
+        }
+       ],
+       "ordinal": 2
+      },
+      {
+       "name": "c",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": 3
+         }
+        }
+       ],
+       "ordinal": 3
+      },
+      {
+       "name": "d",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "b"
+         }
+        }
+       ],
+       "ordinal": 4
+      }
+     ]
+    },
+    "B": {
+     "kind": "entity",
+     "name": "B",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "n-1"
+         }
+        }
+       ],
+       "ordinal": 2
+      },
+      {
+       "name": "m",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [
+        {
+         "name": "x",
+         "type": {
+          "kind": "named",
+          "name": "Int",
+          "nullable": false
+         },
+         "annotations": [
+          {
+           "name": "http",
+           "args": {
+            "name": "x-1"
+           }
+          }
+         ]
+        }
+       ],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ],
+     "implements": []
+    },
+    "E": {
+     "kind": "event",
+     "name": "E",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "n-2"
+         }
+        }
+       ],
+       "ordinal": 1
+      }
+     ]
+    }
+   },
+   "ops": {
+    "q1": {
+     "kind": "query",
+     "name": "q1",
+     "args": [
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {}
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "q2": {
+     "kind": "query",
+     "name": "q2",
+     "args": [
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": ""
+         }
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "q3": {
+     "kind": "query",
+     "name": "q3",
+     "args": [
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "n-1",
+          "method": {
+           "$ident": "GET"
+          }
+         }
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "q4": {
+     "kind": "query",
+     "name": "q4",
+     "args": [
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "value": "n-1"
+         }
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "q5": {
+     "kind": "query",
+     "name": "q5",
+     "args": [
+      {
+       "name": "a",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "b"
+         }
+        }
+       ]
+      },
+      {
+       "name": "b",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "q6": {
+     "kind": "query",
+     "name": "q6",
+     "args": [
+      {
+       "name": "a",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "b"
+         }
+        }
+       ]
+      },
+      {
+       "name": "b",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "a"
+         }
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "q7": {
+     "kind": "query",
+     "name": "q7",
+     "args": [
+      {
+       "name": "i",
+       "type": {
+        "kind": "named",
+        "name": "I",
+        "nullable": false
+       },
+       "annotations": []
+      },
+      {
+       "name": "a",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "a"
+         }
+        }
+       ]
+      },
+      {
+       "name": "c",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "annotations": [
+        {
+         "name": "http",
+         "args": {
+          "name": "c-1"
+         }
+        }
+       ]
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "B",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "c": {
+     "kind": "command",
+     "name": "c",
+     "args": [],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [
+      "E"
+     ],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [
+   {
+    "severity": "error",
+    "code": "bad-http-name",
+    "at": "I.c",
+    "message": "@http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string"
+   },
+   {
+    "severity": "error",
+    "code": "http-name-collision",
+    "at": "I.a",
+    "message": "@http name \"x\" of a is also the wire name of b"
+   },
+   {
+    "severity": "error",
+    "code": "http-name-collision",
+    "at": "I.b",
+    "message": "@http name \"x\" of b is also the wire name of a"
+   },
+   {
+    "severity": "error",
+    "code": "http-name-collision",
+    "at": "I.d",
+    "message": "@http name \"b\" of d is also the name of b"
+   },
+   {
+    "severity": "error",
+    "code": "annotation-position",
+    "at": "B.n",
+    "message": "@http is not allowed on a field of entity B; only input fields take a wire name"
+   },
+   {
+    "severity": "error",
+    "code": "annotation-position",
+    "at": "B.m(x)",
+    "message": "@http is not allowed on a field argument; only operation arguments take a wire name"
+   },
+   {
+    "severity": "error",
+    "code": "annotation-position",
+    "at": "E.n",
+    "message": "@http is not allowed on a field of event E; only input fields take a wire name"
+   },
+   {
+    "severity": "error",
+    "code": "bad-http-name",
+    "at": "q1().n",
+    "message": "@http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string"
+   },
+   {
+    "severity": "error",
+    "code": "bad-http-name",
+    "at": "q2().n",
+    "message": "@http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string"
+   },
+   {
+    "severity": "error",
+    "code": "bad-http-name",
+    "at": "q3().n",
+    "message": "@http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string"
+   },
+   {
+    "severity": "error",
+    "code": "bad-http-name",
+    "at": "q4().n",
+    "message": "@http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string"
+   },
+   {
+    "severity": "error",
+    "code": "http-name-collision",
+    "at": "q5().a",
+    "message": "@http name \"b\" of a is also the name of b"
+   },
+   {
+    "severity": "error",
+    "code": "http-name-collision",
+    "at": "q6().a",
+    "message": "@http name \"b\" of a is also the name of b"
+   },
+   {
+    "severity": "error",
+    "code": "http-name-collision",
+    "at": "q6().b",
+    "message": "@http name \"a\" of b is also the name of a"
+   }
+  ],
+  "hash": "20237efecac745dece5eb26855ba7998b44d99f63312f98424b766c075a4245f",
+  "loadError": "Invalid schema:\n  I.c: @http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string [bad-http-name]\n  I.a: @http name \"x\" of a is also the wire name of b [http-name-collision]\n  I.b: @http name \"x\" of b is also the wire name of a [http-name-collision]\n  I.d: @http name \"b\" of d is also the name of b [http-name-collision]\n  B.n: @http is not allowed on a field of entity B; only input fields take a wire name [annotation-position]\n  B.m(x): @http is not allowed on a field argument; only operation arguments take a wire name [annotation-position]\n  E.n: @http is not allowed on a field of event E; only input fields take a wire name [annotation-position]\n  q1().n: @http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string [bad-http-name]\n  q2().n: @http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string [bad-http-name]\n  q3().n: @http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string [bad-http-name]\n  q4().n: @http on an argument or input field takes exactly one argument, name: \"<wire name>\", a non-empty string [bad-http-name]\n  q5().a: @http name \"b\" of a is also the name of b [http-name-collision]\n  q6().a: @http name \"b\" of a is also the name of b [http-name-collision]\n  q6().b: @http name \"a\" of b is also the name of a [http-name-collision]"
  },
  {
   "name": "findings: views",

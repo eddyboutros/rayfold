@@ -1,22 +1,27 @@
 /** Argument validation and coercion at the system boundary. */
-import { isPageRef, typeRefToString, type Annotation, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
+import { isPageRef, typeRefToString, wireName, type Annotation, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 import { RayfoldError } from "./protocol.ts";
 
 const MAX_PAGE_FIRST = 200;
 const NUMERIC = new Set(["Int", "Long", "Float", "Decimal"]);
 
-export function coerceArgs(ir: RayfoldSchemaIR, defs: ArgDef[], raw: unknown, path: string, returns?: TypeRef): Record<string, unknown> {
+/**
+ * `wire` reads each member under its wire name (`@http(name:)`, spec 04 §8), as an HTTP binding receives it, and names
+ * it that way in errors; the result is keyed by schema names either way.
+ */
+export function coerceArgs(ir: RayfoldSchemaIR, defs: ArgDef[], raw: unknown, path: string, returns?: TypeRef, wire = false): Record<string, unknown> {
+  const key = (d: ArgDef): string => (wire ? wireName(d) : d.name);
   if (raw !== undefined && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
     throw new RayfoldError("invalid_argument", `${path}: expected an object`);
   }
   const input = (raw ?? {}) as Record<string, unknown>;
   for (const k of Object.keys(input)) {
-    if (!defs.some((d) => d.name === k)) throw new RayfoldError("invalid_argument", `${path}.${k}: unknown argument`);
+    if (!defs.some((d) => key(d) === k)) throw new RayfoldError("invalid_argument", `${path}.${k}: unknown argument`);
   }
   const out: Record<string, unknown> = {};
   for (const d of defs) {
-    const v = input[d.name];
-    const p = `${path}.${d.name}`;
+    const v = input[key(d)];
+    const p = `${path}.${key(d)}`;
     if (v === undefined) {
       if (d.default !== undefined) {
         out[d.name] = coerceValue(ir, d.type, d.default, p);
@@ -31,7 +36,7 @@ export function coerceArgs(ir: RayfoldSchemaIR, defs: ArgDef[], raw: unknown, pa
       out[d.name] = null;
       continue;
     }
-    out[d.name] = coerceValue(ir, d.type, v, p);
+    out[d.name] = coerceValue(ir, d.type, v, p, wire);
     checkConstraints(d.annotations, d.type, out[d.name], p);
   }
   // spec 01 §6: a page may take `first` as an argument of its own rather than inside PageArgs, and is capped the same
@@ -83,14 +88,14 @@ function formatRegex(pattern: string): RegExp {
   return re;
 }
 
-export function coerceValue(ir: RayfoldSchemaIR, t: TypeRef, v: unknown, path: string): unknown {
+export function coerceValue(ir: RayfoldSchemaIR, t: TypeRef, v: unknown, path: string, wire = false): unknown {
   if (v === null || v === undefined) {
     if (t.nullable) return null;
     throw new RayfoldError("invalid_argument", `${path}: must not be null`);
   }
   if (t.kind === "list") {
     if (!Array.isArray(v)) throw new RayfoldError("invalid_argument", `${path}: expected a list`);
-    return v.map((x, i) => coerceValue(ir, t.of, x, `${path}.${i}`));
+    return v.map((x, i) => coerceValue(ir, t.of, x, `${path}.${i}`, wire));
   }
   const def = ir.types[t.name];
   if (!def) throw new RayfoldError("internal", `${path}: unknown type ${t.name}`);
@@ -104,7 +109,7 @@ export function coerceValue(ir: RayfoldSchemaIR, t: TypeRef, v: unknown, path: s
       return v;
     case "input": {
       if (typeof v !== "object" || Array.isArray(v)) throw new RayfoldError("invalid_argument", `${path}: expected ${t.name}`);
-      const obj = coerceArgs(ir, def.fields.map(fieldAsArg), v, path);
+      const obj = coerceArgs(ir, def.fields.map(fieldAsArg), v, path, undefined, wire);
       if (t.name === "PageArgs") {
         const first = obj["first"];
         if (typeof first === "number" && first > MAX_PAGE_FIRST) obj["first"] = MAX_PAGE_FIRST;

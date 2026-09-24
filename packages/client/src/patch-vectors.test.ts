@@ -46,10 +46,11 @@ describe("conformance vectors: applying a patch", () => {
       const cache = new RayfoldCache();
       const key = RayfoldCache.resultKey(doc.op, {}, undefined, undefined);
       // the shape the result was asked with, where it matters to how the result is stored
-      cache.putResult(key, doc.op, c.result, c.shape === undefined ? undefined : parseShapeText(c.shape));
+      const shape = c.shape === undefined ? undefined : parseShapeText(c.shape);
+      cache.putResult(key, doc.op, c.result, shape);
       // same operation, other arguments: a result the client never stored, so nothing may be found by the op name
       const target = c.unheld ? RayfoldCache.resultKey(doc.op, { page: 2 }, undefined, undefined) : key;
-      cache.applyPatch(c.patch, target);
+      cache.applyPatch(c.patch, target, shape);
       const why = c.why ?? c.name;
       expect(cache.denormalize(cache.getResult(key)!.data), why).toEqual(c.expect);
       if (c.unheld) expect(cache.getResult(target), `${why}: a result the client did not hold was created`).toBeUndefined();

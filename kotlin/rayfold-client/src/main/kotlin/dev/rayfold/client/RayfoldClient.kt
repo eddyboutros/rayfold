@@ -390,7 +390,7 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
                     }
                     "at" in f -> cache.mergeAt(key, (f["at"] as? JsonPrimitive)?.contentOrNull ?: "", f["data"] ?: JsonNull, levelOf(h))
                     // a live update: `at` and `list` describe this op's own stored result
-                    "patch" in f -> (f["patch"] as? JsonArray)?.let { p -> cache.applyPatch(p.mapNotNull { it as? JsonObject }, key) }
+                    "patch" in f -> (f["patch"] as? JsonArray)?.let { p -> cache.applyPatch(p.mapNotNull { it as? JsonObject }, key, levelOf(h)) }
                     fin && !h.result.isCompleted -> h.result.complete(cache.getResult(key)?.let { cache.denormalize(it.data) } ?: JsonNull)
                 }
                 onFrame?.invoke(f) // after the cache has taken the frame in

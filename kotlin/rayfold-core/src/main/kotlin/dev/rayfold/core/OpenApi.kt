@@ -15,7 +15,8 @@ import kotlinx.serialization.json.JsonPrimitive
 object OpenApi {
     fun document(ir: RayfoldSchemaIR, title: String = "Rayfold API", version: String = "0.1", prefix: String = ""): JsonObject {
         val defs = linkedMapOf<String, JsonElement>()
-        fun schema(t: TypeRef, input: Boolean) = JsonSchema.forType(ir, t, defs, input)
+        // input types are named as the bindings read them (`@http(name:)`); results keep their schema names
+        fun schema(t: TypeRef, input: Boolean) = JsonSchema.forType(ir, t, defs, input, wire = input)
         val paths = linkedMapOf<String, MutableMap<String, JsonElement>>()
 
         // calls to schema() follow the TS order, so components.schemas keeps its key order
@@ -74,7 +75,8 @@ object OpenApi {
                 )
             }
             operation["responses"] = JsonObject(responses)
-            paths.getOrPut(prefix + b.path) { linkedMapOf() }[b.method.lowercase()] = JsonObject(operation)
+            val template = PARAM.replace(b.path) { m -> "{${op.args.firstOrNull { it.name == m.groupValues[1] }?.wireName ?: m.groupValues[1]}}" }
+            paths.getOrPut(prefix + template) { linkedMapOf() }[b.method.lowercase()] = JsonObject(operation)
         }
 
         val schemas = LinkedHashMap(defs)
@@ -87,6 +89,8 @@ object OpenApi {
         )
         return rewriteRefs(doc) as JsonObject
     }
+
+    private val PARAM = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 
     private val SHAPE_PARAM = obj(
         "name" to str("shape"), "in" to str("query"), "required" to JsonPrimitive(false),
@@ -124,8 +128,8 @@ object OpenApi {
 
     private fun param(ir: RayfoldSchemaIR, op: OpDef, name: String, where: String, required: Boolean, defs: MutableMap<String, JsonElement>): JsonObject {
         val a = op.args.firstOrNull { it.name == name }
-        val s = if (a != null) JsonSchema.withRange(JsonSchema.forType(ir, a.type, defs, true), a.annotations, a.type.baseName()) else obj("type" to str("string"))
-        val out = linkedMapOf<String, JsonElement>("name" to str(name), "in" to str(where), "required" to JsonPrimitive(where == "path" || required), "schema" to s)
+        val s = if (a != null) JsonSchema.withRange(JsonSchema.forType(ir, a.type, defs, true, wire = true), a.annotations, a.type.baseName()) else obj("type" to str("string"))
+        val out = linkedMapOf<String, JsonElement>("name" to str(a?.wireName ?: name), "in" to str(where), "required" to JsonPrimitive(where == "path" || required), "schema" to s)
         if (!a?.description.isNullOrEmpty()) out["description"] = str(a?.description ?: "")
         return JsonObject(out)
     }
@@ -134,8 +138,8 @@ object OpenApi {
         val properties = linkedMapOf<String, JsonElement>()
         val required = mutableListOf<JsonElement>()
         for (a in args) {
-            properties[a.name] = JsonSchema.withRange(JsonSchema.forType(ir, a.type, defs, true), a.annotations, a.type.baseName())
-            if (!a.type.nullable && a.default == null) required.add(str(a.name))
+            properties[a.wireName] = JsonSchema.withRange(JsonSchema.forType(ir, a.type, defs, true, wire = true), a.annotations, a.type.baseName())
+            if (!a.type.nullable && a.default == null) required.add(str(a.wireName))
         }
         return if (required.isNotEmpty()) obj("type" to str("object"), "properties" to JsonObject(properties), "required" to JsonArray(required))
         else obj("type" to str("object"), "properties" to JsonObject(properties))

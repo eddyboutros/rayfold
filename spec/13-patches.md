@@ -36,7 +36,7 @@ operation's own result and are valid only in a `patch` frame carrying an `id` ([
 | `del` | Remove the entity, and remove every reference to it — from results and from other entities' fields alike. |
 | `inv` | Mark these entities stale. The client refetches on next read; it does not discard what it holds. |
 | `invOp` | Mark every cached result of these operations stale. |
-| `at` | Merge fields into the plain (non-entity) object at a dotted path of **this** result. `""` is the result itself. |
+| `at` | Merge fields into the object at a dotted path of **this** result. `""` is the result itself. Where the path lands on an entity the fields merge into that entity, exactly as a deferred frame at that path does ([04 §3](04-frames-and-transport.md)): a field this result selects under an alias or with arguments stays with the result ([07 §3](07-cache.md)), every other field is the entity's own. |
 | `list` | At a dotted path of **this** result: remove the named positions, then insert the carried elements at their positions. |
 
 `del` positions in a `list` name the list **as the client currently holds it**; `ins` positions are in the list after

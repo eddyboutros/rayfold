@@ -119,6 +119,28 @@
       "why": "spec 13 §2: the path is dotted with array positions included, `\"\"` is the result itself, and the merge names fields rather than replacing the object - `name` stays"
     },
     {
+      "name": "at whose path lands on an entity merges the fields into that entity",
+      "result": { "featured": { "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }, "items": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }] },
+      "patch": [{ "at": "featured", "value": { "stock": 5 } }],
+      "expect": { "featured": { "$type": "Book", "id": "b1", "title": "Dune", "stock": 5 }, "items": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 5 }] },
+      "why": "spec 13 §2: an entity lives once, so an `at` onto it merges as a deferred frame at that path does - every place that shows the book moves, not only the path the patch named"
+    },
+    {
+      "name": "at onto an entity keeps a field selected under an alias with the result",
+      "shape": "{ featured { id x: title stock } items { id title stock } }",
+      "result": { "featured": { "$type": "Book", "id": "b1", "x": "Dune", "stock": 3 }, "items": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }] },
+      "patch": [{ "at": "featured", "value": { "x": "Dune (1965)", "stock": 5 } }],
+      "expect": { "featured": { "$type": "Book", "id": "b1", "x": "Dune (1965)", "stock": 5 }, "items": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 5 }] },
+      "why": "spec 07 §3: x is what this result asked for, not a field of the book, so it changes here and nowhere else; stock is the book's own and reaches the list"
+    },
+    {
+      "name": "guard: at onto a plain object merges into the result and leaves an entity with the same field alone",
+      "result": { "stats": { "stock": 1 }, "featured": { "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 } },
+      "patch": [{ "at": "stats", "value": { "stock": 7 } }],
+      "expect": { "stats": { "stock": 7 }, "featured": { "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 } },
+      "why": "a plain object belongs to this result alone: merging into an entity is for a path that lands on one"
+    },
+    {
       "name": "inv marks an entity stale and keeps what the client holds",
       "result": [
         { "$type": "Book", "id": "b1", "title": "Dune" },

@@ -64,6 +64,20 @@ class OpenApiTest {
     }
 
     @Test
+    fun `wire names from @http(name) - parameters, path templates and body properties - are the TypeScript document`() {
+        val doc = OpenApi.document(Oracle.ir("openapi-wire.ir.json"))
+        assertSameAsTs(Oracle.json("openapi-wire.openapi.json"), doc, "wire")
+        assertEquals(listOf("/find", "/hits/{hit-id}", "/search"), doc.o("paths").keys.toList())
+        val find = (doc.o("paths", "/find", "get")["parameters"] as JsonArray).map { ((it as JsonObject)["name"] as JsonPrimitive).content }
+        assertEquals(listOf("first-name", "max-count", "shape"), find)
+        assertEquals(listOf("first-name", "where"), doc.o("paths", "/search", "query", "requestBody", "content", "application/json", "schema", "properties").keys.toList())
+        assertEquals(listOf("zip-code", "near-by"), doc.o("components", "schemas", "Where", "properties").keys.toList())
+        assertEquals(listOf("max-km"), doc.o("components", "schemas", "Near", "properties").keys.toList())
+        // results keep their schema names
+        assertEquals(listOf("\$type", "id", "first"), doc.o("components", "schemas", "Hit", "properties").keys.toList())
+    }
+
+    @Test
     fun `OpenAPI 3 2 with exactly the bound paths and methods - QUERY is the query key on books`() {
         val doc = bookstoreDoc()
         assertEquals(JsonPrimitive("3.2.0"), doc["openapi"])

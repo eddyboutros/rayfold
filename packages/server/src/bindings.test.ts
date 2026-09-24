@@ -4,8 +4,9 @@ import type { AddressInfo } from "node:net";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { bindingsOf, createBindingHandler, type BindingOptions } from "./bindings.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
-import { HTTP_STATUS } from "./protocol.ts";
+import { HTTP_STATUS, type Frame } from "./protocol.ts";
 import type { Resolvers } from "./executor.ts";
+import { mcpTools } from "./mcp.ts";
 
 const KEY = "key-0123456789abcdef";
 const KEY2 = "key-fedcba9876543210";
@@ -578,6 +579,35 @@ describe("PATCH bindings", () => {
     expect(await good.json()).toMatchObject({ id: "b1" });
   });
 
+  it("a malformed percent-escape in a query string is a 400, as on the JVM, and the resolver never runs", async () => {
+    const seen: string[] = [];
+    const server = createRayfoldServer({
+      schema: `entity Item { id: ID n: Int }\nquery search(q: String): [Item] @http(method: GET, path: "/search")`,
+      resolvers: { Query: { search: ({ q }: { q: string }) => (seen.push(q), []) } },
+    });
+    const base = await serve(server);
+    for (const qs of ["q=%zz", "q=a%2", "q=ok&shape=%7B%20id%zz"]) {
+      const res = await fetch(`${base}/search?${qs}`);
+      expect(res.status, qs).toBe(400);
+      expect(res.headers.get("content-type"), qs).toBe("application/problem+json");
+      expect(await res.json(), qs).toEqual(problemOf("invalid_argument", 400, "Query string is not valid percent-encoding"));
+    }
+    expect(seen).toEqual([]);
+  });
+
+  it("guard: well-formed escapes in a query string still decode (%20 and %2F)", async () => {
+    const seen: string[] = [];
+    const server = createRayfoldServer({
+      schema: `entity Item { id: ID n: Int }\nquery search(q: String): [Item] @http(method: GET, path: "/search")`,
+      resolvers: { Query: { search: ({ q }: { q: string }) => (seen.push(q), []) } },
+    });
+    const base = await serve(server);
+    const res = await fetch(`${base}/search?q=a%20b%2Fc&shape=%7B%20id%20%7D`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+    expect(seen).toEqual(["a b/c"]);
+  });
+
   it("PATCH policy (write: viewer.role == \"admin\"): anonymous 401, customer 403, admin 200", async () => {
     const bs = createBookstore();
     const base = await serve(bs.server);
@@ -745,5 +775,89 @@ describe("bindingsOf", () => {
     const file = bindings.find((b) => b.op.name === "file");
     expect(file?.regex.exec("/files/a.json")?.slice(1)).toEqual(["a"]);
     expect(file?.regex.test("/files/aXjson")).toBe(false);
+  });
+});
+
+describe("wire names: @http(name:) on arguments and input fields", () => {
+  const WIRE_SCHEMA = `
+entity Hit { id: ID }
+input Near { maxKm: Int @http(name: "max-km") }
+input Where { zipCode: String? @http(name: "zip-code") near: Near? @http(name: "near-by") }
+query find(firstName: String? @http(name: "first-name"), maxCount: Int? @http(name: "max-count")): Hit @http(method: GET, path: "/find")
+query hit(hitId: ID @http(name: "hit-id")): Hit @http(method: GET, path: "/hits/{hitId}")
+query search(firstName: String? @http(name: "first-name"), where: Where?): Hit @http(method: QUERY, path: "/search", body: "*")
+command tag(hitId: ID @http(name: "hit-id"), where: Where @http(name: "the-where")): Hit @http(method: PUT, path: "/hits/{hitId}", body: where)
+`;
+  function wireServer(): { server: RayfoldServer; seen: Array<[string, unknown]> } {
+    const seen: Array<[string, unknown]> = [];
+    const record = (op: string) => (args: unknown) => (seen.push([op, args]), { id: "h1" });
+    const server = createRayfoldServer({ schema: WIRE_SCHEMA, resolvers: { Query: { find: record("find"), hit: record("hit"), search: record("search") }, Command: { tag: record("tag") } } });
+    return { server, seen };
+  }
+  const detail = async (res: Response) => [res.status, ((await res.json()) as { detail: string }).detail];
+
+  it("reads query-string parameters and path parameters under their wire names", async () => {
+    const { server, seen } = wireServer();
+    const base = await serve(server);
+    expect((await send(`${base}/find?first-name=Ada&max-count=2`, "GET")).status).toBe(200);
+    expect((await send(`${base}/hits/h3`, "GET")).status).toBe(200);
+    expect(seen).toEqual([
+      ["find", { firstName: "Ada", maxCount: 2 }],
+      ["hit", { hitId: "h3" }],
+    ]);
+  });
+
+  it("reads a spread body and the input types inside it under their wire names, at any depth", async () => {
+    const { server, seen } = wireServer();
+    const base = await serve(server);
+    const res = await send(`${base}/search`, "QUERY", { "first-name": "Ada", where: { "zip-code": "02139", "near-by": { "max-km": 5 } } });
+    expect(res.status).toBe(200);
+    expect(seen).toEqual([["search", { firstName: "Ada", where: { zipCode: "02139", near: { maxKm: 5 } } }]]);
+  });
+
+  it("reads a body bound to one argument by its input type's wire names", async () => {
+    const { server, seen } = wireServer();
+    const base = await serve(server);
+    const res = await send(`${base}/hits/h7`, "PUT", { "zip-code": "02139", "near-by": { "max-km": 5 } });
+    expect(res.status).toBe(200);
+    expect(seen).toEqual([["tag", { hitId: "h7", where: { zipCode: "02139", near: { maxKm: 5 } } }]]);
+  });
+
+  it("reports an invalid value under the name the client sent, in the query, the path and the body", async () => {
+    const { server, seen } = wireServer();
+    const base = await serve(server);
+    expect(await detail(await send(`${base}/find?max-count=many`, "GET"))).toEqual([400, "find().max-count: expected Int"]);
+    expect(await detail(await send(`${base}/hits/%E0`, "GET"))).toEqual([400, "Path parameter hit-id is not valid percent-encoding"]);
+    expect(await detail(await send(`${base}/search`, "QUERY", { where: { "near-by": { "max-km": "far" } } }))).toEqual([400, "search().where.near-by.max-km: expected Int"]);
+    expect(await detail(await send(`${base}/hits/h7`, "PUT", { "near-by": {} }))).toEqual([400, "tag().the-where.near-by.max-km: required"]);
+    expect(seen).toEqual([]);
+  });
+
+  it("guard - a binding reads only the wire name: the schema name is an unknown argument, at any depth", async () => {
+    const { server, seen } = wireServer();
+    const base = await serve(server);
+    expect(await detail(await send(`${base}/find?firstName=Ada`, "GET"))).toEqual([400, "find().firstName: unknown argument"]);
+    expect(await detail(await send(`${base}/search`, "QUERY", { firstName: "Ada" }))).toEqual([400, "search().firstName: unknown argument"]);
+    expect(await detail(await send(`${base}/search`, "QUERY", { where: { zipCode: "02139" } }))).toEqual([400, "search().where.zipCode: unknown argument"]);
+    expect(await detail(await send(`${base}/hits/h7`, "PUT", { "near-by": { maxKm: 5 } }))).toEqual([400, "tag().the-where.near-by.maxKm: unknown argument"]);
+    expect(seen).toEqual([]);
+  });
+
+  it("guard - the Rayfold protocol and the MCP bridge keep the schema names", async () => {
+    const { server, seen } = wireServer();
+    const run = async (args: Record<string, unknown>) => {
+      const frames: Frame[] = [];
+      for await (const f of server.execute({ ops: [{ id: 1, op: "search", args }] })) frames.push(f);
+      return frames[0] as Record<string, unknown>;
+    };
+    expect((await run({ firstName: "Ada", where: { zipCode: "02139", near: { maxKm: 5 } } }))["data"]).toEqual({ $type: "Hit", id: "h1" });
+    expect(seen).toEqual([["search", { firstName: "Ada", where: { zipCode: "02139", near: { maxKm: 5 } } }]]);
+    expect((await run({ where: { "zip-code": "02139" } }))["error"]).toMatchObject({ code: "invalid_argument", message: "search().where.zip-code: unknown argument" });
+
+    const tool = mcpTools(server).find((t) => t.name === "search")!;
+    expect(Object.keys(tool.inputSchema["properties"] as object)).toEqual(["firstName", "where"]);
+    const defs = tool.inputSchema["$defs"] as Record<string, { properties: object }>;
+    expect(Object.keys(defs["Where"]!.properties)).toEqual(["zipCode", "near"]);
+    expect(Object.keys(defs["Near"]!.properties)).toEqual(["maxKm"]);
   });
 });

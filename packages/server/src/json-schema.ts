@@ -2,15 +2,16 @@
  * A Rayfold type as JSON Schema: what the MCP bridge gives an assistant for a tool's arguments (spec 10) and what the
  * OpenAPI document gives a reader for a route's body (spec 04 §8). Pure, so describing an API needs no transport.
  */
-import { annotation, baseName, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
+import { annotation, baseName, wireName, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 
 /**
  * `partial` leaves every field of a fielded type optional: a result is projected through a shape (the default view,
  * for an MCP tool call), which may leave out fields the type declares, so a schema requiring them would refuse it.
+ * `wire` names input fields as HTTP bindings read them (`@http(name:)`, spec 04 §8), for the OpenAPI document.
  */
-export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<string, unknown>, forInput: boolean, partial = false): Record<string, unknown> {
+export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<string, unknown>, forInput: boolean, partial = false, wire = false): Record<string, unknown> {
   const nullable = (s: Record<string, unknown>): Record<string, unknown> => (t.nullable ? { anyOf: [s, { type: "null" }] } : s);
-  if (t.kind === "list") return nullable({ type: "array", items: jsonSchemaFor(ir, t.of, defs, forInput, partial) });
+  if (t.kind === "list") return nullable({ type: "array", items: jsonSchemaFor(ir, t.of, defs, forInput, partial, wire) });
   const def = ir.types[t.name];
   if (!def) return {};
   switch (def.kind) {
@@ -34,7 +35,7 @@ export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<stri
     case "enum":
       return nullable({ type: "string", enum: def.values.map((v) => v.name) });
     case "union":
-      return nullable({ anyOf: def.members.map((m) => jsonSchemaFor(ir, { kind: "named", name: m, nullable: false }, defs, forInput, partial)) });
+      return nullable({ anyOf: def.members.map((m) => jsonSchemaFor(ir, { kind: "named", name: m, nullable: false }, defs, forInput, partial, wire)) });
     default: {
       const key = t.name === "Page" && t.args?.[0] ? `Page_${baseName(t.args[0])}` : t.name;
       if (!(key in defs)) {
@@ -45,9 +46,10 @@ export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<stri
         if (def.kind === "entity") properties["$type"] = { const: def.name };
         for (const f of fields) {
           if (forInput && f.args.length) continue;
-          const s = withRange(jsonSchemaFor(ir, f.type, defs, forInput, partial), f.annotations, baseName(f.type));
-          properties[f.name] = f.description ? { ...s, description: f.description } : s;
-          if (!partial && !f.type.nullable && f.default === undefined) required.push(f.name);
+          const s = withRange(jsonSchemaFor(ir, f.type, defs, forInput, partial, wire), f.annotations, baseName(f.type));
+          const prop = wire ? wireName(f) : f.name;
+          properties[prop] = f.description ? { ...s, description: f.description } : s;
+          if (!partial && !f.type.nullable && f.default === undefined) required.push(prop);
         }
         const schema: Record<string, unknown> = { type: "object", properties, additionalProperties: false };
         if (required.length) schema["required"] = required;
