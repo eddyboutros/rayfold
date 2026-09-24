@@ -7,6 +7,10 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **`rayfold import openapi` reads an optional schema as that schema.** `anyOf: [X, { type: "null" }]`, which is how
+  Rayfold itself publishes an optional nested type, and OpenAPI 3.0's `allOf: [X]` beside `nullable: true` became
+  `JSON`. Both now import as `X?`, so a document Rayfold serves imports back to the same types.
+
 - **Arguments and input fields can keep the names REST clients send.** `@http(name: "first-name")` on an argument or
   input field makes the HTTP bindings read it from the query string or the JSON body (spread, or nested in input
   objects at any depth) under that name, and report errors under it. `/rayfold`, MCP and results keep the schema name.

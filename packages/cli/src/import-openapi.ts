@@ -236,9 +236,26 @@ const FORMATS: Record<string, string> = {
   int64: "Long",
 };
 
+/** Keys that leave a one-member `anyOf`/`oneOf`/`allOf` meaning just that member; a sibling `type` or `properties` does not. */
+const WRAPPER_KEYS = new Set(["anyOf", "oneOf", "allOf", "nullable", "description", "title", "default", "deprecated", "example", "examples"]);
+
+const isNullSchema = (s: Json): boolean =>
+  s["type"] === "null" || s["const"] === null || (Array.isArray(s["enum"]) && s["enum"].length === 1 && s["enum"][0] === null);
+
 function typeRefFrom(schema: Json, nullable: boolean, ir: RayfoldSchemaIR, hoistAs: string, notes: string[]): TypeRef {
   const ref = refName(schema);
   if (ref) return named(ref, nullable);
+
+  // An optional schema is written as a choice between it and null: `anyOf: [X, { type: "null" }]` in 3.1, which is how
+  // Rayfold publishes one, or `allOf: [X]` beside `nullable: true` in 3.0. Either is X, nullable.
+  const choice = schema["anyOf"] ?? schema["oneOf"] ?? schema["allOf"];
+  if (Array.isArray(choice) && Object.keys(schema).every((k) => WRAPPER_KEYS.has(k))) {
+    const others = (choice as Json[]).filter((s) => !isNullSchema(s));
+    if (others.length === 1) {
+      const orNull = others.length < choice.length || schema["nullable"] === true;
+      return typeRefFrom(others[0]!, nullable || orNull, ir, hoistAs, notes);
+    }
+  }
 
   const declared = schema["type"];
   const types = Array.isArray(declared) ? declared.filter((t) => t !== "null") : declared === undefined ? [] : [declared];

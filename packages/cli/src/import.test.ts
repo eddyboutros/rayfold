@@ -583,6 +583,71 @@ describe("an imported schema reads the names its REST clients already send", () 
   });
 });
 
+describe("a schema that is null or one other schema", () => {
+  const ADDRESS = { $ref: "#/components/schemas/Address" };
+  const doc = (properties: Record<string, unknown>) => ({
+    openapi: "3.1.0",
+    info: { title: "Mail", version: "1" },
+    components: { schemas: { Address: { type: "object", properties: { zip: { type: "string" } } }, Letter: { type: "object", properties } } },
+    paths: {},
+  });
+  const fieldsOf = (properties: Record<string, unknown>) =>
+    (irFromOpenApi(doc(properties)).ir.types["Letter"] as { fields: Array<{ name: string; type: unknown }> }).fields.map((f) => [f.name, typeRefToString(f.type as never)]);
+
+  it("reads anyOf or oneOf with null, and 3.0's allOf beside nullable: true, as that schema made nullable", () => {
+    expect(
+      fieldsOf({
+        to: { anyOf: [ADDRESS, { type: "null" }] },
+        from: { oneOf: [{ type: "null" }, ADDRESS], description: "who sent it" },
+        via: { allOf: [ADDRESS], nullable: true },
+        tags: { anyOf: [{ type: "array", items: { type: "string" } }, { const: null }] },
+      }),
+    ).toEqual([
+      ["to", "Address?"],
+      ["from", "Address?"],
+      ["via", "Address?"],
+      ["tags", "[String]?"],
+    ]);
+  });
+
+  it("guard - a choice of two schemas, or one with fields of its own beside it, is not read as either", () => {
+    expect(
+      fieldsOf({
+        either: { anyOf: [ADDRESS, { type: "string" }, { type: "null" }] },
+        extended: { allOf: [ADDRESS], properties: { floor: { type: "integer" } } },
+      }).map(([name, type]) => [name, type]),
+    ).toEqual([
+      ["either", "JSON?"],
+      ["extended", "LetterExtended?"],
+    ]);
+  });
+
+  it("an optional nested input comes back as itself from the document Rayfold publishes for it", async () => {
+    const text = [
+      "input Address { zip: String }",
+      "input Letter { to: Address? from: Address }",
+      "entity Sent { id: ID }",
+      'command send(letter: Letter): Sent @http(method: POST, path: "/letters", body: letter) @idempotent(false)',
+    ].join("\n");
+    const server = createRayfoldServer({ schema: text, resolvers: { Command: { send: () => ({ id: "s1" }) } } });
+    const handler = createHttpHandler(server);
+    const http = createServer((req, res) => void handler(req, res));
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", () => resolve()));
+    try {
+      const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/rayfold/openapi.json`;
+      const published = await (await fetch(url, { signal: AbortSignal.timeout(5_000) })).json();
+      const letter = (irFromOpenApi(published as never).ir.types["Letter"] as { fields: Array<{ name: string; type: unknown }> }).fields;
+      expect(letter.map((f) => [f.name, typeRefToString(f.type as never)])).toEqual([
+        ["to", "Address?"],
+        ["from", "Address"],
+      ]);
+    } finally {
+      http.closeAllConnections();
+      await new Promise<void>((resolve) => http.close(() => resolve()));
+    }
+  });
+});
+
 describe("the command itself", { timeout: 60_000 }, () => {
   const main = fileURLToPath(new URL("./main.ts", import.meta.url));
   // by URL, because the child runs in `work`, which has no node_modules to find `tsx` in
