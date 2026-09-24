@@ -20659,6 +20659,256 @@
   "hash": "cb339fae62e8a60b59427fb836cfe835ea56605061e35ef53c029a5403594a6a"
  },
  {
+  "name": "block-string escapes and quoted keys",
+  "text": "\n\"\"\"Holds \\\"\"\" and more \\\"\"\"\" quotes\"\"\"\nentity A {\n  \"\"\"Ends in a quote \"x\" \"\"\"\n  id: ID\n  \"\"\"one\r\r\ntwo \\\\\"\"\" three\"\"\"\n  n: Int\n}\nquery a(o: JSON = { \"content-type\": \"text/plain\", \"a b\": [1], plain: true }): A\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "A": {
+     "kind": "entity",
+     "name": "A",
+     "annotations": [],
+     "description": "Holds \"\"\" and more \"\"\"\" quotes",
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1,
+       "description": "Ends in a quote \"x\""
+      },
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2,
+       "description": "one\r\ntwo \\\"\"\" three"
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "a": {
+     "kind": "query",
+     "name": "a",
+     "args": [
+      {
+       "name": "o",
+       "type": {
+        "kind": "named",
+        "name": "JSON",
+        "nullable": false
+       },
+       "annotations": [],
+       "default": {
+        "content-type": "text/plain",
+        "a b": [
+         1
+        ],
+        "plain": true
+       }
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [],
+  "hash": "e5f351b0dc2c4c107c55a3fa48488e2de3eac915458e3f416e2ff746857cc0ff"
+ },
+ {
   "name": "error: unterminated block comment",
   "text": "entity A { id: ID }\n/* never closed",
   "error": "Unterminated block comment (2:1)"
@@ -20842,6 +21092,816 @@
   "name": "error: duration out of range",
   "text": "entity A @cache(maxAge: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999d) { id: ID }",
   "error": "Number out of range: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999d (1:25)"
+ },
+ {
+  "name": "findings: generics, stream inputs, repeated members, error payloads",
+  "text": "\nentity A { id: ID x: T }\ninput I { p: Page<Int> }\ninput Msg { text: String }\nentity B { id: ID }\nunion U = A | B | A\nobject Detail { x: Int }\nerror E { d: Detail }\nquery a(i: I, p: Page<String>): A\nquery u: U\nstream s1: Int @input(Nope)\nstream s2: B @input(B)\nstream s3: B @input(Msg)\ncommand c: Int throws E\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "A": {
+     "kind": "entity",
+     "name": "A",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "x",
+       "type": {
+        "kind": "named",
+        "name": "T",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    },
+    "I": {
+     "kind": "input",
+     "name": "I",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "p",
+       "type": {
+        "kind": "named",
+        "name": "Page",
+        "nullable": false,
+        "args": [
+         {
+          "kind": "named",
+          "name": "Int",
+          "nullable": false
+         }
+        ]
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ]
+    },
+    "Msg": {
+     "kind": "input",
+     "name": "Msg",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "text",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ]
+    },
+    "B": {
+     "kind": "entity",
+     "name": "B",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ],
+     "implements": []
+    },
+    "U": {
+     "kind": "union",
+     "name": "U",
+     "annotations": [],
+     "members": [
+      "A",
+      "B",
+      "A"
+     ]
+    },
+    "Detail": {
+     "kind": "object",
+     "name": "Detail",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "x",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ]
+    },
+    "E": {
+     "kind": "error",
+     "name": "E",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "d",
+       "type": {
+        "kind": "named",
+        "name": "Detail",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      }
+     ]
+    }
+   },
+   "ops": {
+    "a": {
+     "kind": "query",
+     "name": "a",
+     "args": [
+      {
+       "name": "i",
+       "type": {
+        "kind": "named",
+        "name": "I",
+        "nullable": false
+       },
+       "annotations": []
+      },
+      {
+       "name": "p",
+       "type": {
+        "kind": "named",
+        "name": "Page",
+        "nullable": false,
+        "args": [
+         {
+          "kind": "named",
+          "name": "String",
+          "nullable": false
+         }
+        ]
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "u": {
+     "kind": "query",
+     "name": "u",
+     "args": [],
+     "returns": {
+      "kind": "named",
+      "name": "U",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    },
+    "s1": {
+     "kind": "stream",
+     "name": "s1",
+     "args": [],
+     "returns": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "input",
+       "args": {
+        "value": {
+         "$type": {
+          "kind": "named",
+          "name": "Nope",
+          "nullable": false
+         }
+        }
+       }
+      }
+     ]
+    },
+    "s2": {
+     "kind": "stream",
+     "name": "s2",
+     "args": [],
+     "returns": {
+      "kind": "named",
+      "name": "B",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "input",
+       "args": {
+        "value": {
+         "$type": {
+          "kind": "named",
+          "name": "B",
+          "nullable": false
+         }
+        }
+       }
+      }
+     ]
+    },
+    "s3": {
+     "kind": "stream",
+     "name": "s3",
+     "args": [],
+     "returns": {
+      "kind": "named",
+      "name": "B",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": [
+      {
+       "name": "input",
+       "args": {
+        "value": {
+         "$type": {
+          "kind": "named",
+          "name": "Msg",
+          "nullable": false
+         }
+        }
+       }
+      }
+     ]
+    },
+    "c": {
+     "kind": "command",
+     "name": "c",
+     "args": [],
+     "returns": {
+      "kind": "named",
+      "name": "Int",
+      "nullable": false
+     },
+     "throws": [
+      "E"
+     ],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [
+   {
+    "severity": "error",
+    "code": "unknown-type",
+    "at": "A.x",
+    "message": "Unknown type T"
+   },
+   {
+    "severity": "error",
+    "code": "bad-type-position",
+    "at": "I.p",
+    "message": "object Page cannot be used as an input field"
+   },
+   {
+    "severity": "error",
+    "code": "page-args",
+    "at": "I.p",
+    "message": "A field returning Page<T> must accept page: PageArgs (or first/after)"
+   },
+   {
+    "severity": "error",
+    "code": "duplicate-name",
+    "at": "U",
+    "message": "Duplicate union member A"
+   },
+   {
+    "severity": "error",
+    "code": "bad-type-position",
+    "at": "a().p",
+    "message": "object Page cannot be used as an argument"
+   },
+   {
+    "severity": "error",
+    "code": "unknown-type",
+    "at": "s1()",
+    "message": "Unknown type Nope"
+   },
+   {
+    "severity": "error",
+    "code": "bad-type-position",
+    "at": "s2()",
+    "message": "entity B cannot be used as a stream input"
+   }
+  ],
+  "hash": "fb7e9fb59f9bfe2daa9c656598fcc0484e59895416ba918e32c46ef4dc2556d7",
+  "loadError": "Invalid schema:\n  A.x: Unknown type T [unknown-type]\n  I.p: object Page cannot be used as an input field [bad-type-position]\n  I.p: A field returning Page<T> must accept page: PageArgs (or first/after) [page-args]\n  U: Duplicate union member A [duplicate-name]\n  a().p: object Page cannot be used as an argument [bad-type-position]\n  s1(): Unknown type Nope [unknown-type]\n  s2(): entity B cannot be used as a stream input [bad-type-position]"
+ },
+ {
+  "name": "findings: reserved argument and enum value names",
+  "text": "\nenum E { __X Y }\nentity A { id: ID n(__proto__: Int): Int }\nquery q(__proto__: String, e: E): A\n",
+  "ir": {
+   "rayfold": "0.1",
+   "types": {
+    "ID": {
+     "kind": "scalar",
+     "name": "ID",
+     "annotations": [],
+     "builtin": true
+    },
+    "String": {
+     "kind": "scalar",
+     "name": "String",
+     "annotations": [],
+     "builtin": true
+    },
+    "Int": {
+     "kind": "scalar",
+     "name": "Int",
+     "annotations": [],
+     "builtin": true
+    },
+    "Long": {
+     "kind": "scalar",
+     "name": "Long",
+     "annotations": [],
+     "builtin": true
+    },
+    "Float": {
+     "kind": "scalar",
+     "name": "Float",
+     "annotations": [],
+     "builtin": true
+    },
+    "Boolean": {
+     "kind": "scalar",
+     "name": "Boolean",
+     "annotations": [],
+     "builtin": true
+    },
+    "Decimal": {
+     "kind": "scalar",
+     "name": "Decimal",
+     "annotations": [],
+     "builtin": true
+    },
+    "Instant": {
+     "kind": "scalar",
+     "name": "Instant",
+     "annotations": [],
+     "builtin": true
+    },
+    "Date": {
+     "kind": "scalar",
+     "name": "Date",
+     "annotations": [],
+     "builtin": true
+    },
+    "Duration": {
+     "kind": "scalar",
+     "name": "Duration",
+     "annotations": [],
+     "builtin": true
+    },
+    "Bytes": {
+     "kind": "scalar",
+     "name": "Bytes",
+     "annotations": [],
+     "builtin": true
+    },
+    "JSON": {
+     "kind": "scalar",
+     "name": "JSON",
+     "annotations": [],
+     "builtin": true
+    },
+    "Page": {
+     "kind": "object",
+     "name": "Page",
+     "builtin": true,
+     "typeParams": [
+      "T"
+     ],
+     "annotations": [],
+     "fields": [
+      {
+       "name": "items",
+       "type": {
+        "kind": "list",
+        "of": {
+         "kind": "named",
+         "name": "T",
+         "nullable": false
+        },
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "cursor",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "hasMore",
+       "type": {
+        "kind": "named",
+        "name": "Boolean",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      },
+      {
+       "name": "total",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 4
+      }
+     ]
+    },
+    "PageArgs": {
+     "kind": "input",
+     "name": "PageArgs",
+     "builtin": true,
+     "annotations": [],
+     "fields": [
+      {
+       "name": "first",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [],
+       "default": 20,
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "after",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 2
+      },
+      {
+       "name": "offset",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": true
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 3
+      }
+     ]
+    },
+    "E": {
+     "kind": "enum",
+     "name": "E",
+     "annotations": [],
+     "values": [
+      {
+       "name": "__X",
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "Y",
+       "annotations": [],
+       "ordinal": 2
+      }
+     ]
+    },
+    "A": {
+     "kind": "entity",
+     "name": "A",
+     "annotations": [],
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "named",
+        "name": "ID",
+        "nullable": false
+       },
+       "args": [],
+       "annotations": [],
+       "ordinal": 1
+      },
+      {
+       "name": "n",
+       "type": {
+        "kind": "named",
+        "name": "Int",
+        "nullable": false
+       },
+       "args": [
+        {
+         "name": "__proto__",
+         "type": {
+          "kind": "named",
+          "name": "Int",
+          "nullable": false
+         },
+         "annotations": []
+        }
+       ],
+       "annotations": [],
+       "ordinal": 2
+      }
+     ],
+     "implements": []
+    }
+   },
+   "ops": {
+    "q": {
+     "kind": "query",
+     "name": "q",
+     "args": [
+      {
+       "name": "__proto__",
+       "type": {
+        "kind": "named",
+        "name": "String",
+        "nullable": false
+       },
+       "annotations": []
+      },
+      {
+       "name": "e",
+       "type": {
+        "kind": "named",
+        "name": "E",
+        "nullable": false
+       },
+       "annotations": []
+      }
+     ],
+     "returns": {
+      "kind": "named",
+      "name": "A",
+      "nullable": false
+     },
+     "throws": [],
+     "emits": [],
+     "annotations": []
+    }
+   },
+   "views": {}
+  },
+  "diagnostics": [
+   {
+    "severity": "error",
+    "code": "reserved-name",
+    "at": "E.__X",
+    "message": "Enum value __X is reserved"
+   },
+   {
+    "severity": "error",
+    "code": "reserved-name",
+    "at": "A.n(__proto__)",
+    "message": "Argument name __proto__ is reserved"
+   },
+   {
+    "severity": "error",
+    "code": "reserved-name",
+    "at": "q().__proto__",
+    "message": "Argument name __proto__ is reserved"
+   }
+  ],
+  "hash": "c264edba831574aea4a605e41c720bc7b131cb747d7ff914e3243cca608ffa58",
+  "loadError": "Invalid schema:\n  E.__X: Enum value __X is reserved [reserved-name]\n  A.n(__proto__): Argument name __proto__ is reserved [reserved-name]\n  q().__proto__: Argument name __proto__ is reserved [reserved-name]"
  },
  {
   "name": "findings: types",

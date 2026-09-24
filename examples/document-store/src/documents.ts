@@ -14,7 +14,8 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { Capabilities, createHttpHandler, createRayfoldServer, FileUploadStore, type RayfoldServer, type UploadStore } from "@rayfold/server";
 import { FileStore } from "./files.ts";
-import { resolvers, seed, viewerFrom, type Parts, type Store, type Viewer } from "./resolvers.ts";
+import { viewerFrom } from "./auth.ts";
+import { resolvers, seed, type Parts, type Store, type Viewer } from "./resolvers.ts";
 import { readFileSync } from "node:fs";
 
 const schema = readFileSync(new URL("./documents.rayfold", import.meta.url), "utf8");
@@ -58,7 +59,7 @@ export async function scratchDirs(): Promise<Bookkeeping> {
 export function documentStoreHttp({ server, store, files, uploads, caps }: DocumentStore): Server {
   // #region viewer
   /** A signed-in person, or the viewer a share's token speaks for. A bad token is nobody, not an error. */
-  const whoIs = (authorization: string | undefined, query: URLSearchParams): Viewer | null => {
+  const whoIs = async (authorization: string | undefined, query: URLSearchParams): Promise<Viewer | null> => {
     const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
     const token = [bearer, query.get("token")].find((t) => t?.startsWith("rfcap1."));
     if (token) {
@@ -91,7 +92,8 @@ export function documentStoreHttp({ server, store, files, uploads, caps }: Docum
       // the same rule the schema states, applied to the bytes: an unguessable url is not a permission
       const revision = store.revisions.get(id);
       const doc = revision && store.documents.get(revision.documentId);
-      const viewer = whoIs(req.headers.authorization, query);
+      // a token that does not verify is nobody here: the bytes answer 401, as they do without one
+      const viewer = await whoIs(req.headers.authorization, query).catch(() => null);
       const allowed = !!doc && !!viewer && (doc.ownerId === viewer.id || viewer.documentId === doc.id);
       if (!allowed) return void res.writeHead(doc && !viewer ? 401 : 404).end();
 

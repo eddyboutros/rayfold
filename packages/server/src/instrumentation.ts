@@ -27,6 +27,11 @@ export interface LoaderInfo {
 /** How a batch or an op ended: `error` when it failed. A failed op is reported here, not thrown. */
 export interface Outcome {
   error?: WireError;
+  /**
+   * What a failed op was failed with, as it was thrown: a resolver's own exception, with its stack, where `error` says
+   * only `internal`. It never reaches the client; this is where an operator logs it.
+   */
+  cause?: unknown;
 }
 
 /**

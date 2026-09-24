@@ -209,11 +209,30 @@ class LifecycleTest {
     }
 
     @Test
+    fun `checks that block their thread count as failed at the limit, and the answer does not wait for them`() {
+        // a JDBC isValid or a Thread.sleep cannot be interrupted; run on the request's own thread, two of these held
+        // the answer until they returned, whatever the limit said
+        val release = CountDownLatch(1)
+        try {
+            val blocked = serve(build().server, HttpOptions(readiness = mapOf("db" to { release.await() }, "cache" to { release.await() }), readinessTimeoutMs = 50)).base
+            val res = get("$blocked/rayfold/ready") // bounded by the request's 5 s timeout
+            assertEquals(503, res.statusCode())
+            assertEquals("""{"ready":false,"reasons":["db: no answer within 50 ms","cache: no answer within 50 ms"]}""", res.body())
+        } finally {
+            release.countDown()
+        }
+        // guard: a blocking check that returns within the limit still leaves the server ready
+        val quick = serve(build().server, HttpOptions(readiness = mapOf("db" to { release.await() }), readinessTimeoutMs = 5_000)).base
+        assertEquals("""{"ready":true,"reasons":[]}""", get("$quick/rayfold/ready").body())
+    }
+
+    @Test
     fun `a check that never answers counts as failed exactly at the limit`() = runTest(timeout = 5.seconds) {
-        val asked = CompletableDeferred<Unit>()
-        val http = RayfoldHttp(build().server, HttpOptions(readiness = mapOf("db" to { asked.complete(Unit); awaitCancellation() }, "cache" to {})))
+        // Checks run on real IO threads and only the wait for them runs on virtual time, so this waits on nothing real:
+        // runTest skips ahead while its scheduler is idle, and a check that answers would race the jump to the limit.
+        val http = RayfoldHttp(build().server, HttpOptions(readiness = mapOf("db" to { awaitCancellation() })))
         val answer = async { http.readiness() }
-        asked.await() // the limit runs only from here; advancing earlier would miss it
+        runCurrent() // the limit runs from here, when the wait for the check begins
         advanceTimeBy(1_999)
         runCurrent()
         assertFalse(answer.isCompleted, "still waiting one millisecond before the limit")

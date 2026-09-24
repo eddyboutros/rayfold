@@ -218,6 +218,39 @@ class MergePolicyTest {
     }
 
     @Test
+    fun `a query's data overrules a held prediction too, not only a set patch - serverWins and lww give way, a field without a policy keeps it`() = bounded {
+        val client = RayfoldClient(InProcess(alice), ClientOptions(mergePolicies = mergePolicies(ir)))
+        client.query("doc", args("id" to "d1"), shape)
+        val held = CompletableDeferred<Unit>() to CompletableDeferred<Unit>()
+        gate.set(held)
+        val mine = async { client.command("edit", edit("mine", "mine", "mine"), shape, optimistic = predict("mine", "mine", "mine")) }
+        held.first.await()
+        bobEdits()
+
+        assertEquals(shown("theirs", "theirs", "mine"), client.query("doc", args("id" to "d1"), shape))
+        assertEquals<JsonElement?>(Json.parseToJsonElement("""{"${'$'}type":"Doc","id":"d1","title":"theirs","summary":"theirs","notes":"mine"}"""), client.cache.get("Doc:d1"))
+
+        held.second.complete(Unit)
+        assertEquals(shown("mine", "mine", "mine"), mine.await())
+        assertEquals(emptyList(), client.cache.predictions)
+    }
+
+    @Test
+    fun `guard - a client told no policies keeps the whole prediction through a query's data`() = bounded {
+        val client = RayfoldClient(InProcess(alice))
+        client.query("doc", args("id" to "d1"), shape)
+        val held = CompletableDeferred<Unit>() to CompletableDeferred<Unit>()
+        gate.set(held)
+        val mine = async { client.command("edit", edit("mine", "mine", "mine"), shape, optimistic = predict("mine", "mine", "mine")) }
+        held.first.await()
+        bobEdits()
+
+        assertEquals(shown("mine", "mine", "mine"), client.query("doc", args("id" to "d1"), shape))
+        held.second.complete(Unit)
+        assertEquals(shown("mine", "mine", "mine"), mine.await())
+    }
+
+    @Test
     fun `a prediction the client cannot merge is refused before anything is sent, and a mergeable one goes out (guard)`() = bounded {
         val transport = InProcess(alice)
         val client = RayfoldClient(transport, ClientOptions(mergePolicies = mergePolicies(ir)))

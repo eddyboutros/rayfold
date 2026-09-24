@@ -28,10 +28,11 @@ await client.command("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] 
 });
 ```
 
-- The browser's `online` event drains the queue; call `client.drain()` yourself after your own reconnect logic. It
-  resolves to how many commands still wait. After a reload no `online` event fires, so call `client.drain()` once at
-  startup too: until something drains the queue, new commands wait behind the restored ones. The same holds after a
-  server outage that never took the network down.
+- The queue drains by itself: when the client starts with commands a reload brought back, on the browser's `online`
+  event, and when a new command is made while others wait (it goes out behind them), which is what brings the queue
+  back after a server outage that never took the network down. Call `client.drain()` yourself after your own
+  reconnect logic; it resolves to how many commands still wait. `offline: { drainOnReconnect: false }` turns the
+  automatic drains off and leaves every send of the queue to `client.drain()`.
 - `client.queued` lists the waiting commands; `client.onQueue(fn)` reports each one queued, sent, or refused
   (`failed`, with the server's error), which is what a "3 changes waiting" banner needs.
 - A queued command's promise settles when it finally goes out. After a reload the caller is gone, so follow
@@ -55,7 +56,8 @@ client.command(
 )
 ```
 
-Call `client.drain()` once when the app starts, since a queue restored from the file does not send itself, and again
+A new command made while others wait sends the queue first and then itself. The client has no network events of its
+own, so call `client.drain()` when the app starts, to send a queue restored from the file before the next command, and
 when the device is back online, for example from a `ConnectivityManager.NetworkCallback`. Follow `client.onQueue { }`
 for the banner. `FileQueueStorage` replaces its file atomically, so a queue survives the
 app being killed. `command` suspends until a queued command has gone out, so launch it in a scope that outlives the

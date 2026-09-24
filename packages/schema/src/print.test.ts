@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
+import fc from "fast-check";
+import { RayfoldSyntaxError } from "./lexer.ts";
 import { loadSchema } from "./load.ts";
 import { printSchemaText } from "./print.ts";
 
@@ -127,6 +129,61 @@ or a slug
     const original = loadSchema(text);
     const printed = printSchemaText(original.ir);
     expect(printed).toContain("entity Happening implements Node Timed {");
+    expect(loadSchema(printed).hash).toBe(original.hash);
+  });
+
+  it("keeps a description that ends in a quote, holds its own fence or a carriage return, exactly", () => {
+    const text = [
+      '"""Call it "x" """',
+      "entity A {",
+      '  """Holds \\""" and ends in a backslash\\',
+      '  """',
+      "  id: ID",
+      '  """one\r\r\ntwo"""',
+      "  n: Int",
+      "}",
+      "query a: A",
+    ].join("\n");
+    const original = loadSchema(text);
+    expect(original.ir.types["A"]?.description).toBe('Call it "x"');
+    const fields = (original.ir.types["A"] as { fields: Array<{ description?: string }> }).fields;
+    expect(fields.map((f) => f.description)).toEqual(['Holds """ and ends in a backslash\\', "one\r\ntwo"]);
+    const printed = printSchemaText(original.ir);
+    const reparsed = loadSchema(printed);
+    expect(reparsed.ir).toEqual(original.ir);
+    expect(reparsed.hash).toBe(original.hash);
+    expect(printed.split("\n").slice(0, 3)).toEqual(['"""', 'Call it "x"', '"""']);
+  });
+
+  it("guard - a one-line description with nothing to escape stays on one line", () => {
+    const printed = printSchemaText(loadSchema('"""A "quoted" word inside."""\nentity A { id: ID }\nquery a: A').ir);
+    expect(printed.split("\n")[0]).toBe('"""A "quoted" word inside."""');
+  });
+
+  it("any description the lexer reads prints back to exactly that description", () => {
+    const body = fc.stringMatching(/^[ab \t\r\n"\\ ]{0,24}$/);
+    fc.assert(
+      fc.property(body, (raw) => {
+        let original: ReturnType<typeof loadSchema>;
+        try {
+          original = loadSchema(`"""${raw}"""\nentity A { id: ID }\nquery a: A`);
+        } catch (e) {
+          if (e instanceof RayfoldSyntaxError) return; // a fence the body closes early, say
+          throw e;
+        }
+        const reparsed = loadSchema(printSchemaText(original.ir));
+        expect(reparsed.ir.types["A"]?.description).toBe(original.ir.types["A"]?.description);
+        expect(reparsed.hash).toBe(original.hash);
+      }),
+      { numRuns: 2000, seed: 20260924 },
+    );
+  });
+
+  it("a default object whose keys are not names is written with quoted keys, which parse back", () => {
+    const original = loadSchema('query q(o: JSON = { "content-type": "text/plain", "a b": [1], plain: true }): Int');
+    expect(original.ir.ops["q"]?.args[0]?.default).toEqual({ "content-type": "text/plain", "a b": [1], plain: true });
+    const printed = printSchemaText(original.ir);
+    expect(printed).toBe('query q(o: JSON = { "content-type": "text/plain", "a b": [1], plain: true }): Int\n');
     expect(loadSchema(printed).hash).toBe(original.hash);
   });
 

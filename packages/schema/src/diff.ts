@@ -13,6 +13,12 @@ export interface Change {
 export interface DiffOptions {
   /** "now" for sunset evaluation (ISO date or Date). Defaults to today. */
   now?: Date;
+  /**
+   * The old IR is a lockfile's: its ordinals are the ones assigned at publication (spec 01 §9.6), and a member of the
+   * new schema keeps its ordinal by name. Only an `@ordinal` that says otherwise changes one. Without a lock, both
+   * sides number by position, so a member that moved is a warning and only a written `@ordinal` that changed breaks.
+   */
+  lockedOrdinals?: boolean;
 }
 
 /** Members whose `@deprecated(sunset:)` date has passed may be removed. */
@@ -24,8 +30,43 @@ function sunsetPassed(x: { annotations: { name: string; args: Record<string, unk
   return !Number.isNaN(date.getTime()) && date.getTime() <= now.getTime();
 }
 
+/** The ordinal an `@ordinal(n)` annotation writes down, if there is one. */
+function declaredOrdinal(x: { annotations: { name: string; args: Record<string, unknown> }[] }): number | undefined {
+  const v = x.annotations.find((a) => a.name === "ordinal")?.args["value"];
+  return typeof v === "number" ? v : undefined;
+}
+
+/**
+ * Ordinal changes of the members two versions share, and ordinals a new member takes from another: [o] and [n] are
+ * the old and new members in order, [at] names one.
+ */
+function diffOrdinals<M extends { name: string; ordinal: number; annotations: { name: string; args: Record<string, unknown> }[] }>(
+  o: M[],
+  n: M[],
+  at: (m: M) => string,
+  locked: boolean,
+  push: Push,
+): void {
+  for (const nm of n) {
+    const om = o.find((x) => x.name === nm.name);
+    const declared = declaredOrdinal(nm);
+    if (!om) {
+      const holder = declared === undefined ? undefined : o.find((x) => x.ordinal === declared && x.name !== nm.name);
+      if (holder) push("breaking", "ordinal-reused", at(nm), `ordinal ${declared} belonged to ${holder.name}`);
+      continue;
+    }
+    if (locked) {
+      if (declared !== undefined && declared !== om.ordinal) push("breaking", "ordinal-changed", at(nm), `ordinal changed ${om.ordinal} -> ${declared}`);
+    } else if (om.ordinal !== nm.ordinal) {
+      if (declared !== undefined || declaredOrdinal(om) !== undefined) push("breaking", "ordinal-changed", at(nm), `ordinal changed ${om.ordinal} -> ${nm.ordinal}`);
+      else push("warning", "ordinal-shifted", at(nm), `moved from position ${om.ordinal} to ${nm.ordinal}; against a lockfile it keeps its ordinal by name`);
+    }
+  }
+}
+
 export function diffSchemas(oldIR: RayfoldSchemaIR, newIR: RayfoldSchemaIR, opts: DiffOptions = {}): Change[] {
   const now = opts.now ?? new Date();
+  const locked = opts.lockedOrdinals ?? false;
   const out: Change[] = [];
   const push = (level: ChangeLevel, code: string, at: string, message: string) => out.push({ level, code, at, message });
   const removed = (x: { annotations: never[] } | { annotations: unknown[] }, code: string, at: string, what: string) => {
@@ -45,13 +86,15 @@ export function diffSchemas(oldIR: RayfoldSchemaIR, newIR: RayfoldSchemaIR, opts
       push("breaking", "kind-changed", name, `${name} changed from ${o.kind} to ${n.kind}`);
       continue;
     }
-    if ("fields" in o && "fields" in n) diffFields(o, n, o.kind === "input", push, removed, now);
+    if ("fields" in o && "fields" in n) {
+      diffFields(o, n, o.kind === "input", push, removed, now);
+      diffOrdinals(o.fields, n.fields, (f) => `${name}.${f.name}`, locked, push);
+    }
     if (o.kind === "enum" && n.kind === "enum") {
       for (const v of o.values) {
-        const nv = n.values.find((x) => x.name === v.name);
-        if (!nv) removed(v, "enum-value-removed", `${name}.${v.name}`, `enum value ${name}.${v.name}`);
-        else if (nv.ordinal !== v.ordinal) push("breaking", "ordinal-changed", `${name}.${v.name}`, `ordinal changed ${v.ordinal} -> ${nv.ordinal}`);
+        if (!n.values.some((x) => x.name === v.name)) removed(v, "enum-value-removed", `${name}.${v.name}`, `enum value ${name}.${v.name}`);
       }
+      diffOrdinals(o.values, n.values, (v) => `${name}.${v.name}`, locked, push);
       for (const v of n.values) if (!o.values.some((x) => x.name === v.name)) push("compatible", "enum-value-added", `${name}.${v.name}`, `enum value added`);
     }
     if (o.kind === "union" && n.kind === "union") {
@@ -75,8 +118,9 @@ export function diffSchemas(oldIR: RayfoldSchemaIR, newIR: RayfoldSchemaIR, opts
     }
     if (n.kind !== o.kind) push("breaking", "op-kind-changed", at, `${name} changed from ${o.kind} to ${n.kind}`);
     if (typeRefToString(n.returns) !== typeRefToString(o.returns)) {
-      if (!o.returns.nullable && n.returns.nullable && sameBase(o.returns, n.returns)) push("breaking", "result-nullable", at, `result became nullable`);
-      else if (o.returns.nullable && !n.returns.nullable && sameBase(o.returns, n.returns)) push("compatible", "result-non-null", at, `result became non-null`);
+      const d = nullability(o.returns, n.returns);
+      if (d === "looser") push("breaking", "result-nullable", at, `result became nullable`);
+      else if (d === "tighter") push("compatible", "result-non-null", at, `result became non-null`);
       else push("breaking", "result-type-changed", at, `result type changed ${typeRefToString(o.returns)} -> ${typeRefToString(n.returns)}`);
     }
     diffArgs(o.args, n.args, at, push, removed, now);
@@ -94,10 +138,30 @@ export function diffSchemas(oldIR: RayfoldSchemaIR, newIR: RayfoldSchemaIR, opts
   return out;
 }
 
-/** The same type but for its own nullability: `Page<Book>` and `Page<Author>` share a name and nothing else. */
-function sameBase(a: TypeRef, b: TypeRef): boolean {
-  return typeRefToString({ ...a, nullable: false }) === typeRefToString({ ...b, nullable: false });
+/**
+ * How [b] differs from [a] when only nullability differs, at any level (a list, its items, a Page's items): "looser"
+ * when some levels became nullable and none non-null, "tighter" the other way round, "mixed" when both happened.
+ * Undefined when the types differ in more than nullability: `Page<Book>` and `Page<Author>` share a name and nothing else.
+ */
+function nullability(a: TypeRef, b: TypeRef): "same" | "looser" | "tighter" | "mixed" | undefined {
+  let looser = false;
+  let tighter = false;
+  const walk = (x: TypeRef, y: TypeRef): boolean => {
+    if (x.nullable !== y.nullable) {
+      if (y.nullable) looser = true;
+      else tighter = true;
+    }
+    if (x.kind === "list" || y.kind === "list") return x.kind === "list" && y.kind === "list" && walk(x.of, y.of);
+    const xs = x.args ?? [];
+    const ys = y.args ?? [];
+    return x.name === y.name && xs.length === ys.length && xs.every((t, i) => walk(t, ys[i]!));
+  };
+  if (!walk(a, b)) return undefined;
+  return looser && tighter ? "mixed" : looser ? "looser" : tighter ? "tighter" : "same";
 }
+
+/** [t] with its own nullability set aside, so what is left is how its items or arguments changed. */
+const inner = (t: TypeRef): TypeRef => ({ ...t, nullable: false });
 
 type Push = (level: ChangeLevel, code: string, at: string, message: string) => void;
 type Removed = (x: { annotations: unknown[] }, code: string, at: string, what: string) => void;
@@ -110,12 +174,13 @@ function diffFields(o: Extract<TypeDef, { fields: FieldDef[] }>, n: Extract<Type
       removed(f, "field-removed", at, `field ${at}`);
       continue;
     }
-    if (nf.ordinal !== f.ordinal) push("breaking", "ordinal-changed", at, `ordinal changed ${f.ordinal} -> ${nf.ordinal}`);
     const ot = typeRefToString(f.type);
     const nt = typeRefToString(nf.type);
+    const d = nullability(f.type, nf.type);
     if (ot !== nt) {
-      if (sameBase(f.type, nf.type) && f.type.kind === "named" && nf.type.kind === "named" && !f.type.args && !nf.type.args) {
-        const becameNullable = !f.type.nullable && nf.type.nullable;
+      // what a server returns may only become non-null, and what a caller sends may only become nullable
+      if (d === "looser" || d === "tighter") {
+        const becameNullable = d === "looser";
         if (isInput) push(becameNullable ? "compatible" : "breaking", becameNullable ? "input-field-optional" : "input-field-required", at, `${ot} -> ${nt}`);
         else push(becameNullable ? "breaking" : "compatible", becameNullable ? "field-nullable" : "field-non-null", at, `${ot} -> ${nt}`);
       } else push("breaking", "field-type-changed", at, `type changed ${ot} -> ${nt}`);
@@ -145,9 +210,12 @@ function diffArgs(o: ArgDef[], n: ArgDef[], at: string, push: Push, removed: Rem
     const isOptional = na.type.nullable || na.default !== undefined;
     const ot = typeRefToString(a.type);
     const nt = typeRefToString(na.type);
-    if (ot !== nt && !(sameBase(a.type, na.type) && a.type.kind === "named" && !a.type.args)) push("breaking", "arg-type-changed", aat, `type changed ${ot} -> ${nt}`);
+    // the argument's own nullability is whether it is optional; below that, a caller's items may only become nullable
+    const d = ot === nt ? "same" : nullability(inner(a.type), inner(na.type));
+    if (d === undefined || d === "mixed" || d === "tighter") push("breaking", "arg-type-changed", aat, `type changed ${ot} -> ${nt}`);
     else if (wasOptional && !isOptional) push("breaking", "arg-required", aat, `argument became required`);
     else if (!wasOptional && isOptional) push("compatible", "arg-optional", aat, `argument became optional`);
+    else if (d === "looser") push("compatible", "arg-type-widened", aat, `${ot} -> ${nt}`);
   }
   for (const a of n) {
     if (o.some((x) => x.name === a.name)) continue;

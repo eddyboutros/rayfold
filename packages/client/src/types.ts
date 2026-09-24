@@ -1,4 +1,7 @@
-/** Schema-aware type restoration for compact frames: re-adds `$type` where the static type is an entity. */
+/**
+ * Schema-aware type restoration for compact frames: re-adds `$type` where the static type is an entity, and keeps the
+ * `$type` the server sent on a union or interface member, the one place compact frames keep it.
+ */
 import { fieldsOf, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 
 export function restoreTypes(ir: RayfoldSchemaIR, t: TypeRef, v: unknown): unknown {
@@ -10,7 +13,7 @@ export function restoreTypes(ir: RayfoldSchemaIR, t: TypeRef, v: unknown): unkno
   const def = ir.types[explicit ?? t.name];
   if (!def) return v;
   const out: Record<string, unknown> = {};
-  if (def.kind === "entity") out["$type"] = def.name;
+  if (def.kind === "entity" || explicit) out["$type"] = def.name;
   const ref: TypeRef = explicit ? { kind: "named", name: explicit, nullable: false } : t;
   const fields = fieldsOf(ir, ref) ?? [];
   for (const [k, x] of Object.entries(o)) {

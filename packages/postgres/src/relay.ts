@@ -88,33 +88,52 @@ export class PgRelay implements Relay {
     const inline = JSON.stringify({ from: this.origin, ...body });
     if (new TextEncoder().encode(inline).length <= this.maxInline) return this.notifications.notify(this.channel, inline);
     const t = this.now();
-    const { rows } = await this.sql.query<{ id: string | number }>(`INSERT INTO ${this.table} (message, at) VALUES ($1::jsonb, $2) RETURNING id`, [JSON.stringify(body), t]);
+    const { rows } = await this.sql.query<{ id: string | number }>(`INSERT INTO ${this.table} (message, at) VALUES ($1::jsonb, $2) RETURNING id`, [stored(body), t]);
     await this.sql.query(`DELETE FROM ${this.table} WHERE at < $1`, [t - this.ttlMs]);
     await this.notifications.notify(this.channel, JSON.stringify({ from: this.origin, ref: Number(rows[0]?.id) }));
   }
 
   async subscribe(onMessage: (message: RelayMessage) => void, onLost?: (error: unknown) => void): Promise<() => Promise<void>> {
+    // a message read from the table arrives after a query, one sent inline at once: each waits for the one before it,
+    // so a publisher's messages arrive in the order it sent them
+    let previous = Promise.resolve();
     return this.notifications.listen(
       this.channel,
       (payload) => {
-        this.receive(payload, onMessage).catch(this.onError);
+        const reading = this.read(payload);
+        reading.catch(() => {}); // reported in turn below
+        previous = previous.then(async () => {
+          try {
+            const body = await reading;
+            if (body) deliver(body, onMessage);
+          } catch (e) {
+            this.onError(e);
+          }
+        });
       },
       onLost,
     );
   }
 
-  private async receive(payload: string, onMessage: (message: RelayMessage) => void): Promise<void> {
+  /** The message a payload carries, fetched from the table when it names a row; nothing for this relay's own. */
+  private async read(payload: string): Promise<Body | undefined> {
     const wire = JSON.parse(payload) as Wire;
-    if (wire.from === this.origin) return;
-    if ("ref" in wire) {
-      const { rows } = await this.sql.query<{ message: unknown }>(`SELECT message FROM ${this.table} WHERE id = $1`, [wire.ref]);
-      const row = rows[0];
-      if (!row) throw new Error(`rayfold relay: message ${wire.ref} is gone from ${this.table}`);
-      const stored = (typeof row.message === "string" ? JSON.parse(row.message) : row.message) as Body;
-      return deliver(stored, onMessage);
-    }
-    deliver(wire, onMessage);
+    if (wire.from === this.origin) return undefined;
+    if (!("ref" in wire)) return wire;
+    const { rows } = await this.sql.query<{ message: unknown }>(`SELECT message FROM ${this.table} WHERE id = $1`, [wire.ref]);
+    const row = rows[0];
+    if (!row) throw new Error(`rayfold relay: message ${wire.ref} is gone from ${this.table}`);
+    return (typeof row.message === "string" ? JSON.parse(row.message) : row.message) as Body;
   }
+}
+
+/**
+ * A message as the table keeps it. `jsonb` refuses U+0000 in a string, so a message holding one is kept as a JSON
+ * string of its text instead, which every reader of the table already unwraps.
+ */
+function stored(body: Body): string {
+  const text = JSON.stringify(body);
+  return text.includes("\\u0000") ? JSON.stringify(text) : text;
 }
 
 function deliver(body: Body, onMessage: (message: RelayMessage) => void): void {
@@ -139,6 +158,8 @@ interface NotificationClient {
 
 /** LISTEN/NOTIFY through a `pg` `Client`. A dedicated one: LISTEN ties the subscription to that connection. */
 export function pgNotifications(client: NotificationClient): Notifications {
+  // LISTEN and UNLISTEN are the connection's, not a listener's: the channel stays listened while anyone here wants it
+  const listening = new Map<string, number>();
   return {
     async listen(channel, onPayload, onLost) {
       const listener = (message: PgNotification) => {
@@ -155,12 +176,20 @@ export function pgNotifications(client: NotificationClient): Notifications {
       client.on("notification", listener);
       client.on("error", ended);
       client.on("end", ended);
-      await client.query(`LISTEN ${quoteIdentifier(channel)}`);
+      const others = listening.get(channel) ?? 0;
+      listening.set(channel, others + 1);
+      if (!others) await client.query(`LISTEN ${quoteIdentifier(channel)}`);
+      let stopped = false;
       return async () => {
+        if (stopped) return;
+        stopped = true;
         gone = true;
         client.off("notification", listener);
         client.off("error", ended);
         client.off("end", ended);
+        const left = (listening.get(channel) ?? 1) - 1;
+        if (left > 0) return void listening.set(channel, left);
+        listening.delete(channel);
         await client.query(`UNLISTEN ${quoteIdentifier(channel)}`);
       };
     },

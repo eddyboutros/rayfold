@@ -149,11 +149,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -205,17 +201,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -243,12 +229,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -283,11 +264,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -321,15 +298,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -423,17 +392,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -461,12 +420,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -501,11 +455,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -540,11 +490,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -578,15 +524,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -656,12 +594,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -696,11 +629,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -752,17 +681,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -797,11 +716,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -835,15 +750,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -919,15 +826,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -979,17 +878,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -1017,12 +906,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -1057,11 +941,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -1096,11 +976,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -1176,14 +1052,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -1199,12 +1068,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -1256,17 +1120,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -1294,12 +1148,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -1334,11 +1183,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -1373,11 +1218,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -1411,15 +1252,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -1517,11 +1350,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Order": {
      "type": "object",
@@ -1555,14 +1384,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -1578,12 +1400,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -1635,17 +1452,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -1673,12 +1480,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -1713,11 +1515,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -1752,11 +1550,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -1790,15 +1584,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -1905,14 +1691,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -1928,12 +1707,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -1985,17 +1759,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -2023,12 +1787,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -2063,11 +1822,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -2102,11 +1857,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -2140,15 +1891,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -2256,14 +1999,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -2279,12 +2015,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -2336,17 +2067,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -2374,12 +2095,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -2414,11 +2130,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -2453,11 +2165,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -2491,15 +2199,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -2568,14 +2268,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -2591,12 +2284,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -2648,17 +2336,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -2686,12 +2364,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -2726,11 +2399,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -2765,11 +2434,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -2803,15 +2468,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -2881,14 +2538,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -2904,12 +2554,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -2961,17 +2606,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -2999,12 +2634,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -3039,11 +2669,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -3078,11 +2704,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -3116,15 +2738,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -3193,14 +2807,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -3216,12 +2823,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -3273,17 +2875,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -3311,12 +2903,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -3351,11 +2938,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -3390,11 +2973,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -3428,15 +3007,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -3506,14 +3077,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "status",
-      "customerId",
-      "items",
-      "total"
-     ]
+     "additionalProperties": false
     },
     "OrderItem": {
      "type": "object",
@@ -3529,12 +3093,7 @@
        "pattern": "^-?\\d+(\\.\\d+)?$"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "book",
-      "qty",
-      "unitPrice"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -3586,17 +3145,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -3624,12 +3173,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -3664,11 +3208,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -3703,11 +3243,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -3741,15 +3277,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -3852,15 +3380,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -3912,17 +3432,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -3950,12 +3460,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -3990,11 +3495,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -4029,11 +3530,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -4137,15 +3634,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -4197,17 +3686,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -4235,12 +3714,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -4275,11 +3749,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -4314,11 +3784,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -4421,15 +3887,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -4481,17 +3939,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -4519,12 +3967,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -4559,11 +4002,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -4598,11 +4037,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -4706,15 +4141,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -4766,17 +4193,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -4804,12 +4221,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -4844,11 +4256,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -4883,11 +4291,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -5031,17 +4435,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -5069,12 +4463,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -5109,11 +4498,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -5148,11 +4533,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -5186,15 +4567,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -5339,17 +4712,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -5377,12 +4740,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -5417,11 +4775,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -5456,11 +4810,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -5494,15 +4844,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -5571,15 +4913,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -5631,17 +4965,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -5669,12 +4993,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -5709,11 +5028,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -5748,11 +5063,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -5822,15 +5133,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     },
     "Book": {
      "type": "object",
@@ -5882,17 +5185,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -5920,12 +5213,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -5960,11 +5248,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -5999,11 +5283,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -6094,17 +5374,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -6132,12 +5402,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -6172,11 +5437,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -6211,11 +5472,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -6249,15 +5506,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },
@@ -6349,17 +5598,7 @@
        "type": "string"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "title",
-      "format",
-      "price",
-      "stock",
-      "author",
-      "reviews",
-      "ownerId"
-     ]
+     "additionalProperties": false
     },
     "Author": {
      "type": "object",
@@ -6387,12 +5626,7 @@
        "$ref": "#/$defs/Page_Book"
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "name",
-      "books"
-     ]
+     "additionalProperties": false
     },
     "Page_Book": {
      "type": "object",
@@ -6427,11 +5661,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Page_Review": {
      "type": "object",
@@ -6466,11 +5696,7 @@
        ]
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "items",
-      "hasMore"
-     ]
+     "additionalProperties": false
     },
     "Review": {
      "type": "object",
@@ -6504,15 +5730,7 @@
        "description": "Bumped on every edit; send it back as ifVersion (or If-Match) to avoid lost updates."
       }
      },
-     "additionalProperties": false,
-     "required": [
-      "id",
-      "rating",
-      "body",
-      "book",
-      "reviewerId",
-      "version"
-     ]
+     "additionalProperties": false
     }
    }
   },

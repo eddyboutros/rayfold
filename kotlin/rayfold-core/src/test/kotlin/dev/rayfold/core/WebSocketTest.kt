@@ -1,6 +1,7 @@
 package dev.rayfold.core
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import org.junit.jupiter.api.AfterEach
@@ -8,9 +9,14 @@ import org.junit.jupiter.api.Test
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.lang.ref.WeakReference
 import java.net.Socket
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The WebSocket transport over real sockets: handshake, batches, cancel, id reuse, live queries, and the spec 12
@@ -182,6 +188,88 @@ class WebSocketTest {
         assertEquals(1, bs.server.changes.size, "the cancelled op let go of its subscription")
         command(bs, "restock", """{"bookId":"b2","qty":1}""", "$KEY-2", admin)
         assertEquals(obj("""{"id":6,"patch":[{"set":"Book:b2","value":{"stock":3}}]}"""), ws.next(), "guard: the other live op still updates")
+    }
+
+    @Test
+    fun `of two live ops sent in one batch, cancel stops the one it names and the other keeps updating`() {
+        val bs = Bookstore()
+        val ws = upgrade(listen(bs).port)
+        ws.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true},{"id":2,"op":"book","args":{"id":"b2"},"shape":"{ id stock }","live":true}]}""")
+        assertEquals(setOf(1, 2), setOf(ws.next().opId(), ws.next().opId()))
+        ws.text("""{"cancel":1}""")
+        assertEquals(obj("""{"id":1,"error":{"code":"canceled","message":"Canceled"},"fin":true}"""), ws.next())
+        assertEquals(1, bs.server.changes.size, "the cancelled op let go of its subscription, and only it")
+        command(bs, "restock", """{"bookId":"b2","qty":1}""", "$KEY-b", admin)
+        assertEquals(obj("""{"id":2,"patch":[{"set":"Book:b2","value":{"stock":3}}]}"""), ws.next(), "the op its batch still holds hears its change")
+        ws.text("""{"cancel":2}""")
+        assertEquals(obj("""{"id":2,"error":{"code":"canceled","message":"Canceled"},"fin":true}"""), ws.next(), "guard: the second cancel ends the second op")
+        assertEquals(0, bs.server.changes.size)
+    }
+
+    @Test
+    fun `a batch refused as a whole is answered for each of its op ids, and the socket runs the next batch (guard)`() {
+        val bs = Bookstore(BatchOptions(budget = 2))
+        val ws = upgrade(listen(bs).port)
+        ws.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }"},{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ id }"},{"id":3,"op":"book","args":{"id":"b1"},"shape":"{ id }"}]}""")
+        val over = """{"code":"resource_exhausted","message":"Batch cost 3 exceeds budget 2","data":{"cost":3,"budget":2}}"""
+        assertEquals((1..3).map { obj("""{"id":$it,"error":$over,"fin":true}""") }, List(3) { ws.next() })
+        ws.text("""{"ops":[{"id":4,"op":"book","args":{"id":"b1"}},{"id":5,"op":"nope"}]}""")
+        val unknown = """{"code":"invalid_argument","message":"ops[1].op: unknown operation \"nope\""}"""
+        assertEquals(listOf(4, 5).map { obj("""{"id":$it,"error":$unknown,"fin":true}""") }, List(2) { ws.next() })
+        ws.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b2"},"shape":"{ id }"}]}""")
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b2"},"meta":{"cost":1},"fin":true}"""), ws.next())
+    }
+
+    @Test
+    fun `a session closed from its own batch as the server goes away does not wait for itself`() {
+        val bs = Bookstore()
+        val frames = LinkedBlockingQueue<String>()
+        val closed = CountDownLatch(1)
+        var session: RayfoldWsSession? = null
+        // as the transports do: going away closes the session, here from the batch that saw its last op end
+        val s = RayfoldWsSession(bs.server, JsonNull, { frames.add(it) }, {}, onGoingAway = { session?.close(); closed.countDown() })
+        session = s
+        s.onText("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","live":true}]}""")
+        assertEquals(1, frames.poll(5, TimeUnit.SECONDS)?.let { obj(it).opId() })
+        runBlocking { bs.server.drain(5_000) }
+        assertEquals("unavailable", frames.poll(5, TimeUnit.SECONDS)?.let { obj(it).errorCode() })
+        // it waited for itself until its own 5 s bound, which stalled every connection a drain closed
+        assertTrue(closed.await(3, TimeUnit.SECONDS), "close() returned without waiting out its bound")
+    }
+
+    @Test
+    fun `guard - a session closed from outside still waits until its batches let go of their live subscriptions`() {
+        val bs = Bookstore()
+        val frames = LinkedBlockingQueue<String>()
+        val session = RayfoldWsSession(bs.server, JsonNull, { frames.add(it) }, {})
+        session.onText("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","live":true}]}""")
+        assertEquals(1, frames.poll(5, TimeUnit.SECONDS)?.let { obj(it).opId() })
+        assertEquals(1, bs.server.changes.size)
+        session.close()
+        assertEquals(0, bs.server.changes.size)
+    }
+
+    /** A closed session whose send callback holds the returned object, which nothing else holds. */
+    private fun closedSession(server: RayfoldServer): WeakReference<Any> {
+        val held = Any()
+        RayfoldWsSession(server, JsonNull, { held.hashCode() }, {}).close()
+        return WeakReference(held)
+    }
+
+    @Test
+    fun `a closed session is not kept alive by the server it served, and an open one still hears it go away (guard)`() {
+        val bs = Bookstore()
+        val ref = closedSession(bs.server)
+        // bounded, no sleep: a reference only the server's drain handler kept never clears, however often this asks
+        for (i in 0 until 50) {
+            if (ref.get() == null) break
+            System.gc()
+        }
+        assertNull(ref.get(), "the server's drain handler still held a closed session")
+        val went = CountDownLatch(1)
+        RayfoldWsSession(bs.server, JsonNull, {}, {}, onGoingAway = { went.countDown() })
+        runBlocking { bs.server.drain(1_000) }
+        assertTrue(went.await(5, TimeUnit.SECONDS))
     }
 
     @Test
@@ -380,6 +468,22 @@ class WebSocketTest {
         // bounded by the 5 s socket timeout: a server that never drops the client fails here with SocketTimeoutException
         assertEquals(-1, slow.input.read(), "the server closed the stalled connection")
         assertEquals(101, upgrade(l.port).status)
+    }
+
+    @Test
+    fun `a socket naming another schema is closed with 4409 and the server's hash, one naming its own is served (guard)`() {
+        val bs = Bookstore()
+        val port = listen(bs).port
+        val stale = upgrade(port, target = "/rayfold/ws?auth=x&schema=sha256%3Astale")
+        assertEquals(101, stale.status)
+        val (op, payload) = stale.read() ?: error("no close frame")
+        assertEquals(0x8 to 4409, op to (((payload[0].toInt() and 0xff) shl 8) or (payload[1].toInt() and 0xff)))
+        assertEquals(bs.server.hash, payload.copyOfRange(2, payload.size).toString(Charsets.UTF_8))
+        assertNull(stale.read(), "nothing follows the close")
+
+        val same = upgrade(port, target = "/rayfold/ws?schema=${java.net.URLEncoder.encode(bs.server.hash, Charsets.UTF_8)}")
+        same.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }"}]}""")
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), same.next()["data"])
     }
 
     @Test

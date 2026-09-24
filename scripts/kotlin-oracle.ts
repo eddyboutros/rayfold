@@ -5,7 +5,7 @@
  */
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { loadSchema, parseSchemaText, schemaHash, validateIR } from "../packages/schema/src/index.ts";
+import { loadSchema, parseSchemaText, schemaHash, validateIR, type RayfoldSchemaIR } from "../packages/schema/src/index.ts";
 import { openApiFor } from "../packages/server/src/openapi.ts";
 import { mcpTools, mcpResources } from "../packages/server/src/mcp.ts";
 import { createRayfoldServer } from "../packages/server/src/server.ts";
@@ -179,6 +179,16 @@ command makeDoc(input: DocInput): Doc @http(method: POST, path: "/docs", body: i
 command editDoc(id: ID, input: DocInput): Doc @http(method: "patch", path: "/docs/{id}", body: input)
 `,
   "crlf-and-commas": 'entity A {\r\n  """\r\n  Windows line endings.\r\n  """\r\n  id: ID,\r\n  n: Int,\r\n}\r\nquery a: A\r\n',
+  "block-string escapes and quoted keys": String.raw`
+"""Holds \""" and more \"""" quotes"""
+entity A {
+  """Ends in a quote "x" """
+  id: ID
+  """one` + "\r\r\n" + String.raw`two \\""" three"""
+  n: Int
+}
+query a(o: JSON = { "content-type": "text/plain", "a b": [1], plain: true }): A
+`,
 
   // ---- syntax errors
   "error: unterminated block comment": "entity A { id: ID }\n/* never closed",
@@ -220,6 +230,26 @@ command editDoc(id: ID, input: DocInput): Doc @http(method: "patch", path: "/doc
   "error: duration out of range": `entity A @cache(maxAge: ${"9".repeat(310)}d) { id: ID }`,
 
   // ---- validation findings
+  "findings: generics, stream inputs, repeated members, error payloads": `
+entity A { id: ID x: T }
+input I { p: Page<Int> }
+input Msg { text: String }
+entity B { id: ID }
+union U = A | B | A
+object Detail { x: Int }
+error E { d: Detail }
+query a(i: I, p: Page<String>): A
+query u: U
+stream s1: Int @input(Nope)
+stream s2: B @input(B)
+stream s3: B @input(Msg)
+command c: Int throws E
+`,
+  "findings: reserved argument and enum value names": `
+enum E { __X Y }
+entity A { id: ID n(__proto__: Int): Int }
+query q(__proto__: String, e: E): A
+`,
   "findings: types": `
 entity NoId { name: String }
 entity NullableId { id: ID? }
@@ -336,6 +366,40 @@ write(
     return c;
   }),
 );
+// IR the text parser cannot produce, as importers, the builder and lock files can: names that are not names, members
+// named twice, an @input that is not a type. Both validators must find the same things in it.
+{
+  const irCase = (name: string, text: string, mutate: (ir: RayfoldSchemaIR) => void) => {
+    const ir = parseSchemaText(text);
+    mutate(ir);
+    return { name, ir, diagnostics: validateIR(ir) };
+  };
+  type Fielded = { fields: Array<{ name: string; args: Array<{ name: string }> }> };
+  write("schema-ir-cases.json", [
+    irCase("names that are not names", `enum E { X } entity User { id: ID firstName: String } view User.card = { id } query user(sortBy: String, e: E): User`, (ir) => {
+      (ir.types["User"] as unknown as Fielded).fields[1]!.name = "first-name";
+      ir.ops["user"]!.args[0]!.name = "sort by";
+      (ir.types["E"] as { values: Array<{ name: string }> }).values[0]!.name = "1st";
+      ir.views["User.card"]!.name = "a.b";
+      ir.types["Bad-Type"] = { kind: "scalar", name: "Bad-Type", annotations: [] };
+      ir.ops["op-x"] = { kind: "query", name: "op-x", args: [], returns: { kind: "named", name: "Int", nullable: false }, throws: [], emits: [], annotations: [] };
+    }),
+    irCase("members named twice", `enum E { X Y } entity A { id: ID n(a: Int, b: Int): Int } query q(a: Int, b: Int): A`, (ir) => {
+      (ir.types["E"] as { values: Array<{ name: string }> }).values[1]!.name = "X";
+      (ir.types["A"] as unknown as Fielded).fields[1]!.args[1]!.name = "a";
+      ir.ops["q"]!.args[1]!.name = "a";
+      (ir.types["A"] as unknown as Fielded).fields[1]!.name = "id";
+    }),
+    irCase("an @input that is not a type", `input Msg { text: String } stream s: Int @input(Msg)`, (ir) => {
+      ir.ops["s"]!.annotations[0]!.args["value"] = "Msg";
+    }),
+    irCase("a generic object of its own", `entity A { id: ID } query a: A`, (ir) => {
+      ir.types["Box"] = { kind: "object", name: "Box", annotations: [], typeParams: ["V"], fields: [{ name: "v", type: { kind: "named", name: "V", nullable: false }, args: [], annotations: [], ordinal: 1 }, { name: "w", type: { kind: "named", name: "T", nullable: false }, args: [], annotations: [], ordinal: 2 }] };
+      (ir.types["A"] as unknown as { fields: unknown[] }).fields.push({ name: "box", type: { kind: "named", name: "Box", nullable: false, args: [{ kind: "named", name: "Int", nullable: false }] }, args: [], annotations: [], ordinal: 2 });
+    }),
+  ]);
+}
+
 // ------------------------------------------------------------------ RB (RbTest.kt)
 // Values the Kotlin codec must encode to exactly these bytes, and byte strings it must decode to exactly these values
 // or refuse with exactly these messages. The corpus is seeded, so the file only changes when the codec does.

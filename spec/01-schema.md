@@ -10,10 +10,14 @@ codegen, the MCP bridge) consumes the IR, never the source text.
 * Comments: `// line` and `/* block */`.
 * Documentation: a `"""triple-quoted"""` string immediately before a definition, field, argument or enum
   value is its description. Descriptions are part of the IR (they are what agents and playgrounds see).
+  As in GraphQL, the text is dedented (common indentation removed, leading and trailing blank lines dropped, the
+  whole trimmed; `\r\n` counts as a line break), and `\"""` is the one escape: it stands for `"""`, which is how a
+  description holds its own fence.
 * Names: `[A-Za-z_][A-Za-z0-9_]*`. Type names SHOULD be `PascalCase`, fields and operations `camelCase`.
   Names starting with `__` or `$` are reserved.
 * Literals: integers, floats, `"strings"` (JSON escapes), `true`/`false`/`null`, durations (`60s`, `5m`,
-  `2h`, `7d`, `250ms`), lists `[...]`, objects `{ key: value }`.
+  `2h`, `7d`, `250ms`), lists `[...]`, objects `{ key: value }`. An object key that is not a name is quoted:
+  `{ "content-type": "text/plain" }`.
 
 ## 2. Definitions
 
@@ -143,7 +147,7 @@ Annotations attach machine-readable policy to a definition or field. Core annota
 | `@load(batch \| single)` | field | Loader shape. Default is `batch`. `single` marks a field the executor may resolve one parent at a time. |
 | `@page(cursor \| offset)` | field or query returning `Page<T>` | Pagination style. Default `cursor`. |
 | `@cost(base: Int, perItem: Int?)` | field, query, command, stream | Static cost hint for budgets. Default `base`: 0 on scalar and enum fields, 1 elsewhere; default `perItem`: 1 on pages, 0 elsewhere ([06 §5](06-auth.md)). |
-| `@idempotent(false)` | command | The command takes no idempotency key, and one sent with it is refused ([03 §4](03-batch-and-pipelining.md)). |
+| `@idempotent(false)` | command | The command takes no idempotency key: one sent with it is ignored, so every call runs and none is replayed ([03 §4](03-batch-and-pipelining.md)). |
 | `@merge(serverWins \| keepLocal \| lww \| crdtText \| custom)` | field | How an optimistic prediction for the field settles against the server's answer ([08 §5](08-live-and-sync.md)). |
 | `@simulate` | command | The resolver honours `ctx.simulate`, so the command accepts dry runs. Without it, `simulate: true` is `failed_precondition` and the MCP bridge offers no `.simulate` tool ([12 §6](12-security.md)). |
 | `@deprecated(reason: String?, sunset: Date?, replacement: String?)` | anything | See [11](11-evolution.md). Tooling refuses removal before `sunset`. |
@@ -201,7 +205,8 @@ items is then the resolver's own obligation, which the runtime does not enforce 
 
 ## 7. Reserved names
 
-`$type` and `__*` as field names; `subscribe`, `manifest`, `simulate` and `sync` as operation names. `viewer`, `args`
+Any name starting with `__` or `$` — of a type, field, argument, operation or enum value — as §1 says, which includes
+`$type`; `subscribe`, `manifest`, `simulate` and `sync` as operation names. `viewer`, `args`
 and `this` are the roots of policy expressions ([06](06-auth.md)) rather than reserved names: a field or operation may
 carry any of them.
 

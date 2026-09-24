@@ -104,6 +104,10 @@ line, flushed as produced. When the request carries `Accept: application/json` a
 op that finishes in one frame, the server MAY respond with that single frame as a JSON document; the status
 is then derived from the error code ([05 §3](05-errors.md)).
 
+A streaming response is paced by the client reading it. A server MUST bound what it holds for a client that stops
+reading, and MAY end the batch at that bound, which unsubscribes its live queries, cutting the response short rather
+than completing it. A client that cancels the body or closes the connection ends the batch the same way.
+
 **Keep-alive.** While a streaming response is idle, such as a live query waiting for its next change, a server
 SHOULD write a keep-alive at least every 30 seconds: an empty line in NDJSON, a zero-length frame in RB
 ([09 §1](09-binary-format.md)). Clients MUST ignore both. Keep-alives stop proxies from closing an idle response,
@@ -111,8 +115,10 @@ and they are how a server notices a client that went away, since many HTTP serve
 when they write to it.
 
 Failures the server refuses before it parses a batch — a malformed body, a media type it does not read, a bad Origin
-or Host, a body over the limit — use the derived status and an RFC 9457 `application/problem+json` body whose `code`
-member is the Rayfold error code. A batch that parses and then fails as a whole, such as one over budget, is an
+or Host, a body over the limit — are answered with an RFC 9457 `application/problem+json` body whose `code` member is
+the Rayfold error code, with the status derived from that code except in two cases HTTP names itself: a media type it
+does not read is `415` (code `invalid_argument`, problem type `unsupported_media_type`, with `Accept-Post` or
+`Accept-Query`), and a body over the limit is `413` (code `resource_exhausted`, problem type `payload_too_large`). A batch that parses and then fails as a whole, such as one over budget, is an
 `error` frame on the frame channel rather than a problem document ([05 §5](05-errors.md)).
 
 Headers:
@@ -177,20 +183,39 @@ allowed to finish, long-lived operations (streams and live queries) end with a r
 request is refused `503` with `Retry-After`. A WebSocket connection closes with code `1001`.
 
 Preflight is answered by the endpoint: an `OPTIONS` request gets `204` with the `Access-Control-Allow-*` headers the
-configured origins imply ([12 §2.1](12-security.md)).
+configured origins imply ([12 §2.1](12-security.md)). An origin listed as allowed, or any origin when `*` is listed,
+gets `Access-Control-Allow-Origin` naming it, with `Vary: Origin`, on the preflight and on the responses that follow
+it; any other origin gets the `204` without them, so its browser stops there.
 
 ## 5. WebSocket transport
 
 Path `/rayfold/ws`, subprotocol `rayfold.0.1`. Text messages are JSON; binary messages are RB.
+
+RB keys are numbered from the schema ([09 §3](09-binary-format.md)), and a socket carries no `Rayfold-Schema` header
+per answer. A client that sends RB therefore names the schema hash its dictionary was built from in the `schema` query
+parameter of the socket URL. A server whose hash differs completes the upgrade and at once closes the socket with code
+`4409` and its own hash as the reason: a browser cannot read a refused handshake, but it can read a close. The client
+fails the batches it sent on that socket with `unavailable` and uses JSON on the sockets it opens after it. Without the
+parameter the server makes no check.
 
 Client-to-server messages:
 
 | Message | Meaning |
 |---|---|
 | batch envelope | as in HTTP; ids MUST be unique among the ops currently open on the socket. An id is free again as soon as the client has seen that op's `fin`. |
-| `{ "cancel": id }` | stop an op. The op ends as any cancelled op does, with `{ id, error: { "code": "canceled" }, fin: true }` ([§7](#7-cancellation-and-deadlines)); a server that has already finished the op sends nothing more. |
+| `{ "cancel": id }` | stop an op. The op ends as any cancelled op does, with `{ id, error: { "code": "canceled" }, fin: true }` ([§7](#7-cancellation-and-deadlines)); a server that has already finished the op sends nothing more. The other ops of its batch keep running. |
 
 Server-to-client messages are frames.
+
+A batch refused as a whole (a bad envelope, an unknown operation, over budget) is answered on this transport with one
+`{ id, error, fin: true }` per op id the batch named, rather than the one frame without an id that HTTP sends: a
+socket carries several batches, and a client routes frames by op id, so a frame without one belongs to none of them.
+A message whose ops carry no usable id gets the frame without one.
+
+A socket whose viewer holds a capability ([06 §6](06-auth.md)) is served until that capability's `exp`. Then its open
+ops end with `unauthenticated`, a batch sent after it is refused for each of its ops the same way, and the socket
+closes with code `1008`. Like a streaming HTTP response, what a socket holds for a client that stops reading is
+bounded, and a server MAY stop its ops and drop the connection at that bound.
 
 Three further client messages are reserved and not part of 0.1: `{ "id": id, "item": ... }` and
 `{ "id": id, "fin": true }` belong to the unshipped `@input` extension for bidirectional streams, and

@@ -34,13 +34,13 @@ describe("schema diff", () => {
     expect(codes(base, base.replace("filter: Filter?", "filter: Filter"))).toEqual(["breaking:arg-required@books().filter"]);
   });
 
-  it("argument additions depend on defaults; type changes and ordinals are breaking", () => {
+  it("argument additions depend on defaults; type changes are breaking, and a field that moved is a warning", () => {
     expect(codes(base, base.replace("title: String):", "title: String, force: Boolean):"))).toEqual(["breaking:arg-added-required@rename().force"]);
     expect(codes(base, base.replace("title: String):", "title: String, force: Boolean = false):"))).toEqual(["compatible:arg-added@rename().force"]);
     expect(codes(base, base.replace("pages: Int?", "pages: Long?"))).toEqual(["breaking:field-type-changed@Book.pages"]);
     expect(codes(base, base.replace("id: ID title: String pages: Int?", "id: ID pages: Int? title: String"))).toEqual([
-      "breaking:ordinal-changed@Book.title",
-      "breaking:ordinal-changed@Book.pages",
+      "warning:ordinal-shifted@Book.pages",
+      "warning:ordinal-shifted@Book.title",
     ]);
   });
 
@@ -76,7 +76,8 @@ const rows: [string, string, string, string[]][] = [
   ["union-member-removed", "= Book | Card", "= Book", ["breaking:union-member-removed@Result"]],
   ["union-member-added", "= Book | Card", "= Book | Card | Node", ["compatible:union-member-added@Result"]],
   ["interface-dropped", "entity Book implements Node {", "entity Book {", ["breaking:interface-dropped@Book"]],
-  ["enum ordinal-changed", "{ WARM COOL }", "{ COOL WARM }", ["breaking:ordinal-changed@Tone.WARM", "breaking:ordinal-changed@Tone.COOL"]],
+  ["enum ordinal-shifted", "{ WARM COOL }", "{ COOL WARM }", ["warning:ordinal-shifted@Tone.COOL", "warning:ordinal-shifted@Tone.WARM"]],
+  ["enum ordinal-changed", "{ WARM COOL }", "{ WARM @ordinal(3) COOL }", ["breaking:ordinal-changed@Tone.WARM"]],
   ["op-removed", "query cover(id: ID): Card?", "", ["breaking:op-removed@cover()"]],
   ["op-kind-changed", "query cover(", "command cover(", ["breaking:op-kind-changed@cover()"]],
   ["result-nullable", "String?): Book", "String?): Book?", ["breaking:result-nullable@book()"]],
@@ -107,6 +108,45 @@ describe("schema diff: every change code", () => {
     const to = wide.replace(find, replace);
     expect(to).not.toBe(wide);
     expect(codes(wide, to)).toEqual(expected);
+  });
+
+  it("against a lockfile a field keeps its ordinal by name, so one inserted mid-type is compatible", () => {
+    const locked = (from: string, to: string) =>
+      diffSchemas(parseSchemaText(from), parseSchemaText(to), { now: new Date("2026-09-09"), lockedOrdinals: true }).map((c) => `${c.level}:${c.code}@${c.at}`);
+    expect(locked(wide, wide.replace("entity Book implements Node { id: ID title: String }", "entity Book implements Node { id: ID subtitle: String? title: String }"))).toEqual(["compatible:field-added@Book.subtitle"]);
+    expect(locked(wide, wide.replace("{ WARM COOL }", "{ HOT WARM COOL }"))).toEqual(["compatible:enum-value-added@Tone.HOT"]);
+    // guard: a removal and a written renumbering are still caught, and so is a new field taking a locked ordinal
+    expect(locked(wide, wide.replace("id: ID title: String }", "id: ID }"))).toEqual(["breaking:field-removed@Book.title"]);
+    expect(locked(wide, wide.replace("id: ID title: String }", "id: ID title: String @ordinal(5) }"))).toEqual(["breaking:ordinal-changed@Book.title"]);
+    expect(locked(wide, wide.replace("id: ID title: String }", "id: ID title: String @ordinal(2) }"))).toEqual([]);
+    expect(locked(wide, wide.replace("id: ID title: String }", "id: ID title: String isbn: String @ordinal(2) }"))).toEqual(["compatible:field-added@Book.isbn", "breaking:ordinal-reused@Book.isbn"]);
+  });
+
+  it("between two schema files a moved field is a warning, and a written ordinal that changed breaks", () => {
+    expect(codes(wide, wide.replace("id: ID title: String }", "subtitle: String? id: ID title: String }"))).toEqual([
+      "compatible:field-added@Book.subtitle",
+      "warning:ordinal-shifted@Book.id",
+      "warning:ordinal-shifted@Book.title",
+    ]);
+    expect(codes(wide.replace("id: ID title: String }", "id: ID title: String @ordinal(9) }"), wide)).toEqual(["breaking:ordinal-changed@Book.title"]);
+  });
+
+  it("a nullability change inside a list is judged like one outside it (guard - the restrictive direction still breaks)", () => {
+    const lists = `entity Book { id: ID } object Shelf { books: [Book?] tags: [String] } input F { ids: [ID] } query shelf(ids: [Int], f: F?): Shelf query all: [Book?]`;
+    const c = (find: string, replace: string) => codes(lists, lists.replace(find, replace));
+    expect(c("query shelf(ids: [Int]", "query shelf(ids: [Int]?")).toEqual(["compatible:arg-optional@shelf().ids"]);
+    expect(c("query shelf(ids: [Int]", "query shelf(ids: [Int?]")).toEqual(["compatible:arg-type-widened@shelf().ids"]);
+    expect(c("books: [Book?]", "books: [Book]")).toEqual(["compatible:field-non-null@Shelf.books"]);
+    expect(c("query all: [Book?]", "query all: [Book]")).toEqual(["compatible:result-non-null@all()"]);
+    expect(c("ids: [ID] }", "ids: [ID?] }")).toEqual(["compatible:input-field-optional@F.ids"]);
+    expect(c("query shelf(ids: [Int]", "query shelf(ids: [Int]? ")).toEqual(["compatible:arg-optional@shelf().ids"]);
+    expect(c("tags: [String]", "tags: [String?]")).toEqual(["breaking:field-nullable@Shelf.tags"]);
+    expect(c("query all: [Book?]", "query all: [Book?]?")).toEqual(["breaking:result-nullable@all()"]);
+    expect(c("ids: [ID] }", "ids: [ID]? }")).toEqual(["compatible:input-field-optional@F.ids"]);
+    expect(c("query shelf(ids: [Int]", "query shelf(ids: [Long]")).toEqual(["breaking:arg-type-changed@shelf().ids"]);
+    expect(codes(lists.replace("[Int]", "[Int?]"), lists)).toEqual(["breaking:arg-type-changed@shelf().ids"]);
+    expect(codes(lists.replace("tags: [String]", "tags: [String?]?"), lists.replace("tags: [String]", "tags: [String]?"))).toEqual(["compatible:field-non-null@Shelf.tags"]);
+    expect(codes(lists.replace("tags: [String]", "tags: [String?]"), lists.replace("tags: [String]", "tags: [String]?"))).toEqual(["breaking:field-type-changed@Shelf.tags"]);
   });
 
   it("a type removed after its sunset is compatible", () => {

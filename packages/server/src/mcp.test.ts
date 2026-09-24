@@ -269,6 +269,35 @@ describe("MCP over Streamable HTTP", () => {
     expect(replies.map((r) => r.id)).toEqual([1, 2]);
   });
 
+  it("a notification other than initialized also gets 202 with no body; the same method as a request is answered (guard)", async () => {
+    const note = await rpc({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 1 } });
+    expect(note.status).toBe(202);
+    expect(await note.text()).toBe("");
+    const asked = await rpc({ jsonrpc: "2.0", id: 5, method: "notifications/cancelled" });
+    expect(asked.status).toBe(200);
+    expect(await asked.json()).toEqual({ jsonrpc: "2.0", id: 5, error: { code: -32601, message: "Method not found: notifications/cancelled" } });
+  });
+
+  it("a body of null, or null inside a batch, is answered -32600 and the handler resolves; the batch's real requests are answered (guard)", async () => {
+    const alone = await rpc(null);
+    expect(alone.status).toBe(200);
+    expect(await alone.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
+    const batch = await rpc([null, { jsonrpc: "2.0", id: 1, method: "ping" }]);
+    expect(await batch.json()).toEqual([
+      { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } },
+      { jsonrpc: "2.0", id: 1, result: {} },
+    ]);
+  });
+
+  it("the HeaderMismatch reply carries MCP-Protocol-Version as every JSON-RPC response does; a parse error, made before the body is understood, does not (guard)", async () => {
+    const bad = await rpc({ jsonrpc: "2.0", id: 2, method: "ping" }, { "mcp-method": "tools/list" });
+    expect(bad.status).toBe(400);
+    expect(bad.headers.get("mcp-protocol-version")).toBe("2026-07-28");
+    const broken = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{" });
+    expect(broken.status).toBe(400);
+    expect(broken.headers.get("mcp-protocol-version")).toBeNull();
+  });
+
   it("the viewer hook decides policies for tool calls", async () => {
     const anon = await rpc({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "placeOrder", arguments: order("b3", 1) } });
     expect(await anon.json()).toMatchObject({ result: { isError: true, structuredContent: { error: { code: "unauthenticated" } } } });
@@ -310,5 +339,119 @@ describe("MCP over Streamable HTTP", () => {
     const broken = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{" });
     expect(broken.status).toBe(400);
     expect(await broken.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+  });
+});
+
+/**
+ * JSON Schema 2020-12 validation for the keywords the bridge emits (type, $ref, anyOf, properties, required,
+ * additionalProperties, items, enum, const), which is what a client validating structuredContent applies.
+ * Returns the paths that fail, empty when the value is valid.
+ */
+function violations(root: Record<string, unknown>, value: unknown): string[] {
+  const defs = (root["$defs"] ?? {}) as Record<string, Record<string, unknown>>;
+  const out: string[] = [];
+  const typeOk = (t: string, v: unknown): boolean =>
+    t === "null" ? v === null
+    : t === "integer" ? Number.isInteger(v)
+    : t === "number" ? typeof v === "number"
+    : t === "array" ? Array.isArray(v)
+    : t === "object" ? v !== null && typeof v === "object" && !Array.isArray(v)
+    : typeof v === t;
+  const check = (s: Record<string, unknown>, v: unknown, path: string): boolean => {
+    const before = out.length;
+    if (typeof s["$ref"] === "string") return check(defs[(s["$ref"] as string).replace("#/$defs/", "")]!, v, path);
+    if (Array.isArray(s["anyOf"])) {
+      const ok = (s["anyOf"] as Array<Record<string, unknown>>).some((alt) => {
+        const mark = out.length;
+        const fine = check(alt, v, path);
+        out.length = mark;
+        return fine;
+      });
+      if (!ok) out.push(`${path}: matches no anyOf branch`);
+      return ok;
+    }
+    if (s["type"] !== undefined && !(Array.isArray(s["type"]) ? (s["type"] as string[]) : [s["type"] as string]).some((t) => typeOk(t, v))) out.push(`${path}: not ${JSON.stringify(s["type"])}`);
+    if ("const" in s && v !== s["const"]) out.push(`${path}: not ${JSON.stringify(s["const"])}`);
+    if (Array.isArray(s["enum"]) && !(s["enum"] as unknown[]).includes(v)) out.push(`${path}: not in enum`);
+    if (Array.isArray(v) && s["items"]) v.forEach((x, i) => check(s["items"] as Record<string, unknown>, x, `${path}[${i}]`));
+    if (v && typeof v === "object" && !Array.isArray(v) && s["properties"]) {
+      const props = s["properties"] as Record<string, Record<string, unknown>>;
+      for (const r of (s["required"] ?? []) as string[]) if (!(r in v)) out.push(`${path}.${r}: required`);
+      for (const [k, x] of Object.entries(v)) {
+        if (props[k]) check(props[k]!, x, `${path}.${k}`);
+        else if (s["additionalProperties"] === false) out.push(`${path}.${k}: not allowed`);
+      }
+    }
+    return out.length === before;
+  };
+  check(root, value, "$");
+  return out;
+}
+
+describe("a tool's outputSchema describes what tools/call returns", () => {
+  it("the default-view result of each query tool validates against its outputSchema", async () => {
+    const tools = mcpTools(bs.server);
+    const calls: Array<[string, Record<string, unknown>]> = [["book", { id: "b1" }], ["books", {}], ["author", { id: "a1" }]];
+    for (const [name, args] of calls) {
+      const reply = (await call(name, args, u1)) as Reply;
+      const structured = reply.result["structuredContent"];
+      expect(structured, name).toMatchObject({ result: expect.anything() });
+      expect([name, violations(tools.find((t) => t.name === name)!.outputSchema!, structured)]).toEqual([name, []]);
+    }
+  });
+
+  it("guard: it still says what a result holds: an unknown member, a wrong $type or a wrong type is refused", async () => {
+    // the tool's own Book definition, taken out of the nullable result so a failure names the member at fault
+    const { $defs } = mcpTools(bs.server).find((t) => t.name === "book")!.outputSchema! as { $defs: Record<string, unknown> };
+    const schema = { $defs, type: "object", properties: { result: { $ref: "#/$defs/Book" } }, required: ["result"] };
+    const reply = (await call("book", { id: "b1" }, u1)) as Reply;
+    const book = (reply.result["structuredContent"] as { result: Record<string, unknown> }).result;
+    expect(violations(schema, { result: { ...book, extra: 1 } })).toEqual(["$.result.extra: not allowed"]);
+    expect(violations(schema, { result: { ...book, $type: "Author" } })).toEqual(['$.result.$type: not "Book"']);
+    expect(violations(schema, { result: { ...book, title: 7 } })).toEqual(['$.result.title: not "string"']);
+    expect(violations(schema, {})).toEqual(["$.result: required"]);
+    // and the input schema, which a caller must satisfy in full, still requires what an op needs
+    expect(mcpTools(bs.server).find((t) => t.name === "book")!.inputSchema).toMatchObject({ required: ["id"] });
+  });
+});
+
+describe("JSON-RPC bodies that are not requests", () => {
+  it("a request that is null is answered -32600, not thrown", async () => {
+    expect(await handleMcp(bs.server, null as never, null)).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
+    expect(await handleMcp(bs.server, 7 as never, null)).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
+  });
+
+  it("a notification of any method gets no reply; the same method with an id is answered (guard)", async () => {
+    expect(await handleMcp(bs.server, { jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 3 } } as never, null)).toBeNull();
+    expect(await handleMcp(bs.server, { jsonrpc: "2.0", id: 4, method: "notifications/cancelled" }, null)).toEqual({ jsonrpc: "2.0", id: 4, error: { code: -32601, message: "Method not found: notifications/cancelled" } });
+  });
+});
+
+describe("resource arguments from the URI", () => {
+  const notes = () =>
+    createRayfoldServer({
+      schema: `entity Note { id: ID n: Int } query notes(limit: Int = 3, desc: Boolean = false): [Note]`,
+      resolvers: {
+        Query: {
+          notes: ({ limit, desc }: { limit: number; desc: boolean }) => {
+            const all = [1, 2, 3, 4].map((n) => ({ id: `n${n}`, n }));
+            return (desc ? all.reverse() : all).slice(0, limit);
+          },
+        },
+      } as never,
+    });
+  const read = (server: RayfoldServer, uri: string) =>
+    handleMcp(server, { jsonrpc: "2.0", id: 1, method: "resources/read", params: { uri } }, null) as Promise<{ result?: { contents: Array<{ text: string }> }; error?: { code: number; message: string } }>;
+
+  it("are coerced by the declared type, as an HTTP binding's query string is", async () => {
+    const res = await read(notes(), "rayfold://query/notes?limit=2&desc=true");
+    expect(res.error).toBeUndefined();
+    expect(JSON.parse(res.result!.contents[0]!.text)).toEqual([{ $type: "Note", id: "n4", n: 4 }, { $type: "Note", id: "n3", n: 3 }]);
+  });
+
+  it("guard: text that is no Int is still refused, rather than coerced to something", async () => {
+    const res = await read(notes(), "rayfold://query/notes?limit=two");
+    expect(res.result).toBeUndefined();
+    expect(res.error).toMatchObject({ code: -32000, message: expect.stringContaining("invalid_argument") });
   });
 });

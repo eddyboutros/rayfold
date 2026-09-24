@@ -107,8 +107,7 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     net.mode = "down";
     const first = c.command("restock", { bookId: "b1", qty: 1 }, { shape: "{ id stock }", optimistic: [{ set: "Book:b1", value: { stock: 6 } }] });
     await events.atLeast(1, "the first command queued");
-    net.mode = "up";
-    // the network is back, but a command made now still waits behind the first
+    // a second command while the server is still out waits behind the first
     const second = c.command("restock", { bookId: "b1", qty: 2 }, { shape: "{ id stock }" });
     await events.atLeast(2, "the second command queued");
     expect(c.queued.map((q) => q.key)).toEqual(["sync-key-00000001", "sync-key-00000002"]);
@@ -116,6 +115,7 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     expect(net.sent).toEqual([]);
     expect(bs.store.books.get("b1")!.stock).toBe(5);
 
+    net.mode = "up";
     expect(await c.drain()).toBe(0);
     await expect(first).resolves.toMatchObject({ stock: 6 });
     await expect(second).resolves.toMatchObject({ stock: 8 });
@@ -226,6 +226,47 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     expect(await manual.drain()).toBe(0);
     expect(await held).toEqual({ $type: "Book", id: "b2", stock: 3 });
     expect(net.sent.map((e) => e.ops[0]!.args?.["bookId"])).toEqual(["b1", "b2"]);
+  });
+
+  it("a command made once the server is back sends the waiting ones first and then itself, with no online event or drain()", async () => {
+    const { net, transport } = network(createLocalTransport(bs.server, () => admin));
+    const events = new Signal<QueueEvent>();
+    const c = clientOn(transport, { offline: {} });
+    c.onQueue((e) => events.push(e));
+    net.mode = "down"; // the server went away; the browser's network never did, so no `online` will come
+    const first = c.command("restock", { bookId: "b1", qty: 1 }, { shape: "{ id stock }" });
+    await events.atLeast(1, "the first command queued");
+    net.mode = "up";
+    const second = c.command("restock", { bookId: "b1", qty: 2 }, { shape: "{ id stock }" });
+    expect(await bounded(second, "the new command answered")).toMatchObject({ stock: 8 });
+    expect(await first).toMatchObject({ stock: 6 });
+    expect(net.sent.map((e) => e.ops[0]!.key)).toEqual(["sync-key-00000001", "sync-key-00000002"]);
+    expect(events.items.map((e) => e.type)).toEqual(["queued", "queued", "sent", "sent"]);
+    expect(c.queued).toEqual([]);
+  });
+
+  it("a client that starts with commands a reload brought back sends them at once; guard: drainOnReconnect false waits for drain()", async () => {
+    const { net, transport } = network(createLocalTransport(bs.server, () => admin));
+    const restoredQueue = () => {
+      const q = memoryQueue();
+      void q.save([{ key: "sync-key-restored", op: "restock", args: { bookId: "b1", qty: 1 }, options: { shape: "{ id stock }" }, queuedAt: 0, seq: 1, optimistic: [{ set: "Book:b1", value: { stock: 6 } }] }]);
+      return q;
+    };
+    const manual = clientOn(transport, { offline: { storage: restoredQueue(), drainOnReconnect: false } });
+    const events = new Signal<QueueEvent>();
+    const c = clientOn(transport, { offline: { storage: restoredQueue() } });
+    c.onQueue((e) => events.push(e));
+    await events.atLeast(1, "the restored command sent at startup");
+    expect(events.items.map((e) => [e.type, e.command.key, e.pending])).toEqual([["sent", "sync-key-restored", 0]]);
+    expect(c.queued).toEqual([]);
+    expect(c.cache.predictions).toEqual([]);
+    expect(bs.store.books.get("b1")!.stock).toBe(6);
+
+    expect(manual.queued.map((q) => q.key)).toEqual(["sync-key-restored"]);
+    expect(net.sent).toHaveLength(1);
+    expect(await manual.drain()).toBe(0);
+    expect(net.sent.map((e) => e.ops[0]!.key)).toEqual(["sync-key-restored", "sync-key-restored"]);
+    expect(bs.store.calls["Command.restock"]).toBe(1); // the same key: the manual client's send was a replay
   });
 
   it("guard: without `offline`, a failed network rejects as before, rolls the prediction back, and queues nothing", async () => {

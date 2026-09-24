@@ -162,14 +162,14 @@ class SyncTest {
         net.mode = "down"
         val first = async { c.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }", optimistic = predict("b1", 4)) }
         assertEquals(QueueEvent.Type.QUEUED, events.receive().type)
-        net.mode = "up"
-        // the network is back, but a command made now still waits behind the first
+        // a second command while the server is still out waits behind the first
         val second = async { c.command("restock", args("id" to "b1", "qty" to 2), "{ id stock }") }
         assertEquals(QueueEvent.Type.QUEUED, events.receive().type)
         assertEquals(listOf("sync-key-00000001", "sync-key-00000002"), c.queued.map { it.key })
         assertEquals(4, c.stock())
         assertEquals(emptyList(), net.sent)
 
+        net.mode = "up"
         assertEquals(0, c.drain())
         assertEquals(4, first.await().stock())
         assertEquals(6, second.await().stock())
@@ -246,6 +246,42 @@ class SyncTest {
         assertEquals(4, stockOf("b1"))
         assertTrue(!file.exists(), "an empty queue leaves no file")
         coroutineContext.cancelChildren()
+    }
+
+    @Test
+    fun `a command made once the server is back sends the waiting ones first and then itself, with no drain`() = bounded {
+        val net = Network()
+        val c = client(net, OfflineOptions())
+        val events = events(c)
+        net.mode = "down"
+        val first = async { c.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }") }
+        assertEquals(QueueEvent.Type.QUEUED, events.receive().type)
+        net.mode = "up"
+        assertEquals(6, c.command("restock", args("id" to "b1", "qty" to 2), "{ id stock }").stock())
+        assertEquals(4, first.await().stock())
+        assertEquals(listOf("sync-key-00000001", "sync-key-00000002"), net.keys())
+        assertEquals(emptyList(), c.queued)
+    }
+
+    @Test
+    fun `after a restart the first command sends the restored ones before itself`(@TempDir dir: File) = bounded {
+        val net = Network()
+        val file = File(dir, "queue.json")
+        val before = client(net, OfflineOptions(FileQueueStorage(file)))
+        val events = events(before)
+        net.mode = "down"
+        launch { before.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }", optimistic = predict("b1", 4)) }
+        events.receive()
+        coroutineContext.cancelChildren()
+
+        net.mode = "up"
+        val after = client(net, OfflineOptions(FileQueueStorage(file)))
+        assertEquals(4, after.stock(), "the restored prediction is shown")
+        assertEquals(emptyList(), net.sent)
+        assertEquals(6, after.command("restock", args("id" to "b1", "qty" to 2), "{ id stock }").stock())
+        assertEquals(listOf("sync-key-00000001", "sync-key-00000002"), net.keys())
+        assertEquals(emptyList(), after.queued)
+        assertTrue(!file.exists())
     }
 
     @Test

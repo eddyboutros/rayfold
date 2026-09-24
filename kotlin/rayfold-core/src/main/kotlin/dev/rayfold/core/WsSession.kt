@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -16,6 +17,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.net.URLDecoder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -42,7 +44,7 @@ class RayfoldWsSession(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val onGoingAway: () -> Unit = {},
 ) {
-    /** Running op ids, each mapped to the cancel job of the batch that holds it. */
+    /** Running op ids, each mapped to its own cancel job, so `{ "cancel": id }` stops that op and not its batch. */
     private val ops = ConcurrentHashMap<Int, CompletableJob>()
 
     /** Batches running: their last frames are out once this is zero. */
@@ -51,9 +53,11 @@ class RayfoldWsSession(
     private val goneAway = AtomicBoolean(false)
     private val rb by lazy { RbCodec(server.ir) }
 
-    init {
-        server.draining.invokeOnCompletion { goingAway() }
-    }
+    /** Set while one of this session's own coroutines runs, so [close] called from one does not wait for itself. */
+    private val inside = ThreadLocal<Boolean>()
+
+    // disposed in close(): the server outlives its sessions, and each handler holds its session until drain
+    private val drainHandle = server.draining.invokeOnCompletion { goingAway() }
 
     fun onText(text: String) {
         val msg = try {
@@ -83,20 +87,30 @@ class RayfoldWsSession(
         if (m == null || m["ops"] !is JsonArray) return send(batchError("Expected a batch envelope or {cancel}"), binary)
         val env = RequestEnvelope.from(m)
         for (o in env.ops) if (o.id > 0 && ops.containsKey(o.id)) return send(batchError("op id ${o.id} is already in use on this connection"), binary)
-        val cancelJob = Job()
-        val ids = env.ops.map { it.id }.filter { it > 0 }
-        for (id in ids) ops[id] = cancelJob
+        val ids = env.ops.map { it.id }.filter { it > 0 }.distinct()
+        val mine = ids.associateWith { Job() }
+        ops.putAll(mine)
         running.incrementAndGet()
-        scope.launch {
+        scope.launch(inside.asContextElement(true)) {
             try {
-                server.execute(env, ExecuteOptions(viewer, cancel = cancelJob)).collect { f ->
+                server.execute(env, ExecuteOptions(viewer, opCancel = mine)).collect { f ->
+                    // A refusal of the whole batch has no op id, and a client routes frames by id: it could not tell
+                    // which batch was refused, whose ops would wait for a fin for ever. Each op id it named gets it.
+                    val refusal = f["error"]
+                    if (f["id"] == null && refusal != null && ids.isNotEmpty()) {
+                        for ((id, job) in mine) {
+                            ops.remove(id, job)
+                            send(buildJsonObject { put("id", id); put("error", refusal); put("fin", true) }, binary)
+                        }
+                        return@collect
+                    }
                     // free the id before the final frame goes out: messages are read on another thread, and a client may
                     // reuse the id as soon as it sees that frame
-                    if (f["fin"] == JsonPrimitive(true)) (f["id"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { ops.remove(it, cancelJob) }
+                    if (f["fin"] == JsonPrimitive(true)) (f["id"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { id -> mine[id]?.let { ops.remove(id, it) } }
                     send(f, binary)
                 }
             } finally {
-                for (id in ids) ops.remove(id, cancelJob)
+                for ((id, job) in mine) ops.remove(id, job)
                 running.decrementAndGet()
                 if (server.draining.isCompleted) goingAway()
             }
@@ -121,12 +135,32 @@ class RayfoldWsSession(
         ops.clear()
     }
 
-    /** Cancels every batch and waits (bounded) until they let go of their live subscriptions. */
+    /**
+     * Cancels every batch and waits (bounded) until they let go of their live subscriptions. Called from one of this
+     * session's own coroutines, as a transport does when the server goes away, it does not wait: that coroutine is part
+     * of what it would wait for, so the wait could only end at its bound.
+     */
     fun close() {
         if (!closed.compareAndSet(false, true)) return
+        drainHandle.dispose()
         cancelAll()
         val job = scope.coroutineContext[Job]
         scope.cancel()
-        if (job != null) runBlocking { withTimeoutOrNull(5_000) { job.join() } }
+        if (job != null && inside.get() != true) runBlocking { withTimeoutOrNull(5_000) { job.join() } }
+    }
+
+    companion object {
+        /** Close code for a client whose RB dictionary was built from another schema (spec 04 section 5). */
+        const val SCHEMA_MISMATCH = 4409
+
+        /**
+         * Whether the socket URL's query names a schema other than [server]'s. RB keys are numbered from the schema, so
+         * such a client would read every answer under the wrong names, without an error; the transport closes the socket
+         * with [SCHEMA_MISMATCH] and the server's hash, after the upgrade, because a browser cannot read a refused handshake.
+         */
+        fun schemaMismatch(server: RayfoldServer, rawQuery: String?): Boolean {
+            val named = rawQuery?.split('&')?.firstOrNull { it.substringBefore('=') == "schema" } ?: return false
+            return URLDecoder.decode(named.substringAfter('=', ""), Charsets.UTF_8) != server.hash
+        }
     }
 }

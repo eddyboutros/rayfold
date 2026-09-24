@@ -68,11 +68,26 @@ class SchemaTextTest {
             "page-on-non-page", "partial-non-null", "entity-id", "bad-interface", "missing-interface-field", "bad-union-member", "bad-throws",
             "bad-emits", "emits-on-non-command", "bad-http-method", "bad-http-path", "bad-http-param", "bad-http-body", "page-args",
             "view-on-non-object", "unknown-field", "shape-on-scalar", "unknown-view", "view-cycle", "spread-type-mismatch", "bad-type-condition",
-            "shadowed-name", "unreachable",
+            "shadowed-name", "unreachable", "duplicate-name",
         )
         assertEquals(emptySet(), every - codes, "codes no oracle case produces")
         assertTrue(cases.count { it["error"] != null } >= 30, "syntax-error cases: ${cases.count { it["error"] != null }}")
         assertTrue(cases.count { it["ir"] != null } >= 25, "readable cases: ${cases.count { it["ir"] != null }}")
+    }
+
+    /** IR no text parser produces (importers, the builder, lock files): oracle/schema-ir-cases.json, from scripts/kotlin-oracle.ts. */
+    @TestFactory
+    fun `IR from elsewhere is validated as @rayfold-schema validates it`(): List<DynamicTest> {
+        val text = javaClass.getResource("/oracle/schema-ir-cases.json")?.readText() ?: error("oracle/schema-ir-cases.json is missing; run npx tsx scripts/kotlin-oracle.ts")
+        val irCases = Json.parseToJsonElement(text).jsonArray.map { it.jsonObject }
+        val codes = irCases.flatMap { c -> (c["diagnostics"] as? JsonArray).orEmpty().map { it.jsonObject.str("code") } }.toSet()
+        assertEquals(emptySet(), setOf("bad-name", "duplicate-name", "bad-input", "unknown-type") - codes, "codes no IR case produces")
+        return irCases.map { c ->
+            DynamicTest.dynamicTest(c.str("name")) {
+                val ir = RayfoldSchemaIR.json.decodeFromJsonElement(RayfoldSchemaIR.serializer(), c["ir"] ?: error("no ir"))
+                assertEquals(c["diagnostics"], json(SchemaText.validate(ir)))
+            }
+        }
     }
 
     @Test

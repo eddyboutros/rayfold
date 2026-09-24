@@ -1,11 +1,16 @@
 package dev.rayfold.client
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
@@ -66,7 +71,8 @@ data class ClientOptions(
     val cache: RayfoldCache? = null,
     /**
      * Queue commands made while the server cannot be reached (sub-profile `sync`) and send them, in order and with their
-     * idempotency keys, on [RayfoldClient.drain]: call it when the device is back online. Their predictions stay shown.
+     * idempotency keys, on [RayfoldClient.drain] (call it at startup and when the device is back online) and whenever a
+     * new command is made while others wait. Their predictions stay shown.
      */
     val offline: OfflineOptions? = null,
     /**
@@ -90,6 +96,10 @@ enum class Policy {
 /** One op inside a [Batch]. [ref] points a later op's argument at part of this op's result. */
 class OpHandle internal constructor(val id: Int, internal val request: JsonObject) {
     internal val result = CompletableDeferred<JsonElement>()
+
+    /** A command's answer as the cache holds it, entities replaced by refs, for reading back once settled. */
+    @Volatile
+    internal var skeleton: JsonElement? = null
 
     /** `{ "$ref": "<id>.path" }`: the server fills it in with that part of this op's result before the later op runs. */
     fun ref(path: String): JsonObject = JsonObject(mapOf("\$ref" to JsonPrimitive("$id.$path")))
@@ -182,8 +192,14 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
     suspend fun command(op: String, args: JsonObject = EMPTY, shape: String? = null, key: String? = null, ifVersion: JsonElement? = null, optimistic: List<OptimisticOp>? = null): JsonElement {
         val c = QueuedCommand(key ?: newKey(), op, args, shape, ifVersion, optimistic?.takeIf { it.isNotEmpty() }, options.now(), nextSeq.getAndIncrement())
         c.optimistic?.let { cache.addLayer(c.key, it) }
-        // behind the commands still waiting, so the server sees them in the order they were made
-        if (queue != null && queue.size > 0) return queue.add(c)
+        // Behind the commands still waiting, so the server sees them in the order they were made; and the queue is tried
+        // again now, as nothing else would: this client has no network events to go by, and it may have been restarted
+        // with the commands of a previous run waiting.
+        if (queue != null && queue.size > 0) return coroutineScope {
+            val sent = async(start = CoroutineStart.UNDISPATCHED) { queue.add(c) }
+            queue.drain()
+            sent.await()
+        }
         return try {
             settled(c, sendCommand(c))
         } catch (e: CancellationException) {
@@ -196,18 +212,19 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
         }
     }
 
-    private suspend fun sendCommand(c: QueuedCommand): JsonElement {
+    /** The command's result, and its answer as the cache holds it. */
+    private suspend fun sendCommand(c: QueuedCommand): Pair<JsonElement, JsonElement?> {
         val b = batch()
         val h = b.command(c.op, c.args, c.shape, c.key, c.ifVersion)
         b.run()
-        return h.await()
+        return h.await() to h.skeleton
     }
 
     /** Drops the command's prediction and returns its result as the server left it, not as it was predicted. */
-    private fun settled(c: QueuedCommand, result: JsonElement): JsonElement {
-        if (c.optimistic == null) return result
+    private fun settled(c: QueuedCommand, sent: Pair<JsonElement, JsonElement?>): JsonElement {
+        if (c.optimistic == null) return sent.first
         cache.removeLayer(c.key)
-        return cache.getResult(RayfoldCache.resultKey(c.op, c.args, c.shape, null))?.let { cache.denormalize(it.data) } ?: result
+        return sent.second?.let { cache.denormalize(it) } ?: sent.first
     }
 
     /** Commands waiting for the server (option `offline`), oldest first. */
@@ -221,18 +238,20 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
 
     /** The items of a stream op; the flow ends when the server finishes, and cancelling it stops the stream. */
     @JvmOverloads
-    fun stream(op: String, args: JsonObject = EMPTY, shape: String? = null): Flow<JsonElement> =
-        transport.send(envelope(listOf(request(1, op, args, shape, null, null, null, false, false))), false).transformWhile { f ->
-            val error = f["error"] as? JsonObject
-            when {
-                "item" in f -> {
-                    emit(cache.denormalize(cache.normalize(f["item"] ?: JsonNull)))
-                    true
-                }
-                error != null -> throw RayfoldClientException.of(error)
-                else -> (f["fin"] as? JsonPrimitive)?.booleanOrNull != true
-            }
-        }
+    fun stream(op: String, args: JsonObject = EMPTY, shape: String? = null): Flow<JsonElement> = flow {
+        var fin = false
+        emitAll(
+            transport.send(envelope(listOf(request(1, op, args, shape, null, null, null, false, false))), false).transformWhile { f ->
+                val error = f["error"] as? JsonObject
+                fin = (f["fin"] as? JsonPrimitive)?.booleanOrNull == true
+                if ("item" in f) emit(cache.denormalize(cache.normalize(f["item"] ?: JsonNull)))
+                if (error != null) throw RayfoldClientException.of(error)
+                !fin
+            },
+        )
+        // frames that stop without the server's fin are a response cut short, not the end of the stream
+        if (!fin) throw RayfoldClientException("unavailable", "The stream $op ended without fin")
+    }
 
     /**
      * The query's result now, then again whenever its own entities change in the cache (by a command's patch, a live
@@ -359,9 +378,10 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
                     "ok" in f -> {
                         var r: CachedResult? = null
                         cache.transaction {
-                            r = cache.putResult(key, opOf(h), f["ok"] ?: JsonNull, levelOf(h))
+                            r = cache.putCommandResult(opOf(h), f["ok"] ?: JsonNull, levelOf(h))
                             (f["patch"] as? JsonArray)?.let { p -> cache.applyPatch(p.mapNotNull { it as? JsonObject }) }
                         }
+                        h.skeleton = r?.data
                         h.result.complete(r?.let { cache.denormalize(it.data) } ?: JsonNull)
                     }
                     "data" in f && "at" !in f -> {

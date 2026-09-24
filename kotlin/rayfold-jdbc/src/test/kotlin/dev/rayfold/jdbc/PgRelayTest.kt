@@ -146,6 +146,17 @@ class PgRelayTest {
     }
 
     @Test
+    fun `guard - one publisher's messages arrive in the order it sent them, one read from the table included`() = runBlocking {
+        val a = relay("a")
+        val b = ear("b")
+        val blob = "x".repeat(9_000)
+        a.publish(RelayMessage.Event("Imported", buildJsonObject { put("blob", blob) }))
+        a.publish(change("Book:b1"))
+        assertEquals(listOf("event Imported ${buildJsonObject { put("blob", blob) }}", "change keys=[Book:b1] ops=[]"), b.received.toList())
+        b.stop()
+    }
+
+    @Test
     fun `sweeps table rows past their lifetime as new ones are written`() = runBlocking {
         val a = relay("a", ttlMs = 1_000, maxInline = 10)
         val b = ear("b")
@@ -359,5 +370,49 @@ class PgRelayTest {
         dying.dies = true
         assertEquals(emptyList(), lost.toList())
         assertEquals(emptyList(), server.readiness().reasons)
+    }
+}
+
+/**
+ * The relay over pgjdbc against a real Postgres, whose `jsonb` refuses what H2's JSON takes. Set RAYFOLD_JDBC_URL, for
+ * example `jdbc:postgresql://127.0.0.1:5432/postgres?user=postgres&password=secret`, to run it.
+ */
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "RAYFOLD_JDBC_URL", matches = ".+")
+class PgRelayPostgresTest {
+    private val url = System.getenv("RAYFOLD_JDBC_URL")
+    private val table = "rayfold_relay_${ProcessHandle.current().pid()}"
+    private val opened = CopyOnWriteArrayList<Connection>()
+
+    private fun connection(): Connection = DriverManager.getConnection(url).also { opened.add(it) }
+
+    @AfterEach
+    fun close() {
+        DriverManager.getConnection(url).use { c -> c.createStatement().use { it.execute("DROP TABLE IF EXISTS $table") } }
+        for (c in opened) c.close()
+    }
+
+    private fun relay(origin: String, onError: (Throwable) -> Unit = {}) =
+        PgRelay(PgNotifications(connection(), { DriverManager.getConnection(url) }, pollMs = 20), { DriverManager.getConnection(url) }, PgRelayOptions(channel = table, table = table, origin = origin, onError = onError))
+
+    @Test
+    fun `a message too large for a payload arrives whole when it holds U+0000, which jsonb refuses`() = runBlocking {
+        val a = relay("a")
+        a.migrate()
+        val errors = CopyOnWriteArrayList<Throwable>()
+        val received = Channel<RelayMessage>(Channel.UNLIMITED)
+        val stop = relay("b", onError = { errors.add(it) }).subscribe { received.trySend(it) }
+        val text = "\u0000" + "y".repeat(9_000)
+        a.publish(RelayMessage.Event("Imported", buildJsonObject { put("text", text) }))
+        val m = withTimeout(5_000) { received.receive() } as RelayMessage.Event
+        assertEquals("Imported" to text, m.name to m.payload.getValue("text").let { (it as JsonPrimitive).content })
+        // guard: only such a message is kept as a string; every other stays the JSON object it always was
+        a.publish(RelayMessage.Event("Imported", buildJsonObject { put("text", "y".repeat(9_000)) }))
+        withTimeout(5_000) { received.receive() }
+        val kinds = DriverManager.getConnection(url).use { c ->
+            c.createStatement().use { s -> s.executeQuery("SELECT jsonb_typeof(message) FROM $table ORDER BY id").use { r -> generateSequence { if (r.next()) r.getString(1) else null }.toList() } }
+        }
+        assertEquals(listOf("string", "object"), kinds)
+        assertEquals(emptyList(), errors.toList())
+        stop()
     }
 }

@@ -318,4 +318,21 @@ describe("idempotency records in Postgres", () => {
     const { rows } = await db.query<{ indexname: string }>("SELECT indexname FROM pg_indexes WHERE schemaname = 'app' AND tablename = 'rayfold_idempotency'");
     expect(rows.map((r) => r.indexname).sort()).toEqual(["app_rayfold_idempotency_at", "rayfold_idempotency_pkey"]);
   });
+
+  it("names a mixed-case table as written, as JdbcIdempotencyStore does, so a mixed fleet shares one table", async () => {
+    await db.query(`CREATE SCHEMA "Shop"`);
+    const store = new PgIdempotencyStore(sql, { now: () => now, table: "Shop.Idempotency" });
+    await store.migrate();
+    let runs = 0;
+    const server = createRayfoldServer({ schema: SCHEMA, resolvers: { Command: { book: async () => (runs++, { id: "t1", seat: 1 }) } }, idempotency: store, now: () => now });
+    await book(server);
+    expect(replayed((await book(server)) as never)).toBe(true);
+    expect(runs).toBe(1);
+    // unquoted, Postgres folded it to shop.idempotency, a table the JVM store (which quotes) never reads
+    const tables = await db.query<{ name: string }>(`SELECT schemaname || '.' || tablename AS name FROM pg_tables WHERE tablename ILIKE 'idempotency'`);
+    expect(tables.rows.map((r) => r.name)).toEqual(["Shop.Idempotency"]);
+    const { rows } = await db.query<{ indexname: string }>(`SELECT indexname FROM pg_indexes WHERE schemaname = 'Shop' AND tablename = 'Idempotency'`);
+    expect(rows.map((r) => r.indexname).sort()).toEqual(["Idempotency_pkey", "Shop_Idempotency_at"]);
+    expect((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "Shop"."Idempotency"`)).rows[0]?.n).toBe(1);
+  });
 });

@@ -130,7 +130,8 @@ class RbCodec(ir: RayfoldSchemaIR? = null) {
                     v.isString -> string(v.content)
                     v.content == "true" -> out.write(T_TRUE)
                     v.content == "false" -> out.write(T_FALSE)
-                    else -> number(v.content.toDouble())
+                    // NaN and the infinities are not JSON numbers: they go as the null JSON gives them in TypeScript
+                    else -> v.content.toDouble().let { if (it.isFinite()) number(it) else out.write(T_NULL) }
                 }
             }
         }

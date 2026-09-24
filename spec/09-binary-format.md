@@ -51,7 +51,8 @@ the meaning of every key. After them come every field name, argument name, enum
 value and operation name of the schema, deduplicated and **sorted**, so both sides derive the identical
 table from the IR. A client learns the schema hash from `Rayfold-Schema` / the manifest; on a hash mismatch the
 request in flight fails with `unavailable`, because its answer is already encoded against a dictionary the client
-cannot build, and the client falls back to JSON for later requests.
+cannot build, and the client falls back to JSON for later requests. Over a WebSocket the client names its hash when it
+connects, and a server holding another schema closes the socket ([04 §5](04-frames-and-transport.md)).
 
 Field ordinals from `rayfold.lock.json` are reserved for a future compact-struct encoding; the dictionary
 approach was chosen for 0.1 because it keeps unknown keys (extensions, `JSON` scalars, `$vendor` metadata)

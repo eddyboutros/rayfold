@@ -34,7 +34,9 @@ keeps working the day you point it straight at port 4000. On the TypeScript serv
 <<< @/../examples/react/src/bookshop.ts#origins{ts}
 
 On the JVM it is `HttpOptions(allowedOrigins = setOf("http://localhost:5173"))` in Kotlin, `.allowedOrigins(...)` on
-`Rayfold.http(server)` in Java, and `rayfold.allowed-origins=http://localhost:5173` under Spring Boot.
+`Rayfold.http(server)` in Java, and `rayfold.allowed-origins=http://localhost:5173` under Spring Boot. Without the
+proxy, the listed origin is also what lets the browser's CORS preflight through: the server answers it, and every
+response to that origin, with the `Access-Control-Allow-*` headers naming it.
 
 ## 3. Provide the client
 

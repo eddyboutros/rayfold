@@ -99,24 +99,31 @@ export class RayfoldCache {
     this.setBase(key, next);
     this.staleKeys.delete(key);
     touched.add(key);
-    // A field the server has just spoken for leaves any prediction that also set it, when the field's policy says so
-    // (spec 08 section 5). `lww` settles the same way here: the server's write is the later one.
+    this.overrule(key, Object.keys(fields));
+    return touched;
+  }
+
+  /**
+   * A field the server has just spoken for leaves any prediction that also set it, when the field's policy says so
+   * (spec 08 section 5), whether the value came in a patch, a command's result or a query's data. `lww` settles the
+   * same way here: the server's write is the later one. The prediction is copied, not edited: it is the caller's.
+   */
+  private overrule(key: EntityKey, fields: string[]): void {
+    if (!this.layers.length) return;
     const type = key.slice(0, key.indexOf(":"));
     let overruled = false;
     for (const layer of this.layers) {
-      for (const op of layer.ops) {
-        if (op.set !== key) continue;
-        for (const field of Object.keys(fields)) {
-          if (!(field in op.value)) continue;
-          const policy = this.mergeOf(type, field);
-          if (policy !== "serverWins" && policy !== "lww") continue;
-          delete op.value[field];
-          overruled = true;
-        }
-      }
+      layer.ops = layer.ops.map((op) => {
+        if (op.set !== key) return op;
+        const drop = fields.filter((f) => f in op.value && ["serverWins", "lww"].includes(this.mergeOf(type, f) ?? ""));
+        if (!drop.length) return op;
+        overruled = true;
+        const value = { ...op.value };
+        for (const f of drop) delete value[f];
+        return { set: op.set, value };
+      });
     }
     if (overruled) this.rebuild(key);
-    return touched;
   }
 
   /** Merge entities found anywhere in `data` and notify watchers (used for conflict repairs). */
@@ -174,6 +181,7 @@ export class RayfoldCache {
     this.setBase(key, { ...existing, ...normalizedFields });
     this.staleKeys.delete(key);
     touched.add(key);
+    this.overrule(key, Object.keys(normalizedFields));
   }
 
   /** Resolve refs back into plain objects, honouring each ref's selection. Cycles are cut at `maxDepth`. */
@@ -214,12 +222,27 @@ export class RayfoldCache {
   }
 
   putResult(key: string, op: string, data: unknown, shape?: Shape, views?: ViewResolver): CachedResult {
+    const r = this.resultOf(op, data, shape, views);
+    this.results.set(key, r);
+    this.emit(r.keys, new Set([op]));
+    return r;
+  }
+
+  /**
+   * A command's answer: its entities are stored like any result's, and the result itself is handed back rather than
+   * kept, since nothing reads a command's answer again by its key. Kept, every command with new arguments added a
+   * result that stayed for the life of the cache.
+   */
+  putCommandResult(op: string, data: unknown, shape?: Shape, views?: ViewResolver): CachedResult {
+    const r = this.resultOf(op, data, shape, views);
+    this.emit(r.keys, new Set([op]));
+    return r;
+  }
+
+  private resultOf(op: string, data: unknown, shape?: Shape, views?: ViewResolver): CachedResult {
     const keys = new Set<EntityKey>();
     const normalized = this.normalizeValue(data, keys, shape, views).value;
-    const r: CachedResult = { data: normalized, op, keys, storedAt: this.now(), stale: false };
-    this.results.set(key, r);
-    this.emit(keys, new Set([op]));
-    return r;
+    return { data: normalized, op, keys, storedAt: this.now(), stale: false };
   }
 
   getResult(key: string): CachedResult | undefined {
@@ -244,7 +267,10 @@ export class RayfoldCache {
         else shared[k] = x;
       }
       const e = this.baseOf(target.$ref);
-      if (e) this.setBase(target.$ref, { ...e, ...shared });
+      if (e) {
+        this.setBase(target.$ref, { ...e, ...shared });
+        this.overrule(target.$ref, Object.keys(shared));
+      }
       target.$sel = mergeSel(target.$sel ?? {}, norm.sel);
     } else if (target && typeof target === "object" && !Array.isArray(target)) {
       Object.assign(target as Record<string, unknown>, norm.value as Record<string, unknown>);

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { request as httpRequest, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { connect as connectTcp, type AddressInfo, type Socket } from "node:net";
 import { base64url } from "@rayfold/schema";
 import { RbCodec } from "@rayfold/rb";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
@@ -490,5 +490,136 @@ describe("bodies that parse but are not envelopes (found by fuzzing)", () => {
     ]);
     // guard: a real envelope on the same route still runs
     expect((await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, { "rayfold-safe": "true" })).status).toBe(200);
+  });
+});
+
+/** A raw HTTP/1.1 exchange over a socket, for what fetch will not send (a malformed Host) or will not do (stop reading). */
+function rawSocket(url: string): Socket {
+  const socket = connectTcp({ host: "127.0.0.1", port: Number(new URL(url).port) });
+  sockets.push(socket);
+  return socket;
+}
+const sockets: Socket[] = [];
+afterEach(() => {
+  for (const s of sockets.splice(0)) s.destroy();
+});
+/** The payload of a chunked HTTP/1.1 body, and whether it ended with the zero-length chunk that completes it. */
+function unchunk(raw: string): { body: string; complete: boolean } {
+  let body = "";
+  let rest = raw;
+  for (;;) {
+    const eol = rest.indexOf("\r\n");
+    if (eol < 0) return { body, complete: false };
+    const n = parseInt(rest.slice(0, eol), 16);
+    if (Number.isNaN(n)) return { body, complete: false };
+    if (n === 0) return { body, complete: true };
+    if (rest.length < eol + 2 + n) return { body: body + rest.slice(eol + 2), complete: false };
+    body += rest.slice(eol + 2, eol + 2 + n);
+    rest = rest.slice(eol + 2 + n + 2);
+  }
+}
+function exchange(url: string, head: string): Promise<{ status: number; body: string }> {
+  const socket = rawSocket(url);
+  let text = "";
+  socket.setEncoding("latin1");
+  socket.on("data", (c: string) => (text += c));
+  socket.write(head);
+  return bounded(
+    new Promise((resolve) => socket.on("end", () => resolve({ status: Number(text.split(" ")[1]), body: unchunk(text.slice(text.indexOf("\r\n\r\n") + 4)).body }))),
+    "the raw response",
+  );
+}
+
+describe("a Host header that is no valid authority", () => {
+  const health = (host: string) => exchange(base, `GET /rayfold/health HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`);
+  const refusal = { type: "https://eddyboutros.github.io/rayfold/errors/invalid_argument", title: "invalid argument", status: 400, detail: "Host header is not a valid host", code: "invalid_argument" };
+
+  it("is refused 400 rather than failing the URL built from it with a 500", async () => {
+    // loopback names, so the loopback host rule lets them through to the URL
+    for (const host of ["localhost:99999", "localhost:abc", "localhost:80 x"]) {
+      const res = await health(host);
+      expect([host, res.status, JSON.parse(res.body)]).toEqual([host, 400, refusal]);
+    }
+  });
+
+  it("guard: a loopback name with a valid port is served", async () => {
+    const res = await health("localhost:8080");
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ status: "ok" });
+  });
+});
+
+describe("a client that stops reading a streaming response over a socket", () => {
+  const size = 64 * 1024;
+  function chunks(opts: { count?: number; ack?: (n: number) => Promise<void> } = {}) {
+    const yielded = new Signal<number>();
+    const ended = new Signal<true>();
+    const server = createRayfoldServer({
+      schema: `event Chunk { n: Int body: String } stream chunks: Chunk`,
+      resolvers: {
+        Stream: {
+          chunks: async function* (_args: unknown, ctx: { signal: AbortSignal }) {
+            try {
+              for (let n = 0; (opts.count === undefined || n < opts.count) && !ctx.signal.aborted; n++) {
+                yielded.push(n);
+                yield { n, body: "x".repeat(size) };
+                await opts.ack?.(n);
+              }
+            } finally {
+              ended.push(true);
+            }
+          },
+        },
+      } as never,
+      maxStreamItems: 2_000,
+    });
+    return { server, yielded, ended };
+  }
+  const batch = JSON.stringify({ ops: [{ id: 1, op: "chunks", shape: "{ n body }" }] });
+
+  it("has the batch stopped once the socket is full and maxBuffered bytes wait behind it", async () => {
+    const { server, yielded, ended } = chunks();
+    const url = await serve(server, { maxBuffered: 64 * 1024 });
+    const socket = rawSocket(url);
+    socket.pause(); // reads nothing, so the kernel's buffers fill and then the server's
+    socket.write(`POST /rayfold HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/rayfold+json\r\nContent-Length: ${batch.length}\r\n\r\n${batch}`);
+    await ended.atLeast(1, "the resolver told to stop");
+    // without the bound the resolver ran to maxStreamItems (2000 items, 128 MiB) into the server's memory
+    expect(yielded.items.length).toBeLessThan(2_000);
+    // and the response is cut short rather than completed: the socket closes without the chunk that ends the body
+    let text = "";
+    socket.setEncoding("latin1");
+    socket.on("data", (c: string) => (text += c));
+    const closed = bounded(new Promise<void>((r) => socket.on("close", () => r())), "the server closing the socket");
+    socket.resume();
+    await closed;
+    expect(text.startsWith("HTTP/1.1 200 ")).toBe(true);
+    const { body, complete } = unchunk(text.slice(text.indexOf("\r\n\r\n") + 4));
+    expect(complete).toBe(false);
+    expect(body.split("\n").filter(Boolean).length).toBeLessThanOrEqual(yielded.items.length);
+  });
+
+  it("guard: a client that keeps reading gets every frame of a stream far larger than maxBuffered, each frame larger too", async () => {
+    const read = new Signal<number>();
+    const { server } = chunks({ count: 40, ack: (n) => read.until((xs) => xs.includes(n), `item ${n} read`).then(() => undefined) });
+    const url = await serve(server, { maxBuffered: 16 * 1024 });
+    const res = await fetch(`${url}/rayfold`, { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: batch });
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const got: Array<{ id: number; item?: { n: number; body: string }; fin?: boolean }> = [];
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await bounded(reader.read(), "the next chunk");
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let at: number;
+      while ((at = buffer.indexOf("\n")) >= 0) {
+        const f = JSON.parse(buffer.slice(0, at)) as (typeof got)[number];
+        buffer = buffer.slice(at + 1);
+        got.push(f);
+        if (f.item) read.push(f.item.n);
+      }
+    }
+    expect(got.map((f) => (f.item ? [f.item.n, f.item.body.length] : f))).toEqual([...Array.from({ length: 40 }, (_, n) => [n, size]), { id: 1, fin: true }]);
   });
 });

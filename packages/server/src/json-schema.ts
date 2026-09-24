@@ -4,9 +4,13 @@
  */
 import { annotation, baseName, type ArgDef, type FieldDef, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 
-export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<string, unknown>, forInput: boolean): Record<string, unknown> {
+/**
+ * `partial` leaves every field of a fielded type optional: a result is projected through a shape (the default view,
+ * for an MCP tool call), which may leave out fields the type declares, so a schema requiring them would refuse it.
+ */
+export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<string, unknown>, forInput: boolean, partial = false): Record<string, unknown> {
   const nullable = (s: Record<string, unknown>): Record<string, unknown> => (t.nullable ? { anyOf: [s, { type: "null" }] } : s);
-  if (t.kind === "list") return nullable({ type: "array", items: jsonSchemaFor(ir, t.of, defs, forInput) });
+  if (t.kind === "list") return nullable({ type: "array", items: jsonSchemaFor(ir, t.of, defs, forInput, partial) });
   const def = ir.types[t.name];
   if (!def) return {};
   switch (def.kind) {
@@ -30,7 +34,7 @@ export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<stri
     case "enum":
       return nullable({ type: "string", enum: def.values.map((v) => v.name) });
     case "union":
-      return nullable({ anyOf: def.members.map((m) => jsonSchemaFor(ir, { kind: "named", name: m, nullable: false }, defs, forInput)) });
+      return nullable({ anyOf: def.members.map((m) => jsonSchemaFor(ir, { kind: "named", name: m, nullable: false }, defs, forInput, partial)) });
     default: {
       const key = t.name === "Page" && t.args?.[0] ? `Page_${baseName(t.args[0])}` : t.name;
       if (!(key in defs)) {
@@ -41,9 +45,9 @@ export function jsonSchemaFor(ir: RayfoldSchemaIR, t: TypeRef, defs: Record<stri
         if (def.kind === "entity") properties["$type"] = { const: def.name };
         for (const f of fields) {
           if (forInput && f.args.length) continue;
-          const s = withRange(jsonSchemaFor(ir, f.type, defs, forInput), f.annotations, baseName(f.type));
+          const s = withRange(jsonSchemaFor(ir, f.type, defs, forInput, partial), f.annotations, baseName(f.type));
           properties[f.name] = f.description ? { ...s, description: f.description } : s;
-          if (!f.type.nullable && f.default === undefined) required.push(f.name);
+          if (!partial && !f.type.nullable && f.default === undefined) required.push(f.name);
         }
         const schema: Record<string, unknown> = { type: "object", properties, additionalProperties: false };
         if (required.length) schema["required"] = required;

@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { readdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Capabilities } from "@rayfold/server";
 import { RayfoldClient, createFetchTransport, type RayfoldClientError } from "@rayfold/client";
+import { devToken } from "./auth.ts";
 import { createDocumentStore, documentStoreHttp, scratchDirs, type Bookkeeping } from "./documents.ts";
 import type { Document, Share } from "./resolvers.ts";
 
@@ -43,14 +44,22 @@ afterEach(async () => {
   await rm(dirname(dirs.files), { recursive: true, force: true });
 });
 
+/** Tokens as the identity provider issues them at sign-in; anything else passed as `who` is sent as it is (a share's token). */
+const signedIn: Record<string, string> = {};
+beforeAll(async () => {
+  signedIn["ada"] = await devToken("u1", "Ada");
+  signedIn["grace"] = await devToken("u2", "Grace");
+});
+const bearer = (who: string) => `Bearer ${signedIn[who] ?? who}`;
+
 const client = (who: string) =>
-  new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: `Bearer ${who}` }) }) });
+  new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: bearer(who) }) }) });
 
 /** Sends bytes to the upload route the way a browser would, and answers with the handle a command will name. */
 async function upload(who: string, bytes: Uint8Array, type = "text/plain"): Promise<string> {
   const res = await fetch(`${base}/rayfold/uploads`, {
     method: "POST",
-    headers: { "content-type": "application/octet-stream", authorization: `Bearer ${who}`, "rayfold-upload-type": type },
+    headers: { "content-type": "application/octet-stream", authorization: bearer(who), "rayfold-upload-type": type },
     body: bytes as BodyInit,
   });
   expect(res.status, await res.clone().text()).toBe(201);
@@ -59,7 +68,7 @@ async function upload(who: string, bytes: Uint8Array, type = "text/plain"): Prom
 
 /** Fetches a document's bytes as `who` — a signed-in person, or a share's token. */
 const download = (url: string, who?: string) =>
-  fetch(`${base}${url}`, who ? { headers: { authorization: `Bearer ${who}` } } : undefined);
+  fetch(`${base}${url}`, who ? { headers: { authorization: bearer(who) } } : undefined);
 
 const text = (s: string) => new TextEncoder().encode(s);
 const SHAPE = "{ id name contentType size url version owner { name } }";
@@ -234,4 +243,18 @@ it("a share is refused for a document that is not yours", async () => {
 
   const refused = await client("grace").command<Share>("shareDocument", { id: doc.id }, { shape: "{ token }" }).then(() => null, (e: RayfoldClientError) => e);
   expect(refused?.is("Forbidden")).toBe(true);
+});
+
+it("believes who is signed in only from a token that verifies: a bare name is refused, and the file stays unread", async () => {
+  const doc = await client("ada").command<Document>("createDocument", { upload: await upload("ada", text("mine")), name: "mine.txt" }, { shape: SHAPE });
+  const asName = await fetch(`${base}/rayfold`, {
+    method: "POST",
+    headers: { "content-type": "application/rayfold+json", authorization: "Bearer ada" },
+    body: JSON.stringify({ ops: [{ id: 1, op: "documents", args: {}, shape: "{ items { id } }" }] }),
+  });
+  expect(asName.status).toBe(401);
+  expect(((await asName.json()) as { detail: string }).detail).toBe("Invalid or expired token");
+  expect((await download(doc.url, "Bearer-free-name")).status).toBe(401);
+  // guard: the same person with a token the server signed reads it
+  expect(await (await download(doc.url, "ada")).text()).toBe("mine");
 });

@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -52,6 +53,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.http.HttpClient
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -369,6 +371,21 @@ class ClientTest {
     }
 
     @Test
+    fun `a command's answer is not kept as a result, so commands with new arguments do not pile up, while a query's is (guard)`() = bounded {
+        val client = RayfoldClient(http("alice"))
+        for ((qty, left) in listOf(1 to 2, 2 to 0)) {
+            val a = args("id" to "b1", "qty" to qty)
+            assertEquals(left, client.command("buy", a, "{ id stock }").stock())
+            assertEquals(null, client.cache.getResult(RayfoldCache.resultKey("buy", a, "{ id stock }", null)))
+        }
+        assertEquals(JsonPrimitive(0), client.cache.get("Book:b1")?.get("stock"))
+        val predicted = listOf(OptimisticOp("Book:b2", buildJsonObject { put("stock", 99) }))
+        assertEquals(4, client.command("buy", args("id" to "b2", "qty" to 1), "{ id stock }", optimistic = predicted).stock(), "settled: the server's value, not the prediction")
+        client.query("book", args("id" to "b1"), "{ id stock }")
+        assertNotNull(client.cache.getResult(RayfoldCache.resultKey("book", args("id" to "b1"), "{ id stock }", null)))
+    }
+
+    @Test
     fun `a batch creates a book and reads it back in one round trip`() = bounded {
         val t = http("alice")
         val client = RayfoldClient(t)
@@ -417,6 +434,15 @@ class ClientTest {
     @Test
     fun `a stream arrives item by item and ends with the server's last frame`() = bounded {
         assertEquals((0..3).map { JsonPrimitive(it) }, RayfoldClient(http()).stream("ticks", args("n" to 4)).toList())
+    }
+
+    @Test
+    fun `a stream whose frames stop without fin fails as unavailable, and one that ends with fin completes (guard)`() = bounded {
+        val cut = Transport { _, _ -> flow { emit(Json.parseToJsonElement(ITEM).jsonObject) } }
+        val refused = assertFailsWith<RayfoldClientException> { RayfoldClient(cut).stream("ticks").collect {} }
+        assertEquals("unavailable", refused.code)
+        val whole = Transport { _, _ -> flow { emit(Json.parseToJsonElement(ITEM).jsonObject); emit(Json.parseToJsonElement("""{"id":1,"fin":true}""").jsonObject) } }
+        assertEquals(listOf<JsonElement>(JsonPrimitive(1)), RayfoldClient(whole).stream("ticks").toList())
     }
 
     @Test
@@ -554,6 +580,73 @@ class ClientTest {
         val read = batch.query("book", args("id" to add.ref("id")), "{ title }")
         batch.run()
         assertEquals("Dawn", read.await().jsonObject["title"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a refused batch on a shared socket is rejected and closed, and a live query on the same socket keeps going untouched`() = bounded {
+        val alice = RayfoldClient(wsTransport("alice"))
+        val stock = Channel<Int>(Channel.UNLIMITED)
+        val errors = CopyOnWriteArrayList<Throwable>()
+        val job = launch { alice.live("book", args("id" to "b1"), "{ id stock }", onError = { e, _ -> errors.add(e) }).collect { stock.send(it.stock()) } }
+        assertEquals(3, stock.receive())
+        val refused = assertFailsWith<RayfoldClientException> { alice.query("noSuchOp") }
+        assertEquals("invalid_argument", refused.code)
+        // guard: the socket and the live query on it are still good
+        assertEquals("Kindred", alice.query("book", args("id" to "b2"), "{ title }").jsonObject["title"]?.jsonPrimitive?.content)
+        RayfoldClient(http("bob")).command("buy", args("id" to "b1", "qty" to 1))
+        assertEquals(2, stock.receive())
+        assertEquals(emptyList(), errors.toList())
+        job.cancelAndJoin()
+    }
+
+    /** A socket whose server is the test: it records what the client sends and answers with whatever frames it is given. */
+    private class ScriptedSocket : WebSocketTransportBase() {
+        val sent = Channel<JsonObject>(Channel.UNLIMITED)
+        override fun connect(): CompletableFuture<out Connection> = CompletableFuture.completedFuture(Connection { sent.trySend(Json.parseToJsonElement(it).jsonObject) })
+        fun answer(frame: String) = receive(frame)
+        override fun close() = Unit
+    }
+
+    @Test
+    fun `a refusal without an op id waits while two batches could own it, and goes to the one left once the other answers`() = bounded {
+        val socket = ScriptedSocket()
+        val client = RayfoldClient(socket)
+        val good = async { runCatching { client.query("book", args("id" to "b1")) } }
+        assertEquals(1, socket.sent.receive()["ops"]?.jsonArray?.single()?.jsonObject?.get("id")?.jsonPrimitive?.int)
+        val bad = async { runCatching { client.query("noSuchOp") } }
+        assertEquals(2, socket.sent.receive()["ops"]?.jsonArray?.single()?.jsonObject?.get("id")?.jsonPrimitive?.int)
+        socket.answer("""{"error":{"code":"invalid_argument","message":"Unknown op noSuchOp"},"fin":true}""")
+        yield()
+        assertFalse(good.isCompleted, "either batch could be the refused one: neither is failed on a guess")
+        assertFalse(bad.isCompleted)
+        socket.answer("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"fin":true}""")
+        assertEquals(Json.parseToJsonElement("""{"${'$'}type":"Book","id":"b1"}"""), good.await().getOrThrow())
+        assertEquals("invalid_argument", (bad.await().exceptionOrNull() as? RayfoldClientException)?.code)
+    }
+
+    @Test
+    fun `two refusals among two unanswered batches are one each, and a batch answered before them is not failed (guard)`() = bounded {
+        val socket = ScriptedSocket()
+        val client = RayfoldClient(socket)
+        val errors = CopyOnWriteArrayList<Throwable>()
+        val seen = Channel<JsonElement>(Channel.UNLIMITED)
+        val live = launch { client.live("book", args("id" to "b1"), onError = { e, _ -> errors.add(e) }).collect { seen.send(it) } }
+        socket.sent.receive()
+        socket.answer("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"}}""")
+        seen.receive()
+        val bad1 = async { runCatching { client.query("noSuchOp") } }
+        val bad2 = async { runCatching { client.query("otherBadOp") } }
+        socket.sent.receive()
+        socket.sent.receive()
+        socket.answer("""{"error":{"code":"invalid_argument","message":"Unknown op"},"fin":true}""")
+        socket.answer("""{"error":{"code":"invalid_argument","message":"Unknown op"},"fin":true}""")
+        assertEquals("invalid_argument", (bad1.await().exceptionOrNull() as? RayfoldClientException)?.code)
+        assertEquals("invalid_argument", (bad2.await().exceptionOrNull() as? RayfoldClientException)?.code)
+        socket.answer("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":3}}]}""")
+        seen.receive()
+        assertEquals(emptyList(), errors.toList())
+        assertEquals<JsonElement?>(Json.parseToJsonElement("""{"${'$'}type":"Book","id":"b1","stock":3}"""), client.cache.get("Book:b1"))
+        live.cancelAndJoin()
     }
 
     @Test

@@ -24,7 +24,9 @@ three and fails on breaking ones; `--strict` also fails on warnings.
 * Removing a named view (removing a `default` view is a warning: the type falls back to its derived default): a client that asks for it by name gets nothing.
 * Dropping an interface a type declared.
 * Adding a required argument without a default.
-* Changing an ordinal.
+* Changing an ordinal, or giving a new member one already assigned. Ordinals are kept by name ([01 §9.6](01-schema.md)):
+  against a lockfile, a member inserted between others or moved keeps the ordinal the lock recorded, which is compatible.
+  Without a lock there is no record of assignment, so a member whose position changed is a warning.
 
 ## Deprecation
 `@deprecated(reason:, sunset: Date, replacement:)`. Removal is allowed only after `sunset`. Servers report usage of deprecated members per client (`Rayfold-Client`) so removal is a fact, not a guess.

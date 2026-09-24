@@ -384,3 +384,175 @@ describe("counters", () => {
     expect((await server.collect({ ops: [{ id: 1, op: "a", shape: "{ id }" }] }, {}))[0]).toMatchObject({ id: 1 });
   });
 });
+
+/** A stream of `size`-character items: endless unless `count` is given, waiting for `ack(n)` after item n when given. */
+function chunkServer(size: number, opts: { count?: number; ack?: (n: number) => Promise<void> } = {}) {
+  const yielded = new Signal<number>();
+  const ended = new Signal<true>();
+  const server = createRayfoldServer({
+    schema: `event Chunk { n: Int body: String } stream chunks: Chunk`,
+    resolvers: {
+      Stream: {
+        chunks: async function* (_args: unknown, ctx: { signal: AbortSignal }) {
+          try {
+            for (let n = 0; (opts.count === undefined || n < opts.count) && !ctx.signal.aborted; n++) {
+              yielded.push(n);
+              yield { n, body: "x".repeat(size) };
+              await opts.ack?.(n);
+            }
+          } finally {
+            ended.push(true);
+          }
+        },
+      },
+    } as never,
+    maxStreamItems: 100_000,
+  });
+  return { server, yielded, ended };
+}
+const chunkBatch = { ops: [{ id: 1, op: "chunks", shape: "{ n body }" }] };
+const chunkFrame = (n: number, size: number) => ({ id: 1, item: { n, body: "x".repeat(size) } });
+
+describe("a client that stops reading a streaming response", () => {
+  const ask = (handle: ReturnType<typeof createFetchHandler>) =>
+    handle(new Request("http://api.example/rayfold", { method: "POST", headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify(chunkBatch) }));
+
+  it("stops the batch once maxBuffered bytes wait for it, and the body ends in an error after the frames that fit", async () => {
+    const size = 16 * 1024;
+    const { server, yielded, ended } = chunkServer(size);
+    const res = await ask(createFetchHandler(server, { maxBuffered: 64 * 1024 }));
+    // nothing reads the body: the endless resolver is stopped rather than buffered for ever
+    await ended.atLeast(1, "the resolver told to stop");
+    // frames join the queue while it is under the bound: the first frame to arrive at a full queue is the last one kept
+    const frameBytes = JSON.stringify(chunkFrame(0, size)).length + 1;
+    const kept = Math.ceil((64 * 1024) / frameBytes) + 1;
+    expect(yielded.items.length).toBeLessThan(kept + 3); // the resolver may be an item or two ahead when it is told
+    const reader = res.body!.getReader();
+    const text: string[] = [];
+    const decoder = new TextDecoder();
+    const failure = await (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) return null;
+          text.push(decoder.decode(value, { stream: true }));
+        }
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(failure).toBeInstanceOf(RayfoldError);
+    expect(failure).toMatchObject({ code: "resource_exhausted", message: "The client stopped reading the response" });
+    // an errored body drops what it still held, so a late reader sees a prefix of the frames that fit, then the error
+    const seen = text.join("").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    expect(seen.length).toBeLessThanOrEqual(kept);
+    expect(seen).toEqual(Array.from({ length: seen.length }, (_, n) => chunkFrame(n, size)));
+  });
+
+  it("guard: a client that keeps reading gets every frame of a stream far larger than maxBuffered", async () => {
+    const size = 16 * 1024;
+    const read = new Signal<number>();
+    const { server } = chunkServer(size, { count: 40, ack: (n) => read.until((xs) => xs.includes(n), `item ${n} read`).then(() => undefined) });
+    const res = await ask(createFetchHandler(server, { maxBuffered: 64 * 1024 }));
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const got: unknown[] = [];
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await bounded(reader.read(), "the next chunk");
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let at: number;
+      while ((at = buffer.indexOf("\n")) >= 0) {
+        const f = JSON.parse(buffer.slice(0, at)) as { item?: { n: number } };
+        buffer = buffer.slice(at + 1);
+        got.push(f);
+        if (f.item) read.push(f.item.n);
+      }
+    }
+    expect(got).toEqual([...Array.from({ length: 40 }, (_, n) => chunkFrame(n, size)), { id: 1, fin: true }]);
+  });
+
+  it("cancelling the body ends the batch: a live query is unsubscribed though the request itself was never aborted", async () => {
+    const subscribed = new Signal<"on" | "off">();
+    const subscribe = bs.server.changes.subscribe.bind(bs.server.changes);
+    vi.spyOn(bs.server.changes, "subscribe").mockImplementation((fn) => {
+      const off = subscribe(fn);
+      subscribed.push("on");
+      return () => {
+        off();
+        subscribed.push("off");
+      };
+    });
+    const res = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true }] });
+    const reader = res.body!.getReader();
+    await bounded(reader.read(), "the first result");
+    // guard: while the body is being read, the live query stays subscribed
+    expect(bs.server.changes.size).toBe(1);
+    await reader.cancel();
+    await subscribed.until((xs) => xs.includes("off"), "the live query unsubscribed");
+    expect(bs.server.changes.size).toBe(0);
+    expect(subscribed.items).toEqual(["on", "off"]);
+  });
+});
+
+describe("CORS for the configured origins (spec 04 §4b)", () => {
+  const cors = () => createFetchHandler(bs.server, { allowedOrigins: ["https://app.example"], viewer: () => admin });
+  const preflight = (h: ReturnType<typeof createFetchHandler>, origin: string) =>
+    h(new Request("http://api.example/rayfold", { method: "OPTIONS", headers: { origin, "access-control-request-method": "POST", "access-control-request-headers": "content-type" } }));
+  const bookUrl = `http://api.example/rayfold/book?a=${Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url")}`;
+
+  it("answers a preflight from an allowed origin with 204 and the headers that let it through, from allowedOrigins alone", async () => {
+    const res = await preflight(cors(), "https://app.example");
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://app.example");
+    expect(res.headers.get("access-control-allow-methods")).toBe("GET, POST, QUERY, OPTIONS");
+    expect(res.headers.get("access-control-allow-headers")).toBe("Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe, Rayfold-Upload-Name, Rayfold-Upload-Type");
+    expect(res.headers.get("vary")).toBe("Origin");
+    expect(await res.text()).toBe("");
+  });
+
+  it("guard: a preflight from another origin gets no Access-Control-Allow-* headers, so the browser stops there", async () => {
+    const res = await preflight(cors(), "https://evil.example");
+    expect(res.status).toBe(204);
+    expect([...res.headers.keys()].filter((k) => k.startsWith("access-control-"))).toEqual([]);
+  });
+
+  it("the answer to an allowed origin is readable by it, and a cacheable one varies by origin", async () => {
+    const h = cors();
+    const write = await h(
+      new Request("http://api.example/rayfold", {
+        method: "POST",
+        headers: { origin: "https://app.example", "content-type": "application/rayfold+json" },
+        body: JSON.stringify({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key: KEY }] }),
+      }),
+    );
+    expect(write.status).toBe(200);
+    expect(write.headers.get("access-control-allow-origin")).toBe("https://app.example");
+    const read = await h(new Request(bookUrl, { headers: { origin: "https://app.example" } }));
+    expect(read.headers.get("access-control-allow-origin")).toBe("https://app.example");
+    expect(read.headers.get("vary")).toBe("Rayfold-Client, Accept, Authorization, Origin");
+    // guard: a read from an origin not listed is still answered, but not made readable to that origin
+    const foreign = await h(new Request(bookUrl, { headers: { origin: "https://evil.example" } }));
+    expect(foreign.status).toBe(200);
+    expect(foreign.headers.get("access-control-allow-origin")).toBeNull();
+    expect(foreign.headers.get("vary")).toBe("Rayfold-Client, Accept, Authorization");
+  });
+});
+
+describe("stale-while-revalidate over several @cache declarations (spec 07 §2)", () => {
+  const server = (querySwr: string) =>
+    createRayfoldServer({
+      schema: `entity Note @cache(maxAge: 60s, swr: 300s) { id: ID } query note: Note @cache(maxAge: 30s${querySwr})`,
+      resolvers: { Query: { note: () => ({ id: "n1" }) } } as never,
+    });
+  const cacheControl = async (s: RayfoldServer) => (await createFetchHandler(s)(new Request("http://api.example/rayfold/note"))).headers.get("cache-control");
+
+  it("takes the smallest swr, as it takes the smallest maxAge", async () => {
+    expect(await cacheControl(server(", swr: 10s"))).toBe("public, max-age=30, stale-while-revalidate=10");
+  });
+
+  it("guard: a declaration without swr does not count, so the one that has it decides", async () => {
+    expect(await cacheControl(server(""))).toBe("public, max-age=30, stale-while-revalidate=300");
+  });
+});

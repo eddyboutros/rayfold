@@ -52,6 +52,11 @@ export interface ExecuteOptions {
    * without an idempotency key. Never settable from the wire envelope.
    */
   keyOptional?: boolean;
+  /**
+   * A signal per op id that stops that op alone, as `{ "cancel": id }` does on a WebSocket (spec 04 section 5): it ends
+   * `canceled` (or with the signal's reason), and the batch's other ops keep running.
+   */
+  opSignals?: ReadonlyMap<number, AbortSignal>;
   /** @internal Set by the batch itself: the memo every op of this request shares. Never read from the wire. */
   batchState?: Map<string, unknown>;
 }
@@ -116,12 +121,15 @@ interface Planned {
   failure?: RayfoldError;
 }
 
-export function executeBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: ExecuteOptions = {}): AsyncIterable<Frame> {
+/** `onSettled` is called once the batch has finished running, whether or not anyone read its frames. */
+export function executeBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: ExecuteOptions = {}, onSettled?: () => void): AsyncIterable<Frame> {
   const sink = new FrameSink();
-  void run(rt, envelope, opts, sink).catch((e) => {
-    sink.push({ error: toWireError(e), fin: true });
-    sink.close();
-  });
+  void run(rt, envelope, opts, sink)
+    .catch((e) => {
+      sink.push({ error: toWireError(e), fin: true });
+      sink.close();
+    })
+    .finally(() => onSettled?.());
   return sink;
 }
 
@@ -165,8 +173,6 @@ async function runBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: Execu
       if (est.fields > rt.options.maxFields) throw new RayfoldError("resource_exhausted", `Shape selects ${est.fields} fields, max ${rt.options.maxFields}`);
       p.cost = est.cost;
       total += est.cost;
-      // Only a shape that passed every check is remembered, so rejected shapes cannot fill the registry.
-      if (req.shape !== undefined && !isShapeId(req.shape)) rt.registry.register(p.shape);
     } catch (e) {
       p.failure = e instanceof RayfoldError ? e : new RayfoldError("internal", "Planning failed");
     }
@@ -175,6 +181,9 @@ async function runBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: Execu
   if (total > rt.options.budget) {
     return batchError({ code: "resource_exhausted", message: `Batch cost ${total} exceeds budget ${rt.options.budget}`, data: { cost: total, budget: rt.options.budget } });
   }
+  // Only a shape that passed every check, in a batch within budget, is remembered, so rejected shapes cannot fill the
+  // registry.
+  for (const p of planned) if (!p.failure && p.req.shape !== undefined && !isShapeId(p.req.shape)) rt.registry.register(p.shape);
 
   // ---- deadline / cancellation
   const batchAbort = new AbortController();
@@ -202,10 +211,28 @@ async function runBatch(rt: BatchRuntime, envelope: RequestEnvelope, opts: Execu
     .sort((a, b) => a.req.id - b.req.id)
     .map((p) => {
       const gate = p.op.kind === "command" ? prevCommand : Promise.resolve();
+      // An op's own deadline counts from the start of the batch, as meta.deadline does (spec 03 section 1): time spent
+      // waiting for its references or for an earlier command counts against it, and it ends while it waits.
+      const opAbort = new AbortController();
+      const relay = () => opAbort.abort(batchAbort.signal.reason);
+      batchAbort.signal.addEventListener("abort", relay, { once: true });
+      if (batchAbort.signal.aborted) relay();
+      // a WebSocket's { cancel: id } stops this op alone (spec 04 section 5)
+      const own = opts.opSignals?.get(p.req.id);
+      const relayOwn = () => opAbort.abort(opReason(own!));
+      own?.addEventListener("abort", relayOwn, { once: true });
+      if (own?.aborted) relayOwn();
+      const opTimer = validDeadline(p.req.deadline) ? setTimeout(() => opAbort.abort(new RayfoldError("deadline_exceeded", "Deadline exceeded")), p.req.deadline) : undefined;
       const task = (async () => {
-        await Promise.all(p.deps.map((d) => done.get(d) ?? Promise.resolve()));
-        await gate;
-        await runOne(rt, p, envelope.meta ?? {}, scoped, batchAbort.signal, viewerScope, results, status, sink);
+        try {
+          await untilAborted(Promise.all(p.deps.map((d) => done.get(d) ?? Promise.resolve())).then(() => gate), opAbort.signal);
+          await runOne(rt, p, envelope.meta ?? {}, scoped, batchAbort.signal, opAbort, viewerScope, results, status, sink);
+          await gate; // a later command still waits for the earlier one, even when this one ended first
+        } finally {
+          clearTimeout(opTimer);
+          batchAbort.signal.removeEventListener("abort", relay);
+          own?.removeEventListener("abort", relayOwn);
+        }
         resolvers.get(p.req.id)!();
       })();
       if (p.op.kind === "command") prevCommand = task;
@@ -257,6 +284,7 @@ async function runOne(
   meta: RequestMeta,
   opts: ExecuteOptions,
   batchSignal: AbortSignal,
+  opAbort: AbortController,
   viewerScope: string,
   results: Map<number, unknown>,
   status: Map<number, "ok" | "failed">,
@@ -265,23 +293,21 @@ async function runOne(
   const hook = rt.instrumentation?.op;
   // Counted whether or not an Instrumentation hook was configured: an operator asking "what is this server doing"
   // should not first have to wire up tracing.
-  const counted = async (): Promise<WireError | undefined> => {
-    const error = await runOp(rt, p, meta, opts, batchSignal, viewerScope, results, status, sink);
+  const counted = async (): Promise<Outcome> => {
+    const outcome = await runOp(rt, p, meta, opts, batchSignal, opAbort, viewerScope, results, status, sink);
+    const error = outcome.error;
     rt.counters?.add("rayfold.ops", 1, { kind: p.op.kind, outcome: error ? error.code : "ok" });
     // A declared error is `domain` on the wire and its name lives in `type`, so counting the code alone would put
     // every one of a schema's declared errors in the same bucket. Both labels come from the schema, so the series
     // stay bounded by it.
     if (error) rt.counters?.add("rayfold.errors", 1, { op: p.op.name, code: error.code, type: error.type ?? "" });
-    return error;
+    return outcome;
   };
   if (!hook) {
     await counted();
     return;
   }
-  await hook({ id: p.req.id, name: p.op.name, kind: p.op.kind, cost: p.cost }, async () => {
-    const error = await counted();
-    return error ? { error } : {};
-  });
+  await hook({ id: p.req.id, name: p.op.name, kind: p.op.kind, cost: p.cost }, counted);
 }
 
 /** Takes the key for this command, waiting for whoever holds it, and giving up when the op is cancelled. */
@@ -308,41 +334,39 @@ async function claimKey(rt: BatchRuntime, scope: string, key: string, signal: Ab
   }
 }
 
-/** Runs one op and sends its frames; resolves to the error it failed with, if it failed. */
+/** Runs one op and sends its frames; resolves to the error it failed with, and what was thrown, if it failed. */
 async function runOp(
   rt: BatchRuntime,
   p: Planned,
   meta: RequestMeta,
   opts: ExecuteOptions,
   batchSignal: AbortSignal,
+  /** The op's own: the batch's cancellation and the op's deadline both end it. */
+  opAbort: AbortController,
   viewerScope: string,
   results: Map<number, unknown>,
   status: Map<number, "ok" | "failed">,
   sink: FrameSink,
-): Promise<WireError | undefined> {
+): Promise<Outcome> {
   const id = p.req.id;
   const started = rt.options.now();
-  const fail = (e: unknown): WireError => {
+  const fail = (e: unknown): Outcome => {
     let w = toWireError(e);
     if (batchSignal.aborted && batchSignal.reason instanceof RayfoldError) w = batchSignal.reason.toWire();
     sink.push({ id, error: w, fin: true });
     status.set(id, "failed");
-    return w;
+    // the client gets `w`, which says nothing about the server; what was thrown goes only to the op hook
+    return { error: w, cause: e };
   };
   if (p.failure) return fail(p.failure);
+  if (opAbort.signal.aborted) return fail(opAbort.signal.reason);
   for (const d of p.deps) {
     if (status.get(d) !== "ok") {
       return fail(new RayfoldError("failed_precondition", `Depends on op ${d}, which failed`, { type: "DependencyFailed", data: { op: d } }));
     }
   }
-  if (batchSignal.aborted) return fail(batchSignal.reason);
   if (p.req.deadline !== undefined && !validDeadline(p.req.deadline)) return fail(new RayfoldError("invalid_argument", `deadline: expected whole milliseconds from 0 to ${MAX_DEADLINE_MS}`));
 
-  const opAbort = new AbortController();
-  const relay = () => opAbort.abort(batchSignal.reason);
-  batchSignal.addEventListener("abort", relay, { once: true });
-  let opTimer: ReturnType<typeof setTimeout> | undefined;
-  if (p.req.deadline !== undefined) opTimer = setTimeout(() => opAbort.abort(new RayfoldError("deadline_exceeded", "Deadline exceeded")), p.req.deadline);
   // A live query or a stream ends only when its caller goes away, so a server shutting down ends it here, with a
   // retryable error that sends the client to another server. Anything shorter is left to finish.
   const longLived = p.op.kind === "stream" || p.req.live === true;
@@ -405,11 +429,13 @@ async function runOp(
       case "command": {
         const idem = annotation(p.op, "idempotent");
         const optedOut = idem !== undefined && idem.args["value"] === false;
-        const key = p.req.key;
+        // A command that opts out takes no key (spec 01 section 4): one sent anyway, as the client libraries send one
+        // with every command, is ignored, so every call runs rather than replaying the first.
+        const key = optedOut ? undefined : p.req.key;
         if (!optedOut && !(opts.keyOptional && key === undefined) && (typeof key !== "string" || key.length < 16 || key.length > 128)) {
           throw new RayfoldError("invalid_argument", `${p.op.name}(): commands require an idempotency key of 16-128 characters`);
         }
-        rt.executor.authorize(p.op, args, ctx); // the write policy holds before anything is replayed
+        rt.executor.authorize(p.op, args, ctx); // the write policy holds before anything is replayed, and before a dry run is refused
         if (ctx.simulate && !annotation(p.op, "simulate")) throw new RayfoldError("failed_precondition", `${p.op.name}() does not support dry runs`);
         if (key && !ctx.simulate && (opts.viewer === null || opts.viewer === undefined)) {
           // Anonymous callers cannot be told apart, so they would share one replay scope (spec 12 section 4).
@@ -445,7 +471,7 @@ async function runOp(
           rt.counters?.add("rayfold.idempotency", 1, { claim: held.state });
           if (held.state === "done") {
             const failure = replayed(held.record);
-            if (failure) return failure; // its error frame is already sent, so this is not `fail()`'s to send again
+            if (failure) return { error: failure }; // its error frame is already sent, so this is not `fail()`'s to send again
             break;
           }
           token = held.token;
@@ -461,10 +487,13 @@ async function runOp(
         const renewal = token === undefined ? undefined : setInterval(() => void (holding && renew()), Math.max(1, Math.floor(rt.leaseMs / 3)));
         let committed = false;
         try {
-          const { result, full, compact, patch } = await rt.executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, (f) => sink.push(stamp(f)), () => (committed = true));
+          const { result, full, compact } = await rt.executor.runCommand(
+            p.op, args, p.shape, p.explicit, p.cost, ctx, (f) => sink.push(stamp(f)),
+            () => (committed = true),
+            (patch) => rt.changes.publish(changeFromPatch(patch)),
+          );
           results.set(id, result);
           if (token !== undefined) await rt.idempotency.put(viewerScope, key as string, { argsHash, frame: structuredClone(full), compactFrame: structuredClone(compact), at: rt.options.now() }, token);
-          if (!ctx.simulate) rt.changes.publish(changeFromPatch(patch));
         } catch (e) {
           // A command that failed before it changed anything leaves no record, so a retry runs it. One that failed
           // after its effect records the failure, so a retry is answered with it instead of running the command again.
@@ -491,13 +520,16 @@ async function runOp(
   } catch (e) {
     return fail(e);
   } finally {
-    if (opTimer) clearTimeout(opTimer);
-    batchSignal.removeEventListener("abort", relay);
     rt.draining.removeEventListener("abort", onDrain);
   }
-  return undefined;
+  return {};
 }
 
+
+/** Why an op's own signal stopped it: its reason when that is a Rayfold error, otherwise a plain cancel. */
+function opReason(signal: AbortSignal): RayfoldError {
+  return signal.reason instanceof RayfoldError ? signal.reason : new RayfoldError("canceled", "Canceled");
+}
 
 /**
  * Live query loop: first result, then re-run on intersecting changes until the op is aborted.
@@ -619,7 +651,20 @@ const MAX_NESTING = 64;
 /** Longest deadline a client may ask for. */
 const MAX_DEADLINE_MS = 600_000;
 
-function validDeadline(v: unknown): boolean {
+/** Settles when `p` settles or `signal` aborts, whichever comes first; never rejects. */
+function untilAborted(p: Promise<unknown>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const settle = () => {
+      signal.removeEventListener("abort", settle);
+      resolve();
+    };
+    signal.addEventListener("abort", settle, { once: true });
+    p.then(settle, settle);
+  });
+}
+
+function validDeadline(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_DEADLINE_MS;
 }
 

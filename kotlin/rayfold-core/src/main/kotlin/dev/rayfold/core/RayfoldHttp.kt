@@ -6,6 +6,9 @@ import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import com.sun.net.httpserver.HttpsExchange
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -208,6 +211,20 @@ class RayfoldHttp(
                 path.startsWith("$base/") -> path.substring(base.length)
                 else -> throw RayfoldException(Code.NOT_FOUND, "No route for ${call.method} $path")
             }
+            // An origin allowed to write is one a browser must be let read the answer for, and preflight for (spec 04
+            // section 4b). A preflight is answered before the Origin rule, which would refuse it for the method it names.
+            val origin = call.header("Origin")
+            val cors = origin != null && ("*" in options.allowedOrigins || origin in options.allowedOrigins)
+            if (cors && origin != null) {
+                call.setHeader("Access-Control-Allow-Origin", origin)
+                call.setHeader("Vary", "Origin") // the header names the asking origin, so a shared cache keeps one copy per origin
+                call.setHeader("Access-Control-Allow-Headers", CORS_HEADERS)
+                call.setHeader("Access-Control-Allow-Methods", CORS_METHODS)
+            }
+            if (call.method == "OPTIONS") {
+                call.setHeader("Allow", CORS_METHODS)
+                return call.respond(204, 0).close()
+            }
             checkOrigin(call)
             if (sub == "/manifest" && call.method == "GET") return manifest(call, path)
             if (sub == "/openapi.json" && call.method == "GET") return json(call, 200, OpenApi.document(server.ir))
@@ -282,6 +299,7 @@ class RayfoldHttp(
                 // buffered, so the status and the cache headers can come from the complete result
                 val frames = runBlocking { server.collect(batch, opts) }
                 val etag = if (safe) CacheHeaders.apply(server.ir, env.ops, frames, v, call::setHeader) else null
+                if (etag != null && cors) call.setHeader("Vary", "${CacheHeaders.VARY}, Origin")
                 if (etag != null && call.header("If-None-Match") == etag) return call.respond(304, 0).close()
                 // spec 07 section 3: a batch that is not marked safe is never stored. Set before the single-frame
                 // return below, which used to leave without a cache header at all.
@@ -361,9 +379,16 @@ class RayfoldHttp(
         val own = server.readiness().reasons
         val limit = options.readinessTimeoutMs
         val checks = options.readiness.map { (name, check) ->
+            // Each check runs on its own IO thread, outside this scope, and only the wait for it is timed: a check
+            // that blocks (a JDBC isValid, a Thread.sleep) cannot be interrupted, and run here it held the thread the
+            // timeout needed, so the limit was never enforced. One that never returns is left to finish on its own.
+            val running = checkScope.async { check() }
             async {
                 try {
-                    if (withTimeoutOrNull(limit) { check() } == null) "$name: no answer within $limit ms" else null
+                    if (withTimeoutOrNull(limit) { running.await() } == null) {
+                        running.cancel()
+                        "$name: no answer within $limit ms"
+                    } else null
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
@@ -373,6 +398,9 @@ class RayfoldHttp(
         }.awaitAll()
         Readiness(own + checks.filterNotNull())
     }
+
+    /** Where readiness checks run: detached from the request, so a timed-out check does not hold its answer. */
+    private val checkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * A request that can change data and carries an Origin must come from this server's own origin or an allowed one
@@ -644,6 +672,10 @@ class RayfoldHttp(
 
         /** The media type an upload arrives as: not one a browser may send cross-site without a preflight (spec 12 section 2). */
         const val UPLOAD_TYPE = "application/octet-stream"
+
+        // the upload route's own two are here as well: a browser on another origin preflights an upload too
+        const val CORS_HEADERS = "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe, Rayfold-Upload-Name, Rayfold-Upload-Type"
+        const val CORS_METHODS = "GET, POST, QUERY, OPTIONS"
         val BODY_TYPES = setOf("application/rayfold+json", "application/json", RbCodec.CONTENT_TYPE)
         val KEEP_ALIVE_JSON = byteArrayOf('\n'.code.toByte())
         val KEEP_ALIVE_RB = byteArrayOf(0)

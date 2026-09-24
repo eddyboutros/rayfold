@@ -213,6 +213,47 @@ describe("rayfold check --against", { timeout: 60_000 }, () => {
       "BREAKING  Book.subtitle: field Book.subtitle removed (deprecate with a sunset date first) [field-removed]\n\nFAILED: breaking changes against rayfold.lock.json\n",
     );
   });
+
+  it("against the lock a field added mid-type is compatible, even with --strict; a written renumbering still fails", async () => {
+    file("book.rayfold", BOOK);
+    expect((await rayfold("lock", "book.rayfold")).status).toBe(0);
+    const inserted = ["entity Book {", "  id: ID", "  isbn: String?", "  title: String", "  subtitle: String?", "}", "query book(id: ID): Book?"];
+    expect(await rayfold("check", file("next.rayfold", inserted), "--strict")).toEqual({
+      status: 0,
+      stdout: "ok        Book.isbn: field added [field-added]\n\nOK: compatible with rayfold.lock.json (1 change)\n",
+      stderr: "",
+    });
+    const renumbered = ["entity Book {", "  id: ID", "  title: String @ordinal(7)", "  subtitle: String?", "}", "query book(id: ID): Book?"];
+    expect(await rayfold("check", file("next.rayfold", renumbered))).toEqual({
+      status: 1,
+      stdout: "BREAKING  Book.title: ordinal changed 2 -> 7 [ordinal-changed]\n\nFAILED: breaking changes against rayfold.lock.json\n",
+      stderr: "",
+    });
+  });
+
+  it("guard - against an older schema file, the same insertion is a warning, which --strict refuses", async () => {
+    const inserted = ["entity Book {", "  id: ID", "  isbn: String?", "  title: String", "  subtitle: String?", "}", "query book(id: ID): Book?"];
+    const run = await rayfold("check", file("next.rayfold", inserted), "--against", file("old.rayfold", BOOK), "--strict");
+    expect(run).toEqual({
+      status: 1,
+      stdout: [
+        "warning   Book.title: moved from position 2 to 3; against a lockfile it keeps its ordinal by name [ordinal-shifted]",
+        "warning   Book.subtitle: moved from position 3 to 4; against a lockfile it keeps its ordinal by name [ordinal-shifted]",
+        "ok        Book.isbn: field added [field-added]",
+        "",
+        "FAILED: warnings against old.rayfold (--strict)",
+        "",
+      ].join("\n"),
+      stderr: "",
+    });
+  });
+
+  it("the bookstore example's lockfile records the schema it ships with: rerun `rayfold lock` there after changing it", () => {
+    const dir = new URL("../../../examples/bookstore-ts/", import.meta.url);
+    const { hash, ir } = loadSchema(readFileSync(new URL("bookstore.rayfold", dir), "utf8"));
+    const lock = JSON.parse(readFileSync(new URL("rayfold.lock.json", dir), "utf8")) as { hash: string; ir: unknown };
+    expect({ hash: lock.hash, ir: lock.ir }).toEqual({ hash, ir });
+  });
 });
 
 describe("rayfold check --unused", { timeout: 60_000 }, () => {

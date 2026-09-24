@@ -153,7 +153,7 @@ function decodePathSegment(raw: string, name: string): string {
 }
 
 /** Path and query-string values are text; coerce them by the argument's declared type. */
-function fromText(op: OpDef, name: string, text: string): unknown {
+export function fromText(op: OpDef, name: string, text: string): unknown {
   const def = op.args.find((a) => a.name === name);
   if (!def || def.type.kind !== "named") return text;
   switch (def.type.name) {

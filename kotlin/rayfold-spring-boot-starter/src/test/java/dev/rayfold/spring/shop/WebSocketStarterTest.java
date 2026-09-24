@@ -118,9 +118,13 @@ class WebSocketStarterTest {
     }
 
     WebSocket open(Messages m, String... headers) throws Exception {
+        return openAt("/rayfold/ws", m, headers);
+    }
+
+    WebSocket openAt(String target, Messages m, String... headers) throws Exception {
         WebSocket.Builder b = client.newWebSocketBuilder().subprotocols("rayfold.0.1").connectTimeout(Duration.ofSeconds(5));
         for (int i = 0; i < headers.length; i += 2) b.header(headers[i], headers[i + 1]);
-        WebSocket ws = b.buildAsync(URI.create("ws://127.0.0.1:" + port + "/rayfold/ws"), m).get(5, TimeUnit.SECONDS);
+        WebSocket ws = b.buildAsync(URI.create("ws://127.0.0.1:" + port + target), m).get(5, TimeUnit.SECONDS);
         opened.add(ws);
         return ws;
     }
@@ -170,6 +174,20 @@ class WebSocketStarterTest {
             {"id":2,"error":{"code":"canceled","message":"Canceled"},"fin":true}"""));
         // the canceled frame is sent only after the cancelled op let go of its subscription
         assertThat(server.getChanges().getSize()).isEqualTo(0);
+    }
+
+    @Test
+    void aSocketNamingAnotherSchemaIsClosedWith4409AndTheServersHashButOneNamingItsOwnIsServed() throws Exception {
+        Messages stale = new Messages();
+        openAt("/rayfold/ws?schema=sha256%3Astale", stale);
+        assertThat(stale.next()).isEqualTo(new Closed(4409, server.getHash()));
+
+        Messages same = new Messages();
+        WebSocket ws = openAt("/rayfold/ws?schema=" + java.net.URLEncoder.encode(server.getHash(), java.nio.charset.StandardCharsets.UTF_8), same);
+        ws.sendText("""
+            {"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }"}]}""", true).get(5, TimeUnit.SECONDS);
+        assertThat(same.next()).as("guard: its own hash is served").isEqualTo(json("""
+            {"id":1,"data":{"$type":"Book","id":"b1"},"meta":{"cost":1},"fin":true}"""));
     }
 
     @Test

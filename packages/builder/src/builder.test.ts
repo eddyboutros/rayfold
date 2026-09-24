@@ -120,4 +120,21 @@ describe("code-first builder", () => {
     expect(() => defineSchema({ types: [scalar("String")], ops: {} })).toThrow(/^Type String defined twice \(or shadows a built-in\)$/);
     expect(Object.keys(defineSchema({ types: [entity("A", { id: t.id() }), object("B", { n: t.int() })], ops: {} }).types)).toEqual(["A", "B"]);
   });
+
+  it("an @interface object is an interface, with the hash of the same schema written as text", () => {
+    const built = defineSchema({
+      types: [object("Named", { name: t.string() }).annotate("interface"), object("Plain", { name: t.string() }).annotate("deprecated")],
+      ops: { named: query({}, t.ref("Named")), plain: query({}, t.ref("Plain")) },
+    });
+    const text = loadSchema(`object Named @interface { name: String } object Plain @deprecated { name: String } query named: Named query plain: Plain`);
+    expect(built.ir.types["Named"]).toMatchObject({ interface: true });
+    // guard: another annotation does not make an object an interface
+    expect(built.ir.types["Plain"]).not.toHaveProperty("interface");
+    expect(schemaHash(built.ir)).toBe(text.hash);
+  });
+
+  it("a name no schema file could hold is refused at definition time (guard - a name is accepted)", () => {
+    expect(() => defineSchema({ types: [entity("A", { id: t.id(), "first-name": t.string() })], ops: {} })).toThrow(/A\.first-name: Field name "first-name" is not a name/);
+    expect(() => defineSchema({ types: [entity("A", { id: t.id(), first_name: t.string() })], ops: {} })).not.toThrow();
+  });
 });

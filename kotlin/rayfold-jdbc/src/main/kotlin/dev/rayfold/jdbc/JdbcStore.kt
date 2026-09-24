@@ -106,6 +106,7 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
         val t = table(type)
         val column = t.columns[field]?.let { quote(it) } ?: error("rayfold-jdbc: $type has no field $field")
         val keys = values.mapNotNull { text(it) }.distinct()
+        if (keys.isEmpty()) return values.map { JdbcPage(emptyList(), null, false, 0) }
         val params = mutableListOf<Any?>()
         val conds = mutableListOf(inList("CAST($column AS VARCHAR)", keys, params))
         policyWhere(t, ctx, params)?.let { conds.add(it) }
@@ -334,13 +335,19 @@ class JdbcStore(private val connections: () -> Connection, private val opts: Jdb
 
         fun text(v: JsonElement?): String? = (v as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
 
-        /** A JDBC value as JSON: numbers and booleans keep their kind, everything else travels as text. */
+        /**
+         * A JDBC value as JSON: numbers and booleans keep their kind, everything else travels as text. A point in time
+         * is written as RFC 3339 UTC (spec 01), where its `toString` prints the JVM's wall clock or the stored offset; a
+         * `java.sql.Date` already prints its `YYYY-MM-DD`.
+         */
         fun json(v: Any?): JsonElement = when (v) {
             null -> JsonNull
             is Boolean -> JsonPrimitive(v)
             is Int, is Long, is Short, is Byte -> JsonPrimitive(v as Number)
             is Double, is Float -> JsonPrimitive(v as Number)
             is java.math.BigDecimal -> JsonPrimitive(v.toPlainString())
+            is java.sql.Timestamp -> JsonPrimitive(v.toInstant().toString())
+            is java.time.OffsetDateTime -> JsonPrimitive(v.toInstant().toString())
             else -> JsonPrimitive(v.toString())
         }
 

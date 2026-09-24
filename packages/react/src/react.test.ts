@@ -347,6 +347,23 @@ describe("useCommand", () => {
     await waitForText(view.container, (t) => t.includes("A: Dune 2") && t.includes("X: done 2"), "one purchase on screen");
   });
 
+  it("an optimistic function sees the props of the latest render, not the first", async () => {
+    const { client } = makeClient();
+    const ui = (predicted: number) =>
+      h("div", null, h("p", null, `predict ${predicted}`), h(Stock, { id: "b1", label: "A" }), h(Command, { op: "restock", label: "R", options: { optimistic: () => [{ set: "Book:b1", value: { stock: predicted } }] } }));
+    const view = mount(client, ui(10));
+    await waitForText(view.container, (t) => t.includes("A: Dune 3") && t.includes("R: ready"), "ready");
+    view.rerender(ui(20));
+    await waitForText(view.container, (t) => t.includes("predict 20"), "the new props rendered");
+    let release!: () => void;
+    gate = new Promise((r) => (release = r));
+    const done = commands["R"]!.run({ id: "b1", qty: 1 });
+    await waitForText(view.container, (t) => t.includes("A: Dune 20"), "the prediction from the latest props");
+    release();
+    expect((await done).stock).toBe(4);
+    await waitForText(view.container, (t) => t.includes("A: Dune 4") && t.includes("R: done 4"), "the server's value");
+  });
+
   it("guard: runs without a key are separate purchases", async () => {
     const { client, requests } = makeClient();
     const view = mount(client, h("div", null, h(Stock, { id: "b1", label: "A" }), h(Command, { op: "buy", label: "X" })));

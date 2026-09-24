@@ -189,9 +189,11 @@ internal object Lexer {
             }
             if (src.startsWith("\"\"\"", i)) {
                 val start = i
-                val end = src.indexOf("\"\"\"", i + 3)
-                if (end < 0) throw RayfoldSyntaxException("Unterminated block string", line, i - lineStart + 1)
-                push(TokenKind.BLOCKSTRING, dedent(src.substring(i + 3, end)), start)
+                // \""" is the one escape a block string has (as in GraphQL): it is how a description holds its own fence
+                var end = i + 3
+                while (end < n && !src.startsWith("\"\"\"", end)) end += if (src.startsWith("\\\"\"\"", end)) 4 else 1
+                if (end >= n) throw RayfoldSyntaxException("Unterminated block string", line, i - lineStart + 1)
+                push(TokenKind.BLOCKSTRING, dedent(src.substring(i + 3, end).replace("\\\"\"\"", "\"\"\"")), start)
                 for (j in i until end + 3) if (src[j] == '\n') { line++; lineStart = j + 1 }
                 i = end + 3
                 continue
@@ -577,7 +579,8 @@ internal object Literals {
                     ts.next()
                     val out = linkedMapOf<String, JsonElement>()
                     while (!ts.atPunct("}")) {
-                        val k = ts.expectName()
+                        // a quoted key is how a default holds a key that is not a name, such as { "content-type": "text/plain" }
+                        val k = ts.accept(TokenKind.STRING)?.value ?: ts.expectName()
                         ts.expectPunct(":")
                         out[k] = parse(ts)
                     }
@@ -912,6 +915,7 @@ internal object SchemaValidator {
     private val EVENT_FIELD_KINDS = setOf("scalar", "enum", "object")
     private val RESERVED_OP_NAMES = setOf("subscribe", "manifest", "simulate", "sync")
     private val HTTP_PARAM = Regex("""\{([A-Za-z_][A-Za-z0-9_]*)\}""")
+    private val NAME = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
 
     private fun stringOrIdent(v: JsonElement?): String? =
         v.identOrNull() ?: (v as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -921,19 +925,31 @@ internal object SchemaValidator {
         fun err(code: String, at: String, message: String) { out.add(Diagnostic("error", code, message, at)) }
         fun warn(code: String, at: String, message: String) { out.add(Diagnostic("warning", code, message, at)) }
 
-        fun checkRef(t: TypeRef, at: String, allowed: Set<String>, ctx: String) {
-            if (t.isList) return checkRef(t.element, at, allowed, ctx)
-            if (t.name == "T") return // generic parameter inside built-in Page
+        /** [scope] holds the type parameters in scope: those of the generic object whose fields these are. */
+        fun checkRef(t: TypeRef, at: String, allowed: Set<String>, ctx: String, scope: List<String> = emptyList()) {
+            if (t.isList) return checkRef(t.element, at, allowed, ctx, scope)
+            if (t.typeName in scope) return
             val def = ir.types[t.typeName] ?: return err("unknown-type", at, "Unknown type ${t.name}")
             val params = def.typeParams
             if (def.kind == "object" && !params.isNullOrEmpty()) {
                 val targs = t.args
                 if (targs == null || targs.size != params.size) return err("generic-arity", at, "${t.name} takes ${params.size} type argument(s)")
-                for (a in targs) checkRef(a, at, allowed, ctx)
+                if (def.kind !in allowed) return err("bad-type-position", at, "${def.kind} ${t.name} cannot be used as $ctx")
+                for (a in targs) checkRef(a, at, allowed, ctx, scope)
                 return
             }
             if (!t.args.isNullOrEmpty()) return err("not-generic", at, "${t.name} is not generic")
             if (def.kind !in allowed) err("bad-type-position", at, "${def.kind} ${t.name} cannot be used as $ctx")
+        }
+
+        // The text parser only reads names, but an IR also comes from importers, the builder and lock files; a name no
+        // parser would read back is one no schema file can hold.
+        fun checkName(name: String, what: String, at: String) {
+            if (!NAME.matches(name)) err("bad-name", at, "$what ${jsJson(name)} is not a name ([A-Za-z_][A-Za-z0-9_]*)")
+        }
+        fun checkUnique(names: List<String>, what: String, at: String) {
+            val seen = mutableSetOf<String>()
+            for (n in names) if (!seen.add(n)) err("duplicate-name", at, "Duplicate $what $n")
         }
 
         fun checkAnnotations(anns: List<Annotation>, on: String, at: String) {
@@ -967,22 +983,35 @@ internal object SchemaValidator {
                     val maxAge = a.args["maxAge"]
                     if (a.args.containsKey("maxAge") && !(maxAge is JsonObject && maxAge.containsKey("\$duration"))) err("bad-cache-maxage", at, "@cache maxAge must be a duration like 60s")
                 }
+                if (a.name == "input" && on == "stream") {
+                    for (v in a.args.values) {
+                        val ref = (v as? JsonObject)?.get("\$type") as? JsonObject
+                        if (ref != null) checkRef(RayfoldSchemaIR.json.decodeFromJsonElement(TypeRef.serializer(), ref), at, INPUT_KINDS, "a stream input")
+                        else err("bad-input", at, "@input takes the type of what a client sends, as in @input(ChatMessage)")
+                    }
+                }
                 if (a.name == "load" && a.args["value"].identOrNull() !in setOf("batch", "single")) err("bad-load", at, "@load must be batch or single")
                 if (a.name == "merge" && a.args["value"].identOrNull() !in MERGE_POLICIES) err("bad-merge", at, "@merge takes one of " + MERGE_POLICIES.joinToString(", "))
             }
         }
 
         fun checkArg(a: ArgDef, at: String) {
+            if (a.name.startsWith("__") || a.name.startsWith("$")) err("reserved-name", at, "Argument name ${a.name} is reserved")
+            checkName(a.name, "Argument name", at)
             checkRef(a.type, at, INPUT_KINDS, "an argument")
             checkAnnotations(a.annotations, "arg", at)
         }
 
         fun checkFields(fields: List<FieldDef>, owner: TypeDef, allowed: Set<String>, ctx: String) {
+            checkUnique(fields.map { it.name }, "field", owner.name)
+            val scope = if (owner.kind == "object") owner.typeParams.orEmpty() else emptyList()
             for (f in fields) {
                 val at = "${owner.name}.${f.name}"
                 if (f.name == "\$type" || f.name.startsWith("__") || f.name.startsWith("$")) err("reserved-name", at, "Field name ${f.name} is reserved")
-                checkRef(f.type, at, allowed, ctx)
+                checkName(f.name, "Field name", at)
+                checkRef(f.type, at, allowed, ctx, scope)
                 checkAnnotations(f.annotations, "field", at)
+                checkUnique(f.args.map { it.name }, "argument", at)
                 for (a in f.args) checkArg(a, "$at(${a.name})")
                 if (owner.kind != "entity" && owner.kind != "object" && f.args.isNotEmpty()) err("args-not-allowed", at, "Only entity and object fields take arguments")
                 if (f.annotations.any { it.name == "version" }) {
@@ -1002,6 +1031,7 @@ internal object SchemaValidator {
             if (t.builtin) continue
             val at = t.name
             if (t.name.startsWith("__") || t.name.startsWith("$")) err("reserved-name", at, "Type name ${t.name} is reserved")
+            checkName(t.name, "Type name", at)
             checkAnnotations(t.annotations, t.kind, at)
             when (t.kind) {
                 "entity" -> {
@@ -1019,12 +1049,22 @@ internal object SchemaValidator {
                 }
                 "object", "error", "event" -> checkFields(t.fields, t, if (t.kind == "object") OUTPUT_KINDS else EVENT_FIELD_KINDS, "a field")
                 "input" -> checkFields(t.fields, t, INPUT_KINDS, "an input field")
-                "union" -> for (m in t.members) {
-                    val md = ir.types[m]
-                    if (md == null) err("unknown-type", at, "Unknown union member $m")
-                    else if (md.kind != "entity" && md.kind != "object") err("bad-union-member", at, "Union members must be entities or objects ($m is ${md.kind})")
+                "union" -> {
+                    checkUnique(t.members, "union member", at)
+                    for (m in t.members) {
+                        val md = ir.types[m]
+                        if (md == null) err("unknown-type", at, "Unknown union member $m")
+                        else if (md.kind != "entity" && md.kind != "object") err("bad-union-member", at, "Union members must be entities or objects ($m is ${md.kind})")
+                    }
                 }
-                "enum" -> for (v in t.values) checkAnnotations(v.annotations, "enumValue", "$at.${v.name}")
+                "enum" -> {
+                    checkUnique(t.values.map { it.name }, "enum value", at)
+                    for (v in t.values) {
+                        if (v.name.startsWith("__")) err("reserved-name", "$at.${v.name}", "Enum value ${v.name} is reserved")
+                        checkName(v.name, "Enum value", "$at.${v.name}")
+                        checkAnnotations(v.annotations, "enumValue", "$at.${v.name}")
+                    }
+                }
             }
         }
 
@@ -1032,7 +1072,9 @@ internal object SchemaValidator {
         for (op in ir.ops.values) {
             val at = "${op.name}()"
             if (op.name in RESERVED_OP_NAMES || op.name.startsWith("__") || op.name.startsWith("$")) err("reserved-name", at, "Operation name ${op.name} is reserved")
+            checkName(op.name, "Operation name", at)
             ir.types[op.name]?.let { if (!it.builtin) warn("shadowed-name", at, "Operation ${op.name} shares its name with a type") }
+            checkUnique(op.args.map { it.name }, "argument", at)
             for (a in op.args) checkArg(a, "$at.${a.name}")
             checkRef(op.returns, at, if (op.kind == "stream") STREAM_KINDS else OUTPUT_KINDS, "a result")
             checkAnnotations(op.annotations, op.kind, at)
@@ -1075,6 +1117,7 @@ internal object SchemaValidator {
         // --- views
         for (v in ir.views.values) {
             val at = "${v.type}.${v.name}"
+            checkName(v.name, "View name", at)
             val t = ir.types[v.type]
             if (t == null) {
                 err("unknown-type", at, "View on unknown type ${v.type}")
@@ -1104,7 +1147,8 @@ internal object SchemaValidator {
         }
         for (op in ir.ops.values) {
             visit(op.returns)
-            reachable.addAll(op.throws)
+            // an error's payload is part of what the operation answers with
+            for (e in op.throws) visit(TypeRef(kind = "named", name = e, nullable = false))
             for (e in op.emits) visit(TypeRef(kind = "named", name = e, nullable = false))
         }
         // rule 9 counts views, so a type reached only through one is not unreachable

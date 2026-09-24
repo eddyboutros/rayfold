@@ -12,7 +12,7 @@ import { ensure } from "./ddl.ts";
 import type { Queryable } from "./index.ts";
 
 export interface PgIdempotencyOptions {
-  /** Default `rayfold_idempotency`. Quoted as written, so keep it a plain identifier or schema-qualify it yourself. */
+  /** Default `rayfold_idempotency`, optionally schema-qualified (`app.rayfold_idempotency`). Each part is quoted as written. */
   table?: string;
   /** How long a record answers retries. Default 24 hours, the minimum the spec asks for. */
   ttlMs?: number;
@@ -30,8 +30,9 @@ export interface PgIdempotencyOptions {
  * the JVM store binds them as strings, and one definition has to work on both.
  */
 export function idempotencySchema(table = "rayfold_idempotency"): string {
+  const quoted = quoteTable(table);
   return [
-    `CREATE TABLE IF NOT EXISTS ${table} (`,
+    `CREATE TABLE IF NOT EXISTS ${quoted} (`,
     "  scope text NOT NULL,",
     "  key text NOT NULL,",
     "  args_hash text,",
@@ -42,9 +43,12 @@ export function idempotencySchema(table = "rayfold_idempotency"): string {
     "  at bigint NOT NULL,",
     "  PRIMARY KEY (scope, key)",
     ");",
-    `CREATE INDEX IF NOT EXISTS ${table.replace(/[^A-Za-z0-9_]/g, "_")}_at ON ${table} (at) WHERE frame IS NOT NULL;`,
+    `CREATE INDEX IF NOT EXISTS "${table.replace(/[^A-Za-z0-9_]/g, "_")}_at" ON ${quoted} (at) WHERE frame IS NOT NULL;`,
   ].join("\n");
 }
+
+/** Quoted part by part, as `JdbcIdempotencyStore` quotes it, so both runtimes name the same table whatever its case. */
+const quoteTable = (table: string): string => table.split(".").map((part) => `"${part.replace(/"/g, '""')}"`).join(".");
 
 interface Row {
   args_hash: string | null;
@@ -61,6 +65,7 @@ const ms = (v: string | number | null): number => (v === null ? 0 : typeof v ===
 const frameOf = (stored: unknown): unknown => (typeof stored === "string" ? JSON.parse(stored) : stored);
 
 export class PgIdempotencyStore implements IdempotencyStore {
+  private readonly name: string;
   private readonly table: string;
   private readonly ttlMs: number;
   private readonly maxRecords: number;
@@ -71,7 +76,8 @@ export class PgIdempotencyStore implements IdempotencyStore {
     private readonly sql: Queryable,
     opts: PgIdempotencyOptions = {},
   ) {
-    this.table = opts.table ?? "rayfold_idempotency";
+    this.name = opts.table ?? "rayfold_idempotency";
+    this.table = quoteTable(this.name);
     this.ttlMs = opts.ttlMs ?? 24 * 3_600_000;
     this.maxRecords = opts.maxRecords ?? 100_000;
     this.now = opts.now ?? Date.now;
@@ -79,7 +85,7 @@ export class PgIdempotencyStore implements IdempotencyStore {
 
   /** Creates the table and index if they are not there yet. Safe to call from every server as it starts. */
   async migrate(): Promise<void> {
-    for (const statement of idempotencySchema(this.table).split(";\n")) {
+    for (const statement of idempotencySchema(this.name).split(";\n")) {
       const text = statement.trim().replace(/;$/, "");
       if (text) await ensure(this.sql, text);
     }

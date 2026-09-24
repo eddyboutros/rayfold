@@ -95,6 +95,38 @@ public class Main {
     expect(execFileSync("java", ["-cp", out, "demo.Main"], { encoding: "utf8" }).trim()).toBe("Cat Dog big true Rex 2 adoptPet pets LARGE true c1 Photo a@b.c 2026-09-10T00:00:00Z");
   });
 
+  it.runIf(javac)("components named for Object's methods, and a backslash-u in a description, still compile and run", () => {
+    const bs = String.fromCharCode(92);
+    const schema = `
+"""Paths like C:${bs}users, an escape ${bs}u002a/ that would close this comment, and one ${bs}uZZZZ javac cannot read."""
+input Prefs { notify: Boolean wait: Int? hashCode: String? toString: String? clone: Boolean? finalize: Boolean? getClass: String? notifyAll: Boolean? }
+entity Account {
+  id: ID
+  """Set by ${bs}u0041dmin."""
+  toString: String
+}
+query account(prefs: Prefs, wait: Int?): Account`;
+    const main = `package edge;
+public class Main {
+  public static void main(String[] args) {
+    Api.Prefs p = new Api.Prefs(true, 5, "h", "t", false, false, "g", true);
+    Api.Account a = new Api.Account("a1", "shown");
+    System.out.println(String.join(" ", String.valueOf(p.notify_()), String.valueOf(p.wait_()), p.hashCode_(), p.toString_(), p.getClass_(), a.toString_(),
+      String.valueOf(new Api.Ops.AccountArgs(p, 3).wait_()), String.valueOf(p.equals(new Api.Prefs(true, 5, "h", "t", false, false, "g", true)))));
+  }
+}
+`;
+    const out = compile("edge", { "edge/Api.java": generateJava(loadSchema(schema).ir, { pkg: "edge", className: "Api" }), "edge/Main.java": main });
+    expect(execFileSync("java", ["-cp", out, "edge.Main"], { encoding: "utf8" }).trim()).toBe("true 5 h t g shown 3 true");
+  });
+
+  it("guard - names that are not Object's methods, and backslashes not before a u, are written as they are", () => {
+    const bs = String.fromCharCode(92);
+    const src = generateJava(loadSchema(`"""C:${bs}temp"""\ninput Prefs { notifyMe: Boolean waiting: Int } query q(p: Prefs): Int`).ir);
+    expect(src).toContain("public record Prefs(Boolean notifyMe, Integer waiting) {}");
+    expect(src).toContain(`/** C:${bs}temp */`);
+  });
+
   it.runIf(javac)("every schema in the repository generates Java that compiles without warnings", () => {
     const fixtures = join(__dirname, "../../../conformance/fixtures/core");
     const schemas: Array<[string, string]> = [["bookstore", bookstoreSchemaText()], ["pets", PETS]];

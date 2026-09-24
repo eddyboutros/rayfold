@@ -102,7 +102,7 @@ const book = await client.query<Book>("book", { id: "b1" }, { shape: "{ title st
   and the client puts it back. It works with JSON too, and the savings add up.
 
 Queries and commands return the same values as over JSON. A WebSocket transport takes the schema too:
-`createWebSocketTransport({ url: "ws://localhost:4000/rayfold/ws", binary: manifest.schema })`. The bookshop example
+`createWebSocketTransport({ url: "ws://localhost:4000/rayfold/ws", binary: manifest })`. The bookshop example
 serves HTTP only; `attachWebSocket(http, server)` from `@rayfold/server` adds the socket.
 
 ## Kotlin
@@ -128,7 +128,10 @@ and the manifest has the same hash as `schemaHash`. The HTTP transport compares 
 A bare schema IR works in place of the manifest when it is the server's full schema. The manifest's `schema` alone
 does not: it leaves out how policies decide, so it hashes differently, and the transport would stay on JSON.
 
-Over WebSocket the transport cannot see the server's hash, so after a deploy, reconnect with a freshly loaded manifest.
+A socket has no header per answer, so the WebSocket transport names the manifest's hash when it connects. A server
+holding another schema closes the socket with code `4409` before anything is decoded: the batches sent on it fail with
+[`unavailable`](/errors/unavailable), and every socket the transport opens after that speaks JSON. Load the manifest
+again and create a new transport to use RB.
 
 ## What it saves
 

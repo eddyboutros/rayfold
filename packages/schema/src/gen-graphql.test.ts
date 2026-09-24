@@ -158,6 +158,17 @@ scalar Decimal @specifiedBy(url: "https://rayfold.dev/spec/01-schema")
     expect(validateSchema(buildSchema(sdl))).toEqual([]);
   });
 
+  it("gives a type or input with no fields the field GraphQL requires, and says so (guard - a type with fields gets none)", () => {
+    const src = `error NotFound {} object Empty {} input NoFilter {} object Tag { name: String } entity Book { id: ID tag: Tag e: Empty } query book(id: ID, f: NoFilter?): Book throws NotFound`;
+    const { sdl, lost } = generateGraphql(loadSchema(src).ir);
+    expect(sdl).toContain('type NotFound {\n  """NotFound has no fields in the Rayfold schema, and GraphQL needs one here."""\n  _: Boolean\n}');
+    expect(sdl).toContain('input NoFilter {\n  """NoFilter has no fields in the Rayfold schema, and GraphQL needs one here."""\n  _: Boolean\n}');
+    expect(sdl).toContain("type Tag {\n  name: String!\n}");
+    expect(lost).toContain("NotFound, Empty and NoFilter have no fields, and GraphQL allows no type without one, so each holds the placeholder field _.");
+    expect(validateSchema(buildSchema(sdl))).toEqual([]);
+    expect(generateGraphql(loadSchema(`object Tag { name: String } query t: Tag`).ir).lost.some((l) => l.includes("placeholder field _."))).toBe(false);
+  });
+
   it("refuses a schema whose own type takes the name of a GraphQL root type", () => {
     expect(() => generateGraphql(loadSchema(`entity Query { id: ID } query q: Query`).ir)).toThrow("Query is a type in this schema, and GraphQL needs that name for the query root type");
     // guard: the same name is fine for a root GraphQL does not need here

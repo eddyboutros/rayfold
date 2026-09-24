@@ -5,6 +5,7 @@ import dev.rayfold.core.Policy
 import dev.rayfold.core.RayfoldContext
 import dev.rayfold.core.SchemaText
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import java.sql.Connection
 import java.sql.DriverManager
+import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 
@@ -141,5 +143,88 @@ class JdbcStorePostgresTest {
         assertEquals(2, rows.size)
         val page = store().page("Anyone", first = 10, where = mapOf("published" to JsonPrimitive(true)))
         assertEquals(3, page.total)
+    }
+
+    @Test
+    fun `a date reads as its day and a timestamptz as RFC 3339 UTC, with the JVM east of UTC`() {
+        val events = "rayfold_events_${ProcessHandle.current().pid()}"
+        val zone = TimeZone.getDefault()
+        // pgjdbc hands the session the JVM's zone as it connects, so it is pinned before the first connection
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
+        try {
+            DriverManager.getConnection(url).use { c ->
+                c.createStatement().use { s ->
+                    s.execute("""CREATE TABLE "$events" ("id" text primary key, "cal_id" text not null, "day" date not null, "at" timestamptz not null)""")
+                    s.execute("""INSERT INTO "$events" VALUES ('e1','c1','2024-01-01','2024-01-01T12:00:00Z'), ('e2','c1','2024-06-30','2024-06-30T23:30:00Z')""")
+                }
+            }
+            val ir = SchemaText.load("entity Ev { id: ID calId: ID day: Date at: Instant }").ir
+            val store = JdbcStore({ DriverManager.getConnection(url) }, JdbcStoreOptions(ir, mapOf("Ev" to JdbcTable(events)), Naming.SNAKE))
+            // the Timestamp's own toString was "2024-01-01 21:00:00.0", Tokyo's wall clock with no zone
+            assertEquals(EVENTS, times(store))
+        } finally {
+            TimeZone.setDefault(zone)
+            DriverManager.getConnection(url).use { c -> c.createStatement().use { it.execute("""DROP TABLE IF EXISTS "$events"""") } }
+        }
+    }
+
+    @Test
+    fun `pagesByField with no parent key but null answers empty pages, where it sent IN () to the database`() {
+        val pages = store().pagesByField("Anyone", "ownerId", listOf(JsonNull, JsonNull), 5)
+        assertEquals(listOf(JdbcPage(emptyList(), null, false, 0), JdbcPage(emptyList(), null, false, 0)), pages)
+        // guard: a null beside a real key leaves the real one paged
+        val mixed = store().pagesByField("Anyone", "ownerId", listOf(JsonNull, JsonPrimitive(alice)), 1)
+        assertEquals(listOf(0 to false, 3 to true), mixed.map { it.total to it.hasMore })
+    }
+}
+
+/** Every read of the store, each answering the two events as the wire carries them: `[id, day, at]`. */
+private fun times(store: JdbcStore): List<List<String>> {
+    fun rows(r: List<JsonObject>) = r.map { o -> listOf("id", "day", "at").map { o.getValue(it).jsonPrimitive.content } }
+    return rows(store.byIds("Ev", listOf(JsonPrimitive("e1"), JsonPrimitive("e2"))).filterNotNull()) +
+        rows(store.find("Ev")) +
+        rows(store.page("Ev", first = 5).items) +
+        rows(store.pagesByField("Ev", "calId", listOf(JsonPrimitive("c1")), 5).single().items)
+}
+
+private val EVENTS = List(4) { listOf(listOf("e1", "2024-01-01", "2024-01-01T12:00:00Z"), listOf("e2", "2024-06-30", "2024-06-30T23:30:00Z")) }.flatten()
+
+/** The same reads on H2, whose `TIMESTAMP WITH TIME ZONE` comes back as an OffsetDateTime keeping the offset it was written with. */
+class JdbcStoreTimeTest {
+    private val url = "jdbc:h2:mem:rayfoldtime${ProcessHandle.current().pid()}"
+    private lateinit var keepAlive: Connection
+    private val zone = TimeZone.getDefault()
+
+    @BeforeEach
+    fun open() {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
+        keepAlive = DriverManager.getConnection(url)
+        keepAlive.createStatement().use { s ->
+            s.execute("""CREATE TABLE "events" ("id" varchar primary key, "cal_id" varchar not null, "day" date not null, "at" timestamp with time zone not null)""")
+            s.execute("""INSERT INTO "events" VALUES ('e1','c1',DATE '2024-01-01',TIMESTAMP WITH TIME ZONE '2024-01-01 21:00:00+09:00'), ('e2','c1',DATE '2024-06-30',TIMESTAMP WITH TIME ZONE '2024-06-30 23:30:00+00:00')""")
+        }
+    }
+
+    @AfterEach
+    fun close() {
+        keepAlive.close()
+        TimeZone.setDefault(zone)
+    }
+
+    @Test
+    fun `a date reads as its day and an instant as RFC 3339 UTC, whatever offset it was stored with`() {
+        val ir = SchemaText.load("entity Ev { id: ID calId: ID day: Date at: Instant }").ir
+        val store = JdbcStore({ DriverManager.getConnection(url) }, JdbcStoreOptions(ir, mapOf("Ev" to JdbcTable("events")), Naming.SNAKE))
+        // an OffsetDateTime's own toString was "2024-01-01T21:00+09:00"
+        assertEquals(EVENTS, times(store))
+    }
+
+    @Test
+    fun `pagesByField with no parent key but null answers empty pages`() {
+        val ir = SchemaText.load("entity Ev { id: ID calId: ID? day: Date at: Instant }").ir
+        val store = JdbcStore({ DriverManager.getConnection(url) }, JdbcStoreOptions(ir, mapOf("Ev" to JdbcTable("events")), Naming.SNAKE))
+        assertEquals(listOf(JdbcPage(emptyList(), null, false, 0)), store.pagesByField("Ev", "calId", listOf(JsonNull), 5))
+        // guard: a null beside a real key leaves the real one paged
+        assertEquals(listOf(0, 2), store.pagesByField("Ev", "calId", listOf(JsonNull, JsonPrimitive("c1")), 5).map { it.items.size })
     }
 }

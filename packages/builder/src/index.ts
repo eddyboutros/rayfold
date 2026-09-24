@@ -143,7 +143,9 @@ function typeBuilder<K extends TypeDef["kind"], N extends string, F extends Fiel
     def,
     views,
     view: (vn, shape) => withDef(def, { ...views, [vn]: parseShapeText(shape) }),
-    annotate: (an, args = {}) => withDef({ ...def, annotations: [...def.annotations, { name: an, args }] }),
+    // the parser sets the interface flag from the annotation (parser.ts), and the IR (so the hash) carries both
+    annotate: (an, args = {}) =>
+      withDef({ ...def, annotations: [...def.annotations, { name: an, args }], ...(an === "interface" && def.kind === "object" ? { interface: true } : {}) } as TypeDef),
     cache: (maxAgeMs, scope = "public", swrMs) =>
       withDef({ ...def, annotations: [...def.annotations, { name: "cache", args: { maxAge: { $duration: maxAgeMs }, scope: { $ident: scope }, ...(swrMs !== undefined ? { swr: { $duration: swrMs } } : {}) } }] }),
     allow: (read, write) => {

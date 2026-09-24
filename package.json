@@ -22,7 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json",
-    "conform": "vitest run --project conformance",
+    "conform": "vitest run conformance",
     "rayfold": "tsx packages/cli/src/main.ts",
     "bench": "tsx bench/run.ts",
     "bench:load": "tsx --expose-gc bench/load.ts",

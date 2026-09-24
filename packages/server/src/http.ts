@@ -8,6 +8,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { RayfoldServer } from "./server.ts";
 import { RayfoldError, type Frame, type RequestEnvelope } from "./protocol.ts";
 import { cacheHeadersFor, codecFor, createFetchHandler, publicIR, readinessOf, type FetchOptions } from "./fetch.ts";
@@ -36,6 +37,8 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
     // the handler applies `allowedHosts` again, which agrees with this one.
     const badHost = hostProblem(req, opts);
     if (badHost) return refuse(res, 403, "permission_denied", badHost);
+    // a Host that is no valid authority (a space, a port past 65535) used to reach the URL built from it, which threw
+    if (!validAuthority(req.headers.host)) return refuse(res, 400, "invalid_argument", "Host header is not a valid host");
 
     // An upload is bounded by its own limit, not the envelope's, so its body travels as a stream rather than being
     // read whole here; everything else is read with the drain-then-drop behaviour only a socket can give.
@@ -63,7 +66,14 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
       init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
       init.duplex = "half"; // the body is still arriving when the request is made
     } else if (body && body.length) init.body = new Uint8Array(body);
-    const request = new Request(`http://${req.headers.host ?? "localhost"}${req.url ?? "/"}`, init as RequestInit);
+    // A fixed origin: the Host header travels as a header, which is what the handler reads the host from.
+    let request: Request;
+    try {
+      const target = req.url ?? "/";
+      request = new Request(target.startsWith("/") ? `http://localhost${target}` : new URL(target, "http://localhost").href, init as RequestInit);
+    } catch {
+      return refuse(res, 400, "invalid_argument", "Request target is not a valid path");
+    }
     sources.set(request, req);
 
     const response = await handle(request);
@@ -74,13 +84,22 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
       return;
     }
     res.flushHeaders(); // a live query may say nothing for a while; its headers should not wait with it
-    try {
-      for await (const chunk of Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0])) res.write(chunk as Buffer);
-    } catch {
-      /* the op failed after its frames began, or the client went away: the response ends either way */
-    }
-    res.end();
+    // piped, so a client that stops reading stops the reads from the body as well; the handler bounds what then waits
+    // there. A body that fails (the client stopped reading, the batch threw) ends the socket rather than the response,
+    // so the client sees it cut short instead of complete.
+    await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), res).catch(() => undefined);
   };
+}
+
+/** Whether a Host header is an authority a URL can be built on: a name or address, and a port within range. */
+function validAuthority(host: string | undefined): boolean {
+  if (host === undefined || /[\s/?#@\\]/.test(host)) return false;
+  try {
+    new URL(`http://${host}`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Cache-Control/ETag for safe requests (spec 07 §2), applied to a Node response. */

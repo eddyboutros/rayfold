@@ -160,6 +160,11 @@ export class Executor {
     emit: Emit,
     /** Called once the resolver has returned: from here the command has changed things, whatever happens next. */
     onCommitted?: () => void,
+    /**
+     * Called once with the patch describing what the command changed, for live queries (never on a dry run). A command
+     * whose answer fails after it committed still changed things, so this is called then too, with what is known.
+     */
+    onChange?: (patch: PatchOp[]) => void,
   ): Promise<{ result: unknown; frame: Frame; full: Frame; compact: Frame; patch: PatchOp[] }> {
     this.checkOpPolicy(op, "write", args, ctx);
     const fn = this.resolvers.Command?.[op.name];
@@ -177,15 +182,29 @@ export class Executor {
     if (!ctx.simulate) ctx.batch.delete(LOADS);
     const cr: CommandResult = isCommandResult(raw) ? raw : ok(raw);
     const st: ProjectState = { ctx, errors: [], deferred: [], explicit };
-    const data = await this.projectValue(cr.result, op.returns, shape, "", st);
-    // Deferred blocks make no sense on a command result: resolve them inline.
-    while (st.deferred.length) {
-      const job = st.deferred.shift()!;
-      await this.projectMany(job.slots, job.type, job.shape, st);
-    }
     const extra = cr.patch ?? [];
-    const patch = derivePatches(data, shape, (t, v) => this.ir.views[`${t}.${v}`]).concat(extra);
+    let data: unknown;
+    let patch: PatchOp[];
+    try {
+      data = await this.projectValue(cr.result, op.returns, shape, "", st);
+      // Deferred blocks make no sense on a command result: resolve them inline.
+      while (st.deferred.length) {
+        const job = st.deferred.shift()!;
+        await this.projectMany(job.slots, job.type, job.shape, st);
+      }
+      patch = derivePatches(data, shape, (t, v) => this.ir.views[`${t}.${v}`]).concat(extra);
+    } catch (e) {
+      // Only the answer failed: live queries and subscribers still hear of the change, as far as the resolver's own
+      // value names it, and of the declared events it raised.
+      if (!ctx.simulate) {
+        const keys = committedKeys(this.ir, op.returns, cr.result);
+        onChange?.(keys.length ? [...extra, { inv: keys }] : extra);
+        for (const ev of cr.emit ?? []) if (op.emits.includes(ev.event)) ctx.events.publish(ev.event, ev.payload);
+      }
+      throw e;
+    }
     if (!ctx.simulate) {
+      onChange?.(patch);
       for (const ev of cr.emit ?? []) {
         if (!op.emits.includes(ev.event)) throw new RayfoldError("internal", `${op.name} emitted undeclared event ${ev.event}`);
         ctx.events.publish(ev.event, ev.payload);
@@ -285,7 +304,7 @@ export class Executor {
       for (const s of fresh) {
         delete (s.out as Record<string, unknown>)["$type"]; // the parent frame carried it; a delta never repeats it
         const f: Frame = { id: st.ctx.opId, at: s.path, data: st.ctx.compact ? stripTypes(s.out) : s.out };
-        const errs = sub.errors.filter((e) => e.path?.startsWith(s.path));
+        const errs = sub.errors.filter((e) => e.path !== undefined && within(e.path, s.path));
         if (errs.length) f.errors = errs;
         emit(f);
       }
@@ -357,11 +376,12 @@ export class Executor {
         (groups.get(tn) ?? groups.set(tn, []).get(tn)!).push(s);
       }
       for (const [tn, group] of groups) {
+        const member = this.ir.types[tn];
         const memberShape: Shape = { items: [] };
         for (const it of shape.items) {
-          if (it.kind === "on" && it.type === tn) memberShape.items.push(...it.shape.items);
-          else if (it.kind === "spread") memberShape.items.push(it);
-          else if (it.kind === "field") memberShape.items.push(it);
+          if (it.kind === "on") {
+            if (it.type === tn || (member?.kind === "entity" && member.implements.includes(it.type))) memberShape.items.push(...it.shape.items);
+          } else memberShape.items.push(it);
         }
         const ref: TypeRef = { kind: "named", name: tn, nullable: false };
         await this.projectMany(group, ref, memberShape.items.length ? memberShape : defaultShape(this.ir, ref), st);
@@ -669,6 +689,11 @@ function join(path: string, name: string): string {
   return path ? `${path}.${name}` : name;
 }
 
+/** Whether result path `path` is `at` or lies beneath it: `items.10` is not beneath `items.1`. */
+function within(path: string, at: string): boolean {
+  return at === "" || path === at || path.startsWith(`${at}.`);
+}
+
 /** Entities that implement an interface, memoised per schema. */
 function implementorsOf(ir: RayfoldSchemaIR, iface: string): Set<string> {
   let memo = implementors.get(ir);
@@ -751,6 +776,17 @@ export function derivePatches(data: unknown, shape?: Shape, views?: ViewResolver
   };
   walk(data, shape);
   return [...out.entries()].map(([key, value]) => ({ set: key, value }));
+}
+
+/** `Type:id` of each entity a command's raw result names at its top level, for when its projection failed. */
+function committedKeys(ir: RayfoldSchemaIR, t: TypeRef, v: unknown): string[] {
+  if (v === null || typeof v !== "object") return [];
+  if (t.kind === "list") return Array.isArray(v) ? v.flatMap((x) => committedKeys(ir, t.of, x)) : [];
+  const o = v as Record<string, unknown>;
+  const def = ir.types[t.name];
+  const tn = def?.kind === "entity" ? def.name : typeof o["$type"] === "string" ? o["$type"] : undefined;
+  const id = o["id"];
+  return tn !== undefined && ir.types[tn]?.kind === "entity" && (typeof id === "string" || typeof id === "number") ? [`${tn}:${id}`] : [];
 }
 
 function toRef(v: unknown): unknown {

@@ -39,7 +39,9 @@ const settings = (opts: ExplorerOptions = {}): { endpoint: string; path: string;
 
 /** The page itself, for serving from a framework of your own. */
 export function explorerHtml(opts: ExplorerOptions = {}): string {
-  return PAGE.replace("__RAYFOLD_EXPLORER_CONFIG__", JSON.stringify(settings(opts).config).replace(/</g, "\\u003c"));
+  // a replacer function, so a `$&` or `$'` in the title is text rather than a replacement pattern
+  const config = JSON.stringify(settings(opts).config).replace(/</g, "\\u003c");
+  return PAGE.replace("__RAYFOLD_EXPLORER_CONFIG__", () => config);
 }
 
 /**

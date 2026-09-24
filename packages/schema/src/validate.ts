@@ -68,6 +68,7 @@ export const MERGE_POLICIES = ["serverWins", "keepLocal", "lww", "crdtText", "cu
 const INPUT_KINDS = new Set(["scalar", "enum", "input"]);
 const OUTPUT_KINDS = new Set(["scalar", "enum", "entity", "object", "union"]);
 const STREAM_KINDS = new Set([...OUTPUT_KINDS, "event"]);
+const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -80,20 +81,37 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
 
   const typeOf = (name: string): TypeDef | undefined => ir.types[name];
 
-  const checkRef = (t: TypeRef, at: string, allowed: Set<string>, ctx: string): void => {
-    if (t.kind === "list") return checkRef(t.of, at, allowed, ctx);
-    if (t.name === "T") return; // generic parameter inside built-in Page
+  /** [params] are the type parameters in scope: those of the generic object whose fields these are. */
+  const checkRef = (t: TypeRef, at: string, allowed: Set<string>, ctx: string, params: string[] = []): void => {
+    if (t.kind === "list") return checkRef(t.of, at, allowed, ctx, params);
+    if (params.includes(t.name)) return;
     const def = typeOf(t.name);
     if (!def) return err("unknown-type", at, `Unknown type ${t.name}`);
     if (def.kind === "object" && def.typeParams?.length) {
       if (!t.args || t.args.length !== def.typeParams.length) {
         return err("generic-arity", at, `${t.name} takes ${def.typeParams.length} type argument(s)`);
       }
-      for (const a of t.args) checkRef(a, at, allowed, ctx);
+      if (!allowed.has(def.kind)) return err("bad-type-position", at, `${def.kind} ${t.name} cannot be used as ${ctx}`);
+      for (const a of t.args) checkRef(a, at, allowed, ctx, params);
       return;
     }
     if (t.args?.length) return err("not-generic", at, `${t.name} is not generic`);
     if (!allowed.has(def.kind)) err("bad-type-position", at, `${def.kind} ${t.name} cannot be used as ${ctx}`);
+  };
+
+  /**
+   * The text parser only reads names, but an IR also comes from importers, the builder and lock files; a name no
+   * parser would read back is one no schema file can hold.
+   */
+  const checkName = (name: string, what: string, at: string): void => {
+    if (!NAME.test(name)) err("bad-name", at, `${what} ${JSON.stringify(name)} is not a name ([A-Za-z_][A-Za-z0-9_]*)`);
+  };
+  const checkUnique = (names: string[], what: string, at: string): void => {
+    const seen = new Set<string>();
+    for (const n of names) {
+      if (seen.has(n)) err("duplicate-name", at, `Duplicate ${what} ${n}`);
+      seen.add(n);
+    }
   };
 
   const checkAnnotations = (anns: Annotation[], on: string, at: string): void => {
@@ -137,6 +155,12 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
           err("bad-merge", at, `@merge takes one of ${MERGE_POLICIES.join(", ")}`);
         }
       }
+      if (a.name === "input" && on === "stream") {
+        for (const v of Object.values(a.args)) {
+          if (v && typeof v === "object" && "$type" in v) checkRef((v as { $type: TypeRef }).$type, at, INPUT_KINDS, "a stream input");
+          else err("bad-input", at, `@input takes the type of what a client sends, as in @input(ChatMessage)`);
+        }
+      }
       if (a.name === "load") {
         const v = a.args["value"];
         if (!(v && typeof v === "object" && "$ident" in v && ["batch", "single"].includes(String((v as { $ident: string }).$ident)))) {
@@ -147,13 +171,17 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
   };
 
   const checkFields = (fields: FieldDef[], owner: TypeDef, allowed: Set<string>, ctx: string): void => {
+    checkUnique(fields.map((f) => f.name), "field", owner.name);
+    const params = owner.kind === "object" ? (owner.typeParams ?? []) : [];
     for (const f of fields) {
       const at = `${owner.name}.${f.name}`;
       if (RESERVED_FIELD_NAMES.has(f.name) || f.name.startsWith("__") || f.name.startsWith("$")) {
         err("reserved-name", at, `Field name ${f.name} is reserved`);
       }
-      checkRef(f.type, at, allowed, ctx);
+      checkName(f.name, "Field name", at);
+      checkRef(f.type, at, allowed, ctx, params);
       checkAnnotations(f.annotations, "field", at);
+      checkUnique(f.args.map((a) => a.name), "argument", at);
       for (const a of f.args) checkArg(a, `${at}(${a.name})`);
       if (owner.kind !== "entity" && owner.kind !== "object" && f.args.length) {
         err("args-not-allowed", at, `Only entity and object fields take arguments`);
@@ -174,6 +202,8 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
   };
 
   const checkArg = (a: ArgDef, at: string): void => {
+    if (a.name.startsWith("__") || a.name.startsWith("$")) err("reserved-name", at, `Argument name ${a.name} is reserved`);
+    checkName(a.name, "Argument name", at);
     checkRef(a.type, at, INPUT_KINDS, "an argument");
     checkAnnotations(a.annotations, "arg", at);
   };
@@ -183,6 +213,7 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
     if (t.builtin) continue;
     const at = t.name;
     if (t.name.startsWith("__") || t.name.startsWith("$")) err("reserved-name", at, `Type name ${t.name} is reserved`);
+    checkName(t.name, "Type name", at);
     checkAnnotations(t.annotations, t.kind, at);
     switch (t.kind) {
       case "entity": {
@@ -212,6 +243,7 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
         checkFields(t.fields, t, INPUT_KINDS, "an input field");
         break;
       case "union":
+        checkUnique(t.members, "union member", at);
         for (const m of t.members) {
           const md = typeOf(m);
           if (!md) err("unknown-type", at, `Unknown union member ${m}`);
@@ -219,7 +251,12 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
         }
         break;
       case "enum":
-        for (const v of t.values) checkAnnotations(v.annotations, "enumValue", `${at}.${v.name}`);
+        checkUnique(t.values.map((v) => v.name), "enum value", at);
+        for (const v of t.values) {
+          if (v.name.startsWith("__")) err("reserved-name", `${at}.${v.name}`, `Enum value ${v.name} is reserved`);
+          checkName(v.name, "Enum value", `${at}.${v.name}`);
+          checkAnnotations(v.annotations, "enumValue", `${at}.${v.name}`);
+        }
         break;
       default:
     }
@@ -231,7 +268,9 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
     if (RESERVED_OP_NAMES.has(op.name) || op.name.startsWith("__") || op.name.startsWith("$")) {
       err("reserved-name", at, `Operation name ${op.name} is reserved`);
     }
+    checkName(op.name, "Operation name", at);
     if (ir.types[op.name] && !ir.types[op.name]!.builtin) warn("shadowed-name", at, `Operation ${op.name} shares its name with a type`);
+    checkUnique(op.args.map((a) => a.name), "argument", at);
     for (const a of op.args) checkArg(a, `${at}.${a.name}`);
     checkRef(op.returns, at, op.kind === "stream" ? STREAM_KINDS : OUTPUT_KINDS, "a result");
     checkAnnotations(op.annotations, op.kind, at);
@@ -273,6 +312,7 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
   // --- views
   for (const v of Object.values(ir.views)) {
     const at = `${v.type}.${v.name}`;
+    checkName(v.name, "View name", at);
     const t = typeOf(v.type);
     if (!t) {
       err("unknown-type", at, `View on unknown type ${v.type}`);
@@ -301,7 +341,8 @@ export function validateIR(ir: RayfoldSchemaIR): Diagnostic[] {
   };
   for (const op of Object.values(ir.ops)) {
     visit(op.returns);
-    for (const e of op.throws) reachable.add(e);
+    // an error's payload is part of what the operation answers with
+    for (const e of op.throws) visit({ kind: "named", name: e, nullable: false });
     for (const e of op.emits) visit({ kind: "named", name: e, nullable: false });
   }
   // rule 9 counts views, so a type reached only through one is not unreachable

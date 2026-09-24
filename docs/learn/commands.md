@@ -96,7 +96,8 @@ the original result instead of running it a second time. `meta.replay` says so:
 {"id":1,"ok":{"$type":"Book","id":"b3","title":"Dune","stock":6},"patch":[{"set":"Book:b3","value":{"$type":"Book","id":"b3","title":"Dune","stock":6}}],"meta":{"cost":1,"replay":true},"fin":true}
 ```
 
-The client libraries create a key for each call and keep it when they retry or replay a command queued offline.
+The client libraries create a key for each call and keep it when they retry or replay a command queued offline. A
+command marked `@idempotent(false)` ignores the key it is sent, so every call runs.
 
 A record belongs to the caller who made it and to the exact command it answered. Send a key with no viewer and the
 server answers `unauthenticated`: a replay scope needs someone to scope it to. Send a key that was used for another
@@ -184,8 +185,8 @@ When the resolver throws `OutOfStock`, the client receives it by name, with the 
 
 The message is for people; code branches on `type`. A resolver may only throw errors its operation declares. Anything
 else reaches the client as [`internal`](/errors/internal) with the message `Internal error`, so nothing about the
-server leaks. The runtime does not keep the original exception, so log it in the resolver, or in an
-[`Instrumentation`](../guide/tracing.md) hook, before it escapes.
+server leaks. The original exception still reaches the server: the `op` hook of an
+[`Instrumentation`](../guide/tracing.md) gets it as its outcome's `cause`, stack and all, so log it there.
 
 ## Errors every API shares
 

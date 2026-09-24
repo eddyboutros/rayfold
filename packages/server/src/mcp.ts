@@ -13,6 +13,7 @@ import { publicIR } from "./fetch.ts";
 export { jsonSchemaFor, withRange };
 import { BodyTooLarge, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
 import { readBody } from "./http.ts";
+import { fromText } from "./bindings.ts";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 
@@ -58,7 +59,8 @@ function argsSchema(ir: RayfoldSchemaIR, args: ArgDef[]): Record<string, unknown
 
 function resultSchema(ir: RayfoldSchemaIR, t: TypeRef): Record<string, unknown> {
   const defs: Record<string, unknown> = {};
-  const inner = jsonSchemaFor(ir, t, defs, false);
+  // tools/call answers with the default view, which may leave out fields the type declares
+  const inner = jsonSchemaFor(ir, t, defs, false, true);
   const schema: Record<string, unknown> = { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { result: inner }, required: ["result"] };
   if (Object.keys(defs).length) schema["$defs"] = defs;
   return schema;
@@ -159,6 +161,10 @@ export type SchemaMode = "redacted" | "full" | "off";
 
 /** Handle one JSON-RPC request (stateless). */
 export async function handleMcp(server: RayfoldServer, req: JsonRpcRequest, viewer: unknown, opts: { schema?: SchemaMode } = {}): Promise<Record<string, unknown> | null> {
+  // null, a number or a list is no request; reading its members threw, which rejected the whole HTTP handler
+  if (req === null || typeof req !== "object" || Array.isArray(req)) return { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } };
+  // a notification has no id and gets no reply (spec 10 §1: HTTP 202), whatever its method
+  if (!("id" in req)) return null;
   const schemaMode = opts.schema ?? "redacted";
   const reply = (result: unknown) => ({ jsonrpc: "2.0", id: req.id ?? null, result });
   const fail = (code: number, message: string) => ({ jsonrpc: "2.0", id: req.id ?? null, error: { code, message } });
@@ -192,8 +198,10 @@ export async function handleMcp(server: RayfoldServer, req: JsonRpcRequest, view
       // reading a resource is a read: the operation's kind decides, not the name in the URI, so a command named
       // here is refused rather than run. Otherwise MCP's one safe verb becomes a way to write.
       if (!m || server.ir.ops[m[1]!]?.kind !== "query") return fail(-32602, `Unknown resource ${uri}`);
+      // query-string values are text; they are coerced by the argument's declared type, as an HTTP binding's are
+      const op = server.ir.ops[m[1]!]!;
       const args: Record<string, unknown> = {};
-      for (const [k, v] of new URLSearchParams(m[3] ?? "")) args[k] = v;
+      for (const [k, v] of new URLSearchParams(m[3] ?? "")) args[k] = fromText(op, k, v);
       const r = await callTool(server, m[1]!, args, viewer);
       if (r["isError"]) return fail(-32000, (r["content"] as Array<{ text: string }>)[0]?.text ?? "error");
       return reply({ contents: [{ uri, mimeType: "application/json", text: JSON.stringify((r["structuredContent"] as { result: unknown }).result) }] });
@@ -258,7 +266,10 @@ export function createMcpHandler(server: RayfoldServer, opts: McpHttpOptions = {
     const headerMethod = req.headers["mcp-method"];
     const first = Array.isArray(body) ? body[0] : body;
     if (typeof headerMethod === "string" && first && headerMethod !== first.method) {
-      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ jsonrpc: "2.0", id: first.id ?? null, error: { code: -32020, message: "HeaderMismatch" } }));
+      // a JSON-RPC response, so it carries the protocol version as every other one does (spec 10 §1)
+      res
+        .writeHead(400, { "Content-Type": "application/json", "MCP-Protocol-Version": MCP_PROTOCOL_VERSION })
+        .end(JSON.stringify({ jsonrpc: "2.0", id: first.id ?? null, error: { code: -32020, message: "HeaderMismatch" } }));
       return true;
     }
     const results = await Promise.all((Array.isArray(body) ? body : [body]).map((r) => handleMcp(server, r, viewer, { schema: opts.schema ?? "redacted" })));

@@ -205,10 +205,3 @@ export function resolvers({ store, files, uploads, caps, id = () => crypto.rando
   };
 }
 // #endregion resolvers
-
-/** Stands in for real authentication: check your session cookie or JWT here instead. */
-export function viewerFrom(authorization: string | undefined): Viewer | null {
-  if (authorization === "Bearer ada") return { id: "u1", name: "Ada" };
-  if (authorization === "Bearer grace") return { id: "u2", name: "Grace" };
-  return null;
-}

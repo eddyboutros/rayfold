@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { evalExpr, loadSchema, parseExprText, parseShapeText, type ExprEnv } from "@rayfold/schema";
 import { createRayfoldServer, decide, type RayfoldContext, type RayfoldServer } from "@rayfold/server";
+import pg from "pg";
 import { compilePolicy, createPgStore, type PageRequest, type PgStore, type PolicyColumn, type Queryable, type Row } from "./index.ts";
 
 const SCHEMA = `
@@ -371,5 +372,187 @@ describe("read policies pushed into SQL (spec 06 §4)", () => {
     }
     expect(exact, "guard: most cases translate exactly").toBeGreaterThan(loose);
     expect(loose, "guard: the cases SQL cannot match exactly are left to the runtime").toBeGreaterThan(0);
+  });
+});
+
+const CALENDAR = `
+entity Cal { id: ID evs(page: PageArgs = { first: 5 }): Page<Ev> }
+entity Ev { id: ID calId: ID day: Date at: Instant }
+query ev(id: ID): Ev?
+query evs: [Ev]
+query evPage(page: PageArgs = { first: 5 }): Page<Ev>
+query evScreen(page: PageArgs = { first: 5 }): Page<Ev>
+query cals: [Cal]
+`;
+
+/** The calendar through every read of the store, each behind the resolver that serves it, run by a real server. */
+async function calendarDays(sql: Queryable, tables: { cal: string; ev: string }): Promise<unknown[]> {
+  const { ir } = loadSchema(CALENDAR);
+  const store = createPgStore(sql, { ir, naming: "snake", tables: { Cal: { table: tables.cal }, Ev: { table: tables.ev } } });
+  const server = createRayfoldServer({
+    schema: CALENDAR,
+    resolvers: {
+      Query: {
+        ev: async (a: { id: string }, ctx) => (await store.byIds("Ev", [a.id], ctx))[0],
+        evs: (_a, ctx) => store.find("Ev", {}, ctx),
+        evPage: (a: { page: PageRequest }, ctx) => store.page("Ev", a.page, {}, ctx),
+        evScreen: (a: { page: PageRequest }, ctx) => store.screen("Ev", ctx.shape!, a.page, {}, ctx),
+        cals: (_a, ctx) => store.find("Cal", {}, ctx),
+      },
+      Cal: { evs: (parents: Row[], a: { page: PageRequest }, ctx: RayfoldContext) => store.pagesByField("Ev", "calId", parents.map((p) => p["id"]), a.page, ctx) },
+    },
+  });
+  const shape = "{ id day at }";
+  const frames = await server.collect({
+    ops: [
+      { id: 1, op: "ev", args: { id: "e1" }, shape },
+      { id: 2, op: "evs", shape },
+      { id: 3, op: "evPage", shape: `{ items ${shape} }` },
+      { id: 4, op: "evScreen", shape: `{ items ${shape} }` },
+      { id: 5, op: "cals", shape: `{ evs { items ${shape} } }` },
+    ],
+  });
+  // the ops run at once, and on a pool they finish in any order
+  const byId = (frames as Array<{ id: number; data?: unknown; error?: unknown }>).sort((a, b) => a.id - b.id);
+  return byId.map((f) => f.data ?? f.error);
+}
+
+const E1 = { $type: "Ev", id: "e1", day: "2024-01-01", at: "2024-01-01T12:00:00.000Z" };
+const E2 = { $type: "Ev", id: "e2", day: "2024-06-30", at: "2024-06-30T23:30:00.000Z" };
+const EVERY_PATH = [E1, [E1, E2], { items: [E1, E2] }, { items: [E1, E2] }, [{ $type: "Cal", evs: { items: [E1, E2] } }]];
+
+/** Runs `f` with the process in Tokyo, east of UTC, where a local midnight is still the day before in UTC. */
+async function inTokyo<T>(f: () => Promise<T>): Promise<T> {
+  const before = process.env["TZ"];
+  process.env["TZ"] = "Asia/Tokyo";
+  try {
+    expect(new Date(2024, 0, 1).getTimezoneOffset(), "the process time zone took").toBe(-540);
+    return await f();
+  } finally {
+    if (before === undefined) delete process.env["TZ"];
+    else process.env["TZ"] = before;
+  }
+}
+
+const calendarRows = (cal: string, ev: string) => `
+  CREATE TABLE ${cal} (id text PRIMARY KEY);
+  CREATE TABLE ${ev} (id text PRIMARY KEY, cal_id text NOT NULL, day date NOT NULL, at timestamptz NOT NULL);
+  INSERT INTO ${cal} VALUES ('c1');
+  INSERT INTO ${ev} VALUES ('e1', 'c1', '2024-01-01', '2024-01-01T12:00:00Z'), ('e2', 'c1', '2024-06-30', '2024-06-30T23:30:00Z');
+`;
+
+describe("a Date reads as its day and an Instant as UTC, the same through every path", () => {
+  it("on PGlite with the session and the process east of UTC: byIds, find, page, screen and pagesByField agree", async () => {
+    await db.exec(calendarRows("cal", "ev"));
+    // Postgres writes a timestamptz into JSON in the session's zone; screen used to hand that on, "+09:00" and all
+    await db.exec("SET TimeZone = 'Asia/Tokyo'");
+    expect(await inTokyo(() => calendarDays(counted, { cal: "cal", ev: "ev" }))).toEqual(EVERY_PATH);
+  });
+
+  it.skipIf(!process.env["DATABASE_URL"])("on a real Postgres through pg, whose date is a local midnight, in a process and session east of UTC", async () => {
+    const pool = new pg.Pool({ connectionString: process.env["DATABASE_URL"], options: "-c TimeZone=Asia/Tokyo" });
+    const cal = `rayfold_cal_${process.pid}`;
+    const ev = `rayfold_ev_${process.pid}`;
+    const sql: Queryable = { query: async (text, params) => (await pool.query(text, params as unknown[])) as never };
+    try {
+      await pool.query(calendarRows(cal, ev));
+      // pg made 2024-01-01 the JS Date for midnight in Tokyo, which the runtime wrote as 2023-12-31
+      expect(await inTokyo(() => calendarDays(sql, { cal, ev }))).toEqual(EVERY_PATH);
+    } finally {
+      await pool.query(`DROP TABLE IF EXISTS ${cal}, ${ev}`);
+      await pool.end();
+    }
+  });
+});
+
+describe("screen", () => {
+  it("serves a level selecting more than fifty fields, past Postgres's hundred arguments to one function", async () => {
+    const fields = Array.from({ length: 60 }, (_, i) => `f${i}`);
+    const schema = `entity Wide { id: ID ${fields.map((f) => `${f}: Int`).join(" ")} }\nquery wides(page: PageArgs = { first: 5 }): Page<Wide>`;
+    await db.exec(`CREATE TABLE wide (id text PRIMARY KEY, ${fields.map((f) => `${f} int`).join(", ")}); INSERT INTO wide VALUES ('w1', ${fields.map((_, i) => i).join(", ")})`);
+    const store = createPgStore(counted, { ir: loadSchema(schema).ir, tables: { Wide: { table: "wide" } } });
+    const server = createRayfoldServer({ schema, resolvers: { Query: { wides: (a: { page: PageRequest }, ctx) => store.screen("Wide", ctx.shape!, a.page, {}, ctx) } } });
+    const [f] = await server.collect({ ops: [{ id: 1, op: "wides", shape: `{ total items { id ${fields.join(" ")} } }` }] });
+    expect((f as { data: unknown }).data).toEqual({ total: 1, items: [{ $type: "Wide", id: "w1", ...Object.fromEntries(fields.map((f, i) => [f, i])) }] });
+    expect(log).toHaveLength(1);
+  });
+
+  const AUTHORS = `
+entity Author { id: ID name: String books(page: PageArgs = { first: 2 }): Page<Book> }
+entity Book { id: ID title: String authorId: ID }
+query authors(page: PageArgs = { first: 5 }): Page<Author>
+`;
+  const authors = async (shape: string, vars?: Record<string, number>) => {
+    const store = createPgStore(counted, {
+      ir: loadSchema(AUTHORS).ir,
+      naming: "snake",
+      tables: { Author: { table: "authors", relations: { books: { type: "Book", kind: "page", key: "authorId" } } }, Book: { table: "books" } },
+    });
+    const server = createRayfoldServer({ schema: AUTHORS, resolvers: { Query: { authors: (a: { page: PageRequest }, ctx) => store.screen("Author", ctx.shape!, a.page, {}, ctx) } } });
+    const [f] = await server.collect({ ops: [{ id: 1, op: "authors", shape, ...(vars ? { vars } : {}) }] });
+    const items = (f as { data: { items: Array<{ id: string; books: { total?: number; hasMore: boolean; items: Array<{ id: string }> } }> } }).data.items;
+    return items.map((a) => [a.id, a.books.items.map((b) => b.id), a.books.hasMore, a.books.total]);
+  };
+
+  it("a nested page selected without arguments takes the field's declared default, and one given by a variable takes it", async () => {
+    // the field says first: 2; the store used to take 10, and handed a1 all three of its books
+    expect(await authors("{ items { id books { total hasMore items { id } } } }")).toEqual([
+      ["a1", ["b1", "b4"], true, 3],
+      ["a2", ["b2", "b5"], false, 2],
+      ["a3", ["b3", "b7"], false, 2],
+    ]);
+    expect(await authors("{ items { id books(page: { first: $n }) { total hasMore items { id } } } }", { n: 1 })).toEqual([
+      ["a1", ["b1"], true, 3],
+      ["a2", ["b2"], true, 2],
+      ["a3", ["b3"], true, 2],
+    ]);
+  });
+
+  it("guard: a nested page given its size in the shape takes that size, above the default as below it", async () => {
+    expect(await authors("{ items { id books(page: { first: 3 }) { total hasMore items { id } } } }")).toEqual([
+      ["a1", ["b1", "b4", "b6"], false, 3],
+      ["a2", ["b2", "b5"], false, 2],
+      ["a3", ["b3", "b7"], false, 2],
+    ]);
+  });
+});
+
+describe("pagesByField through the runtime", () => {
+  const SHELF = `
+entity Author { id: ID books(page: PageArgs = { first: 10 }): Page<Book> }
+entity Book { id: ID authorId: ID }
+query authors: [Author]
+`;
+  const shelf = async (page: string) => {
+    const store = createPgStore(counted, { ir: loadSchema(SHELF).ir, naming: "snake", tables: { Author: { table: "authors" }, Book: { table: "books" } } });
+    const server = createRayfoldServer({
+      schema: SHELF,
+      resolvers: {
+        Query: { authors: (_a, ctx) => store.find("Author", {}, ctx) },
+        Author: { books: (parents: Row[], a: { page: PageRequest }, ctx: RayfoldContext) => store.pagesByField("Book", "authorId", parents.map((p) => p["id"]), a.page, ctx) },
+      },
+    });
+    const [f] = await server.collect({ ops: [{ id: 1, op: "authors", shape: `{ id books(page: ${page}) { total hasMore cursor items { id } } }` }] });
+    type Books = { total: number; hasMore: boolean; cursor: string | null; items: Array<{ id: string }> };
+    return (f as { data: Array<{ id: string; books: Books }> }).data.map((a) => [a.id, a.books.items.map((b) => b.id), a.books.cursor, a.books.hasMore, a.books.total]);
+  };
+
+  it("an author whose books all come before the cursor keeps its total, as page() does", async () => {
+    // a2 has b2 and b5, neither after b5: it used to come back with a total of 0
+    expect(await shelf(`{ first: 1, after: "b5" }`)).toEqual([
+      ["a1", ["b6"], "b6", false, 3],
+      ["a2", [], null, false, 2],
+      ["a3", ["b7"], "b7", false, 2],
+    ]);
+  });
+
+  it("fetches at most first + 1 rows of each author, where it fetched every book of every author", async () => {
+    expect(await shelf("{ first: 1 }")).toEqual([
+      ["a1", ["b1"], "b1", true, 3],
+      ["a2", ["b2"], "b2", true, 2],
+      ["a3", ["b3"], "b3", true, 2],
+    ]);
+    // the authors, then two books of each: a1's third stays in the database
+    expect(log.map((l) => l.rows)).toEqual([3, 6]);
   });
 });

@@ -36,6 +36,8 @@ import org.springframework.core.io.ResourceLoader
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.HttpRequestHandler
+import org.springframework.web.cors.CorsConfiguration
+import org.springframework.web.servlet.HandlerExecutionChain
 import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping
 import org.springframework.web.util.UriUtils
 import tools.jackson.databind.ObjectMapper
@@ -170,7 +172,7 @@ class RayfoldAutoConfiguration {
         val handler = HttpRequestHandler { request, response ->
             http.serve(ServletCall(request, response), request.contextPath + base) { Rayfold.toJson(viewer.viewer(request)) }
         }
-        return SimpleUrlHandlerMapping(mapOf(base to handler, "$base/**" to handler)).apply { order = Ordered.HIGHEST_PRECEDENCE + 10 }
+        return RayfoldHandlerMapping(mapOf(base to handler, "$base/**" to handler)).apply { order = Ordered.HIGHEST_PRECEDENCE + 10 }
     }
 }
 
@@ -236,4 +238,13 @@ internal class ServletCall(private val req: HttpServletRequest, private val res:
     override fun abort() {
         runCatching { res.outputStream.close() }
     }
+}
+
+/**
+ * The endpoint's mapping. Spring answers a CORS preflight itself, before any handler, from its own CORS configuration,
+ * which the starter does not set: the preflight got a bare 200 and a browser on an allowed origin was stopped there.
+ * RayfoldHttp answers it from `rayfold.allowed-origins` (spec 04 section 4b), so the request is handed to it as is.
+ */
+internal class RayfoldHandlerMapping(urls: Map<String, Any>) : SimpleUrlHandlerMapping(urls) {
+    override fun getCorsHandlerExecutionChain(request: HttpServletRequest, chain: HandlerExecutionChain, config: CorsConfiguration?): HandlerExecutionChain = chain
 }

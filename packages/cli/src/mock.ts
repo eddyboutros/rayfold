@@ -130,6 +130,11 @@ function fieldValue(ir: RayfoldSchemaIR, owner: TypeDef, field: FieldDef, hint: 
 
 function exampleOf(def: FieldDef | ArgDef | OpDef): unknown {
   const example = annotation(def, "example")?.args["value"];
+  // `@example(EBOOK)` and `@example(5m)` are tagged in the IR; the wire carries the enum value and the milliseconds
+  if (example && typeof example === "object" && !Array.isArray(example)) {
+    if ("$ident" in example) return example.$ident;
+    if ("$duration" in example) return example.$duration;
+  }
   return example === undefined ? undefined : (example as unknown);
 }
 

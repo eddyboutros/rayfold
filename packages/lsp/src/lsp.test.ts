@@ -82,6 +82,19 @@ describe("diagnostics", () => {
     expect(only?.range).toEqual({ start: { line: 2, character: 2 }, end: { line: 2, character: 7 } }); // on `price`
   });
 
+  it("places a finding about an argument on the argument, of an operation or of a field", () => {
+    const text = ["entity A {", "  id: ID", "  rs(page: PageArgs = { first: 1 }, first: Nope): [Int]", "}", "", "query a(", "  page: PageArgs = { x: 1 },", "  x: Nope", "): A"].join("\n");
+    expect(diagnosticsFor(text).map((d) => [d.message, d.range])).toEqual([
+      ["Unknown type Nope", { start: { line: 2, character: 36 }, end: { line: 2, character: 41 } }], // on `first`, not the default's key
+      ["Unknown type Nope", { start: { line: 7, character: 2 }, end: { line: 7, character: 3 } }], // on `x`
+    ]);
+  });
+
+  it("guard - a finding on an operation itself is placed on its name", () => {
+    const [only] = diagnosticsFor(["entity A { id: ID }", "query a(x: Int): Nope"].join("\n"));
+    expect(only?.range).toEqual({ start: { line: 1, character: 6 }, end: { line: 1, character: 7 } });
+  });
+
   it("reports a syntax error where the text breaks", () => {
     const [only] = diagnosticsFor(["entity Book {", "  id: ID", ""].join("\n"));
     expect(only?.message).toMatch(/Unexpected|Expected/);

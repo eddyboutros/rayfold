@@ -85,9 +85,11 @@ export function tokenize(src: string): Token[] {
     }
     if (src.startsWith('"""', i)) {
       const start = i;
-      const end = src.indexOf('"""', i + 3);
-      if (end < 0) throw new RayfoldSyntaxError("Unterminated block string", line, i - lineStart + 1);
-      const raw = src.slice(i + 3, end);
+      // \""" is the one escape a block string has (as in GraphQL): it is how a description holds its own fence
+      let end = i + 3;
+      while (end < n && !src.startsWith('"""', end)) end += src.startsWith('\\"""', end) ? 4 : 1;
+      if (end >= n) throw new RayfoldSyntaxError("Unterminated block string", line, i - lineStart + 1);
+      const raw = src.slice(i + 3, end).replaceAll('\\"""', '"""');
       push("blockstring", dedent(raw), start);
       for (let j = i; j < end + 3; j++) {
         if (src[j] === "\n") {

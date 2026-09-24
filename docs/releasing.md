@@ -13,11 +13,13 @@ number ([versioning.md](versioning.md)).
 
 The tag starts `.github/workflows/release.yml`:
 
-- **npm:** checks that the tag matches the package version, runs `npm test`, then publishes every package in
-  dependency order with a provenance statement (`scripts/publish.mjs --provenance`). The script refuses to run when the
-  packages disagree on the version, or when that version is already on npm.
-- **Maven Central:** checks the tag against `VERSION_NAME` in `kotlin/gradle.properties`, runs the JVM tests, then
-  signs and releases with `publishAndReleaseToMavenCentral`.
+- **Test both runtimes:** checks the tag against the package version and against `VERSION_NAME` in
+  `kotlin/gradle.properties`, then runs `npm test` and `./gradlew check`. Neither registry publishes until this passes,
+  so a version cannot reach one of them while the other runtime is broken.
+- **npm:** publishes every package in dependency order with a provenance statement (`scripts/publish.mjs
+  --provenance`). The script refuses to run when the packages disagree on the version, or when that version is already
+  on npm.
+- **Maven Central:** signs and releases with `publishAndReleaseToMavenCentral`.
 - **GitHub release:** once both are out, a release for the tag with that version's section of `CHANGELOG.md` as its
   notes (`scripts/release-notes.mjs`) and CycloneDX bills of materials for the npm packages and the JVM artifacts.
 

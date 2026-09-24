@@ -58,6 +58,11 @@ data class ExecuteOptions(
     val keyOptional: Boolean = false,
     /** Completing this job cancels the batch: every op still open ends with `canceled`, and live queries unsubscribe. */
     val cancel: Job? = null,
+    /**
+     * A job per op id: completing one stops that op alone with `canceled`, as `{ "cancel": id }` does on a WebSocket
+     * (spec 04 section 5), and the batch's other ops keep running.
+     */
+    val opCancel: Map<Int, Job> = emptyMap(),
     /** False on transports that cannot notice a vanished client (the JDK HTTP server): live ops answer `unimplemented`. */
     val allowLive: Boolean = true,
     /** Set by the batch itself: the memo its ops share so a row is loaded once. Never read from the wire. */
@@ -218,8 +223,11 @@ class MemoryIdempotencyStore(
     }
 }
 
-/** A command whose resolver already ran, so its side effect is committed, failed afterwards (e.g. projecting its shape). */
-class CommittedCommandException(val error: RayfoldException) : RuntimeException(error.message)
+/**
+ * A command whose resolver already ran, so its side effect is committed, failed afterwards (e.g. projecting its shape).
+ * [thrown] is what was thrown, for the op's [Outcome]; [error] is what the client is told.
+ */
+class CommittedCommandException(val error: RayfoldException, val thrown: Throwable = error) : RuntimeException(error.message)
 
 /** Batch scheduling (spec/03): dependency waves, serial commands by id, deadlines, idempotency. */
 class BatchRunner(
@@ -252,19 +260,51 @@ class BatchRunner(
 
     /** Frames out of one batch: caps what resolvers produce and remembers which ops have ended. */
     private class Sink(private val ch: Channel<JsonObject>, private val maxFrames: Int) {
+        private companion object {
+            val NON_FINITE = setOf("NaN", "Infinity", "-Infinity")
+        }
+
         private val produced = AtomicInteger()
         private val ended = ConcurrentHashMap.newKeySet<Int>()
 
         fun ended(id: Int) = id in ended
 
         /** Error and replay frames: never refused, so an op over the cap can still say so. */
-        suspend fun send(f: JsonObject) { mark(f); ch.send(f) }
+        suspend fun send(f: JsonObject) { mark(f); ch.send(finite(f)) }
 
         /** Frames an executor produces while an op runs. */
         fun emit(f: JsonObject) {
             if (produced.incrementAndGet() > maxFrames) throw RayfoldException(Code.RESOURCE_EXHAUSTED, "Batch produced more than $maxFrames frames")
             mark(f)
-            ch.trySend(f)
+            ch.trySend(finite(f))
+        }
+
+        /**
+         * A live query's answer to a change. Not counted: a live query stays open for as long as its client wants, so a
+         * count over its lifetime would end a healthy subscription after enough changes (the TypeScript runtime has no
+         * such cap either). Each re-run sends one frame, so nothing here grows without a change to cause it.
+         */
+        fun emitLive(f: JsonObject) {
+            mark(f)
+            ch.trySend(finite(f))
+        }
+
+        /**
+         * A resolver's NaN or infinity goes out as `null`, as JSON.stringify writes it in the TypeScript runtime: printed
+         * bare, it would make the whole answer unreadable JSON. A frame is copied only when it holds one.
+         */
+        private fun finite(f: JsonObject): JsonObject = if (nonFinite(f)) withoutNonFinite(f) as JsonObject else f
+
+        private fun nonFinite(e: JsonElement): Boolean = when (e) {
+            is JsonObject -> e.values.any(::nonFinite)
+            is JsonArray -> e.any(::nonFinite)
+            is JsonPrimitive -> !e.isString && e.content in NON_FINITE
+        }
+
+        private fun withoutNonFinite(e: JsonElement): JsonElement = when (e) {
+            is JsonObject -> JsonObject(e.mapValues { withoutNonFinite(it.value) })
+            is JsonArray -> JsonArray(e.map(::withoutNonFinite))
+            is JsonPrimitive -> if (!e.isString && e.content in NON_FINITE) JsonNull else e
         }
 
         private fun mark(f: JsonObject) {
@@ -324,10 +364,17 @@ class BatchRunner(
                 val tasks = planned.sortedBy { it.req.id }.map { p ->
                     val gate = if (p.op.kind == "command") prevCommand else null
                     val task = async {
-                        val body: suspend () -> Unit = {
+                        val run: suspend () -> Unit = {
                             p.deps.forEach { done[it]?.await() }
                             gate?.await()
                             runOne(p, scoped, viewerScope, results, status, sink)
+                        }
+                        val body: suspend () -> Unit = {
+                            if (!untilCancelled(opts.opCancel[p.req.id], run)) {
+                                if (!sink.ended(p.req.id)) sink.send(Frames.error(p.req.id, RayfoldException(Code.CANCELED, "Canceled")))
+                                status[p.req.id] = "failed"
+                                gate?.await() // a later command still waits for the earlier one, even when this one was cancelled first
+                            }
                         }
                         val own = p.req.deadline
                         if (own == null) body()
@@ -468,12 +515,13 @@ class BatchRunner(
     private suspend fun runOp(p: Planned, opts: ExecuteOptions, viewerScope: String, results: MutableMap<Int, JsonElement>, status: MutableMap<Int, String>, sink: Sink): Outcome {
         val viewer = opts.viewer
         val id = p.req.id
-        suspend fun fail(e: Throwable): Outcome {
+        // the client is told `re`, which says nothing about the server; what was thrown goes only to the op hook
+        suspend fun fail(e: Throwable, thrown: Throwable = e): Outcome {
             val re = RayfoldException.of(e)
             sink.send(Frames.error(id, re))
             status[id] = "failed"
             countFailure(p, re.code.wire, re.type)
-            return Outcome(re.code.wire, re.message)
+            return Outcome(re.code.wire, re.message, thrown)
         }
         p.failure?.let { return fail(it) }
         for (d in p.deps) if (status[d] != "ok") {
@@ -499,11 +547,12 @@ class BatchRunner(
                 "stream" -> untilDrained { executor.runStream(p.op, args, p.shape, p.explicit, ctx, sink::emit, options.maxStreamItems) }
                 // the command sent its error frame itself (a failure after committing, or the replay of one), so it is
                 // reported and counted here rather than through fail(), which would send a second one
-                "command" -> command(p, args, ctx, viewerScope, results, sink, opts.keyOptional)?.let { err ->
+                "command" -> command(p, args, ctx, viewerScope, results, sink, opts.keyOptional)?.let { ended ->
                     status[id] = "failed"
+                    val err = ended.error
                     val code = (err["code"] as? JsonPrimitive)?.content ?: Code.INTERNAL.wire
                     countFailure(p, code, (err["type"] as? JsonPrimitive)?.content)
-                    return Outcome(code, (err["message"] as? JsonPrimitive)?.content)
+                    return Outcome(code, (err["message"] as? JsonPrimitive)?.content, ended.thrown)
                 }
             }
             status[id] = "ok"
@@ -512,7 +561,7 @@ class BatchRunner(
         } catch (e: CancellationException) {
             throw e // a deadline or cancel must reach withTimeoutOrNull, not become an `internal` error frame
         } catch (e: CommittedCommandException) {
-            fail(e.error)
+            fail(e.error, e.thrown)
         } catch (e: Throwable) {
             fail(e)
         }
@@ -531,20 +580,26 @@ class BatchRunner(
         counters?.add("rayfold.errors", mapOf("op" to p.op.name, "code" to code, "type" to (type ?: "")))
     }
 
-    /** Runs or replays a command; the wire error when it ended with an error frame already sent (a committed failure or its replay). */
-    private suspend fun command(p: Planned, args: JsonObject, ctx: RayfoldContext, viewerScope: String, results: MutableMap<Int, JsonElement>, sink: Sink, keyOptional: Boolean): JsonObject? {
+    /** How a command ended when its error frame was already sent (a committed failure or its replay). */
+    private class Ended(val error: JsonObject, val thrown: Throwable?)
+
+    /** Runs or replays a command; [Ended] when it ended with an error frame already sent. */
+    private suspend fun command(p: Planned, args: JsonObject, ctx: RayfoldContext, viewerScope: String, results: MutableMap<Int, JsonElement>, sink: Sink, keyOptional: Boolean): Ended? {
         val op = p.op
         val idem = op.annotations.find("idempotent")
         val optedOut = idem != null && idem.args["value"] == JsonPrimitive(false)
-        val key = p.req.key
+        // A command that opts out takes no key (spec 01 section 4): one sent anyway, as the client libraries send one
+        // with every command, is ignored, so every call runs rather than replaying the first.
+        val key = if (optedOut) null else p.req.key
         // keyOptional lets an idempotent HTTP method omit the key; a key that is sent must still be well-formed
         if (!optedOut && !(keyOptional && key == null) && (key == null || key.length < 16 || key.length > 128)) {
             throw RayfoldException(Code.INVALID_ARGUMENT, "${op.name}(): commands require an idempotency key of 16-128 characters")
         }
+        // before any replay, and before a dry run is refused: a caller without permission gets the policy error, never
+        // the stored result nor what the command supports
+        executor.checkOpPolicy(op, "write", args, ctx)
         // @simulate is the author's promise that the resolver honours ctx.simulate; without it a dry run would commit
         if (ctx.simulate && op.annotations.find("simulate") == null) throw RayfoldException(Code.FAILED_PRECONDITION, "${op.name}() does not support dry runs")
-        // before any replay: a caller who lost permission gets the policy error, never the stored result
-        executor.checkOpPolicy(op, "write", args, ctx)
         if (key == null || ctx.simulate) return execute(p, args, ctx, results, sink, null)
         // every anonymous caller shares one scope, so a key would let one stranger replay another's result
         if (ctx.viewer is JsonNull) throw RayfoldException(Code.UNAUTHENTICATED, "${op.name}(): idempotency keys need an identified caller")
@@ -593,18 +648,19 @@ class BatchRunner(
         }
     }
 
-    private suspend fun execute(p: Planned, args: JsonObject, ctx: RayfoldContext, results: MutableMap<Int, JsonElement>, sink: Sink, claim: Claimed?): JsonObject? {
+    private suspend fun execute(p: Planned, args: JsonObject, ctx: RayfoldContext, results: MutableMap<Int, JsonElement>, sink: Sink, claim: Claimed?): Ended? {
         var settled = false
         var committed = false
         try {
             val (result, frame, compactFrame) = holding(claim) {
-                executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, sink::emit, policyChecked = true) { committed = true }
+                // never called for a dry run, which publishes no live-query changes (spec 12 section 6); a replay changed
+                // nothing, so it is not here
+                val changed: (List<JsonObject>) -> Unit = { changes.publish(Live.changeFromPatch(it)) }
+                executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, sink::emit, policyChecked = true, changed = changed) { committed = true }
             }
             claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, frame, compactFrame), it.token) }
             settled = true
             results[p.req.id] = result
-            // a dry run never publishes live-query changes (spec 12 section 6); a replay changed nothing, so it is not here
-            if (!ctx.simulate) changes.publish(Live.changeFromPatch((frame["patch"] as? JsonArray)?.mapNotNull { it as? JsonObject } ?: emptyList()))
             return null
         } catch (e: CommittedCommandException) {
             // the side effect happened, so this failure is the answer a retry must get, not a second run
@@ -612,7 +668,7 @@ class BatchRunner(
             claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, ef, ef), it.token) }
             settled = true
             sink.send(ef)
-            return e.error.toWire()
+            return Ended(e.error.toWire(), e.thrown)
         } catch (e: CancellationException) {
             // The deadline passed, or the caller went away, after the resolver had already committed. Releasing the key
             // here would let the retry run the command a second time, so the key keeps this answer instead. The batch
@@ -628,7 +684,7 @@ class BatchRunner(
         }
     }
 
-    private suspend fun replay(prior: IdempotencyRecord, hash: String, key: String, p: Planned, results: MutableMap<Int, JsonElement>, sink: Sink): JsonObject? {
+    private suspend fun replay(prior: IdempotencyRecord, hash: String, key: String, p: Planned, results: MutableMap<Int, JsonElement>, sink: Sink): Ended? {
         if (prior.argsHash != hash) throw RayfoldException(Code.ALREADY_EXISTS, "Idempotency key $key was used for another operation or other arguments")
         // the retry's own compact flag picks the form; meta stays even when compact because it carries the replay marker
         val frame = if (p.req.compact) prior.compactFrame else prior.frame
@@ -636,7 +692,7 @@ class BatchRunner(
         // the stored frame carries the first run's op id; the answer belongs to the retrying op
         sink.send(JsonObject(frame + ("id" to JsonPrimitive(p.req.id)) + ("meta" to metaObj)))
         // a recorded failure is the answer this retry gets, so the op ends the way the first run ended
-        val ok = prior.frame["ok"] ?: return prior.frame["error"] as? JsonObject ?: JsonObject(emptyMap())
+        val ok = prior.frame["ok"] ?: return Ended(prior.frame["error"] as? JsonObject ?: JsonObject(emptyMap()), null)
         results[p.req.id] = ok
         return null
     }
@@ -704,8 +760,8 @@ class BatchRunner(
                 readSet.set(Live.readSetOf(current))
                 results[id] = current
                 when (d) {
-                    is Live.Diff.Patch -> sink.emit(Frames.patch(id, d.patch))
-                    is Live.Diff.Data -> sink.emit(wire(buildJsonObject { put("id", id); put("data", d.data); put("meta", buildJsonObject { put("cost", p.cost) }) }, next.unions))
+                    is Live.Diff.Patch -> sink.emitLive(Frames.patch(id, d.patch))
+                    is Live.Diff.Data -> sink.emitLive(wire(buildJsonObject { put("id", id); put("data", d.data); put("meta", buildJsonObject { put("cost", p.cost) }) }, next.unions))
                     null -> {}
                 }
             }

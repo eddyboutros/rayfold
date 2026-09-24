@@ -132,14 +132,21 @@ export function generateGraphql(ir: RayfoldSchemaIR, opts: { header?: boolean } 
     return `(${items.join(", ")})`;
   };
 
-  const fields = (owner: string, list: FieldDef[], input: boolean): string[] =>
-    list.flatMap((f) => {
+  const empty: string[] = [];
+  const fields = (owner: string, list: FieldDef[], input: boolean): string[] => {
+    // GraphQL has no type or input without fields; the placeholder says so, and lost names each one
+    if (!list.length) {
+      empty.push(owner);
+      return [`  """${owner} has no fields in the Rayfold schema, and GraphQL needs one here."""`, "  _: Boolean"];
+    }
+    return list.flatMap((f) => {
       const keeps = !input || optional(f.type, f.default);
       record(f.annotations, `${owner}.${f.name}`, keeps);
       const fallback = input && f.default !== undefined ? ` = ${value(f.default, f.type)}` : "";
       const line = `  ${f.name}${input ? "" : args(f.args, `${owner}.${f.name}`)}: ${type(f.type)}${fallback}${keeps ? deprecation(f.annotations) : ""}`;
       return [...description(f.description, "  "), line];
     });
+  };
 
   const blocks: string[] = [];
   const ops = Object.values(ir.ops);
@@ -214,6 +221,7 @@ export function generateGraphql(ir: RayfoldSchemaIR, opts: { header?: boolean } 
   }
   const emitted = new Map<string, string[]>();
   for (const op of ops) for (const e of op.emits) emitted.set(e, [...(emitted.get(e) ?? []), `${op.name}()`]);
+  if (empty.length) lost.push(`${joinAnd(empty)} ${empty.length === 1 ? "has" : "have"} no fields, and GraphQL allows no type without one, so ${empty.length === 1 ? "it holds" : "each holds"} the placeholder field _.`);
   for (const [event, by] of emitted) lost.push(`${event} is emitted by ${joinAnd(by)}: GraphQL has no events besides subscriptions.`);
   for (const name of [...annotated.keys()].sort()) lost.push(`@${name} (${annotated.get(name)!.join(", ")}): ${MEANING[name] ?? "an annotation GraphQL has no form for"}.`);
 

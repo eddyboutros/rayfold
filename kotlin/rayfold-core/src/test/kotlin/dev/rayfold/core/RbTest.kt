@@ -34,6 +34,16 @@ class RbTest {
     }
 
     @Test
+    fun `NaN and the infinities encode as null, as the TypeScript codec does, and a finite double stays one (guard)`() {
+        for (d in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+            assertEquals("00", hex(codec.encode(JsonPrimitive(d))), "$d")
+        }
+        val row = JsonObject(mapOf("score" to JsonPrimitive(Double.NaN), "ratio" to JsonPrimitive(2.5)))
+        assertEquals(Json.parseToJsonElement("""{"score":null,"ratio":2.5}"""), codec.decode(codec.encode(row)))
+        assertEquals("040000000000000440", hex(codec.encode(JsonPrimitive(2.5))))
+    }
+
+    @Test
     fun `every value encodes to the TypeScript bytes and decodes to what TypeScript decodes`() {
         val values = cases("values")
         assertTrue(values.size >= 12)

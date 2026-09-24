@@ -429,4 +429,68 @@ class McpTest {
         assertEquals(200, res.statusCode(), res.body())
         return ((res.json() as JsonObject)["extensions"] as JsonArray).map { (it as JsonPrimitive).content }
     }
+
+    // ------------------------------------------------------------------ spec 10 details
+
+    @Test
+    fun `a notification other than initialized also gets 202 with no body, and the same method as a request is answered (guard)`() {
+        val port = serveMcp(Bookstore())
+        val note = rpc(port, """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}""")
+        assertEquals(202, note.statusCode())
+        assertEquals("", note.body())
+        val asked = rpc(port, """{"jsonrpc":"2.0","id":5,"method":"notifications/cancelled"}""")
+        assertEquals(200, asked.statusCode())
+        assertEquals(obj("""{"jsonrpc":"2.0","id":5,"error":{"code":-32601,"message":"Method not found: notifications/cancelled"}}"""), asked.json())
+    }
+
+    @Test
+    fun `the HeaderMismatch reply carries MCP-Protocol-Version, while a parse error made before the body is understood does not (guard)`() {
+        val port = serveMcp(Bookstore())
+        val bad = rpc(port, """{"jsonrpc":"2.0","id":2,"method":"ping"}""", mapOf("Mcp-Method" to "tools/list"))
+        assertEquals(400, bad.statusCode())
+        assertEquals("2026-07-28", bad.h("mcp-protocol-version"))
+        val broken = rpc(port, "{")
+        assertEquals(400, broken.statusCode())
+        assertNull(broken.h("mcp-protocol-version"))
+    }
+
+    private val notesIr = SchemaText.load("entity Note { id: ID n: Int } query notes(limit: Int = 3, desc: Boolean = false): [Note]").ir
+    private val notes = RayfoldServer(notesIr, Resolvers(queries = mapOf("notes" to { args, _ ->
+        val all = (1..4).map { obj("""{"id":"n$it","n":$it}""") }
+        JsonArray((if ((args["desc"] as? JsonPrimitive)?.content == "true") all.reversed() else all).take((args["limit"] as JsonPrimitive).content.toInt()))
+    })))
+
+    private suspend fun readResource(uri: String): JsonObject? = Mcp.handle(notes, obj("""{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"$uri"}}"""), JsonNull)
+
+    @Test
+    fun `resource arguments from the URI are coerced by their declared type, as an HTTP binding's query string is`() = runTest(timeout = 5.seconds) {
+        val res = readResource("rayfold://query/notes?limit=2&desc=true")
+        assertNull(res?.get("error"), "$res")
+        assertEquals(
+            Json.parseToJsonElement("""[{"${'$'}type":"Note","id":"n4","n":4},{"${'$'}type":"Note","id":"n3","n":3}]"""),
+            Json.parseToJsonElement((res?.at("result", "contents", "0", "text") as JsonPrimitive).content),
+        )
+    }
+
+    @Test
+    fun `guard - resource text that is no Int is still refused rather than coerced to something`() = runTest(timeout = 5.seconds) {
+        val res = readResource("rayfold://query/notes?limit=two")
+        assertNull(res?.get("result"))
+        assertEquals(JsonPrimitive(-32000), res?.at("error", "code"))
+        assertTrue((res?.at("error", "message") as JsonPrimitive).content.startsWith("invalid_argument"), "$res")
+    }
+
+    @Test
+    fun `a tool's outputSchema admits the default view tools call returns - every member it holds is declared and none is required`() = runTest(timeout = 5.seconds) {
+        val bs = Bookstore()
+        val schema = tools(bs.server).single { it["name"] == JsonPrimitive("book") }["outputSchema"] as JsonObject
+        val book = schema.at("\$defs", "Book") as JsonObject
+        val result = call(bs.server, "book", obj("""{"id":"b1"}"""), u1).at("result", "structuredContent", "result") as JsonObject
+        val declared = (book["properties"] as JsonObject).keys
+        assertTrue(declared.containsAll(result.keys), "undeclared members: ${result.keys - declared}")
+        assertTrue(declared.any { it !in result.keys }, "the default view leaves out some field, or this proves nothing")
+        assertNull(book["required"], "a field the default view leaves out cannot be required")
+        assertEquals(JsonPrimitive(false), book["additionalProperties"], "guard: a member it does not declare is still refused")
+        assertEquals(JsonArray(listOf(JsonPrimitive("id"))), tools(bs.server).single { it["name"] == JsonPrimitive("book") }.at("inputSchema", "required"), "guard: input still requires what the op needs")
+    }
 }

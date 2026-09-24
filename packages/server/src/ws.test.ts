@@ -4,7 +4,7 @@ import { connect as connectTcp, type AddressInfo, type Socket } from "node:net";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 import { attachWebSocket, decodeFrame, type WsOptions } from "./ws.ts";
-import type { RayfoldServer } from "./server.ts";
+import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import { RayfoldError } from "./protocol.ts";
 
 type Bookstore = ReturnType<typeof createBookstore>;
@@ -233,7 +233,7 @@ describe("op lifecycle on one connection", () => {
 });
 
 /** A client speaking RFC 6455 by hand over a real socket, for what the global WebSocket will not send: fragments, pings, raw bytes. */
-async function rawClient(host: string): Promise<{ send: (opcode: number, payload: Buffer | string, fin?: boolean) => void; frames: Signal<{ opcode: number; text: string }>; ended: Promise<void> }> {
+async function rawClient(host: string): Promise<{ send: (opcode: number, payload: Buffer | string, fin?: boolean) => void; frames: Signal<{ opcode: number; text: string }>; ended: Promise<void>; pause: () => void; resume: () => void }> {
   const socket = connectTcp({ host: "127.0.0.1", port: Number(host.split(":")[1]) });
   raws.push(socket);
   const frames = new Signal<{ opcode: number; text: string }>();
@@ -269,7 +269,7 @@ async function rawClient(host: string): Promise<{ send: (opcode: number, payload
     const head = data.length < 126 ? Buffer.from([(fin ? 0x80 : 0) | opcode, 0x80 | data.length]) : Buffer.from([(fin ? 0x80 : 0) | opcode, 0x80 | 126, data.length >> 8, data.length & 0xff]);
     socket.write(Buffer.concat([head, mask, Buffer.from(data.map((b, i) => b ^ mask[i % 4]!))]));
   };
-  return { send, frames, ended };
+  return { send, frames, ended, pause: () => socket.pause(), resume: () => socket.resume() };
 }
 const raws: Socket[] = [];
 afterEach(() => {
@@ -331,8 +331,170 @@ describe("frames as the protocol allows them", () => {
       { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true }) },
       { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "Expected a batch envelope or {cancel}" }, fin: true }) },
       { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "ops[0]: expected an object" }, fin: true }) },
-      { opcode: TEXT, text: JSON.stringify({ error: { code: "invalid_argument", message: "ops[1].id: expected a positive integer" }, fin: true }) },
+      // the refused batch named op 3, which gets the refusal as its own end (spec 04 §5)
+      { opcode: TEXT, text: JSON.stringify({ id: 3, error: { code: "invalid_argument", message: "ops[1].id: expected a positive integer" }, fin: true }) },
       { opcode: TEXT, text: JSON.stringify(bookFrame(2, "b2")) },
     ]);
+  });
+});
+
+describe("cancel stops one op, not its batch (spec 04 §5)", () => {
+  it("of two live ops sent in one batch, cancelling one leaves the other subscribed and patched", async () => {
+    const subs = changeBusLog(bs.server);
+    const host = await serve(bs.server);
+    const { ws, received } = await connect(host);
+    ws.send(JSON.stringify({ ops: [liveBook.ops[0], { id: 2, op: "book", args: { id: "b2" }, shape: "{ id stock }", live: true }] }));
+    await received.atLeast(2, "both live ops' initial data");
+    ws.send(JSON.stringify({ cancel: 1 }));
+    await received.atLeast(3, "op 1's canceled frame");
+    expect(received.items[2]).toEqual({ id: 1, error: { code: "canceled", message: "Canceled" }, fin: true });
+    await subs.until(offs(1), "op 1 unsubscribed");
+    expect(bs.server.changes.size).toBe(1);
+    // the op the batch still holds hears its change
+    await bs.server.collect({ ops: [{ ...restock, args: { bookId: "b2", qty: 1 } }] }, { viewer: admin });
+    await received.atLeast(4, "op 2's patch");
+    expect(received.items[3]).toEqual({ id: 2, patch: [{ set: "Book:b2", value: { stock: 3 } }] });
+    // guard: cancelling op 2 as well ends it, so the first cancel was not ignored for being in a shared batch
+    ws.send(JSON.stringify({ cancel: 2 }));
+    await received.atLeast(5, "op 2's canceled frame");
+    expect(received.items[4]).toEqual({ id: 2, error: { code: "canceled", message: "Canceled" }, fin: true });
+    await subs.until(offs(2), "op 2 unsubscribed");
+    expect(bs.server.changes.size).toBe(0);
+  });
+});
+
+describe("a batch refused as a whole is answered for each of its ops (spec 04 §5)", () => {
+  it("an over-budget batch and an envelope naming an unknown op end each of their op ids, and the socket runs the next batch", async () => {
+    const server = createBookstore({ budget: 2 }).server;
+    const host = await serve(server);
+    const { ws, received } = await connect(host);
+    const three = [1, 2, 3].map((id) => ({ id, op: "book", args: { id: "b1" }, shape: "{ id }" }));
+    ws.send(JSON.stringify({ ops: three }));
+    await received.atLeast(3, "one refusal per op of the over-budget batch");
+    const over = { code: "resource_exhausted", message: "Batch cost 3 exceeds budget 2", data: { cost: 3, budget: 2 } };
+    expect(received.items).toEqual([1, 2, 3].map((id) => ({ id, error: over, fin: true })));
+    ws.send(JSON.stringify({ ops: [{ id: 4, op: "book", args: { id: "b1" } }, { id: 5, op: "nope" }] }));
+    await received.atLeast(5, "one refusal per op of the batch with an unknown op");
+    const unknown = { code: "invalid_argument", message: 'ops[1].op: unknown operation "nope"' };
+    expect(received.items.slice(3)).toEqual([4, 5].map((id) => ({ id, error: unknown, fin: true })));
+    // guard: a batch within budget, reusing a refused id, is answered with its data, not a refusal per op
+    ws.send(JSON.stringify(readBook(1, "b2")));
+    await received.atLeast(6, "the next batch");
+    expect(received.items[5]).toEqual(bookFrame(1, "b2"));
+  });
+});
+
+describe("a client that stops reading its socket", () => {
+  const size = 64 * 1024;
+  function chunks(opts: { count?: number; ack?: (n: number) => Promise<void> } = {}) {
+    const yielded = new Signal<number>();
+    const ended = new Signal<true>();
+    const server = createRayfoldServer({
+      schema: `event Chunk { n: Int body: String } stream chunks: Chunk`,
+      resolvers: {
+        Stream: {
+          chunks: async function* (_args: unknown, ctx: { signal: AbortSignal }) {
+            try {
+              for (let n = 0; (opts.count === undefined || n < opts.count) && !ctx.signal.aborted; n++) {
+                yielded.push(n);
+                yield { n, body: "x".repeat(size) };
+                await opts.ack?.(n);
+              }
+            } finally {
+              ended.push(true);
+            }
+          },
+        },
+      } as never,
+      maxStreamItems: 2_000,
+    });
+    return { server, yielded, ended };
+  }
+  const batch = JSON.stringify({ ops: [{ id: 1, op: "chunks", shape: "{ n body }" }] });
+
+  it("has its ops stopped and the socket dropped once maxBuffered bytes wait for it", async () => {
+    const { server, yielded, ended } = chunks();
+    const host = await serve(server, { maxBuffered: 256 * 1024 });
+    const c = await rawClient(host);
+    c.pause(); // reads nothing, so the kernel's buffers fill and then the server's
+    c.send(TEXT, batch);
+    await ended.atLeast(1, "the resolver told to stop");
+    // without the bound the resolver ran to maxStreamItems (2000 items, 128 MiB) into the server's memory
+    expect(yielded.items.length).toBeLessThan(2_000);
+    c.resume();
+    await bounded(c.ended, "the server dropping the socket");
+    expect(c.frames.items.some((f) => f.text.includes('"fin":true'))).toBe(false);
+  });
+
+  it("guard: a client that keeps reading gets every frame of a stream far larger than maxBuffered", async () => {
+    const read = new Signal<number>();
+    const { server } = chunks({ count: 40, ack: (n) => read.until((xs) => xs.includes(n), `item ${n} read`).then(() => undefined) });
+    const host = await serve(server, { maxBuffered: 16 * 1024 });
+    const { ws, received } = await connect(host);
+    ws.addEventListener("message", (e) => {
+      const f = JSON.parse(String(e.data)) as { item?: { n: number } };
+      if (f.item) read.push(f.item.n);
+    });
+    ws.send(batch);
+    await received.atLeast(41, "every item and the fin");
+    expect((received.items as Array<{ item?: { n: number; body: string } }>).map((f) => (f.item ? [f.item.n, f.item.body.length] : f))).toEqual([
+      ...Array.from({ length: 40 }, (_, n) => [n, size]),
+      { id: 1, fin: true },
+    ]);
+  });
+});
+
+describe("a capability that expires while its socket is open (spec 06 §6)", () => {
+  let clock = 1_000;
+  const EXP = 5_000;
+  const capStore = () => createBookstore({ now: () => clock });
+  const holder = { id: "u1", role: "customer", caps: { ops: ["book"], exp: EXP, jti: "t1" } };
+  afterEach(() => {
+    vi.useRealTimers();
+    clock = 1_000;
+  });
+
+  it("ends the socket's live query unauthenticated at exp and closes it 1008", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { server } = capStore();
+    const host = await serve(server, { viewer: () => holder });
+    const c = await rawClient(host);
+    c.send(TEXT, JSON.stringify(liveBook));
+    await c.frames.atLeast(1, "the live query's first data");
+    // guard: a millisecond before exp the query still runs and the socket is open
+    clock = EXP - 1;
+    await vi.advanceTimersByTimeAsync(EXP - 1 - 1_000);
+    expect(c.frames.items).toHaveLength(1);
+    expect(server.changes.size).toBe(1);
+    clock = EXP;
+    await vi.advanceTimersByTimeAsync(1);
+    await c.frames.atLeast(3, "the op's end and the close frame");
+    expect(c.frames.items.slice(1)).toEqual([
+      { opcode: TEXT, text: JSON.stringify({ id: 1, error: { code: "unauthenticated", message: "Capability has expired" }, fin: true }) },
+      { opcode: CLOSE, text: "1008 capability expired" },
+    ]);
+    expect(server.changes.size).toBe(0);
+  });
+
+  it("refuses a batch sent after exp for each of its ops, then closes 1008, even before the timer has fired", async () => {
+    const { server, store } = capStore();
+    const host = await serve(server, { viewer: () => holder });
+    const c = await rawClient(host);
+    clock = EXP; // the clock passed exp; no timer has run
+    c.send(TEXT, JSON.stringify({ ops: [readBook(1, "b1").ops[0], readBook(2, "b2").ops[0]] }));
+    await c.frames.atLeast(3, "two refusals and the close frame");
+    const refusal = (id: number) => ({ opcode: TEXT, text: JSON.stringify({ id, error: { code: "unauthenticated", message: "Capability has expired" }, fin: true }) });
+    expect(c.frames.items).toEqual([refusal(1), refusal(2), { opcode: CLOSE, text: "1008 capability expired" }]);
+    expect(store.calls["Query.book"]).toBeUndefined();
+  });
+
+  it("guard: a viewer without a capability is served whatever the clock says", async () => {
+    const { server } = capStore();
+    const host = await serve(server, { viewer: () => ({ id: "u1", role: "customer" }) });
+    const c = await rawClient(host);
+    clock = EXP * 10;
+    c.send(TEXT, JSON.stringify(readBook(1, "b1")));
+    await c.frames.atLeast(1, "the answer");
+    expect(c.frames.items).toEqual([{ opcode: TEXT, text: JSON.stringify(bookFrame(1, "b1")) }]);
   });
 });

@@ -253,15 +253,17 @@ object Shapes {
     })
 
     private fun canon(s: Shape): String {
-        val parts = s.items.map { sortKey(it) to canonItem(it) }.sortedBy { it.first }
+        // kind, then name, then args, compared one at a time: joined into one string, "item:" would sort after "item2"
+        val parts = s.items.map { sortKey(it) to canonItem(it) }
+            .sortedWith(compareBy<Pair<Triple<Int, String, String>, String>> { it.first.first }.thenBy { it.first.second }.thenBy { it.first.third })
         return "{ " + parts.joinToString(" ") { it.second } + " }"
     }
 
-    private fun sortKey(i: ShapeItem): String = when (i.kind) {
-        "field" -> "0:${i.alias ?: i.name}:${i.args?.let { argsText(it) } ?: ""}"
-        "on" -> "1:${i.type}"
-        "defer" -> "2:${i.label ?: ""}"
-        else -> "3:${i.type}.${i.view}"
+    private fun sortKey(i: ShapeItem): Triple<Int, String, String> = when (i.kind) {
+        "field" -> Triple(0, i.alias ?: i.name ?: "", i.args?.let { argsText(it) } ?: "")
+        "on" -> Triple(1, i.type ?: "", "")
+        "defer" -> Triple(2, i.label ?: "", "")
+        else -> Triple(3, "${i.type}.${i.view}", "")
     }
 
     private fun canonItem(i: ShapeItem): String = when (i.kind) {

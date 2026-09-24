@@ -31,6 +31,17 @@ describe("a finding in the text it is about", () => {
     expect(rendered).toContain("= did you mean String?");
   });
 
+  it("points at an operation's argument and suggests the type it probably meant", () => {
+    const text = ["entity Book { id: ID }", "", "query book(", "  id: ID,", "  lang: Strng", "): Book?"].join("\n");
+    const { findings, ir } = check(text);
+    const unknown = findings.find((f) => f.code === "unknown-type");
+    expect(unknown?.at).toBe("book().lang");
+    const rendered = renderFinding(FILE, text, unknown!, ir);
+    expect(rendered).toBe(
+      ["error    unknown-type  book().lang: Unknown type Strng", ` --> ${FILE}:5:3`, "  |", "5 |   lang: Strng", "  |   ^^^^", "  = did you mean String?"].join("\n"),
+    );
+  });
+
   it("says so plainly when the name is nothing like anything defined", () => {
     const text = ["entity Book {", "  id: ID", "  price: Zorblatt", "}", "query book(id: ID): Book?"].join("\n");
     const { findings, ir } = check(text);

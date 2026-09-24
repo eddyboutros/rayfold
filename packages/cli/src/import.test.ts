@@ -189,6 +189,92 @@ describe("a schema from an OpenAPI document", () => {
   });
 });
 
+describe("an OpenAPI document the importer used to misread", () => {
+  const ok = { "200": { content: { "application/json": { schema: { type: "string" } } } } };
+  /** The import, printed and read back: the schema an author would keep. */
+  const imported = (doc: Record<string, unknown>) => {
+    const { ir, notes } = irFromOpenApi(doc);
+    const text = printSchemaText(ir);
+    const back = loadSchema(text);
+    expect(back.ir).toEqual(ir);
+    return { ir, notes, text };
+  };
+  const args = (ir: ReturnType<typeof irFromOpenApi>["ir"], op: string) => ir.ops[op]!.args.map((a) => `${a.name}: ${typeRefToString(a.type)}`);
+
+  it("reads parameters written on the path, and those given by $ref", () => {
+    const { ir } = imported({
+      components: { parameters: { Id: { name: "id", in: "path", required: true, schema: { type: "string" } }, Lang: { $ref: "#/components/parameters/Lang2" }, Lang2: { name: "lang", in: "query", schema: { type: "string" } } } },
+      paths: {
+        "/users/{id}": {
+          parameters: [{ $ref: "#/components/parameters/Id" }, { name: "verbose", in: "query", schema: { type: "boolean" } }],
+          get: { operationId: "getUser", parameters: [{ $ref: "#/components/parameters/Lang" }], responses: ok },
+          // an operation's own parameter of the same name and place replaces the path's
+          delete: { operationId: "dropUser", parameters: [{ name: "verbose", in: "query", required: true, schema: { type: "integer" } }], responses: ok },
+        },
+      },
+    });
+    expect(args(ir, "getUser")).toEqual(["id: String", "verbose: Boolean?", "lang: String?"]);
+    expect(args(ir, "dropUser")).toEqual(["id: String", "verbose: Int"]);
+  });
+
+  it("guard - without path-level parameters an operation takes only its own", () => {
+    const { ir } = imported({ paths: { "/users": { get: { operationId: "users", parameters: [{ name: "q", in: "query", schema: { type: "string" } }], responses: ok } } } });
+    expect(args(ir, "users")).toEqual(["q: String?"]);
+  });
+
+  it("a body property with a parameter's name is left out, with a note (guard - other properties stay)", () => {
+    const { ir, notes } = imported({
+      paths: {
+        "/users/{id}": {
+          put: {
+            operationId: "putUser",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: { content: { "application/json": { schema: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } } } } } },
+            responses: ok,
+          },
+        },
+      },
+    });
+    expect(args(ir, "putUser")).toEqual(["id: String", "name: String?"]);
+    expect(notes).toContain("putUser(id): the body property has the name of an argument already taken, so it was left out.");
+  });
+
+  it("names that are not names become names, in fields, arguments, types and the path template", () => {
+    const { ir, notes, text } = imported({
+      components: { schemas: { "user-profile": { type: "object", properties: { "first-name": { type: "string" }, "2fa": { type: "boolean" }, last_name: { type: "string" } } } } },
+      paths: {
+        "/users/{user-id}": {
+          get: {
+            operationId: "u",
+            parameters: [{ name: "user-id", in: "path", required: true, schema: { type: "string" } }, { name: "sort-by", in: "query", schema: { type: "string" } }],
+            responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/user-profile" } } } } },
+          },
+        },
+      },
+    });
+    expect(Object.keys(ir.types).filter((t) => !ir.types[t]!.builtin)).toEqual(["UserProfile"]);
+    expect((ir.types["UserProfile"] as { fields: Array<{ name: string }> }).fields.map((f) => f.name)).toEqual(["firstName", "_2fa", "last_name"]);
+    expect(args(ir, "u")).toEqual(["userId: String", "sortBy: String?"]);
+    expect(text).toContain('@http(method: GET, path: "/users/{userId}")');
+    expect(notes).toEqual([
+      "user-profile: not a name a schema can hold, so the type is UserProfile.",
+      "UserProfile.first-name: not a name a schema can hold, so the field is firstName.",
+      "UserProfile.2fa: not a name a schema can hold, so the field is _2fa.",
+      "u(user-id): not a name a schema can hold, so the argument is userId.",
+      "u(sort-by): not a name a schema can hold, so the argument is sortBy.",
+    ]);
+  });
+
+  it("enum values that read alike are told apart (guard - distinct values keep their names)", () => {
+    const { ir, notes } = imported({
+      components: { schemas: { E: { enum: ["a-b", "a_b", "c"] } } },
+      paths: { "/u": { get: { operationId: "u", parameters: [{ name: "e", in: "query", schema: { $ref: "#/components/schemas/E" } }], responses: ok } } },
+    });
+    expect((ir.types["E"] as { values: Array<{ name: string }> }).values.map((v) => v.name)).toEqual(["A_B", "A_B_2", "C"]);
+    expect(notes).toEqual(['E: "a_b" reads as A_B like an earlier value, so it is A_B_2.']);
+  });
+});
+
 describe("a schema from a GraphQL SDL", () => {
   it("maps the roots, and inverts nullability", async () => {
     const { ir, notes } = await irFromGraphql(SDL);
@@ -233,7 +319,7 @@ describe("a schema from a GraphQL SDL", () => {
       ["format", "HARDCOVER"],
       ["limit", 20],
     ]);
-    expect(ir.ops["retire"]?.annotations).toEqual([{ name: "deprecated", args: {} }]);
+    expect(ir.ops["retire"]?.annotations).toEqual([{ name: "deprecated", args: { reason: "no longer used" } }]);
   });
 
   it("renames an operation the protocol reserves, and writes a schema that parses", async () => {
@@ -241,6 +327,39 @@ describe("a schema from a GraphQL SDL", () => {
     expect(ir.ops["syncOp"]?.kind).toBe("query");
     expect(ir.ops["sync"]).toBeUndefined();
     expect(notes.filter((n) => n.startsWith("sync"))).toEqual(["sync: the name is reserved by the protocol, so the operation is syncOp."]);
+    expect(loadSchema(printSchemaText(ir)).ir).toEqual(ir);
+  });
+
+  it("an id of another scalar type is an entity's ID, with a note (guard - an object id or a nullable id is not)", async () => {
+    const { ir, notes } = await irFromGraphql(`type User { id: String! name: String } type Item { id: Int! } type Box { id: User! } type Maybe { id: ID } type Query { user(id: String!): User item: Item box: Box maybe: Maybe }`);
+    expect(loadSchema(printSchemaText(ir)).ir).toEqual(ir);
+    expect(ir.types["User"]).toMatchObject({ kind: "entity", fields: [{ name: "id", type: { kind: "named", name: "ID", nullable: false } }, { name: "name" }] });
+    expect(ir.types["Item"]).toMatchObject({ kind: "entity", fields: [{ name: "id", type: { name: "ID" } }] });
+    expect(ir.types["Box"]?.kind).toBe("object");
+    expect(ir.types["Maybe"]?.kind).toBe("object");
+    expect(typeRefToString(ir.ops["user"]!.args[0]!.type)).toBe("String"); // only the identity changes, not arguments
+    expect(notes.filter((n) => n.includes(".id:"))).toEqual(["User.id: String became ID, the type an entity's identity has.", "Item.id: Int became ID, the type an entity's identity has."]);
+  });
+
+  it("a type named like a built-in is renamed everywhere it is used, with a note (guard - scalar Date is the built-in)", async () => {
+    const { ir, notes } = await irFromGraphql(`scalar Date type Page { id: ID! title: String at: Date } union Hit = Page | Other type Other { id: ID! } type Query { page(id: ID!): Page pages: [Page!]! hit: Hit }`);
+    expect(loadSchema(printSchemaText(ir)).ir).toEqual(ir);
+    expect(ir.types["Page"]).toMatchObject({ builtin: true });
+    expect(ir.types["PageType"]).toMatchObject({ kind: "entity", name: "PageType" });
+    expect(ir.types["Date"]).toMatchObject({ kind: "scalar", builtin: true });
+    expect(typeRefToString(ir.ops["page"]!.returns)).toBe("PageType?");
+    expect(typeRefToString(ir.ops["pages"]!.returns)).toBe("[PageType]");
+    expect(ir.types["Hit"]).toMatchObject({ members: ["PageType", "Other"] });
+    expect(notes).toContain("Page: the protocol has a built-in Page, so this type is PageType.");
+    expect(notes.some((n) => n.startsWith("Date:"))).toBe(false);
+  });
+
+  it("keeps the reason a deprecation gives (guard - one without a reason has none)", async () => {
+    const { ir } = await irFromGraphql(`enum E { A @deprecated(reason: "use B") B } type Query { old: Int @deprecated plain: E @deprecated(reason: "gone") }`);
+    expect(ir.ops["old"]?.annotations).toEqual([{ name: "deprecated", args: {} }]);
+    expect(ir.ops["plain"]?.annotations).toEqual([{ name: "deprecated", args: { reason: "gone" } }]);
+    expect((ir.types["E"] as { values: Array<{ annotations: unknown[] }> }).values[0]!.annotations).toEqual([{ name: "deprecated", args: { reason: "use B" } }]);
+    expect(printSchemaText(ir)).toContain('query plain: E? @deprecated(reason: "gone")');
     expect(loadSchema(printSchemaText(ir)).ir).toEqual(ir);
   });
 });
@@ -284,6 +403,33 @@ describe("the command itself", { timeout: 60_000 }, () => {
       stdout: 'query ping: JSON @http(method: GET, path: "/ping")\n',
       stderr: "note      ping: no JSON response was described, so it returns JSON.\n",
     });
+  });
+
+  it("writes a schema that checks from documents it used to misread, saying what it renamed", async () => {
+    writeFileSync(
+      join(work, "dashed.json"),
+      JSON.stringify({
+        openapi: "3.1.0",
+        info: { title: "Dashed", version: "1" },
+        components: { parameters: { Id: { name: "user-id", in: "path", required: true, schema: { type: "string" } } } },
+        paths: { "/users/{user-id}": { parameters: [{ $ref: "#/components/parameters/Id" }], get: { operationId: "user", responses: { "200": { content: { "application/json": { schema: { type: "string" } } } } } } } },
+      }),
+    );
+    expect(await rayfold(["import", "openapi", "dashed.json", "--out", "dashed.rayfold"])).toEqual({
+      status: 0,
+      stdout: "wrote dashed.rayfold\n",
+      stderr: "note      user(user-id): not a name a schema can hold, so the argument is userId.\n",
+    });
+    expect(readFileSync(join(work, "dashed.rayfold"), "utf8")).toBe('query user(userId: String): String @http(method: GET, path: "/users/{userId}")\n');
+
+    writeFileSync(join(work, "page.graphql"), `type Page { id: String! } type Query { page: Page }`);
+    const graphql = await rayfold(["import", "graphql", "page.graphql", "--out", "page.rayfold"]);
+    expect(graphql).toEqual({
+      status: 0,
+      stdout: "wrote page.rayfold\n",
+      stderr: "note      Page: the protocol has a built-in Page, so this type is PageType.\nnote      PageType.id: String became ID, the type an entity's identity has.\n",
+    });
+    expect((await rayfold(["check", "page.rayfold"])).status).toBe(0);
   });
 
   it("guard - it refuses a source it cannot read", async () => {

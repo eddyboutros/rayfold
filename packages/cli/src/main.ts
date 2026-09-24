@@ -202,7 +202,8 @@ async function main(argv: string[]): Promise<number> {
       }
       const against = flag(rest, "--against") ?? (existsSync("rayfold.lock.json") ? "rayfold.lock.json" : undefined);
       if (against) {
-        const changes = diffSchemas(loadOld(against), loaded.ir);
+        // a lockfile holds the ordinals assigned at publication, which the schema's fields keep by name
+        const changes = diffSchemas(loadOld(against), loaded.ir, { lockedOrdinals: against.endsWith(".json") });
         printChanges(changes);
         const strict = rest.includes("--strict");
         const breaking = isBreaking(changes);

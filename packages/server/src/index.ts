@@ -5,7 +5,7 @@ export { MemoryUploadStore, type Upload, type UploadMeta, type UploadOptions, ty
 export { FileUploadStore, type FileUploadOptions } from "./upload-file.ts";
 export { createBindingHandler, bindingsOf, type Binding, type BindingOptions } from "./bindings.ts";
 export { openApiFor } from "./openapi.ts";
-export { attachWebSocket, encodeFrame, decodeFrame, SUBPROTOCOL, type WsOptions } from "./ws.ts";
+export { attachWebSocket, encodeFrame, decodeFrame, SUBPROTOCOL, SCHEMA_MISMATCH, type WsOptions } from "./ws.ts";
 export { createMcpHandler, handleMcp, mcpTools, mcpResources, jsonSchemaFor, MCP_PROTOCOL_VERSION, type McpTool, type McpResource } from "./mcp.ts";
 export { PROBLEM_TYPE_BASE, hostProblem, originProblem, type OriginOptions } from "./guard.ts";
 export { Capabilities, type Capability, type CapabilitiesOptions, type MintOptions } from "./capability.ts";

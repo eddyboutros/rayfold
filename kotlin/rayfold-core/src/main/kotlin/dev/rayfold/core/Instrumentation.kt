@@ -14,8 +14,13 @@ data class OpInfo(val id: Int, val name: String, val kind: String, val cost: Lon
 /** One loader call, which serves [parents] parents: the whole level of a nested shape. */
 data class LoaderInfo(val type: String, val field: String, val parents: Int)
 
-/** How a batch or an op ended: [code] and [message] when it failed. A failed op is reported here, not thrown. */
-data class Outcome(val code: String? = null, val message: String? = null) {
+/**
+ * How a batch or an op ended: [code] and [message] when it failed. A failed op is reported here, not thrown.
+ *
+ * [cause] is what a failed op was failed with, as it was thrown: a resolver's own exception, with its stack, where
+ * [code] says only `internal`. It never reaches the client; this is where an operator logs it.
+ */
+data class Outcome(val code: String? = null, val message: String? = null, val cause: Throwable? = null) {
     val failed: Boolean get() = code != null
 }
 

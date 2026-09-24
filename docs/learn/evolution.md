@@ -62,18 +62,23 @@ ok        author(): query author added [op-added]
 OK: compatible with rayfold.lock.json (4 changes)
 ```
 
-## Put new fields last
+## Put new fields where they read best
 
-Fields are numbered by position, and the lockfile records those numbers. Adding `pages` between `title` and `stock`
-instead of at the end renumbers the fields after it:
+The lockfile records each field's number (its ordinal), and a field keeps its number by name. Adding `pages` between
+`title` and `stock` instead of at the end is as compatible as adding it last: against `rayfold.lock.json` the check
+reports only `Book.pages: field added`. What breaks is a number that changes: an `@ordinal(n)` that disagrees with the
+lock, or a new field given one the lock already assigned.
+
+Checked against an older copy of the `.rayfold` file instead of a lockfile, there is no record of the numbers, so the
+fields after `pages` are reported as moved:
 
 ```
-BREAKING  Book.stock: ordinal changed 3 -> 4 [ordinal-changed]
-BREAKING  Book.author: ordinal changed 4 -> 5 [ordinal-changed]
-BREAKING  Book.costPrice: ordinal changed 5 -> 6 [ordinal-changed]
+warning   Book.stock: moved from position 3 to 4; against a lockfile it keeps its ordinal by name [ordinal-shifted]
+warning   Book.author: moved from position 4 to 5; against a lockfile it keeps its ordinal by name [ordinal-shifted]
+warning   Book.costPrice: moved from position 5 to 6; against a lockfile it keeps its ordinal by name [ordinal-shifted]
 ok        Book.pages: field added [field-added]
 
-FAILED: breaking changes against rayfold.lock.json
+OK: compatible with bookshop.old.rayfold (4 changes)
 ```
 
 ## What breaks a client

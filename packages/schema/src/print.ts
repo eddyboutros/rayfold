@@ -90,11 +90,18 @@ function ordinal(value: number, index: number, annotations: Annotation[]): strin
   return value === index + 1 ? [] : [`@ordinal(${value})`];
 }
 
+/**
+ * A description as the block string the lexer reads back to exactly [text], for any text the lexer can produce. The
+ * closing fence goes on a line of its own when the text ends in a quote or a backslash, which would otherwise run into
+ * it; and when the text holds a carriage return its lines are joined with \r\n, so a line ending in \r keeps it.
+ */
 function describe(text: string | undefined, indent: string): string[] {
   if (text === undefined) return [];
-  if (text.includes('"""')) return [`${indent}${JSON.stringify(text)}`]; // a block string cannot hold its own fence
-  if (!text.includes("\n")) return [`${indent}"""${text}"""`];
-  return [`${indent}"""`, ...text.split("\n").map((line) => `${indent}${line}`), `${indent}"""`];
+  const escaped = text.replaceAll('"""', '\\"""');
+  if (!text.includes("\n") && !/["\\]$/.test(text)) return [`${indent}"""${escaped}"""`];
+  const lines = escaped.split("\n").map((line) => `${indent}${line}`);
+  const block = [`${indent}"""`, ...lines, `${indent}"""`];
+  return text.includes("\r") ? [block.join("\r\n")] : block;
 }
 
 function printAnnotation(a: Annotation): string {

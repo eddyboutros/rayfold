@@ -67,29 +67,35 @@ class RayfoldCache(
         setBase(key, JsonObject(next))
         staleKeys.remove(key)
         touched.add(key)
-        // A field the server has just spoken for leaves any prediction that also set it, when the field's policy says
-        // so (spec 08 section 5). `lww` settles the same way here: the server's write is the later one.
-        if (mergePolicies.isNotEmpty()) {
-            val type = key.substringBefore(':')
-            var overruled = false
-            for (i in layers.indices) {
-                val (id, ops) = layers[i]
-                var changed = false
-                val kept = ops.map { op ->
-                    if (op.set != key) {
-                        op
-                    } else {
-                        val drop = op.value.keys.filter { f ->
-                            f in fields && mergePolicies["$type.$f"] in setOf("serverWins", "lww")
-                        }
-                        if (drop.isEmpty()) op else { changed = true; OptimisticOp(op.set, JsonObject(op.value - drop.toSet())) }
-                    }
-                }
-                if (changed) { layers[i] = id to kept; overruled = true }
-            }
-            if (overruled) rebuild(key)
-        }
+        overrule(key, fields.keys)
         touched
+    }
+
+    /**
+     * A field the server has just spoken for leaves any prediction that also set it, when the field's policy says so
+     * (spec 08 section 5), whether the value came in a patch, a command's result or a query's data. `lww` settles the
+     * same way here: the server's write is the later one.
+     */
+    private fun overrule(key: String, fields: Set<String>) {
+        if (mergePolicies.isEmpty() || layers.isEmpty()) return
+        val type = key.substringBefore(':')
+        var overruled = false
+        for (i in layers.indices) {
+            val (id, ops) = layers[i]
+            var changed = false
+            val kept = ops.map { op ->
+                if (op.set != key) {
+                    op
+                } else {
+                    val drop = op.value.keys.filter { f ->
+                        f in fields && mergePolicies["$type.$f"] in setOf("serverWins", "lww")
+                    }
+                    if (drop.isEmpty()) op else { changed = true; OptimisticOp(op.set, JsonObject(op.value - drop.toSet())) }
+                }
+            }
+            if (changed) { layers[i] = id to kept; overruled = true }
+        }
+        if (overruled) rebuild(key)
     }
 
     /** Merges every entity found in [data] and tells watchers (used to repair after a version conflict). */
@@ -136,6 +142,7 @@ class RayfoldCache(
                     setBase(key, JsonObject(LinkedHashMap(baseOf(key) ?: JsonObject(emptyMap())).apply { putAll(out) }))
                     staleKeys.remove(key)
                     touched.add(key)
+                    overrule(key, out.keys)
                     val ref = linkedMapOf<String, JsonElement>("\$ref" to JsonPrimitive(key), "\$sel" to JsonObject(sel))
                     if (own.isNotEmpty()) ref["\$own"] = JsonObject(own)
                     JsonObject(ref) to JsonObject(sel)
@@ -179,12 +186,25 @@ class RayfoldCache(
     fun putResult(key: String, op: String, data: JsonElement): CachedResult = putResult(key, op, data, null)
 
     internal fun putResult(key: String, op: String, data: JsonElement, level: SelectionLevel?): CachedResult = synchronized(lock) {
+        val r = resultOf(op, data, level)
+        results[key] = r
+        emit(r.keys, setOf(op))
+        r
+    }
+
+    /**
+     * A command's answer: its entities are stored like any result's, and the result itself is handed back rather than
+     * kept, since nothing reads a command's answer again by its key. Kept, every command with new arguments added a
+     * result that stayed for the life of the cache.
+     */
+    internal fun putCommandResult(op: String, data: JsonElement, level: SelectionLevel?): CachedResult = synchronized(lock) {
+        resultOf(op, data, level).also { emit(it.keys, setOf(op)) }
+    }
+
+    private fun resultOf(op: String, data: JsonElement, level: SelectionLevel?): CachedResult {
         val keys = mutableSetOf<String>()
         val normalized = normalizeValue(data, keys, level).first
-        val r = CachedResult(normalized, op, keys, now())
-        results[key] = r
-        emit(keys, setOf(op))
-        r
+        return CachedResult(normalized, op, keys, now())
     }
 
     fun getResult(key: String): CachedResult? = synchronized(lock) { results[key] }
@@ -207,7 +227,10 @@ class RayfoldCache(
             when {
                 ref != null -> {
                     val (own, shared) = fields.entries.partition { level != null && it.key in level.bySelection }
-                    baseOf(ref)?.let { e -> setBase(ref, JsonObject(LinkedHashMap(e).apply { shared.forEach { put(it.key, it.value) } })) }
+                    baseOf(ref)?.let { e ->
+                        setBase(ref, JsonObject(LinkedHashMap(e).apply { shared.forEach { put(it.key, it.value) } }))
+                        overrule(ref, shared.map { it.key }.toSet())
+                    }
                     val next = linkedMapOf<String, JsonElement>("\$ref" to JsonPrimitive(ref), "\$sel" to mergeSel(target["\$sel"] ?: JsonObject(emptyMap()), sel))
                     val kept = LinkedHashMap((target["\$own"] as? JsonObject) ?: JsonObject(emptyMap())).apply { own.forEach { put(it.key, it.value) } }
                     if (kept.isNotEmpty()) next["\$own"] = JsonObject(kept)

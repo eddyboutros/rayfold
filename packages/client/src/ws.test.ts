@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { attachWebSocket, createHttpHandler, type Frame, type RayfoldServer } from "@rayfold/server";
@@ -8,6 +9,7 @@ import { RayfoldClient, RayfoldClientError } from "./client.ts";
 import { createLocalTransport, type Transport } from "./transport.ts";
 import { createWebSocketTransport } from "./ws-transport.ts";
 import { RbCodec } from "@rayfold/rb";
+import { schemaHash } from "@rayfold/schema";
 
 type Bookstore = ReturnType<typeof createBookstore>;
 const u1 = { id: "u1", role: "customer" };
@@ -267,6 +269,123 @@ describe("WebSocket transport connections", () => {
   });
 });
 
+describe("a refused batch on a shared socket", () => {
+  it("is rejected and closed, and a live query on the same socket keeps going untouched", async () => {
+    const transport = createWebSocketTransport({ url: `${wsUrl}?auth=Bearer%20u1` });
+    try {
+      const client = new RayfoldClient({ transport });
+      const stock = new Signal<number>();
+      const errors: unknown[] = [];
+      const stop = client.live<{ stock: number }>("book", { id: "b1" }, { shape: "{ id stock }" }, (d) => stock.push(d.stock), (e) => errors.push(e));
+      await stock.atLeast(1, "live initial");
+      const refused = await bounded(client.query("noSuchOp").catch((e: unknown) => e), "the refused batch settled");
+      expect(refused).toBeInstanceOf(RayfoldClientError);
+      expect((refused as RayfoldClientError).code).toBe("invalid_argument");
+      // guard: the socket and the live query on it are still good
+      expect(await client.query<{ id: string }>("book", { id: "b2" }, { shape: "{ id }" })).toEqual({ $type: "Book", id: "b2" });
+      await new RayfoldClient({ transport: createLocalTransport(bs.server, () => admin) }).command("restock", { bookId: "b1", qty: 1 });
+      await stock.atLeast(2, "live patch after the refusal");
+      expect(stock.items).toEqual([5, 6]);
+      expect(errors).toEqual([]);
+      stop();
+    } finally {
+      transport.close();
+    }
+  });
+
+  it("a batch that ended leaves no listener on the caller's signal; guard: aborting a running batch still cancels it", async () => {
+    const subs = changeBusLog(bs.server);
+    const transport = createWebSocketTransport({ url: `${wsUrl}?auth=Bearer%20u1` });
+    try {
+      const client = new RayfoldClient({ transport });
+      const ac = new AbortController();
+      for (const id of ["b1", "b2", "b3"]) {
+        const b = client.batch();
+        b.query("book", { id }, { shape: "{ id }" });
+        await b.run({ signal: ac.signal });
+      }
+      expect(getEventListeners(ac.signal, "abort")).toHaveLength(0);
+
+      const b = client.batch();
+      const live = b.query("book", { id: "b1" }, { shape: "{ id }", live: true });
+      const run = b.run({ signal: ac.signal });
+      await subs.until((xs) => xs.includes("on"), "live op subscribed");
+      ac.abort();
+      await subs.until(offs(1), "the aborted live op unsubscribed on the server");
+      await expect(bounded(live.promise, "the aborted op settled")).rejects.toMatchObject({ code: "canceled" });
+      await bounded(run, "the aborted batch ended");
+    } finally {
+      transport.close();
+    }
+  });
+
+  /** A socket whose server is the test: it records what the client sends and answers with whatever frames it is given. */
+  class ScriptedSocket extends EventTarget {
+    static readonly OPEN = 1;
+    static last: ScriptedSocket | undefined;
+    readonly sent = new Signal<{ ops?: Array<{ id: number; op: string }>; cancel?: number }>();
+    readyState = 0;
+    binaryType = "blob";
+    constructor() {
+      super();
+      ScriptedSocket.last = this;
+      queueMicrotask(() => {
+        this.readyState = 1;
+        this.dispatchEvent(new Event("open"));
+      });
+    }
+    send(text: string): void {
+      this.sent.push(JSON.parse(text));
+    }
+    answer(f: unknown): void {
+      this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(f) }));
+    }
+    close(): void {}
+  }
+  const scripted = () => createWebSocketTransport({ url: "ws://scripted", WebSocket: ScriptedSocket as unknown as typeof WebSocket });
+  const outcome = (p: Promise<unknown>) => p.then((v) => ({ ok: v }), (e: RayfoldClientError) => ({ error: e.code }));
+
+  it("a refusal without an op id waits while two batches could own it, and goes to the one left once the other answers", async () => {
+    const client = new RayfoldClient({ transport: scripted() });
+    const good = outcome(client.query("book", { id: "b1" }));
+    const bad = outcome(client.query("noSuchOp"));
+    const settled: string[] = [];
+    void good.then(() => settled.push("good"));
+    void bad.then(() => settled.push("bad"));
+    const socket = ScriptedSocket.last!;
+    await socket.sent.atLeast(2, "both envelopes sent");
+    expect(socket.sent.items.map((m) => m.ops![0]!.id)).toEqual([1, 2]);
+    socket.answer({ error: { code: "invalid_argument", message: "Unknown op noSuchOp" }, fin: true });
+    await Promise.resolve();
+    expect(settled).toEqual([]); // either batch could be the refused one: neither is failed on a guess
+    socket.answer({ id: 1, data: { $type: "Book", id: "b1" }, fin: true });
+    expect(await bounded(good, "the good batch")).toEqual({ ok: { $type: "Book", id: "b1" } });
+    expect(await bounded(bad, "the refused batch")).toEqual({ error: "invalid_argument" });
+  });
+
+  it("two refusals among two unanswered batches are one each; guard: a batch answered before them is not failed", async () => {
+    const client = new RayfoldClient({ transport: scripted() });
+    const b = client.batch();
+    const live = b.query("book", { id: "b1" }, { live: true });
+    const run = b.run();
+    const socket = ScriptedSocket.last!;
+    await socket.sent.atLeast(1, "the live envelope sent");
+    socket.answer({ id: 1, data: { $type: "Book", id: "b1" } });
+    const bad1 = outcome(client.query("noSuchOp"));
+    const bad2 = outcome(client.query("otherBadOp"));
+    await socket.sent.atLeast(3, "both refused envelopes sent");
+    socket.answer({ error: { code: "invalid_argument", message: "Unknown op noSuchOp" }, fin: true });
+    socket.answer({ error: { code: "invalid_argument", message: "Unknown op otherBadOp" }, fin: true });
+    expect(await bounded(bad1, "first refused")).toEqual({ error: "invalid_argument" });
+    expect(await bounded(bad2, "second refused")).toEqual({ error: "invalid_argument" });
+    socket.answer({ id: 1, patch: [{ set: "Book:b1", value: { stock: 3 } }] });
+    socket.answer({ id: 1, fin: true });
+    await bounded(run, "the live batch ended with its own fin");
+    expect(await live.promise).toEqual({ $type: "Book", id: "b1" });
+    expect(client.cache.get("Book:b1")).toEqual({ $type: "Book", id: "b1", stock: 3 });
+  });
+});
+
 describe("RB over the WebSocket transport (spec 09 section 4)", () => {
   /** A WebSocket that records whether each message it receives is text or binary. */
   const recording = (kinds: string[]) =>
@@ -300,6 +419,51 @@ describe("RB over the WebSocket transport (spec 09 section 4)", () => {
       binary.close();
       text.close();
     }
+  });
+
+  it("a client whose RB dictionary comes from another schema fails its batch as unavailable, then speaks JSON (guard: the first test stays on RB)", async () => {
+    const older = structuredClone(bs.server.ir);
+    const book = older.types["Book"] as { fields: Array<{ name: string }> };
+    book.fields.push({ ...book.fields[1]!, name: "aaa" }); // a field the server does not have renumbers every key after it
+    const kinds: string[] = [];
+    const urls: string[] = [];
+    const Recording = recording(kinds);
+    const transport = createWebSocketTransport({
+      url: `${wsUrl}?auth=Bearer%20u1`,
+      binary: older,
+      WebSocket: class extends Recording {
+        constructor(url: string | URL, protocols?: string | string[]) {
+          super(url, protocols);
+          urls.push(String(url));
+        }
+      },
+    });
+    try {
+      const client = new RayfoldClient({ transport });
+      const shape = { shape: "{ id title }" };
+      await expect(client.query("book", { id: "b1" }, shape)).rejects.toMatchObject({ code: "unavailable" });
+      expect(await client.query("book", { id: "b1" }, shape)).toEqual({ $type: "Book", id: "b1", title: "The Dispossessed" });
+      expect(kinds).toEqual(["text"]);
+      expect(urls.map((u) => new URL(u).searchParams.get("schema"))).toEqual([schemaHash(older), null]);
+    } finally {
+      transport.close();
+    }
+  });
+
+  it("the server closes a socket that names another schema with 4409 and its own hash (guard: its own hash is served)", async () => {
+    const closed = (schema: string) =>
+      bounded(new Promise<{ code: number; reason: string; answered: unknown }>((resolve) => {
+        let answered: unknown = null;
+        const ws = new WebSocket(`${wsUrl}?schema=${encodeURIComponent(schema)}`, ["rayfold.0.1"]);
+        ws.addEventListener("close", (e) => resolve({ code: e.code, reason: e.reason, answered }), { once: true });
+        ws.addEventListener("open", () => ws.send(JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] })), { once: true });
+        ws.addEventListener("message", (e) => {
+          answered = JSON.parse(String(e.data));
+          ws.close(1000);
+        }, { once: true });
+      }), "the socket to close");
+    expect(await closed("sha256:stale")).toEqual({ code: 4409, reason: bs.server.hash, answered: null });
+    expect((await closed(bs.server.hash)).answered).toEqual({ id: 1, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true });
   });
 
   it("undecodable RB is answered with an RB error frame, and a text message that is not an object with an error (guard)", async () => {

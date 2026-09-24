@@ -5,7 +5,7 @@ import { loadSchema, schemaHash } from "./load.ts";
 import { parseSchemaText } from "./parser.ts";
 import { validateIR } from "./validate.ts";
 import { RayfoldSyntaxError, tokenize } from "./lexer.ts";
-import { evalExpr, parseExprText, isPushable, referencesViewer } from "./expr.ts";
+import { evalExpr, parseExprText, isPushable, referencesViewer, type ExprEnv } from "./expr.ts";
 import { canonicalShape, parseShapeText, shapeIdOf, shapeToString } from "./shape.ts";
 import { typeRefToString } from "./ir.ts";
 
@@ -164,6 +164,81 @@ describe("validation", () => {
     const viaView = validateIR(parseSchemaText(`entity A { id: ID } entity B { id: ID n: String } query a: A view B.card = { n }`));
     expect(viaView.filter((x) => x.code === "unreachable")).toEqual([]);
   });
+
+  it("an object reached only through an error's payload is reachable (guard - one reached through nothing still warns)", () => {
+    const warnings = (src: string) => validateIR(parseSchemaText(src)).filter((d) => d.code === "unreachable").map((d) => d.at);
+    expect(warnings(`object Detail { x: Int } error E { d: Detail } command c: Int throws E`)).toEqual([]);
+    expect(warnings(`object Detail { x: Int } object Stray { x: Int } error E { d: Detail } command c: Int throws E`)).toEqual(["Stray"]);
+  });
+
+  it("T means a type parameter only inside the generic that declares it (guard - Page's own T still reads)", () => {
+    expect(validateIR(parseSchemaText(`entity A { id: ID x: T } query a: A`))).toEqual([{ severity: "error", code: "unknown-type", at: "A.x", message: "Unknown type T" }]);
+    expect(errorsOf(`entity A { id: ID } query a(page: PageArgs): Page<A>`)).toEqual([]);
+  });
+
+  it("a generic is held to the position it is used in (guard - Page<T> as a result is fine)", () => {
+    const d = validateIR(parseSchemaText(`input I { p: Page<Int> } query a(i: I, p: Page<String>): Int`)).filter((x) => x.severity === "error");
+    expect(d.map((x) => `${x.code}@${x.at}: ${x.message}`)).toEqual([
+      "bad-type-position@I.p: object Page cannot be used as an input field",
+      "page-args@I.p: A field returning Page<T> must accept page: PageArgs (or first/after)",
+      "bad-type-position@a().p: object Page cannot be used as an argument",
+    ]);
+    expect(errorsOf(`query a(page: PageArgs): Page<String>`)).toEqual([]);
+  });
+
+  it("@input names a type a client can send (guard - an input type is accepted)", () => {
+    expect(validateIR(parseSchemaText(`stream s: Int @input(Nope)`)).map((x) => `${x.code}@${x.at}: ${x.message}`)).toEqual(["unknown-type@s(): Unknown type Nope"]);
+    expect(errorsOf(`entity E { id: ID } stream s: E @input(E)`)).toEqual(["bad-type-position"]);
+    expect(errorsOf(`input Msg { text: String } entity E { id: ID } stream s: E @input(Msg)`)).toEqual([]);
+    const ir = parseSchemaText(`input Msg { text: String } stream s: Int @input(Msg)`);
+    ir.ops["s"]!.annotations[0]!.args["value"] = "Msg";
+    expect(validateIR(ir).map((x) => x.code)).toEqual(["bad-input"]);
+  });
+
+  it("names repeated where a schema file cannot repeat them are refused, from any IR (guard - distinct names pass)", () => {
+    expect(errorsOf(`entity A { id: ID } entity B { id: ID } union U = A | B | A query u: U`)).toEqual(["duplicate-name"]);
+    const ir = parseSchemaText(`enum E { X Y } entity A { id: ID n(a: Int, b: Int): Int } query q(a: Int, b: Int): A`);
+    (ir.types["E"] as { values: Array<{ name: string }> }).values[1]!.name = "X";
+    (ir.types["A"] as { fields: Array<{ name: string; args: Array<{ name: string }> }> }).fields[1]!.args[1]!.name = "a";
+    ir.ops["q"]!.args[1]!.name = "a";
+    (ir.types["A"] as { fields: Array<{ name: string }> }).fields[1]!.name = "id";
+    expect(validateIR(ir).filter((x) => x.code === "duplicate-name").map((x) => `${x.at}: ${x.message}`)).toEqual([
+      "E: Duplicate enum value X",
+      "A: Duplicate field id",
+      "A.id: Duplicate argument a",
+      "q(): Duplicate argument a",
+    ]);
+    expect(errorsOf(`enum E { X Y } entity A { id: ID n(a: Int, b: Int): Int } query q(a: Int, b: Int, e: E): A`)).toEqual([]);
+  });
+
+  it("a name the parser could not have read is refused in an IR from elsewhere (guard - the same IR with names passes)", () => {
+    const ir = parseSchemaText(`enum E { X } entity User { id: ID firstName: String } view User.card = { id } query user(sortBy: String, e: E): User`);
+    expect(validateIR(ir).filter((x) => x.severity === "error")).toEqual([]);
+    (ir.types["User"] as { fields: Array<{ name: string }> }).fields[1]!.name = "first-name";
+    ir.ops["user"]!.args[0]!.name = "sort by";
+    (ir.types["E"] as { values: Array<{ name: string }> }).values[0]!.name = "1st";
+    ir.views["User.card"]!.name = "a.b";
+    ir.types["Bad-Type"] = { kind: "scalar", name: "Bad-Type", annotations: [] };
+    ir.ops["op-x"] = { kind: "query", name: "op-x", args: [], returns: { kind: "named", name: "Int", nullable: false }, throws: [], emits: [], annotations: [] };
+    expect(validateIR(ir).filter((x) => x.code === "bad-name").map((x) => `${x.at}: ${x.message}`)).toEqual([
+      'E.1st: Enum value "1st" is not a name ([A-Za-z_][A-Za-z0-9_]*)',
+      'User.first-name: Field name "first-name" is not a name ([A-Za-z_][A-Za-z0-9_]*)',
+      'Bad-Type: Type name "Bad-Type" is not a name ([A-Za-z_][A-Za-z0-9_]*)',
+      'user().sort by: Argument name "sort by" is not a name ([A-Za-z_][A-Za-z0-9_]*)',
+      'op-x(): Operation name "op-x" is not a name ([A-Za-z_][A-Za-z0-9_]*)',
+      'User.a.b: View name "a.b" is not a name ([A-Za-z_][A-Za-z0-9_]*)',
+    ]);
+  });
+
+  it("an argument or enum value named with __ is reserved, as a field is (guard - one leading underscore is a name)", () => {
+    const ir = parseSchemaText(`enum E { __X Y } entity A { id: ID n(__proto__: Int): Int } query q(__proto__: String, e: E): A`);
+    expect(validateIR(ir).filter((x) => x.code === "reserved-name").map((x) => `${x.at}: ${x.message}`)).toEqual([
+      "E.__X: Enum value __X is reserved",
+      "A.n(__proto__): Argument name __proto__ is reserved",
+      "q().__proto__: Argument name __proto__ is reserved",
+    ]);
+    expect(errorsOf(`enum E { _X Y } entity A { id: ID n(_proto: Int): Int } query q(_proto: String, e: E): A`)).toEqual([]);
+  });
 });
 
 describe("the schema hash", () => {
@@ -194,6 +269,18 @@ describe("policy expressions", () => {
     expect(evalExpr(e, { viewer: null, args: {}, this: { ownerId: "u1" } })).toBe(false);
     expect(referencesViewer(e)).toBe(true);
     expect(isPushable(e)).toBe(true);
+  });
+
+  it("a path reads only an object's own members, as the JVM does: no array length, no prototype (guard - data members still read)", () => {
+    const run = (text: string, env: Partial<ExprEnv>) => evalExpr(parseExprText(text, "this"), { viewer: null, args: {}, this: null, ...env });
+    const row = { tags: ["a", "b"], owner: { id: "u1" } };
+    expect(run(`this.tags.length != null`, { this: row })).toBe(false);
+    expect(run(`tags.length > 1`, { this: row })).toBe(false);
+    expect(run(`viewer.constructor != null`, { viewer: { id: "u1" } })).toBe(false);
+    expect(run(`viewer.toString != null`, { viewer: { id: "u1" } })).toBe(false);
+    expect(run(`viewer.__proto__ != null`, { viewer: { id: "u1" } })).toBe(false);
+    expect(run(`len(tags) == 2 && owner.id == "u1" && viewer.id == "u1"`, { this: row, viewer: { id: "u1" } })).toBe(true);
+    expect(run(`viewer.length == 3`, { viewer: { length: 3 } })).toBe(true);
   });
 
   it("is total: null comparisons are false, in/has work", () => {

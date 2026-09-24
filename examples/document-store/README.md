@@ -14,6 +14,16 @@ Three routes, and only one of them carries bytes:
 | `POST /rayfold` | a command naming the upload; the answer carries `url`, never the bytes |
 | `GET /files/{id}` | where that `url` points |
 
+Who is calling comes from a signed token (a JWT), checked the way the bookshop examples check theirs: with no
+identity provider configured, the server signs and checks tokens with a development key. This prints Ada's, and
+`-- grace` Grace's:
+
+```sh
+npm run -s token -w @rayfold/example-document-store
+```
+
+In production, `AUTH_JWKS_URL` and `AUTH_ISSUER` name your identity provider, and the development key is never used.
+
 ## Why it is shaped this way
 
 A batch is JSON, so a file in one would have to be base64: a third larger, held whole at both ends, and mixed in

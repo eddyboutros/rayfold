@@ -65,7 +65,22 @@ export function checkConstraints(annotations: Annotation[], t: TypeRef, v: unkno
   }
   const fmt = annotations.find((a) => a.name === "format");
   const pattern = fmt?.args["pattern"];
-  if (typeof pattern === "string" && typeof v === "string" && !new RegExp(pattern).test(v)) throw new RayfoldError("invalid_argument", `${path}: must match ${pattern}`);
+  if (typeof pattern === "string" && typeof v === "string") {
+    // bounded before matching: backtracking cost grows with the input
+    if (v.length > MAX_FORMAT_INPUT) throw new RayfoldError("invalid_argument", `${path}: longer than ${MAX_FORMAT_INPUT} characters, too long to match ${pattern}`);
+    if (!formatRegex(pattern).test(v)) throw new RayfoldError("invalid_argument", `${path}: must match ${pattern}`);
+  }
+}
+
+const MAX_FORMAT_INPUT = 10_000;
+/** Compiled `@format` patterns. The keys come from schemas, never from requests, so this stays small. */
+const formats = new Map<string, RegExp>();
+
+/** The whole value must match, as on the JVM: `[a-z]+` does not accept a value that merely contains letters. */
+function formatRegex(pattern: string): RegExp {
+  let re = formats.get(pattern);
+  if (!re) formats.set(pattern, (re = new RegExp(`^(?:${pattern})$`)));
+  return re;
 }
 
 export function coerceValue(ir: RayfoldSchemaIR, t: TypeRef, v: unknown, path: string): unknown {
@@ -110,6 +125,7 @@ function fieldAsArg(f: FieldDef): ArgDef {
   return a;
 }
 
+const inLongRange = (n: bigint): boolean => n >= -(2n ** 63n) && n < 2n ** 63n;
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DECIMAL = /^-?\d+(\.\d+)?$/;
@@ -126,10 +142,10 @@ export function coerceScalar(name: string, v: unknown, path: string): unknown {
     case "String":
       return typeof v === "string" ? v : bad("String");
     case "Int":
-      return typeof v === "number" && Number.isInteger(v) && Math.abs(v) <= 2_147_483_647 ? v : bad("Int");
+      return typeof v === "number" && Number.isInteger(v) && v >= -2_147_483_648 && v <= 2_147_483_647 ? v : bad("Int");
     case "Long":
       if (typeof v === "number" && Number.isSafeInteger(v)) return v; // larger values lose digits as JSON numbers: send them as text
-      if (typeof v === "string" && /^-?\d+$/.test(v)) return v;
+      if (typeof v === "string" && /^-?\d+$/.test(v) && inLongRange(BigInt(v))) return v;
       return bad("Long");
     case "Float":
       return typeof v === "number" && Number.isFinite(v) ? v : bad("Float");

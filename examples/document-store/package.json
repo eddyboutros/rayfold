@@ -6,11 +6,13 @@
   "description": "Upload a file, replace it, keep every revision. The bytes go to disk and everything else carries a URL.",
   "type": "module",
   "scripts": {
-    "server": "tsx src/server.ts"
+    "server": "tsx src/server.ts",
+    "token": "tsx src/token.ts"
   },
   "dependencies": {
     "@rayfold/client": "*",
-    "@rayfold/server": "*"
+    "@rayfold/server": "*",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "tsx": "^4.20.0"

@@ -99,7 +99,8 @@ export function suggestionFor(finding: Finding, ir: RayfoldSchemaIR): string | u
 }
 
 function split(at: string): [string, string | undefined] {
-  const coordinate = at.endsWith("()") ? at.slice(0, -2) : at;
+  // "books()" and an argument of it, "books().first", are both about the operation books
+  const coordinate = at.replace(/\(\)(?=\.|$)/, "");
   const dot = coordinate.indexOf(".");
   return dot < 0 ? [coordinate, undefined] : [coordinate.slice(0, dot), coordinate.slice(dot + 1)];
 }

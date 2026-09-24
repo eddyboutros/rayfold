@@ -95,7 +95,8 @@ object Mcp {
 
     private fun resultSchema(ir: RayfoldSchemaIR, t: TypeRef): JsonObject {
         val defs = linkedMapOf<String, JsonElement>()
-        val inner = JsonSchema.forType(ir, t, defs, false)
+        // tools/call answers with the default view, which may leave out fields the type declares
+        val inner = JsonSchema.forType(ir, t, defs, false, partial = true)
         val schema = linkedMapOf<String, JsonElement>("\$schema" to str(JsonSchema.DIALECT), "type" to str("object"), "properties" to obj("result" to inner), "required" to JsonArray(listOf(str("result"))))
         if (defs.isNotEmpty()) schema["\$defs"] = JsonObject(defs)
         return JsonObject(schema)
@@ -112,6 +113,8 @@ object Mcp {
             put("jsonrpc", "2.0"); put("id", id); put("error", buildJsonObject { put("code", code); put("message", message) })
         }
         if (o == null) return fail(-32600, "Invalid Request")
+        // a notification has no id and gets no reply (spec 10 section 1: HTTP 202), whatever its method
+        if ("id" !in o) return null
         val method = (o["method"] as? JsonPrimitive)?.takeIf { it.isString }?.content
         val p = o["params"] as? JsonObject ?: JsonObject(emptyMap())
         val serverInfo = obj("name" to str("rayfold"), "version" to str("0.1"), "schemaHash" to str(server.hash))
@@ -140,8 +143,9 @@ object Mcp {
                 val m = QUERY_URI.matchEntire(uri)
                 // a resource read is a read: only queries are resources, whatever the URI names
                 if (m == null || server.ir.ops[m.groupValues[1]]?.kind != "query") return fail(-32602, "Unknown resource $uri")
-                // values stay text, as URLSearchParams gives them; the pipeline coerces them by declared type
-                val args = JsonObject(RayfoldBindingsText.query(m.groupValues[3]).associate { (k, v) -> k to JsonPrimitive(v) })
+                // query-string values are text; they are coerced by the argument's declared type, as an HTTP binding's are
+                val op = server.ir.ops.getValue(m.groupValues[1])
+                val args = JsonObject(RayfoldBindingsText.query(m.groupValues[3]).associate { (k, v) -> k to RayfoldBindings.fromText(op, k, v) })
                 val r = callTool(server, m.groupValues[1], args, viewer)
                 if (r["isError"] == JsonPrimitive(true)) {
                     val text = (((r["content"] as? JsonArray)?.firstOrNull() as? JsonObject)?.get("text") as? JsonPrimitive)?.content ?: "error"
@@ -275,6 +279,8 @@ class RayfoldMcp(
         val headerMethod = ex.requestHeaders.getFirst("Mcp-Method")
         val first = (if (parsed is JsonArray) parsed.firstOrNull() else parsed)?.takeIf { it !is JsonNull }
         if (headerMethod != null && first != null && headerMethod != ((first as? JsonObject)?.get("method") as? JsonPrimitive)?.content) {
+            // a JSON-RPC response, so it carries the protocol version as every other one does (spec 10 section 1)
+            ex.responseHeaders.set("MCP-Protocol-Version", Mcp.PROTOCOL_VERSION)
             rpc(ex, 400, rpcError((first as? JsonObject)?.get("id") ?: JsonNull, -32020, "HeaderMismatch"))
             return true
         }

@@ -27,9 +27,9 @@ governs is the schema the manifest publishes. The remaining members are per-op:
 | `args` | no | Object matching the operation's declared arguments. Missing args with defaults take the default. An absent argument or input field without a default stays **absent** in the resolver. An explicit `null` stays `null` and is never replaced by a default; on a non-null argument it is rejected with `invalid_argument`. Partial updates depend on the difference. |
 | `shape` | no | Inline shape text or `sha256:` id ([02](02-shapes.md)). Absent = default view. |
 | `vars` | no | Values for `$name` references inside the shape. |
-| `key` | commands | Idempotency key, 16-128 characters, chosen by the client. Not required when the command declares `@idempotent(false)`, or when it is reached through a `PUT`, `PATCH` or `DELETE` binding ([04 §8](04-frames-and-transport.md)). |
+| `key` | commands | Idempotency key, 16-128 characters, chosen by the client. Not required when the command declares `@idempotent(false)`, which ignores one it is sent, or when it is reached through a `PUT`, `PATCH` or `DELETE` binding ([04 §8](04-frames-and-transport.md)). |
 | `live` | no | `true` to keep a query subscribed (`live` extension). |
-| `deadline` | no | Milliseconds; overrides `meta.deadline` for this op. |
+| `deadline` | no | Milliseconds for this op alone, counted like `meta.deadline` from when the server starts the batch, so time the op spends waiting for its references or for an earlier command counts against it. The op also ends at `meta.deadline` when that comes first. |
 | `simulate` | no | `true` runs a command without committing; result and patches describe what would happen. Only for commands that declare `@simulate` ([12 §6](12-security.md)). |
 | `ifVersion` | no | Conditional command: the version of the target entity the client last saw ([§4a](#4a-conditional-commands)). |
 | `compact` | no | `true` asks for compact frames: `$type` is omitted wherever the schema already fixes the type (kept on union members), `meta` is omitted unless it carries `replay`, and a command's patch drops the `set` entries a normalizing client can derive from `ok` ([04 §2](04-frames-and-transport.md)). Only for schema-aware clients. |
@@ -69,8 +69,9 @@ repeats arrive at the same time: a later repeat waits for the first. A repeat wi
 the stored result and patches with `"meta": { "replay": true }`, in the form (compact or full) the repeat asks for.
 A repeat with the same (K, V) but a different O or A is `already_exists`. The command's write policy is checked
 before a replay is served. A keyed command from a caller with no viewer is `unauthenticated`, because anonymous
-callers would share one replay scope. Servers MUST retain keys for at least 24 hours and MUST bound the store
-([12 §3-4](12-security.md)).
+callers would share one replay scope. Servers MUST retain keys for 24 hours and MUST bound the store; a store at
+its bound evicts expired records first, then the oldest, so under that pressure a key can go sooner, and a key held
+by a command still running never does ([12 §3.6](12-security.md)).
 
 A command that failed before it changed anything leaves no record, so a repeat runs it. One that failed after its
 effect keeps that failure, and one whose op was canceled or ran out of time after its effect keeps a `canceled` answer
@@ -79,7 +80,9 @@ share one store therefore execute once between them; if the server holding a key
 repeat takes the key over ([12 §4](12-security.md)).
 
 Commands without a `key` are rejected with `invalid_argument` unless the command is annotated
-`@idempotent(false)`, which opts it out of the guarantee. Whether and when to repeat a failed request is the
+`@idempotent(false)`, which opts it out of the guarantee. Such a command ignores a `key` it is sent, since client
+libraries send one with every command: each call runs, none is recorded or replayed, and a key from a caller with no
+viewer is not refused. Whether and when to repeat a failed request is the
 client's choice, guided by `retryable` ([05](05-errors.md)); a client that repeats keyed commands on its own
 SHOULD NOT repeat one annotated `@idempotent(false)`.
 
@@ -103,4 +106,5 @@ every command and every transport; the HTTP binding maps `If-Match` onto it and 
 ## 5. Batch limits
 
 Default caps: 50 ops per batch, 1 MiB request body, cost budget per [06 §5](06-auth.md). Exceeding a cap is a
-batch-level `resource_exhausted` ([05 §2](05-errors.md)).
+batch-level `resource_exhausted` ([05 §2](05-errors.md)). A body over the limit is refused before it is read as a
+batch, so it is answered as [12 §3.1](12-security.md) says: `413` with problem type `payload_too_large`.

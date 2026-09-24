@@ -57,7 +57,9 @@ a browser could drive a local or intranet server. Configure `allowedOrigins` as 
 | the schema | a resource at `rayfold://schema` |
 
 Argument schemas come from the operation's own arguments, so an agent gets the types, the defaults and the
-descriptions you wrote once.
+descriptions you wrote once. A tool's `outputSchema` describes what a call returns, which is the default view: it
+declares every field, but requires none, since the view may leave some out. Resource arguments in the URI are
+converted by their declared types, so `?limit=5` passes the number 5 to an `Int` argument.
 
 The `.simulate` variant appears **only** where the command declares `@simulate`. The runtime cannot make a resolver
 honour a dry run that never checks `ctx.simulate`, so it does not offer a dry run it cannot keep — an agent that

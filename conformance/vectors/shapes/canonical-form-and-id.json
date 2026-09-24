@@ -37,6 +37,19 @@
       "why": "the output name is what the caller sees, so it is what identity follows"
     },
     {
+      "name": "a name sorts before a longer name it begins",
+      "shape": "{ item2 item }",
+      "canonical": "{ item item2 }",
+      "id": "sha256:2aea7251de58335c87cc7133fb2a857fbd7eb8f977f9708eeb40fc6b6b8a484c",
+      "why": "names and args are compared one after the other; a key joining them with ':' sorted item2 first, since '2' comes before ':'"
+    },
+    {
+      "name": "the name decides before the args do",
+      "shape": "{ tag2 tag(n: 1) }",
+      "canonical": "{ tag(n: 1) tag2 }",
+      "id": "sha256:0667dfa16f250a3d11ba3f246a6d98553100026a4737d169deb76da355564bf6"
+    },
+    {
       "name": "arguments sort by name and are separated by a space",
       "shape": "{ reviews(first: 2, after: \"r1\") { id } }",
       "canonical": "{ reviews(after: \"r1\" first: 2) { id } }",

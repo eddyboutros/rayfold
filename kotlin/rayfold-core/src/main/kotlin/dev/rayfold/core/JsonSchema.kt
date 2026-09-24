@@ -31,20 +31,22 @@ object JsonSchema {
 
     /**
      * The schema of [t]. Fielded types land in [defs] (keyed by name, `Page_<T>` for pages) and are referenced as
-     * `#/$defs/<key>`; [forInput] leaves out fields that take arguments.
+     * `#/$defs/<key>`; [forInput] leaves out fields that take arguments. [partial] leaves every field of a fielded type
+     * optional: a result projected through a shape (the default view, for an MCP tool call) may leave out fields the
+     * type declares, so a schema requiring them would refuse it.
      */
-    fun forType(ir: RayfoldSchemaIR, t: TypeRef, defs: MutableMap<String, JsonElement>, forInput: Boolean): JsonObject {
+    fun forType(ir: RayfoldSchemaIR, t: TypeRef, defs: MutableMap<String, JsonElement>, forInput: Boolean, partial: Boolean = false): JsonObject {
         fun nullable(s: JsonObject) = if (t.nullable) obj("anyOf" to JsonArray(listOf(s, obj("type" to str("null"))))) else s
         if (t.isList) {
             val of = t.of ?: error("list type without an element type")
-            return nullable(obj("type" to str("array"), "items" to forType(ir, of, defs, forInput)))
+            return nullable(obj("type" to str("array"), "items" to forType(ir, of, defs, forInput, partial)))
         }
         val name = t.name ?: return obj()
         val def = ir.types[name] ?: return obj()
         return when (def.kind) {
             "scalar" -> nullable(SCALARS[name] ?: obj("type" to types("string", "number")))
             "enum" -> nullable(obj("type" to str("string"), "enum" to JsonArray(def.values.map { str(it.name) })))
-            "union" -> nullable(obj("anyOf" to JsonArray(def.members.map { forType(ir, TypeRef("named", it), defs, forInput) })))
+            "union" -> nullable(obj("anyOf" to JsonArray(def.members.map { forType(ir, TypeRef("named", it), defs, forInput, partial) })))
             else -> {
                 val first = t.args?.firstOrNull()
                 val key = if (name == "Page" && first != null) "Page_${first.baseName()}" else name
@@ -58,9 +60,9 @@ object JsonSchema {
                     if (def.kind == "entity") properties["\$type"] = obj("const" to str(def.name))
                     for (f in fields) {
                         if (forInput && f.args.isNotEmpty()) continue
-                        val s = withRange(forType(ir, f.type, defs, forInput), f.annotations, f.type.baseName())
+                        val s = withRange(forType(ir, f.type, defs, forInput, partial), f.annotations, f.type.baseName())
                         properties[f.name] = described(s, f.description)
-                        if (!f.type.nullable && f.default == null) required.add(str(f.name))
+                        if (!partial && !f.type.nullable && f.default == null) required.add(str(f.name))
                     }
                     val schema = linkedMapOf<String, JsonElement>("type" to str("object"), "properties" to JsonObject(properties), "additionalProperties" to JsonPrimitive(false))
                     if (required.isNotEmpty()) schema["required"] = JsonArray(required)

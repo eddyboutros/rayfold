@@ -89,7 +89,9 @@ that book updates too, not only the live one. In React, only the components show
 ## Connections
 
 - Over HTTP, a live query is a response that stays open. The TypeScript server sends an empty line when nothing has
-  happened for 15 seconds (`keepAliveMs`), so proxies do not close an idle connection.
+  happened for 15 seconds (`keepAliveMs`), so proxies do not close an idle connection. A client that stops reading
+  does not make the server buffer for it forever: once `maxBuffered` bytes (8 MiB by default) wait unread, the
+  server ends the batch and the response. Cancelling the response body ends the live query too.
 - A live op gets no cache headers. Sent as a safe request (`Rayfold-Safe: true`, `GET` or `QUERY`), it is streamed
   with `Cache-Control: no-store`, like a plain `POST`. Servers up to 0.2.1 buffered a safe request whole, so a live op
   sent that way never answered; the clients send live ops as plain `POST`s, which works with every version.
@@ -107,8 +109,11 @@ that book updates too, not only the live one. In React, only the components show
 
   It serves `/rayfold/ws` by default, speaks the `rayfold.0.1` subprotocol, and checks the handshake's `Origin` —
   browsers attach cookies to a WebSocket handshake, so without that check any site could open a socket as your user.
-  `maxMessage` bounds an assembled message (1 MiB by default). One socket carries many operations, and
-  `{ "cancel": <id> }` cancels one of them without closing it. On the JVM, `RayfoldWebSocket` does the same job.
+  `maxMessage` bounds an assembled message (1 MiB by default), and `maxBuffered` what may wait for a client that
+  stops reading (8 MiB). One socket carries many operations, and `{ "cancel": <id> }` cancels one of them, even one
+  sent in the same batch as others, without closing it. A socket opened with a capability token closes with code
+  `1008` when the token expires, its live queries ended with `unauthenticated`. On the JVM, `RayfoldWebSocket` does
+  the same job.
 - A dropped connection is not the end of the subscription. Both clients reopen it after half a second, doubling to
   thirty, so a screen survives a deploy; `onError` says whether it is coming back (`{ retrying }` in TypeScript, the
   second argument in Kotlin), and only an error that would recur ends it.

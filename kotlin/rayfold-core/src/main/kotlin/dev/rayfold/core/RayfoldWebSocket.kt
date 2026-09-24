@@ -170,6 +170,10 @@ class RayfoldWebSocket(
                 out.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: $accept\r\n$proto\r\n".toByteArray(Charsets.ISO_8859_1))
                 out.flush()
             }
+            if (RayfoldWsSession.schemaMismatch(server, target.substringAfter('?', "").ifEmpty { null })) {
+                closeWith(RayfoldWsSession.SCHEMA_MISMATCH, server.hash, input)
+                return null
+            }
             return v
         }
 

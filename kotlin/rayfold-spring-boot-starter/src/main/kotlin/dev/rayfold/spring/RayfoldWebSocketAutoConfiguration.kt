@@ -87,6 +87,10 @@ internal class RayfoldWebSocketHandler(private val server: RayfoldServer, privat
     override fun afterConnectionEstablished(session: WebSocketSession) {
         session.textMessageSizeLimit = maxMessageBytes
         session.binaryMessageSizeLimit = maxMessageBytes
+        if (RayfoldWsSession.schemaMismatch(server, session.uri?.rawQuery)) {
+            runCatching { session.close(CloseStatus(RayfoldWsSession.SCHEMA_MISMATCH, server.hash)) }
+            return
+        }
         // a Spring session is not safe for concurrent sends, and the batches on one socket send from several coroutines
         val out = ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, maxMessageBytes * 4)
         val viewer = session.attributes[VIEWER] as? JsonElement ?: JsonNull

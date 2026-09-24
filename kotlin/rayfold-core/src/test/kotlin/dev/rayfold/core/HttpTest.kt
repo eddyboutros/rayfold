@@ -640,4 +640,80 @@ class HttpTest {
 
     private fun countOf(c: MemoryCounters, name: String, labels: Map<String, String>): Long =
         c.snapshot().firstOrNull { it.name == name && labels.all { (k, v) -> it.labels[k] == v } }?.count ?: 0L
+
+    // ------------------------------------------------------------------ CORS (spec 04 section 4b)
+
+    private fun serveWith(options: HttpOptions): Int {
+        val http = RayfoldHttp(RayfoldServer(ir, FixtureResolvers.build(fixture, store)), options) { ex ->
+            val auth = ex.requestHeaders.getFirst("Authorization")
+            if (auth != null && auth.startsWith("Bearer ")) buildJsonObject { put("id", auth.removePrefix("Bearer ")); put("role", "customer") } else JsonNull
+        }.start(0)
+        started.add(http)
+        return http.address.port
+    }
+
+    private fun preflight(p: Int, origin: String): HttpResponse<String> = client.send(
+        HttpRequest.newBuilder(URI("http://127.0.0.1:$p/rayfold")).timeout(Duration.ofSeconds(5))
+            .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+            .header("Origin", origin).header("Access-Control-Request-Method", "POST").header("Access-Control-Request-Headers", "content-type").build(),
+        HttpResponse.BodyHandlers.ofString(),
+    )
+
+    @Test
+    fun `a preflight from an allowed origin is answered 204 with the headers that let it through, from allowedOrigins alone`() {
+        val p = serveWith(HttpOptions(allowedOrigins = setOf("https://app.example")))
+        val res = preflight(p, "https://app.example")
+        assertEquals(204, res.statusCode(), res.body())
+        assertEquals("https://app.example", header(res, "Access-Control-Allow-Origin"))
+        assertEquals("GET, POST, QUERY, OPTIONS", header(res, "Access-Control-Allow-Methods"))
+        assertEquals("Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe, Rayfold-Upload-Name, Rayfold-Upload-Type", header(res, "Access-Control-Allow-Headers"))
+        assertEquals("Origin", header(res, "Vary"))
+        assertEquals("", res.body())
+    }
+
+    @Test
+    fun `guard - a preflight from another origin gets no Access-Control-Allow headers, so the browser stops there`() {
+        val p = serveWith(HttpOptions(allowedOrigins = setOf("https://app.example")))
+        val res = preflight(p, "https://evil.example")
+        assertEquals(204, res.statusCode(), res.body())
+        assertEquals(emptyList(), res.headers().map().keys.filter { it.lowercase().startsWith("access-control-") })
+    }
+
+    @Test
+    fun `the answer to an allowed origin is readable by it, and a cacheable one varies by origin`() {
+        port = serveWith(HttpOptions(allowedOrigins = setOf("https://app.example")))
+        val write = post("""{"ops":[$buyB1]}""", "Origin", "https://app.example", "Authorization", "Bearer u1")
+        assertEquals(200, write.statusCode(), write.body())
+        assertEquals("https://app.example", header(write, "Access-Control-Allow-Origin"))
+        val book = "/rayfold/book?a=${b64("""{"id":"b1"}""")}"
+        val read = get(book, "Origin", "https://app.example")
+        assertEquals("https://app.example", header(read, "Access-Control-Allow-Origin"))
+        assertEquals("Rayfold-Client, Accept, Authorization, Origin", header(read, "Vary"))
+        // guard: a read from an origin not listed is answered, but not made readable to that origin
+        val foreign = get(book, "Origin", "https://evil.example")
+        assertEquals(200, foreign.statusCode())
+        assertNull(header(foreign, "Access-Control-Allow-Origin"))
+        assertEquals("Rayfold-Client, Accept, Authorization", header(foreign, "Vary"))
+    }
+
+    // ------------------------------------------------------------------ stale-while-revalidate (spec 07 section 2)
+
+    private fun swrServer(querySwr: String): Int {
+        val schema = SchemaText.load("entity Note @cache(maxAge: 60s, swr: 300s) { id: ID } query note: Note @cache(maxAge: 30s$querySwr)").ir
+        val http = RayfoldHttp(RayfoldServer(schema, Resolvers(queries = mapOf("note" to { _, _ -> obj("""{"id":"n1"}""") })))).start(0)
+        started.add(http)
+        return http.address.port
+    }
+
+    @Test
+    fun `stale-while-revalidate takes the smallest swr, as max-age takes the smallest maxAge`() {
+        port = swrServer(", swr: 10s")
+        assertEquals("public, max-age=30, stale-while-revalidate=10", header(get("/rayfold/note"), "Cache-Control"))
+    }
+
+    @Test
+    fun `guard - a declaration without swr does not count, so the one that has it decides`() {
+        port = swrServer("")
+        assertEquals("public, max-age=30, stale-while-revalidate=300", header(get("/rayfold/note"), "Cache-Control"))
+    }
 }

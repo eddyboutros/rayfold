@@ -197,10 +197,33 @@ export function tokenAt(index: DocumentIndex, position: Position): Token | undef
 
 /** Where a `validateIR` diagnostic belongs in the text; the first line when the path names nothing we found. */
 export function rangeForPath(index: DocumentIndex, path: string): Range {
+  // an argument: "books().first" of an operation, "Book.reviews(first)" of a field
+  const arg = /^(\w+)\(\)\.(\w+)$/.exec(path) ?? /^(\w+\.\w+)\((\w+)\)$/.exec(path);
+  const argOwner = arg ? index.byPath.get(arg[1]!) : undefined;
+  if (arg && argOwner) return argumentIn(index, argOwner, arg[2]!) ?? argOwner.range;
   const declaration = index.byPath.get(path.endsWith("()") ? path.slice(0, -2) : path);
   if (declaration) return declaration.range;
   const owner = path.split(".")[0];
   const type = owner ? index.byPath.get(owner) : undefined;
   if (type) return type.range;
   return { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+}
+
+/** The argument [name] in the list that follows [owner]'s identifier; not a key of a default, nor an annotation's. */
+function argumentIn(index: DocumentIndex, owner: Declaration, name: string): Range | undefined {
+  const { tokens } = index;
+  const at = tokens.findIndex((t) => t.line - 1 === owner.range.start.line && t.col - 1 === owner.range.start.character);
+  if (at < 0 || tokens[at + 1]?.value !== "(") return undefined;
+  let paren = 0;
+  let brace = 0;
+  for (let i = at + 1; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (t.kind === "punct") {
+      if (t.value === "(") paren++;
+      else if (t.value === ")" && --paren === 0) return undefined;
+      else if (t.value === "{") brace++;
+      else if (t.value === "}") brace--;
+    } else if (t.kind === "name" && t.value === name && paren === 1 && brace === 0 && tokens[i + 1]?.value === ":") return rangeOf(t);
+  }
+  return undefined;
 }

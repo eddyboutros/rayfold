@@ -1,7 +1,7 @@
 name: Release
 
-# Push a tag such as v0.1.0 after `node scripts/set-version.mjs 0.1.0`. Both jobs refuse a tag that does not match
-# the version in the sources. docs/releasing.md lists the secrets and the one-time setup on npm and Maven Central.
+# Push a tag such as v0.1.0 after `node scripts/set-version.mjs 0.1.0`. The verify job refuses a tag that does not
+# match the version in the sources. docs/releasing.md lists the secrets and the one-time setup on npm and Maven Central.
 on:
   push:
     tags:
@@ -11,8 +11,36 @@ permissions:
   contents: read
 
 jobs:
+  # both registries publish only once both runtimes pass: a version is never replaced, so one released on npm while
+  # the JVM build failed would stay released without its Maven half
+  verify:
+    name: Test both runtimes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - name: The tag matches the package version
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./packages/schema/package.json').version")"
+      - name: The tag matches the Gradle version
+        run: test "${GITHUB_REF_NAME#v}" = "$(grep '^VERSION_NAME=' kotlin/gradle.properties | cut -d= -f2)"
+      - run: npm ci
+      - run: npm test
+        env:
+          REQUIRE_JAVAC: 1
+      # check, not test: it holds the Android API level the client libraries promise
+      - run: chmod +x kotlin/gradlew && kotlin/gradlew -p kotlin check
+
   npm:
     name: Publish to npm
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,16 +52,7 @@ jobs:
           node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
-        with:
-          distribution: temurin
-          java-version: 21
-      - name: The tag matches the package version
-        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./packages/schema/package.json').version")"
       - run: npm ci
-      - run: npm test
-        env:
-          REQUIRE_JAVAC: 1
       - run: node scripts/publish.mjs --provenance
         env:
           # leave the secret unset once every package uses npm trusted publishing
@@ -41,6 +60,7 @@ jobs:
 
   maven:
     name: Publish to Maven Central
+    needs: verify
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,9 +72,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-      - name: The tag matches the Gradle version
-        run: test "${GITHUB_REF_NAME#v}" = "$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)"
-      - run: chmod +x gradlew && ./gradlew test publishAndReleaseToMavenCentral
+      - run: chmod +x gradlew && ./gradlew publishAndReleaseToMavenCentral
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

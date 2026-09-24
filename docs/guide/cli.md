@@ -42,6 +42,13 @@ checks compatibility. `--strict` additionally fails on warnings — changes that
 as a new field appearing before an existing one. See
 [Changing a schema safely](../learn/evolution.md) for what counts as breaking.
 
+Ordinals are compared by name. Against a lockfile, every field and enum value keeps the ordinal the lock recorded for
+it, so adding a field between two others, or reordering them, is compatible; only an `@ordinal(n)` that disagrees with
+the lock (`ordinal-changed`), or a new member taking an ordinal the lock gave another (`ordinal-reused`), breaks.
+Between two `.rayfold` files there is no record of what was assigned, so both number by position: a member that moved
+is a warning (`ordinal-shifted`, fatal under `--strict`), and a changed `@ordinal(n)` is still breaking. Lock the schema
+to make a mid-type insertion pass cleanly.
+
 `--resolvers` loads a module and reports fields the schema declares that nothing resolves, and resolvers with no
 field to attach to. It answers "are the resolvers complete?" before a request does.
 

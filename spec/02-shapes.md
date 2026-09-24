@@ -62,7 +62,8 @@ The canonical text of a shape is produced by:
 1. Expanding named-view spreads (type-condition spreads stay).
 2. Sorting items at each level by kind first — fields, then type conditions (`...on`), then `@defer` blocks, then
    named-view spreads — and within a kind: fields by output name (alias or field name) then canonical args, type
-   conditions by type name, defers by label, spreads by `Type.view`.
+   conditions by type name, defers by label, spreads by `Type.view`. Names and args are compared as strings of
+   UTF-16 code units, one after the other: the args decide only between equal names, so `item` sorts before `item2`.
 3. Sorting args by name; encoding literal values as canonical JSON, numbers included
    ([12 §4.2](12-security.md)); keeping `$name` references verbatim.
 4. Emitting with single spaces and no newlines: `{ author { id name } id title }`.

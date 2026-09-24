@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Signal } from "../../../e2e/wait.ts";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { RayfoldClient } from "./client.ts";
-import { createLocalTransport } from "./transport.ts";
+import { createLocalTransport, type Transport } from "./transport.ts";
 
 // A watch calls back when its own result changes. With many watches of one op (a list of book cards), a change to
 // one book must not call back every card: that is one re-render per card in @rayfold/react.
@@ -67,6 +67,32 @@ describe("watch() calls back for its own result only", () => {
     client.cache.applyPatch([{ invOp: ["book"] }]);
     await b1.atLeast(2, "b1 told");
     await b2.atLeast(2, "b2 told");
+  });
+
+  it("a change landing after the data frame but before the response ended is reported, not hidden by the response", async () => {
+    const local = createLocalTransport(bs.server, () => ({ id: "u1", role: "customer" }));
+    const held = new Signal<string>();
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    const transport: Transport = {
+      send: (env, o) =>
+        (async function* () {
+          yield* local.send(env, o);
+          // the query's frames are all in, and its response has not ended yet
+          if (env.ops[0]!.op === "book") {
+            held.push("held");
+            await hold;
+          }
+        })(),
+    };
+    const c = new RayfoldClient({ transport });
+    const seen = new Signal<number>();
+    c.watch<{ stock: number }>("book", { id: "b1" }, SHAPE, (b) => seen.push(b.stock));
+    await held.atLeast(1, "the watch's response held open");
+    await c.command("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] } });
+    release();
+    await seen.atLeast(1, "the watch's first report");
+    expect(seen.items).toEqual([4]);
   });
 
   it("a command landing while the watch is still loading is not lost", async () => {

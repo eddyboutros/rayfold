@@ -95,7 +95,7 @@ class PgRelay(
         val id = withContext(Dispatchers.IO) {
             connections().use { c ->
                 val id = c.prepareStatement("INSERT INTO ${opts.table} (message, at) VALUES (CAST(? AS jsonb), ?)", Statement.RETURN_GENERATED_KEYS).use { s ->
-                    s.setString(1, body.toString())
+                    s.setString(1, stored(body))
                     s.setLong(2, t)
                     s.executeUpdate()
                     s.generatedKeys.use { keys -> if (keys.next()) keys.getLong(1) else error("rayfold relay: ${opts.table} returned no id") }
@@ -133,6 +133,15 @@ class PgRelay(
         val parsed = Json.parseToJsonElement(stored)
         val body = (parsed as? JsonPrimitive)?.takeIf { it.isString }?.let { Json.parseToJsonElement(it.content) } ?: parsed
         deliver(body.jsonObject, onMessage)
+    }
+
+    /**
+     * A message as the table keeps it. `jsonb` refuses U+0000 in a string, so a message holding one is kept as a JSON
+     * string of its text instead, which every reader of the table already unwraps.
+     */
+    private fun stored(body: JsonObject): String {
+        val text = body.toString()
+        return if (text.contains("\\u0000")) JsonPrimitive(text).toString() else text
     }
 
     private fun deliver(body: JsonObject, onMessage: (RelayMessage) -> Unit) {

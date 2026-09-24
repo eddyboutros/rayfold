@@ -56,6 +56,12 @@ describe("a server that answers from the schema alone", () => {
     expect(book).toEqual({ $type: "Book", id: "book-728", title: "Dune", stock: 50, format: "PAPERBACK" });
   });
 
+  it("an example written as an enum value or a duration is answered as the wire carries it (guard - a plain example as written)", async () => {
+    const ir = loadSchema(`enum Format { PAPER EBOOK } entity Book { id: ID format: Format @example(EBOOK) ttl: Duration @example(5m) note: String @example("5m") } query book(id: ID): Book`).ir;
+    const book = resultOf((await mock(ir)([{ id: 1, op: "book", args: { id: "b1" } }]))[0]!);
+    expect(book).toEqual({ $type: "Book", id: "book-728", format: "EBOOK", ttl: 300_000, note: "5m" });
+  });
+
   it("gives the same answer to the same call, from a server it has never met", async () => {
     const call: RequestEnvelope["ops"] = [{ id: 1, op: "book", args: { id: "b1" } }];
     const first = resultOf((await mock(bookstore)(call))[0]!);

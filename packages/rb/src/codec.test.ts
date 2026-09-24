@@ -23,6 +23,15 @@ describe("RB codec", () => {
     }
   });
 
+  it("encodes NaN, the infinities and a Date as JSON sends them; guard: finite doubles and bytes are unchanged", () => {
+    const v = { nan: Number.NaN, inf: Infinity, ninf: -Infinity, when: new Date(0), list: [Number.NaN, new Date(1000)], half: 2.5, b: new Uint8Array([1, 2]) };
+    for (const c of [codec, plain]) {
+      expect(c.decode(c.encode(v))).toEqual({ nan: null, inf: null, ninf: null, when: "1970-01-01T00:00:00.000Z", list: [null, "1970-01-01T00:00:01.000Z"], half: 2.5, b: new Uint8Array([1, 2]) });
+    }
+    expect([...plain.encode(Number.NaN)]).toEqual([0x00]);
+    expect([...plain.encode(2.5)]).toEqual([0x04, 0, 0, 0, 0, 0, 0, 0x04, 0x40]);
+  });
+
   it("round-trips bytes and drops undefined object members like JSON", () => {
     const bytes = new Uint8Array([0, 1, 2, 255]);
     expect(codec.decode(codec.encode({ b: bytes }))).toEqual({ b: bytes });

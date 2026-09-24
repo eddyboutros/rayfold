@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -109,9 +110,8 @@ class RayfoldServer(
 
     private val active = AtomicInteger()
 
-    /** Completed when the last batch in flight ends, for [drain] to wait on. */
-    @Volatile
-    private var idle: CompletableDeferred<Unit>? = null
+    /** Everyone waiting in [drain] for the last batch in flight to end. */
+    private val idle = ConcurrentLinkedQueue<CompletableDeferred<Unit>>()
 
     /** Who this server is. Before this, two servers in one fleet were indistinguishable. */
     val identity: ServerIdentity = identity
@@ -129,13 +129,16 @@ class RayfoldServer(
     /** sha256 of the canonical IR: the hash `@rayfold/schema` computes for the same schema ([SchemaText.hash]). */
     val hash: String by lazy { SchemaText.hash(ir) }
 
-    /** A batch is in flight from its first frame being asked for until it ends, so [drain] can wait for it. */
+    /**
+     * A batch is in flight from its first frame being asked for until it ends, so [drain] can wait for it. The flow is
+     * cold: nothing runs before it is collected, so that is also when the batch starts.
+     */
     fun execute(envelope: RequestEnvelope, opts: ExecuteOptions): Flow<JsonObject> = flow {
         active.incrementAndGet()
         try {
             emitAll(runner.execute(envelope, opts))
         } finally {
-            if (active.decrementAndGet() == 0) idle?.complete(Unit)
+            if (active.decrementAndGet() == 0) while (true) (idle.poll() ?: break).complete(Unit)
         }
     }
 
@@ -163,11 +166,15 @@ class RayfoldServer(
     suspend fun drain(timeoutMs: Long = 10_000) {
         drainer.complete()
         if (active.get() == 0) return
+        // one per caller: two callers draining at once each wait only as long as the batches do
         val done = CompletableDeferred<Unit>()
-        idle = done
-        if (active.get() == 0) return // the last batch ended between the count and the hand-over
-        withTimeoutOrNull(timeoutMs) { done.await() }
-        idle = null
+        idle.add(done)
+        try {
+            if (active.get() == 0) return // the last batch ended between the count and the hand-over
+            withTimeoutOrNull(timeoutMs) { done.await() }
+        } finally {
+            idle.remove(done)
+        }
     }
 
     /** Whether this server should receive traffic, and every reason it should not. */

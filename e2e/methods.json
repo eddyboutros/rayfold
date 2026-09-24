@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-23T09:09:21.858Z",
+  "generatedAt": "2026-09-24T00:07:32.772Z",
   "rows": [],
   "methods": [
     {
@@ -818,7 +818,7 @@
                 "content-type": "application/rayfold+json",
                 "authorization": "Bearer admin"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"updateBook\",\"args\":{\"id\":\"b5\",\"patch\":{\"price\":\"10.75\"}},\"shape\":\"{ id price }\",\"key\":\"33342a59e3814db5a3679c1243646555\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"updateBook\",\"args\":{\"id\":\"b5\",\"patch\":{\"price\":\"10.75\"}},\"shape\":\"{ id price }\",\"key\":\"2b0406e7f6424038a3501e8833d19bbe\"}]}"
             },
             "response": {
               "status": 200,

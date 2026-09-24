@@ -67,7 +67,9 @@ export interface ClientOptions {
   schema?: RayfoldSchemaIR;
   /**
    * Queue commands made while the server cannot be reached (sub-profile `sync`) and send them later, in order and with
-   * their idempotency keys: on `drain()`, and when the browser comes back online. Their predictions stay shown meanwhile.
+   * their idempotency keys: on `drain()`, when the browser comes back online, when the client starts with commands a
+   * reload brought back, and when a new command is made while others wait. Their predictions stay shown meanwhile.
+   * `drainOnReconnect: false` leaves every send of the queue to `drain()`.
    */
   offline?: { storage?: QueueStorage; drainOnReconnect?: boolean };
 }
@@ -78,6 +80,8 @@ export class OpHandle<T = unknown> {
   private resolveFn!: (v: T) => void;
   private rejectFn!: (e: unknown) => void;
   readonly frames: Frame[] = [];
+  /** @internal A command's answer as the cache holds it, entities replaced by refs, for reading back once settled. */
+  skeleton: unknown;
   constructor(
     readonly id: number,
     readonly req: RequestOp,
@@ -151,7 +155,13 @@ export class RayfoldClient {
       );
       this.queue = queue;
       const target = globalThis as { addEventListener?: (type: string, fn: () => void) => void };
-      if (opts.offline.drainOnReconnect !== false && typeof target.addEventListener === "function") target.addEventListener("online", () => void queue.drain());
+      if (opts.offline.drainOnReconnect !== false) {
+        if (typeof target.addEventListener === "function") target.addEventListener("online", () => void queue.drain());
+        // commands a reload brought back go out now, not at the next `online` event, which may never come
+        void queue.restored.then(() => {
+          if (queue.size) void queue.drain();
+        });
+      }
     }
   }
 
@@ -209,8 +219,13 @@ export class RayfoldClient {
     if (predicted?.length) this.cache.addLayer(command.key, predicted);
     if (this.queue) {
       await this.queue.restored;
-      // behind the commands still waiting, so the server sees them in the order they were made
-      if (this.queue.size) return this.queue.add<T>(command);
+      if (this.queue.size) {
+        // behind the commands still waiting, so the server sees them in the order they were made; and the queue is
+        // tried again now, since a server that came back without the network going down fires no `online`
+        const queued = this.queue.add<T>(command);
+        if (this.opts.offline?.drainOnReconnect !== false) void this.queue.drain();
+        return queued;
+      }
     }
     try {
       return this.settled(command, await this.sendCommand<T>(command));
@@ -222,21 +237,20 @@ export class RayfoldClient {
   }
 
   /** Drops the command's prediction and returns its result as the server left it, not as it was predicted. */
-  private settled<T>(c: QueuedCommand, result: T): T {
-    if (!c.optimistic?.length) return result;
+  private settled<T>(c: QueuedCommand, sent: { result: T; skeleton: unknown }): T {
+    if (!c.optimistic?.length) return sent.result;
     this.cache.removeLayer(c.key);
-    const stored = this.cache.getResult(RayfoldCache.resultKey(c.op, c.args, c.options.shape, c.options.vars));
-    return stored ? (this.cache.denormalize(stored.data) as T) : result;
+    return sent.skeleton !== undefined ? (this.cache.denormalize(sent.skeleton) as T) : sent.result;
   }
 
   /** Orders commands by when they were made, across reloads too: it starts from the clock. */
   private nextSeq = Date.now();
 
-  private async sendCommand<T>(c: QueuedCommand): Promise<T> {
+  private async sendCommand<T>(c: QueuedCommand): Promise<{ result: T; skeleton: unknown }> {
     const b = this.batch();
     const h = b.command<T>(c.op, c.args, { ...c.options, key: c.key });
     await b.run();
-    return h.promise;
+    return { result: await h.promise, skeleton: h.skeleton };
   }
 
   /** Commands waiting for the server (option `offline`), oldest first. */
@@ -261,13 +275,24 @@ export class RayfoldClient {
       const req: RequestOp = client.prepare({ id: 1, op, args, ...pick(o) });
       const sendOpts: { signal?: AbortSignal } = {};
       if (o.signal) sendOpts.signal = o.signal;
-      for await (const f of client.opts.transport.send(client.envelope([req]), sendOpts)) {
-        if ("item" in f) yield client.cache.denormalize(client.cache.normalize(client.typed(op, f.item))) as T;
-        else if ("error" in f) {
-          if (f.error.code === "canceled" && o.signal?.aborted) return;
-          throw new RayfoldClientError(f.error);
-        } else if ("fin" in f && f.fin) return;
+      try {
+        for await (const f of client.opts.transport.send(client.envelope([req]), sendOpts)) {
+          if ("item" in f) {
+            yield client.cache.denormalize(client.cache.normalize(client.typed(op, f.item))) as T;
+            if ("fin" in f && f.fin) return;
+          } else if ("error" in f) {
+            if (f.error.code === "canceled" && o.signal?.aborted) return;
+            throw new RayfoldClientError(f.error);
+          } else if ("fin" in f && f.fin) return;
+        }
+      } catch (e) {
+        // fetch answers the caller's own abort by throwing; the stream just ends, as it does over the other transports
+        if (o.signal?.aborted) return;
+        throw e;
       }
+      if (o.signal?.aborted) return;
+      // frames that stop without the server's fin are a response cut short, not the end of the stream
+      throw new RayfoldClientError({ code: "unavailable", message: `The stream ${op} ended without fin` });
     })();
   }
 
@@ -318,7 +343,8 @@ export class RayfoldClient {
       (d) => {
         ready = true;
         seen = this.cache.getResult(rk);
-        if (active) fn(d);
+        // the cache, not the response, so a change that landed after the data frame is not lost
+        if (active) fn(seen ? (this.cache.denormalize(seen.data) as T) : d);
       },
       (e: unknown) => {
         if (active) onError?.(e);
@@ -443,11 +469,12 @@ export class RayfoldClient {
           // a dry run says what would happen; written to the cache it showed every watcher a change that never was
           resolve(h, this.typed(h.req.op, f.ok));
         } else if ("ok" in f) {
-          let r!: ReturnType<RayfoldCache["putResult"]>;
+          let r!: ReturnType<RayfoldCache["putCommandResult"]>;
           this.cache.transaction(() => {
-            r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.ok), this.shapeOf(h.req), this.views);
+            r = this.cache.putCommandResult(h.req.op, this.typed(h.req.op, f.ok), this.shapeOf(h.req), this.views);
             if (f.patch) this.cache.applyPatch(f.patch as PatchOp[]);
           });
+          h.skeleton = r.data;
           resolve(h, this.cache.denormalize(r.data));
         } else if ("data" in f && !("at" in f)) {
           const r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.data), this.shapeOf(h.req), this.views);

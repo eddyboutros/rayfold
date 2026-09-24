@@ -111,8 +111,10 @@ export function evalExpr(e: Expr, env: ExprEnv): unknown {
       return e.v;
     case "path": {
       let cur: unknown = env[e.root];
+      // own members of objects only, as the JVM reads a JSON object: an array has none, and neither `length` nor
+      // `constructor` is data, or a policy would decide differently on each runtime
       for (const p of e.path) {
-        if (cur === null || cur === undefined || typeof cur !== "object") return null;
+        if (cur === null || typeof cur !== "object" || Array.isArray(cur) || !Object.hasOwn(cur, p)) return null;
         cur = (cur as Record<string, unknown>)[p];
       }
       return cur === undefined ? null : cur;

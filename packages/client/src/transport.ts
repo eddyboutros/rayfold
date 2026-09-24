@@ -102,10 +102,15 @@ export function createFetchTransport(o: FetchTransportOptions): Transport {
           const d = codec.decoder();
           if (res.body) {
             const reader = res.body.getReader();
-            for (;;) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              for (const fr of d.feed(value)) yield fr as Frame;
+            try {
+              for (;;) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                for (const fr of d.feed(value)) yield fr as Frame;
+              }
+            } finally {
+              // a consumer that stops reading early drops the response, which ends the batch on the server
+              await reader.cancel().catch(() => {});
             }
           } else for (const fr of codec.decodeFrames(new Uint8Array(await res.arrayBuffer()))) yield fr as Frame;
           return;
@@ -124,16 +129,21 @@ export function createFetchTransport(o: FetchTransportOptions): Transport {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buf = "";
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl: number;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl).trim();
-            buf = buf.slice(nl + 1);
-            if (line) yield JSON.parse(line) as Frame;
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            let nl: number;
+            while ((nl = buf.indexOf("\n")) >= 0) {
+              const line = buf.slice(0, nl).trim();
+              buf = buf.slice(nl + 1);
+              if (line) yield JSON.parse(line) as Frame;
+            }
           }
+        } finally {
+          // a consumer that stops reading early drops the response, which ends the batch on the server
+          await reader.cancel().catch(() => {});
         }
         if (buf.trim()) yield JSON.parse(buf) as Frame;
       })();

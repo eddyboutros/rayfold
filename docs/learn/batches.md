@@ -140,9 +140,10 @@ for. Send `meta.deadline` on the envelope, or per operation, in milliseconds:
 { "meta": { "deadline": 2000 }, "ops": [{ "id": 1, "op": "books", "args": {} }] }
 ```
 
-Over HTTP the `Rayfold-Deadline` header does the same. An operation that runs out ends with `deadline_exceeded`. A
-command that had already committed records that fact, so a retry is answered with what happened rather than running
-the command a second time — see [Safe to retry](./commands.md#safe-to-retry).
+Over HTTP the `Rayfold-Deadline` header does the same. An operation's own `deadline` counts from the start of the
+batch, as `meta.deadline` does, so time it spends waiting for an earlier operation counts too. An operation that runs
+out ends with `deadline_exceeded`. A command that had already committed records that fact, so a retry is answered
+with what happened rather than running the command a second time — see [Safe to retry](./commands.md#safe-to-retry).
 
 ## Build a batch in the client
 

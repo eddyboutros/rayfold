@@ -76,6 +76,7 @@ interface Entry {
 export class OfflineQueue {
   private readonly entries: Entry[] = [];
   private draining: Promise<number> | null = null;
+  private again: Promise<number> | null = null;
   private readonly listeners = new Set<(e: QueueEvent) => void>();
   readonly restored: Promise<void>;
 
@@ -116,7 +117,13 @@ export class OfflineQueue {
 
   /** Sends waiting commands in order and resolves to how many still wait: the rest stay when the server is unreachable. */
   drain(): Promise<number> {
-    this.draining ??= this.run().finally(() => {
+    // A run already going may have found the server away before this call: a drain asked for now tries again after it,
+    // so what it answers is about now. Callers that arrive meanwhile share that one follow-up run.
+    if (this.draining) return (this.again ??= this.draining.then(() => {
+      this.again = null;
+      return this.drain();
+    }));
+    this.draining = this.run().finally(() => {
       this.draining = null;
     });
     return this.draining;

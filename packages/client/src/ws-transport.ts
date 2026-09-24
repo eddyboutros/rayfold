@@ -1,8 +1,8 @@
 /** WebSocket transport: one socket, many concurrent batches, per-op cancel. Spec 04 §5. */
 import type { Frame, RequestEnvelope } from "@rayfold/server/protocol";
 import { RbCodec } from "@rayfold/rb";
-import type { RayfoldSchemaIR } from "@rayfold/schema";
-import type { Transport } from "./transport.ts";
+import { schemaHash, type RayfoldSchemaIR } from "@rayfold/schema";
+import type { SchemaWithHash, Transport } from "./transport.ts";
 
 export interface WsTransportOptions {
   url: string;
@@ -12,15 +12,32 @@ export interface WsTransportOptions {
   WebSocket?: typeof WebSocket;
   /** Called to build a fresh socket URL (e.g. to append a token) before each connect. */
   connectUrl?: () => string | Promise<string>;
-  /** Rayfold Binary: pass the schema IR (from /rayfold/manifest) to send and receive RB messages instead of JSON text. */
-  binary?: RayfoldSchemaIR;
+  /**
+   * Rayfold Binary: send and read RB messages instead of JSON text. Pass the manifest from GET /rayfold/manifest, or the
+   * server's full schema IR. The socket names the schema's hash when it connects, and a server holding another schema
+   * closes it (spec 04 section 5): the batches on it fail as `unavailable`, and later ones go as JSON.
+   */
+  binary?: RayfoldSchemaIR | SchemaWithHash;
 }
 
 interface Pending {
   ids: Set<number>;
   push: (f: Frame) => void;
   close: () => void;
+  /** its envelope is on the socket, so the server may be answering it */
+  sent: boolean;
+  /** a frame carrying one of its op ids arrived, so the server took the envelope */
+  answered: boolean;
 }
+
+/** A frame without an op id, and the batches it may be the answer to: those sent and not answered when it came. */
+interface Orphan {
+  frame: Frame;
+  among: Set<Pending>;
+}
+
+/** The close code of a server holding another schema than the client's RB dictionary (spec 04 section 5). */
+const SCHEMA_MISMATCH = 4409;
 
 export function createWebSocketTransport(o: WsTransportOptions): Transport & { close(): void } {
   const WS = o.WebSocket ?? globalThis.WebSocket;
@@ -28,16 +45,48 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
   let opening: Promise<WebSocket> | null = null;
   let nextId = 1;
   const pending = new Set<Pending>();
-  const codec = o.binary ? new RbCodec(o.binary) : null;
+  const orphans: Orphan[] = [];
+  const rb = o.binary
+    ? "schemaHash" in o.binary
+      ? { codec: new RbCodec(o.binary.schema), hash: o.binary.schemaHash }
+      : { codec: new RbCodec(o.binary), hash: schemaHash(o.binary) }
+    : null;
+  // dropped for good once a server says it holds another schema: its keys would decode under the wrong names
+  let codec = rb?.codec ?? null;
   const encode = (v: unknown): string | Uint8Array<ArrayBuffer> => (codec ? (codec.encode(v) as Uint8Array<ArrayBuffer>) : JSON.stringify(v));
+
+  /**
+   * A server refusing a whole envelope used to answer with one frame without an op id, the batch's only answer, and
+   * nothing in it says whose it is (spec 04 section 5). Handed to every batch on the socket, it failed batches that
+   * had nothing to do with it and left the refused one open for ever. It goes to a batch once no other can be its
+   * owner: an answered batch is not, and n such frames among n unanswered batches are one each. The batch that gets
+   * it is closed, as the server has nothing more to send it.
+   */
+  const attribute = (): void => {
+    for (;;) {
+      for (const o of orphans) for (const p of o.among) if (!pending.has(p) || p.answered) o.among.delete(p);
+      for (let i = orphans.length - 1; i >= 0; i--) if (!orphans[i]!.among.size) orphans.splice(i, 1);
+      const within = (s: Set<Pending>) => (x: Orphan) => [...x.among].every((p) => s.has(p));
+      const owned = orphans.find((o) => orphans.filter(within(o.among)).length >= o.among.size);
+      if (!owned) return;
+      for (const p of [...owned.among]) {
+        const [o] = orphans.splice(orphans.findIndex(within(owned.among)), 1);
+        p.push(o!.frame);
+        p.ids.clear();
+        p.close();
+      }
+    }
+  };
 
   const route = (f: Frame): void => {
     if (!("id" in f)) {
-      for (const p of pending) p.push(f);
+      orphans.push({ frame: f, among: new Set([...pending].filter((p) => p.sent && !p.answered)) });
+      attribute();
       return;
     }
     for (const p of pending) {
       if (p.ids.has(f.id)) {
+        p.answered = true;
         p.push(f);
         if ("fin" in f && f.fin) {
           p.ids.delete(f.id);
@@ -45,6 +94,7 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
         }
       }
     }
+    if (orphans.length) attribute();
   };
 
   const connect = async (): Promise<WebSocket> => {
@@ -53,9 +103,11 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
     // A failed attempt is forgotten, so the next request tries again: kept, it answered every later request with the
     // same rejection and the transport was dead for the life of the client after one refused connection.
     const attempt: Promise<WebSocket> = (async () => {
-      const url = o.connectUrl ? await o.connectUrl() : o.url;
+      const base = o.connectUrl ? await o.connectUrl() : o.url;
+      const url = codec && rb ? `${base}${base.includes("?") ? "&" : "?"}schema=${encodeURIComponent(rb.hash)}` : base;
       const ws = new WS(url, o.protocols ?? ["rayfold.0.1"]);
-      if (codec) ws.binaryType = "arraybuffer";
+      // read as bytes either way: a socket opened for RB may still receive them after the codec is dropped
+      if (rb) ws.binaryType = "arraybuffer";
       await new Promise<void>((res, rej) => {
         ws.addEventListener("open", () => res(), { once: true });
         ws.addEventListener("error", () => rej(new Error("WebSocket connection failed")), { once: true });
@@ -65,13 +117,15 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
         // a binary message holds length-prefixed RB frames
         if (codec) for (const f of codec.decodeFrames(new Uint8Array(ev.data as ArrayBuffer))) route(f as Frame);
       });
-      ws.addEventListener("close", () => {
+      ws.addEventListener("close", (ev) => {
+        if (ev.code === SCHEMA_MISMATCH) codec = null;
         if (socket === ws) socket = null; // a replacement may already be open; it is not this one's to forget
         for (const p of pending) {
           for (const id of p.ids) p.push({ id, error: { code: "unavailable", message: "Connection closed" }, fin: true });
           p.close();
         }
         pending.clear();
+        orphans.length = 0;
       });
       socket = ws;
       return ws;
@@ -87,7 +141,14 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
       const queue: Frame[] = [];
       let waiting: ((r: IteratorResult<Frame>) => void) | null = null;
       let closed = false;
+      const onAbort = () => {
+        void start.then(() => {
+          for (const id of p.ids) socket?.send(encode({ cancel: id }));
+        });
+      };
       const p: Pending = {
+        sent: false,
+        answered: false,
         ids: new Set(),
         push: (f) => {
           if (waiting) {
@@ -99,6 +160,7 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
         close: () => {
           closed = true;
           pending.delete(p);
+          opts.signal?.removeEventListener("abort", onAbort);
           if (waiting) {
             const w = waiting;
             waiting = null;
@@ -116,15 +178,16 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
       }) };
       const backMap = new Map([...map.entries()].map(([k, v]) => [k, v]));
       pending.add(p);
-      const start = connect().then((ws) => ws.send(encode(remapped))).catch((e: Error) => {
-        p.push({ error: { code: "unavailable", message: e.message }, fin: true });
-        p.close();
-      });
-      opts.signal?.addEventListener("abort", () => {
-        void start.then(() => {
-          for (const id of p.ids) socket?.send(encode({ cancel: id }));
+      const start = connect()
+        .then((ws) => {
+          p.sent = true;
+          ws.send(encode(remapped));
+        })
+        .catch((e: Error) => {
+          p.push({ error: { code: "unavailable", message: e.message }, fin: true });
+          p.close();
         });
-      }, { once: true });
+      opts.signal?.addEventListener("abort", onAbort, { once: true });
       return {
         [Symbol.asyncIterator](): AsyncIterator<Frame> {
           return {
@@ -137,6 +200,7 @@ export function createWebSocketTransport(o: WsTransportOptions): Transport & { c
             return: (): Promise<IteratorResult<Frame>> => {
               for (const id of p.ids) socket?.send(encode({ cancel: id }));
               p.close();
+              if (orphans.length) attribute(); // one batch fewer may leave another the only owner
               return Promise.resolve({ value: undefined as never, done: true });
             },
           };

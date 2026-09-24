@@ -175,12 +175,15 @@ export function useCommand<T = unknown, A extends Record<string, unknown> = Reco
       mounted.current = false;
     };
   }, []);
-  const optionsKey = JSON.stringify(options);
+  // the options of the latest render: an `optimistic` function closes over props and state, which a key built from
+  // the options (JSON drops functions) kept at their first render's values
+  const latestOptions = useRef(options);
+  latestOptions.current = options;
   const run = useCallback(
     (args: A, perCall: CommandOptions = {}): Promise<T> => {
       const n = ++latest.current;
       setState((s) => ({ ...s, error: undefined, running: true }));
-      const result = client.command<T>(op, args, { ...options, ...perCall });
+      const result = client.command<T>(op, args, { ...latestOptions.current, ...perCall });
       // only the latest run speaks for the state; attaching handlers also keeps an ignored rejection handled
       result.then(
         (data) => {
@@ -192,8 +195,7 @@ export function useCommand<T = unknown, A extends Record<string, unknown> = Reco
       );
       return result;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [client, op, optionsKey],
+    [client, op],
   );
   return [run, state];
 }

@@ -122,6 +122,8 @@ class Writer {
       case "boolean":
         return this.byte(v ? T_TRUE : T_FALSE);
       case "number": {
+        // what JSON sends for these, so a value reads the same whichever encoding carried it
+        if (!Number.isFinite(v)) return this.byte(T_NULL);
         if (Number.isInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER) {
           if (v >= 0 && v < 128) return this.byte(T_SMALL | v);
           this.byte(T_INT);
@@ -151,6 +153,9 @@ class Writer {
           this.varint(v.length);
           return this.raw(v);
         }
+        // a Date (or anything else with toJSON) travels as what JSON.stringify would send, not as its own fields
+        const own = v as { toJSON?: unknown };
+        if (typeof own.toJSON === "function") return this.value((own.toJSON as () => unknown).call(v));
         const entries = Object.entries(v as Record<string, unknown>).filter(([, x]) => x !== undefined);
         this.byte(T_OBJ);
         this.varint(entries.length);

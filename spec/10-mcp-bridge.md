@@ -12,7 +12,8 @@ Target revision: MCP **2026-07-28** (stateless; Streamable HTTP; JSON Schema 202
 `MCP-Protocol-Version: 2026-07-28` on every JSON-RPC response; a refusal made before the body is understood (a wrong
 media type, a bad Origin, an unparseable body) is a transport-level error and carries no such header. If the request
 carries `Mcp-Method`, it MUST equal the body's `method`, otherwise the server answers HTTP 400 with JSON-RPC error
-`-32020 HeaderMismatch`. Notifications answer HTTP 202 with no body. No session state is kept. `initialize` and
+`-32020 HeaderMismatch`. A request without an `id` is a notification, whatever its method; notifications answer HTTP
+202 with no body. A body, or a batch entry, that is not a JSON object is answered `-32600 Invalid Request`. No session state is kept. `initialize` and
 `server/discover` both describe the server's capabilities; `initialize` is the fuller document, naming the
 `listChanged` and `subscribe` flags a client needs before it relies on them.
 
@@ -31,7 +32,9 @@ commands that declare `@simulate`, and a tool call that uses an idempotency key 
 
 * `inputSchema`: JSON Schema 2020-12 generated from the argument list; input types become `$defs`; enums
   become `enum`; nullability becomes `anyOf [.., {type: null}]`; defaults make properties optional.
-* `outputSchema`: `{ result: <schema of R> }`; entities include `$type` as a `const`.
+* `outputSchema`: `{ result: <schema of R> }`; entities include `$type` as a `const`. A tool call answers with the
+  default view, which may leave out fields a type declares, so no field of an object or entity type is `required`
+  here; `additionalProperties: false` still holds, since every member of a result is a declared field.
 * `description`: the operation's schema description, then `May fail with: A, B.` from `throws`, then
   `Read-only.` or `Changes state; idempotent per call key.`
 * `tools/list` includes `ttlMs: 300000` and `cacheScope: "public"` (SEP-2549).
@@ -53,7 +56,9 @@ arguments are two calls. Results:
 * `rayfold://schema`: the IR as JSON (`application/json`), with policy expressions redacted by default
   ([12 §5.6](12-security.md)). A server MAY be configured to serve the full IR, or to serve no schema resource at all.
 * `rayfold://query/<name>[?arg=value...]`: every **query** whose arguments are all optional; reading it runs the
-  query with the default view. A resource URI MUST NOT name a command: reading a resource is a read, and a bridge
+  query with the default view. Argument values in the URI are text, coerced by each argument's declared type as an
+  HTTP binding's query string is ([04 §8](04-frames-and-transport.md)): `?limit=5` is the number 5 for an `Int`.
+  A resource URI MUST NOT name a command: reading a resource is a read, and a bridge
   that executes a command behind one turns a safe MCP verb into a write. Listed with `ttlMs`/`cacheScope` like tools.
 
 ## 4. Authorization

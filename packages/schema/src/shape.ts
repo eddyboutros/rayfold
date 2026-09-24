@@ -164,7 +164,8 @@ export function parseLiteral(ts: TokenStream): JsonValue {
         ts.next();
         const out: Record<string, JsonValue> = {};
         while (!ts.atPunct("}")) {
-          const k = ts.expectName();
+          // a quoted key is how a default holds a key that is not a name, such as { "content-type": "text/plain" }
+          const k = ts.at("string") ? ts.next().value : ts.expectName();
           ts.expectPunct(":");
           out[k] = parseLiteral(ts);
         }
@@ -271,19 +272,25 @@ function expandViews(s: Shape, views: ViewResolver, seen: Set<string>): Shape {
 
 function canon(s: Shape): string {
   const parts = s.items.map((i) => ({ key: sortKey(i), text: canonItem(i) }));
-  parts.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  // kind, then name, then args, compared one at a time: joined into one string, "item:" would sort after "item2"
+  parts.sort((a, b) => compareKeys(a.key, b.key));
   return `{ ${parts.map((p) => p.text).join(" ")} }`;
 }
-function sortKey(i: ShapeItem): string {
+function compareKeys(a: [number, string, string], b: [number, string, string]): number {
+  if (a[0] !== b[0]) return a[0] - b[0];
+  for (const k of [1, 2] as const) if (a[k] !== b[k]) return a[k] < b[k] ? -1 : 1;
+  return 0;
+}
+function sortKey(i: ShapeItem): [number, string, string] {
   switch (i.kind) {
     case "field":
-      return `0:${i.alias ?? i.name}:${i.args ? argsToString(i.args) : ""}`;
+      return [0, i.alias ?? i.name, i.args ? argsToString(i.args) : ""];
     case "on":
-      return `1:${i.type}`;
+      return [1, i.type, ""];
     case "defer":
-      return `2:${i.label ?? ""}`;
+      return [2, i.label ?? "", ""];
     case "spread":
-      return `3:${i.type}.${i.view}`;
+      return [3, `${i.type}.${i.view}`, ""];
   }
 }
 function canonItem(i: ShapeItem): string {

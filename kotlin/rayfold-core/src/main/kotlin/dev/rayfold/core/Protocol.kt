@@ -17,15 +17,19 @@ enum class Code(val wire: String) {
     DATA_LOSS("data_loss"), UNAUTHENTICATED("unauthenticated"), DOMAIN("domain");
 }
 
-/** Thrown by resolvers and the runtime; becomes an `error` frame member. */
+/**
+ * Thrown by resolvers and the runtime; becomes an `error` frame member. [cause] never reaches the wire: it keeps what a
+ * resolver really threw, behind an `internal` error, for the op's [Outcome] and the server's logs.
+ */
 class RayfoldException(
     val code: Code,
     override val message: String,
     val type: String? = null,
     val data: JsonElement? = null,
     val path: String? = null,
-) : RuntimeException(message) {
-    fun withPath(p: String) = RayfoldException(code, message, type, data, p)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
+    fun withPath(p: String) = RayfoldException(code, message, type, data, p, cause)
 
     fun toWire(): JsonObject = buildJsonObject {
         put("code", code.wire)
@@ -37,7 +41,7 @@ class RayfoldException(
 
     companion object {
         fun domain(type: String, data: JsonElement, message: String = type) = RayfoldException(Code.DOMAIN, message, type, data)
-        fun of(e: Throwable): RayfoldException = e as? RayfoldException ?: RayfoldException(Code.INTERNAL, "Internal error")
+        fun of(e: Throwable): RayfoldException = e as? RayfoldException ?: RayfoldException(Code.INTERNAL, "Internal error", cause = e)
     }
 }
 

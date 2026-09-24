@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { RbCodec } from "@rayfold/rb";
 import { loadSchema, schemaHash, type RayfoldSchemaIR } from "@rayfold/schema";
-import { listen, type Frame, type RequestEnvelope, type RequestOp } from "@rayfold/server";
+import { createRayfoldServer, listen, type Frame, type RequestEnvelope, type RequestOp } from "@rayfold/server";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 import { parseShapeText } from "@rayfold/schema";
 import { bookstoreSchemaText, createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
@@ -129,6 +129,20 @@ describe("client over the in-process transport", () => {
     const cached = await client.query<{ items: Array<{ stock: number }> }>("books", { page: { first: 2 } }, { shape: "{ items { id stock } }", policy: "cache" });
     expect(cached.items[0]!.stock).toBe(3);
     expect(bs.store.calls["Query.books"]).toBe(1);
+  });
+
+  it("a command's answer is not kept as a result, so commands with new arguments do not pile up; guard: a query's is", async () => {
+    viewer = { id: "u9", role: "admin" };
+    const shape = { shape: "{ id stock }" };
+    for (const qty of [1, 2, 3]) {
+      expect(await client.command("restock", { bookId: "b1", qty }, shape)).toEqual({ $type: "Book", id: "b1", stock: 5 + (qty * (qty + 1)) / 2 });
+      expect(client.cache.getResult(RayfoldCache.resultKey("restock", { bookId: "b1", qty }, shape.shape, undefined))).toBeUndefined();
+    }
+    expect(client.cache.get("Book:b1")).toMatchObject({ stock: 11 });
+    // an optimistic command still answers with the server's value once its prediction is gone
+    expect(await client.command("restock", { bookId: "b1", qty: 4 }, { ...shape, optimistic: [{ set: "Book:b1", value: { stock: 99 } }] })).toEqual({ $type: "Book", id: "b1", stock: 15 });
+    await client.query("book", { id: "b1" }, shape);
+    expect(client.cache.getResult(RayfoldCache.resultKey("book", { id: "b1" }, shape.shape, undefined))).toBeDefined();
   });
 
   it("batches with refs: create then read in one round trip", async () => {
@@ -427,6 +441,82 @@ describe("client over HTTP", () => {
     expect(sent).toEqual([null, "true"]);
   });
 
+  it("a consumer leaving a stream early drops its response and the server's stream; one still reading keeps its own, and its abort ends it quietly", async () => {
+    const responses = new Signal<"open" | "closed">();
+    http.on("request", (_req, res) => {
+      responses.push("open");
+      res.on("close", () => responses.push("closed"));
+    });
+    const listening = new Signal<"on" | "off">();
+    const on = store.server.events.on.bind(store.server.events);
+    vi.spyOn(store.server.events, "on").mockImplementation((name, fn) => {
+      const off = on(name, fn);
+      listening.push("on");
+      return () => {
+        off();
+        listening.push("off");
+      };
+    });
+    const count = (x: string) => (xs: string[]) => xs.filter((y) => y === x).length;
+    const c = new RayfoldClient({ transport: createFetchTransport({ url, headers: () => ({ authorization: "Bearer u1" }) }) });
+    const admin = new RayfoldClient({ transport: createLocalTransport(store.server, () => ({ id: "u9", role: "admin" })) });
+
+    const left = new Signal<unknown>();
+    const leaving = (async () => {
+      for await (const x of c.stream("stockUpdates", { bookIds: ["b1"] })) {
+        left.push(x);
+        break;
+      }
+    })();
+    const kept = new Signal<unknown>();
+    const ac = new AbortController();
+    const keeping = (async () => {
+      for await (const x of c.stream("stockUpdates", { bookIds: ["b1"] }, { signal: ac.signal })) kept.push(x);
+      return "ended";
+    })();
+    await listening.until((xs) => count("on")(xs) === 2, "both streams subscribed");
+    await admin.command("restock", { bookId: "b1", qty: 1 });
+    await bounded(leaving, "the consumer that broke out");
+    await responses.until((xs) => count("closed")(xs) === 1, "the left stream's response closed");
+    await listening.until((xs) => count("off")(xs) === 1, "the left stream's subscription dropped on the server");
+
+    // guard: the stream still being read is untouched
+    await admin.command("restock", { bookId: "b1", qty: 1 });
+    await kept.atLeast(2, "the kept stream's second item");
+    expect(left.items).toEqual([{ bookId: "b1", stock: 6 }]);
+    expect(kept.items).toEqual([{ bookId: "b1", stock: 6 }, { bookId: "b1", stock: 7 }]);
+    expect(count("closed")(responses.items)).toBe(1);
+
+    ac.abort();
+    expect(await bounded(keeping, "the aborted stream")).toBe("ended");
+    await listening.until((xs) => count("off")(xs) === 2, "the aborted stream's subscription dropped");
+  });
+
+  it("a stream whose frames stop without fin fails as unavailable; guard: one that ends with fin completes", async () => {
+    const drain = async (items: AsyncIterable<unknown>) => {
+      const got: unknown[] = [];
+      try {
+        for await (const x of items) got.push(x);
+      } catch (e) {
+        return { got, error: (e as RayfoldClientError).code };
+      }
+      return { got, error: null };
+    };
+    const cut: Transport = {
+      send: async function* () {
+        yield { id: 1, item: 1 } as Frame;
+      },
+    };
+    const whole: Transport = {
+      send: async function* () {
+        yield { id: 1, item: 1 } as Frame;
+        yield { id: 1, fin: true } as Frame;
+      },
+    };
+    expect(await drain(new RayfoldClient({ transport: cut }).stream("ticks"))).toEqual({ got: [1], error: "unavailable" });
+    expect(await drain(new RayfoldClient({ transport: whole }).stream("ticks"))).toEqual({ got: [1], error: null });
+  });
+
   it("maps HTTP problem responses to errors", async () => {
     const c = new RayfoldClient({ transport: createFetchTransport({ url: url + "/nope" }) });
     await expect(c.query("book", { id: "b1" })).rejects.toMatchObject({ code: "not_found" });
@@ -497,4 +587,69 @@ describe("conditional commands in the client", () => {
       expect(c.cache.get("Review:r2")).toMatchObject({ version: 3, rating: 3 });
     });
   }
+});
+
+describe("RB carries what JSON carries", () => {
+  it("a non-finite number arrives as null and a Date as its ISO string, over RB as over JSON; guard: a plain double stays one", async () => {
+    const SCHEMA = `
+entity Stat { id: ID score: Float ratio: Float at: String }
+query stat: Stat
+`;
+    const server = createRayfoldServer({ schema: SCHEMA, resolvers: { Query: { stat: () => ({ id: "s1", score: Number.NaN, ratio: 2.5, at: new Date(0) }) } } as never });
+    const http = await listen(server, 0, {});
+    try {
+      const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/rayfold`;
+      const manifest = (await (await fetch(url + "/manifest")).json()) as { schema: RayfoldSchemaIR; schemaHash: string };
+      const kinds: string[] = [];
+      const recording: typeof fetch = async (input, init) => {
+        const res = await fetch(input, init);
+        kinds.push(res.headers.get("content-type") ?? "");
+        return res;
+      };
+      const rb = new RayfoldClient({ transport: createFetchTransport({ url, binary: manifest, fetch: recording }) });
+      const json = new RayfoldClient({ transport: createFetchTransport({ url }) });
+      const shape = { shape: "{ id score ratio at }" };
+      const expected = { $type: "Stat", id: "s1", score: null, ratio: 2.5, at: "1970-01-01T00:00:00.000Z" };
+      expect(await json.query("stat", {}, shape)).toEqual(expected);
+      await rb.query("stat", {}, shape); // learns the server's schema hash
+      expect(await rb.query("stat", {}, shape)).toEqual(expected);
+      expect(kinds.at(-1)).toBe("application/rayfold");
+    } finally {
+      await new Promise<void>((r) => {
+        http.close(() => r());
+        http.closeAllConnections();
+      });
+    }
+  });
+});
+
+describe("a schema-aware client and union members that are objects", () => {
+  const SCHEMA = `
+entity Cat { id: ID name: String }
+object Photo { url: String }
+union Hit = Cat | Photo
+query hits: [Hit]
+query cover: Photo
+`;
+  const server = createRayfoldServer({
+    schema: SCHEMA,
+    resolvers: { Query: { hits: () => [{ $type: "Cat", id: "c1", name: "Tom" }, { $type: "Photo", url: "p.png" }], cover: () => ({ url: "c.png" }) } } as never,
+  });
+  const shape = "{ ... on Cat { id name } ... on Photo { url } }";
+
+  it("keeps the $type the server sent on an object member, so members stay told apart; as without a schema", async () => {
+    const sent: RequestOp[] = [];
+    const local = createLocalTransport(server);
+    const typed = new RayfoldClient({ transport: { send: (env, o) => (sent.push(...env.ops), local.send(env, o)) }, schema: loadSchema(SCHEMA).ir });
+    const plain = new RayfoldClient({ transport: local });
+    const expected = [{ $type: "Cat", id: "c1", name: "Tom" }, { $type: "Photo", url: "p.png" }];
+    expect(await typed.query("hits", {}, { shape })).toEqual(expected);
+    expect(sent[0]).toMatchObject({ op: "hits", compact: true });
+    expect(await plain.query("hits", {}, { shape })).toEqual(expected);
+  });
+
+  it("guard: an object outside a union gains no $type", async () => {
+    const typed = new RayfoldClient({ transport: createLocalTransport(server), schema: loadSchema(SCHEMA).ir });
+    expect(await typed.query("cover", {}, { shape: "{ url }" })).toEqual({ url: "c.png" });
+  });
 });

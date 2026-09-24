@@ -63,17 +63,19 @@ object Bindings {
  * viewer is signed in. Returns the ETag it set.
  */
 object CacheHeaders {
+    const val VARY = "Rayfold-Client, Accept, Authorization"
+
     fun apply(ir: RayfoldSchemaIR, ops: List<RequestOp>, frames: List<JsonObject>, viewer: JsonElement, headers: Headers): String =
         apply(ir, ops, frames, viewer) { name, value -> headers.set(name, value) }
 
     fun apply(ir: RayfoldSchemaIR, ops: List<RequestOp>, frames: List<JsonObject>, viewer: JsonElement, set: (String, String) -> Unit): String {
         var maxAge = Double.POSITIVE_INFINITY
-        var swr = 0.0
+        var swr = Double.POSITIVE_INFINITY
         var private = false
         fun consider(annotations: List<Annotation>) {
             annotations.find("cache")?.let { c ->
                 c.args["maxAge"].durationMs()?.let { maxAge = minOf(maxAge, it / 1000.0) }
-                c.args["swr"].durationMs()?.let { swr = maxOf(swr, it / 1000.0) }
+                c.args["swr"].durationMs()?.let { swr = minOf(swr, it / 1000.0) }
                 if (c.args["scope"].identOrNull() == "private") private = true
             }
             for (a in annotations) {
@@ -122,11 +124,12 @@ object CacheHeaders {
         }
         if (viewer !is JsonNull) private = true
         if (maxAge.isInfinite()) maxAge = 0.0
+        if (swr.isInfinite()) swr = 0.0
         val directives = mutableListOf(if (private) "private" else "public", "max-age=${maxAge.toLong()}")
         if (swr > 0) directives.add("stale-while-revalidate=${swr.toLong()}")
         if (maxAge == 0.0 && swr == 0.0) directives.add("no-cache")
         set("Cache-Control", directives.joinToString(", "))
-        set("Vary", "Rayfold-Client, Accept, Authorization")
+        set("Vary", VARY)
         // `meta.ms` is how long the server took, so it differs on every identical answer and would make every ETag
         // a miss. Dropped from the digest only, exactly as applyCacheHeaders does - the emptied `meta` stays, since
         // removing it altogether would canonicalise differently and part the two runtimes' ETags.
@@ -328,7 +331,7 @@ class RayfoldBindings(
         ex.responseBody.use { it.write(bytes) }
     }
 
-    private companion object {
+    internal companion object {
         /** Methods whose HTTP semantics are idempotent: a command bound to them may run without an Idempotency-Key. */
         val IDEMPOTENT_METHODS = setOf("PUT", "PATCH", "DELETE")
         val DECIMAL_TEXT = Regex("^-?\\d+(\\.\\d+)?$")

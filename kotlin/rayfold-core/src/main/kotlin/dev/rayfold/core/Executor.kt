@@ -177,8 +177,15 @@ class Executor(
      *
      * [committed] is called the moment the resolver returns, before its result is projected. From there on the side
      * effect stands whatever happens to the answer, including a cancellation, which no exception can say.
+     *
+     * [changed] is called once with the patch describing what the command changed, for live queries (never on a dry
+     * run). A command whose answer fails after it committed still changed things, so it is called then too, with what
+     * is known.
      */
-    suspend fun runCommand(op: OpDef, args: JsonObject, shape: Shape, explicit: Boolean, cost: Long, ctx: RayfoldContext, emit: (JsonObject) -> Unit, policyChecked: Boolean = false, committed: () -> Unit = {}): Triple<JsonElement, JsonObject, JsonObject> {
+    suspend fun runCommand(
+        op: OpDef, args: JsonObject, shape: Shape, explicit: Boolean, cost: Long, ctx: RayfoldContext, emit: (JsonObject) -> Unit,
+        policyChecked: Boolean = false, changed: (List<JsonObject>) -> Unit = {}, committed: () -> Unit = {},
+    ): Triple<JsonElement, JsonObject, JsonObject> {
         if (!policyChecked) checkOpPolicy(op, "write", args, ctx)
         val fn = resolvers.commands[op.name] ?: throw RayfoldException(Code.UNIMPLEMENTED, "No resolver for command ${op.name}")
         val raw = try {
@@ -193,12 +200,31 @@ class Executor(
         // what was loaded before the command ran may be what it just changed: its own result, and every op after it,
         // load again. A dry run changed nothing, so it keeps them (mirrors executor.ts)
         if (!ctx.simulate) ctx.batch.clear()
+        val cr = try {
+            raw as? CommandResult ?: CommandResult(raw as JsonElement?)
+        } catch (e: ClassCastException) {
+            throw CommittedCommandException(RayfoldException.of(e), e)
+        }
+        val st = State(ctx, explicit)
+        val data: JsonElement
+        val patch: List<JsonObject>
         try {
-            val cr = raw as? CommandResult ?: CommandResult(raw as JsonElement?)
-            val st = State(ctx, explicit)
-            val data = projectValue(cr.result, op.returns, shape, "", st)
+            data = projectValue(cr.result, op.returns, shape, "", st)
             while (st.deferred.isNotEmpty()) { val job = st.deferred.removeFirst(); projectMany(job.slots, job.type, job.shape, st, job.nullable) }
-            val patch = derivePatches(data, shape) { t, v -> ir.views["$t.$v"]?.shape } + cr.patch
+            patch = derivePatches(data, shape) { t, v -> ir.views["$t.$v"]?.shape } + cr.patch
+        } catch (e: Throwable) {
+            // Only the answer failed, or the op ended: live queries and subscribers still hear of the change, as far as
+            // the resolver's own value names it, and of the declared events it raised.
+            if (!ctx.simulate) {
+                val keys = committedKeys(op.returns, cr.result)
+                changed(if (keys.isEmpty()) cr.patch else cr.patch + buildJsonObject { put("inv", JsonArray(keys.map { JsonPrimitive(it) })) })
+                for ((ev, payload) in cr.emit) if (ev in op.emits) ctx.events.publish(ev, payload)
+            }
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            throw CommittedCommandException(RayfoldException.of(e), e)
+        }
+        try {
+            if (!ctx.simulate) changed(patch)
             if (!ctx.simulate) for ((ev, payload) in cr.emit) {
                 if (ev !in op.emits) throw RayfoldException(Code.INTERNAL, "${op.name} emitted undeclared event $ev")
                 ctx.events.publish(ev, payload)
@@ -211,8 +237,18 @@ class Executor(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
-            throw CommittedCommandException(RayfoldException.of(e))
+            throw CommittedCommandException(RayfoldException.of(e), e)
         }
+    }
+
+    /** `Type:id` of each entity a command's raw result names at its top level, for when its projection failed. */
+    private fun committedKeys(t: TypeRef, v: JsonElement?): List<String> {
+        if (t.isList) return (v as? JsonArray)?.flatMap { committedKeys(t.element, it) } ?: emptyList()
+        val o = v as? JsonObject ?: return emptyList()
+        val def = ir.types[t.name]
+        val tn = if (def?.kind == "entity") def.name else (o["\$type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val id = (o["id"] as? JsonPrimitive)?.takeIf { it.isString || StrictJson.isNumber(it.content) }?.content
+        return if (tn != null && ir.types[tn]?.kind == "entity" && id != null) listOf("$tn:$id") else emptyList()
     }
 
     private suspend fun conflictWithCurrent(op: OpDef, shape: Shape, ctx: RayfoldContext, e: VersionConflictException): RayfoldException {
@@ -266,7 +302,7 @@ class Executor(
             st.unionPaths.addAll(sub.unionPaths)
             for (s in fresh) {
                 s.out.remove("\$type")
-                val errs = sub.errors.filter { (it["path"] as? JsonPrimitive)?.content?.startsWith(s.path) == true }
+                val errs = sub.errors.filter { e -> (e["path"] as? JsonPrimitive)?.content?.let { within(it, s.path) } == true }
                 emit(Frames.at(st.ctx.opId, s.path, if (st.ctx.compact) s.outCompact() else s.outJson(), errs))
             }
         }
@@ -329,7 +365,14 @@ class Executor(
                 groups.getOrPut(tn) { mutableListOf() }.add(s)
             }
             for ((tn, group) in groups) {
-                val items = shape.items.flatMap { it -> when { it.kind == "on" && it.type == tn -> it.subShape.items; it.kind == "spread" || it.kind == "field" -> listOf(it); else -> emptyList() } }
+                val member = ir.types[tn]
+                val items = shape.items.flatMap { it ->
+                    when {
+                        it.kind != "on" -> listOf(it)
+                        it.type == tn || (member?.kind == "entity" && it.type in member.implements) -> it.subShape.items
+                        else -> emptyList()
+                    }
+                }
                 val ref = TypeRef("named", tn)
                 projectMany(group, ref, if (items.isNotEmpty()) Shape(items) else views.defaultShape(ref), st, nullable)
             }
@@ -572,6 +615,9 @@ class Executor(
     }
 
     private fun join(path: String, name: String) = if (path.isEmpty()) name else "$path.$name"
+
+    /** Whether result path [path] is [at] or lies beneath it: `items.10` is not beneath `items.1`. */
+    private fun within(path: String, at: String) = at.isEmpty() || path == at || path.startsWith("$at.")
 
     companion object {
         private fun materialize(cell: Any?): JsonElement = when (cell) {

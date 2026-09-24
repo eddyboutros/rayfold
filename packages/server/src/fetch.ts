@@ -33,6 +33,11 @@ export interface FetchOptions extends OriginOptions {
    */
   keepAliveMs?: number;
   /**
+   * Most bytes a streaming response holds for a client that is not reading it. Past this the batch is stopped and the
+   * response ends, rather than a live query buffering without bound for a client that went quiet. Default 8 MiB.
+   */
+  maxBuffered?: number;
+  /**
    * What `GET {path}/ready` checks besides the server itself, by name: each resolves when its dependency answers and
    * rejects when it does not. A rejection, or no answer within `readinessTimeoutMs`, makes the server not ready.
    */
@@ -167,7 +172,7 @@ function problemResponse(status: number, code: string, detail: string, problemTy
 /** Cache-Control, Vary and ETag for a safe request (spec 07 §2): min over `@cache` of the ops and types touched. */
 export function cacheHeadersFor(server: RayfoldServer, envelope: RequestEnvelope, frames: Frame[], viewer: unknown): Record<string, string> {
   let maxAge = Number.POSITIVE_INFINITY;
-  let swr = 0;
+  let swr = Number.POSITIVE_INFINITY;
   let scope: "public" | "private" = "public";
   const consider = (annotations: { name: string; args: Record<string, unknown> }[]) => {
     const c = annotations.find((a) => a.name === "cache");
@@ -175,7 +180,7 @@ export function cacheHeadersFor(server: RayfoldServer, envelope: RequestEnvelope
       const ma = c.args["maxAge"];
       if (ma && typeof ma === "object" && "$duration" in ma) maxAge = Math.min(maxAge, (ma as { $duration: number }).$duration / 1000);
       const sw = c.args["swr"];
-      if (sw && typeof sw === "object" && "$duration" in sw) swr = Math.max(swr, (sw as { $duration: number }).$duration / 1000);
+      if (sw && typeof sw === "object" && "$duration" in sw) swr = Math.min(swr, (sw as { $duration: number }).$duration / 1000);
       const sc = c.args["scope"];
       if (sc && typeof sc === "object" && "$ident" in sc && (sc as { $ident: string }).$ident === "private") scope = "private";
     }
@@ -236,6 +241,7 @@ export function cacheHeadersFor(server: RayfoldServer, envelope: RequestEnvelope
   }
   if (viewer !== null && viewer !== undefined) scope = "private";
   if (!Number.isFinite(maxAge)) maxAge = 0;
+  if (!Number.isFinite(swr)) swr = 0;
   const directives = [scope, `max-age=${Math.floor(maxAge)}`];
   if (swr > 0) directives.push(`stale-while-revalidate=${Math.floor(swr)}`);
   if (maxAge === 0 && swr === 0) directives.push("no-cache");
@@ -379,18 +385,23 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
       count("rayfold.refused", { reason: "host" });
       return withCommon(problemResponse(403, "permission_denied", badHost));
     }
-    if (opts.cors) {
-      common["Access-Control-Allow-Origin"] = opts.cors;
+    // An origin allowed to write is one a browser must be let read the answer for, and preflight for (spec 04 §4b).
+    const origin = request.headers.get("origin");
+    const listed = origin !== null && !!opts.allowedOrigins && (opts.allowedOrigins.includes("*") || opts.allowedOrigins.includes(origin));
+    const allowOrigin = listed ? origin : opts.cors;
+    if (allowOrigin) {
+      common["Access-Control-Allow-Origin"] = allowOrigin;
+      if (listed) common["Vary"] = "Origin"; // the header names the asking origin, so a shared cache keeps one copy per origin
       // the upload route's own two are here as well: a browser on another origin preflights an upload, and a
       // header the preflight does not allow makes the whole request fail before the server ever sees it
       common["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe, Rayfold-Upload-Name, Rayfold-Upload-Type";
       common["Access-Control-Allow-Methods"] = "GET, POST, QUERY, OPTIONS";
-      if (request.method === "OPTIONS") return withCommon(new Response(null, { status: 204 }));
     }
     if (!url.pathname.startsWith(base)) {
       count("rayfold.refused", { reason: "route" });
       return withCommon(problemResponse(404, "not_found", `No route for ${url.pathname}`));
     }
+    if (request.method === "OPTIONS") return withCommon(new Response(null, { status: 204, headers: { Allow: "GET, POST, QUERY, OPTIONS" } }));
 
     const sub = url.pathname.slice(base.length);
     try {
@@ -517,8 +528,10 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
         const headers: Record<string, string> = { ...common };
         // spec 07 §3: a batch that is not marked safe is never stored. The streaming branch below says so too, and
         // this one used to return before saying anything at all.
-        if (safe) Object.assign(headers, cacheHeadersFor(server, envelope, frames, viewer));
-        else headers["Cache-Control"] = "no-store";
+        if (safe) {
+          Object.assign(headers, cacheHeadersFor(server, envelope, frames, viewer));
+          if (common["Vary"]) headers["Vary"] += `, ${common["Vary"]}`;
+        } else headers["Cache-Control"] = "no-store";
         const noneMatch = request.headers.get("if-none-match");
         if (safe && noneMatch && noneMatch === headers["ETag"]) {
           // no body to sniff; the cached response keeps its own headers
@@ -538,37 +551,59 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
       const encoder = new TextEncoder();
       let quiet = true;
       let keepAlive: ReturnType<typeof setInterval> | undefined;
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          keepAlive = setInterval(() => {
-            if (quiet) {
+      // The batch runs until the client hangs up or stops reading the body: either ends it, and with it a live query's
+      // subscription. Cancelling the body alone does not abort the request's signal.
+      const stop = new AbortController();
+      const hangUp = () => stop.abort(new RayfoldError("canceled", "Canceled"));
+      if (request.signal.aborted) hangUp();
+      else request.signal.addEventListener("abort", hangUp, { once: true });
+      const body = new ReadableStream<Uint8Array>(
+        {
+          start(controller) {
+            keepAlive = setInterval(() => {
+              if (quiet) {
+                try {
+                  controller.enqueue(codec ? KEEP_ALIVE_RB : encoder.encode("\n"));
+                } catch {
+                  /* the consumer went away; the loop below ends on the same signal */
+                }
+              }
+              quiet = true;
+            }, opts.keepAliveMs ?? 15_000);
+            void (async () => {
+              let overflow = false;
               try {
-                controller.enqueue(codec ? KEEP_ALIVE_RB : encoder.encode("\n"));
-              } catch {
-                /* the consumer went away; the loop below ends on the same signal */
+                for await (const f of server.execute(envelope, { viewer, signal: stop.signal })) {
+                  if (overflow) continue; // what the stopped batch still says has nobody to read it
+                  // Judged before the frame joins the queue, so one frame larger than the bound still reaches a client
+                  // that reads: the queue holds at most maxBuffered plus a frame. It only grows while nobody reads it,
+                  // and a live query never stops producing on its own.
+                  const full = (controller.desiredSize ?? 1) <= 0;
+                  controller.enqueue(codec ? codec.encodeFrames([f]) : encoder.encode(JSON.stringify(f) + "\n"));
+                  quiet = false;
+                  if (full) {
+                    overflow = true;
+                    stop.abort(new RayfoldError("resource_exhausted", "The client stopped reading the response"));
+                  }
+                }
+                if (overflow) controller.error(stop.signal.reason);
+                else controller.close();
+              } catch (e) {
+                // the frames are already on their way, so the failure ends the body rather than becoming a status
+                controller.error(e);
+              } finally {
+                clearInterval(keepAlive);
+                request.signal.removeEventListener("abort", hangUp);
               }
-            }
-            quiet = true;
-          }, opts.keepAliveMs ?? 15_000);
-          void (async () => {
-            try {
-              for await (const f of server.execute(envelope, { viewer, signal: request.signal })) {
-                controller.enqueue(codec ? codec.encodeFrames([f]) : encoder.encode(JSON.stringify(f) + "\n"));
-                quiet = false;
-              }
-              controller.close();
-            } catch (e) {
-              // the frames are already on their way, so the failure ends the body rather than becoming a status
-              controller.error(e);
-            } finally {
-              clearInterval(keepAlive);
-            }
-          })();
+            })();
+          },
+          cancel() {
+            clearInterval(keepAlive);
+            hangUp();
+          },
         },
-        cancel() {
-          clearInterval(keepAlive);
-        },
-      });
+        new ByteLengthQueuingStrategy({ highWaterMark: opts.maxBuffered ?? 8 * 1024 * 1024 }),
+      );
       return new Response(body, { headers: { ...common, "Content-Type": wantsRb ? RB_CONTENT_TYPE : FRAMES_TYPE, "Cache-Control": "no-store", "X-Accel-Buffering": "no" } });
     } catch (e) {
       if (e instanceof BodyOverLimit) return withCommon(problemResponse(413, "resource_exhausted", e.message, "payload_too_large"));

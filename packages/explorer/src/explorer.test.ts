@@ -86,6 +86,18 @@ describe("the explorer page", () => {
     expect(html).not.toContain("</script><script>alert(1)");
     expect(html).toContain("\\u003c/script>"); // escaped, so the browser reads it as text
   });
+
+  it("a title with $ patterns in it is served as written (guard - a plain title too)", async () => {
+    for (const title of ["Prices in $$ and $' here, $& and $`", "Acme API"]) {
+      const base = await start({ title });
+      const html = await (await fetch(`${base}/rayfold/explorer`)).text();
+      const config = /id="config"[^>]*>([\s\S]*?)<\/script>/.exec(html)?.[1];
+      expect(JSON.parse(config ?? "null")).toEqual({ endpoint: "/rayfold", title });
+      running?.closeAllConnections();
+      await new Promise<void>((r) => running?.close(() => r()));
+      running = undefined;
+    }
+  });
 });
 
 const SHOP = `

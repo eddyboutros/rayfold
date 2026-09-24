@@ -214,12 +214,54 @@ abstract class WebSocketTransportBase : Transport, AutoCloseable {
     private class Pending(val channel: SendChannel<JsonObject>) {
         /** socket op id -> the batch's own op id */
         val ids = ConcurrentHashMap<Int, Int>()
+
+        /** its envelope is on the socket, so the server may be answering it */
+        @Volatile
+        var sent = false
+
+        /** a frame carrying one of its op ids arrived, so the server took the envelope */
+        @Volatile
+        var answered = false
     }
+
+    /** A frame without an op id, and the batches it may be the answer to: those sent and not answered when it came. */
+    private class Orphan(val frame: JsonObject, val among: MutableSet<Pending>)
 
     private val lock = Any()
     private var socket: CompletableFuture<out Connection>? = null
     private val nextId = AtomicInteger(1)
     private val pending = ConcurrentHashMap.newKeySet<Pending>()
+    private val orphans = ArrayList<Orphan>() // guarded by lock
+    private var attributing = false // guarded by lock
+
+    /**
+     * A server refusing a whole envelope used to answer with one frame without an op id, the batch's only answer, and
+     * nothing in it says whose it is (spec 04 section 5). Handed to every batch on the socket, it failed batches that
+     * had nothing to do with it and left the refused one open for ever. It goes to a batch once no other can be its
+     * owner: an answered batch is not, and n such frames among n unanswered batches are one each. The batch that gets
+     * it is closed, as the server has nothing more to send it. Called holding [lock].
+     */
+    private fun attribute() {
+        if (attributing) return
+        attributing = true
+        try {
+            while (true) {
+                for (o in orphans) o.among.removeAll { it !in pending || it.answered }
+                orphans.removeAll { it.among.isEmpty() }
+                val owned = orphans.firstOrNull { o -> orphans.count { o.among.containsAll(it.among) } >= o.among.size } ?: return
+                for (p in owned.among.toList()) {
+                    val o = orphans.first { owned.among.containsAll(it.among) }
+                    orphans.remove(o)
+                    pending.remove(p)
+                    p.ids.clear()
+                    p.channel.trySend(o.frame)
+                    p.channel.close()
+                }
+            }
+        } finally {
+            attributing = false
+        }
+    }
 
     /** Opens a socket; the implementation hands every whole text message to [receive] and the socket's end to [closed]. */
     protected abstract fun connect(): CompletableFuture<out Connection>
@@ -229,22 +271,30 @@ abstract class WebSocketTransportBase : Transport, AutoCloseable {
         val frame = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return
         val id = (frame["id"] as? JsonPrimitive)?.intOrNull
         if (id == null) {
-            for (p in pending) p.channel.trySend(frame)
+            synchronized(lock) {
+                orphans.add(Orphan(frame, pending.filter { it.sent && !it.answered }.toMutableSet()))
+                attribute()
+            }
             return
         }
         for (p in pending) {
             val own = p.ids[id] ?: continue
+            p.answered = true
             p.channel.trySend(JsonObject(frame + ("id" to JsonPrimitive(own))))
             if ((frame["fin"] as? JsonPrimitive)?.contentOrNull == "true") {
                 p.ids.remove(id)
                 if (p.ids.isEmpty()) p.channel.close()
             }
         }
+        synchronized(lock) { if (orphans.isNotEmpty()) attribute() }
     }
 
     /** The socket ended: every batch still on it gets `unavailable`, and the next batch opens a new socket. */
     protected fun closed(message: String) {
-        synchronized(lock) { socket = null }
+        synchronized(lock) {
+            socket = null
+            orphans.clear()
+        }
         for (p in pending) {
             for (own in p.ids.values) p.channel.trySend(JsonObject(batchError("unavailable", message) + ("id" to JsonPrimitive(own))))
             p.channel.close()
@@ -266,7 +316,10 @@ abstract class WebSocketTransportBase : Transport, AutoCloseable {
         })))
         pending.add(p)
         val conn = try {
-            socket().await().also { it.sendText(remapped.toString()) }
+            socket().await().also {
+                p.sent = true // before the send: the answer can arrive on the socket's thread before it returns
+                it.sendText(remapped.toString())
+            }
         } catch (e: Exception) {
             synchronized(lock) { socket = null }
             send(batchError("unavailable", "WebSocket connection failed: ${e.message}"))
@@ -277,6 +330,7 @@ abstract class WebSocketTransportBase : Transport, AutoCloseable {
             pending.remove(p)
             // the batch is still running when its collector leaves early: stop it on the server
             for (id in p.ids.keys) conn?.sendText("{\"cancel\":$id}")
+            synchronized(lock) { if (orphans.isNotEmpty()) attribute() } // one batch fewer may leave another the only owner
         }
     }
 

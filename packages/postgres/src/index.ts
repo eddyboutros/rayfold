@@ -9,6 +9,7 @@
  * check then removes it), but it never drops a row the policy allows. Comparisons it cannot translate exactly, such as
  * ordering text or comparing across types, are left to the runtime.
  */
+import { coerceArgs } from "@rayfold/server/core";
 import { evalExpr, type Expr, type ExprEnv, type FieldDef, type RayfoldSchemaIR, type Shape } from "@rayfold/schema";
 
 /** Anything with pg's `query(text, params)`: `pg.Pool`, `pg.Client`, `PGlite`. */
@@ -51,6 +52,8 @@ export interface PolicyContext {
   viewer?: unknown;
   policy?: { filter?: Expr };
   now?: () => number;
+  /** Values for `$name` references in the shape handed to `screen` (`ctx.vars`). */
+  vars?: Record<string, unknown>;
 }
 
 export type Row = Record<string, unknown>;
@@ -64,7 +67,16 @@ export function createPgStore(db: Queryable, opts: PgStoreOptions): PgStore {
   return new PgStore(db, opts);
 }
 
-interface Table { name: string; id: string; idField: string; column(field: string): string | undefined; field(column: string): string; def: { name: string; fields: FieldDef[] } }
+interface Table {
+  name: string;
+  id: string;
+  idField: string;
+  column(field: string): string | undefined;
+  field(column: string): string;
+  def: { name: string; fields: FieldDef[] };
+  /** The fields of type `Date`, each read as `YYYY-MM-DD` text beside the whole row, under `"__date<index>"`. */
+  dates: string[];
+}
 
 export class PgStore {
   private readonly tables = new Map<string, Table>();
@@ -86,6 +98,7 @@ export class PgStore {
         column: (f) => (columns.has(f) ? quote(columns.get(f)!) : undefined),
         field: (c) => fields.get(c) ?? c,
         def: { name: def.name, fields: def.fields },
+        dates: def.fields.filter((f) => f.type.kind === "named" && f.type.name === "Date").map((f) => f.name),
       });
     }
   }
@@ -99,7 +112,7 @@ export class PgStore {
     const t = this.table(type);
     const params: unknown[] = [[...new Set(ids.filter((x) => x !== null && x !== undefined).map(String))]];
     const where = [`${t.id}::text = ANY($1::text[])`, ...this.policyWhere(t, ctx, args, params)];
-    const rows = await this.select(t, `SELECT * FROM ${t.name} WHERE ${where.join(" AND ")}`, params);
+    const rows = await this.select(t, `SELECT *${this.dateText(t)} FROM ${t.name} WHERE ${where.join(" AND ")}`, params);
     const byId = new Map(rows.map((r) => [String(r[t.idField]), r]));
     return ids.map((id) => (id === null || id === undefined ? null : (byId.get(String(id)) ?? null)));
   }
@@ -109,7 +122,7 @@ export class PgStore {
     const t = this.table(type);
     const params: unknown[] = [];
     const conds = [...this.equalities(t, where, params), ...this.policyWhere(t, ctx, args, params)];
-    return this.select(t, `SELECT * FROM ${t.name}${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""} ORDER BY ${t.id}`, params);
+    return this.select(t, `SELECT *${this.dateText(t)} FROM ${t.name}${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""} ORDER BY ${t.id}`, params);
   }
 
   /**
@@ -120,7 +133,7 @@ export class PgStore {
     const t = this.table(type);
     const params: unknown[] = [];
     const conds = [...this.equalities(t, where, params), ...this.policyWhere(t, ctx, args, params)];
-    const filtered = `SELECT *, count(*) OVER () AS "__total" FROM ${t.name}${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""}`;
+    const filtered = `SELECT *${this.dateText(t)}, count(*) OVER () AS "__total" FROM ${t.name}${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""}`;
     let after = "";
     if (page.after) {
       params.push(page.after);
@@ -149,22 +162,24 @@ export class PgStore {
     if (!col) throw new Error(`@rayfold/postgres: ${type} has no field ${field}`);
     const params: unknown[] = [[...new Set(values.map(String))]];
     const conds = [`${col}::text = ANY($1::text[])`, ...this.policyWhere(t, ctx, args, params)];
-    let after = "";
+    let past = "TRUE";
     if (page.after) {
       params.push(page.after);
-      after = ` AND "__s".${t.id}::text > $${params.length}::text`;
+      past = `(${t.id}::text > $${params.length}::text)`;
     }
     params.push(page.first + 1);
+    // Numbered with the rows past the cursor first, so each parent keeps at most first + 1 of those; a parent with none
+    // keeps its first row before the cursor instead, which carries the total and is not an item.
     const sql =
-      `SELECT * FROM (SELECT *, count(*) OVER (PARTITION BY ${col}) AS "__total", ` +
-      `row_number() OVER (PARTITION BY ${col} ORDER BY ${t.id}::text) AS "__n" FROM ${t.name} WHERE ${conds.join(" AND ")}) AS "__s" ` +
-      `WHERE TRUE${after} ORDER BY "__s".${t.id}::text`;
-    const raw = (await this.db.query<Row>(sql, params.slice(0, -1))).rows;
+      `SELECT * FROM (SELECT *${this.dateText(t)}, ${past} AS "__past", count(*) OVER (PARTITION BY ${col}) AS "__total", ` +
+      `row_number() OVER (PARTITION BY ${col} ORDER BY ${past} DESC, ${t.id}::text) AS "__n" FROM ${t.name} WHERE ${conds.join(" AND ")}) AS "__s" ` +
+      `WHERE "__s"."__n" <= $${params.length} AND ("__s"."__past" OR "__s"."__n" = 1) ORDER BY "__s".${t.id}::text`;
+    const raw = (await this.db.query<Row>(sql, params)).rows;
     const groups = new Map<string, { rows: Row[]; total: number }>();
     for (const r of raw) {
       const key = String(r[col.slice(1, -1).replace(/""/g, '"')]);
       const g = groups.get(key) ?? { rows: [], total: Number(r["__total"]) };
-      g.rows.push(this.row(t, r));
+      if (r["__past"]) g.rows.push(this.row(t, r));
       groups.set(key, g);
     }
     return values.map((v) => {
@@ -241,7 +256,7 @@ export class PgStore {
         const col = t.column(name);
         if (!col) throw new Error(`@rayfold/postgres: ${t.def.name}.${name} has no column and no relation`);
         const scalar = def.type.kind === "named" ? this.scalarOf(def.type.name) : "";
-        parts.push(`'${name}', ${alias}.${col}${AS_TEXT.has(scalar) ? "::text" : ""}`);
+        parts.push(`'${name}', ${scalarJson(`${alias}.${col}`, scalar)}`);
         continue;
       }
       const child = this.table(rel.type);
@@ -259,7 +274,7 @@ export class PgStore {
       }
       const childCol = child.column(rel.key);
       if (!childCol) throw new Error(`@rayfold/postgres: ${rel.type} has no field ${rel.key}`);
-      params.push(firstOf(item.args) ?? 10);
+      params.push(firstOf(coerceArgs(this.opts.ir, def.args, withVars(item.args ?? {}, ctx.vars ?? {}), `${t.def.name}.${name}`, def.type)) ?? 10);
       const conds = [`${ca}.${childCol} = ${alias}.${t.id}`, ...childPolicy];
       const rows =
         `SELECT ${childProjection} AS "__row", ${ca}.${child.id}::text AS "__key", count(*) OVER () AS "__total" ` +
@@ -273,7 +288,10 @@ export class PgStore {
           `) FROM (${rows}) AS "__p")`,
       );
     }
-    return `json_build_object(${parts.join(", ")})`;
+    // Postgres takes at most 100 arguments to a function, two per field
+    const objects: string[] = [];
+    for (let i = 0; i < parts.length; i += 50) objects.push(`json_build_object(${parts.slice(i, i + 50).join(", ")})`);
+    return objects.length > 1 ? `(${objects.map((o) => `${o}::jsonb`).join(" || ")})` : (objects[0] ?? "json_build_object()");
   }
 
   /** The WHERE fragment for the read policy the runtime pushed down, or nothing when there is none to push. */
@@ -310,9 +328,21 @@ export class PgStore {
     return (await this.db.query<Row>(sql, params)).rows.map((r) => this.row(t, r));
   }
 
+  /**
+   * The `Date` columns again as `YYYY-MM-DD` text. A driver hands a `date` back as a JS Date at midnight in some time
+   * zone (pg: the process's, PGlite: UTC), and the runtime writes a Date as its UTC day, which east of UTC is the day
+   * before. `to_char` holds whatever the DateStyle.
+   */
+  private dateText(t: Table): string {
+    return t.dates.map((f, i) => `, to_char(${t.column(f)}::date, 'YYYY-MM-DD') AS "__date${i}"`).join("");
+  }
+
   private row(t: Table, r: Row): Row {
     const out: Row = {};
-    for (const [k, v] of Object.entries(r)) if (k !== "__total" && k !== "__n") out[t.field(k)] = v;
+    for (const [k, v] of Object.entries(r)) if (k !== "__total" && k !== "__n" && k !== "__past" && !k.startsWith("__date")) out[t.field(k)] = v;
+    t.dates.forEach((f, i) => {
+      if (`__date${i}` in r) out[f] = r[`__date${i}`];
+    });
     return out;
   }
 
@@ -339,7 +369,33 @@ function itemsOf(shape: Shape): Shape {
 /** Scalars Postgres would render as a JSON number, but Rayfold carries as text. */
 const AS_TEXT = new Set(["Decimal", "Long"]);
 
-/** The page size a shape asked for (`page: { first: n }` or `first: n`), when it is a plain number. */
+/**
+ * A column as the JSON value of its scalar. Postgres writes a `timestamptz` in the session's time zone, where an
+ * Instant is UTC, and a `date` as the runtime writes the other paths' Date: `YYYY-MM-DD`, whatever the DateStyle.
+ */
+function scalarJson(column: string, scalar: string): string {
+  if (AS_TEXT.has(scalar)) return `${column}::text`;
+  if (scalar === "Instant") return `to_char(${column}::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+  if (scalar === "Date") return `to_char(${column}::date, 'YYYY-MM-DD')`;
+  return column;
+}
+
+/** A shape's arguments with each `$name` replaced by its variable, as the runtime reads them. */
+function withVars(args: Record<string, unknown>, vars: Record<string, unknown>): Record<string, unknown> {
+  const walk = (v: unknown): unknown => {
+    if (v === null || typeof v !== "object") return v;
+    if (Array.isArray(v)) return v.map(walk);
+    const name = (v as Record<string, unknown>)["$var"];
+    if (typeof name === "string") {
+      if (!(name in vars)) throw new Error(`@rayfold/postgres: missing shape variable $${name}`);
+      return vars[name];
+    }
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+  };
+  return walk(args) as Record<string, unknown>;
+}
+
+/** The page size of a field's coerced arguments (`page: { first: n }` or `first: n`), when it is a plain number. */
 function firstOf(a: Record<string, unknown> | undefined): number | undefined {
   const page = a?.["page"];
   const n = page && typeof page === "object" && !Array.isArray(page) ? (page as Record<string, unknown>)["first"] : a?.["first"];

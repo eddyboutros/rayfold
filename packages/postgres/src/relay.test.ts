@@ -210,6 +210,42 @@ describe("the relay over Postgres", () => {
     expect(b.received.items).toEqual([change("Book:1")]);
   });
 
+  it("delivers one publisher's messages in the order it sent them, one read from the table included", async () => {
+    const a = await relay("a");
+    // b reads the table on a connection of its own, which answers once the payload after the ref has reached b: the
+    // inline message is there to be delivered while the first is still being read, as between two real servers
+    const payloads = new Signal<string>();
+    const heard: Notifications = { ...notifications, listen: (channel, onPayload, onLost) => notifications.listen(channel, (p) => (payloads.push(p), onPayload(p)), onLost) };
+    const slow: Queryable = {
+      query: async (text, params) => {
+        if (text.startsWith("SELECT message")) await payloads.atLeast(2, "the inline payload reaching b");
+        return sql.query(text, params);
+      },
+    };
+    const received = new Signal<RelayMessage>();
+    closing(await new PgRelay(heard, slow, { origin: "b" }).subscribe((m) => received.push(m)));
+    const blob = "x".repeat(9_000);
+    await a.publish({ kind: "event", name: "Imported", payload: { blob } });
+    await a.publish(change("Book:b1"));
+    await received.atLeast(2, "both arriving");
+    // the inline change used to be delivered as it came, ahead of the event still being read
+    expect(received.items).toEqual([{ kind: "event", name: "Imported", payload: { blob } }, change("Book:b1")]);
+  });
+
+  it("a message too large for a payload arrives whole when it holds U+0000, which jsonb refuses", async () => {
+    const a = await relay("a");
+    const b = await listener("b");
+    const text = `\u0000${"y".repeat(9_000)}`;
+    await a.publish({ kind: "event", name: "Imported", payload: { text } });
+    await b.received.atLeast(1, "the event holding U+0000 arriving");
+    expect(b.received.items[0]).toEqual({ kind: "event", name: "Imported", payload: { text } });
+    // guard: only such a message is kept as a string; every other stays the JSON object it always was
+    await a.publish({ kind: "event", name: "Imported", payload: { text: "y".repeat(9_000) } });
+    await b.received.atLeast(2, "the plain event arriving");
+    const kinds = await sql.query<{ kind: string }>("SELECT jsonb_typeof(message) AS kind FROM rayfold_relay ORDER BY id");
+    expect(kinds.rows.map((r) => r.kind)).toEqual(["string", "object"]);
+  });
+
   it("reports a message it cannot read instead of failing silently, and keeps listening", async () => {
     const errors: unknown[] = [];
     const r = new PgRelay(notifications, sql, { origin: "b", onError: (e) => errors.push(e) });
@@ -282,6 +318,72 @@ describe("a server whose relay stops listening says so", () => {
     } finally {
       await admin.end();
       await listening.end().catch(() => {});
+    }
+  });
+});
+
+describe("pgNotifications shares one connection's LISTEN between its listeners", () => {
+  /** A pg Client as pgNotifications sees one, keeping every statement sent to it. */
+  const fakeClient = () => {
+    const sent: string[] = [];
+    const client = Object.assign(new EventEmitter(), { query: async (text: string) => void sent.push(text) });
+    const notify = (channel: string, payload: string) => client.emit("notification", { channel, payload });
+    return { client, sent, notify };
+  };
+
+  it("one listener stopping leaves the channel listened for the other, which still hears it and still hears a loss", async () => {
+    const { client, sent, notify } = fakeClient();
+    const n = pgNotifications(client);
+    const heard: string[] = [];
+    const lost: unknown[] = [];
+    const stopFirst = await n.listen("rayfold", (p) => heard.push(`1:${p}`));
+    const stopSecond = await n.listen("rayfold", (p) => heard.push(`2:${p}`), (e) => lost.push(e));
+    await stopFirst();
+    await stopFirst(); // a second stop of the same listener counts once
+    // UNLISTEN would have silenced the second listener too: the server keeps nothing per listener
+    expect(sent).toEqual([`LISTEN "rayfold"`]);
+    notify("rayfold", "after");
+    expect(heard).toEqual(["2:after"]);
+    client.emit("end");
+    expect(lost.map((e) => (e as Error).message)).toEqual(["rayfold relay: the listening connection ended"]);
+    await stopSecond();
+    expect(sent).toEqual([`LISTEN "rayfold"`, `UNLISTEN "rayfold"`]);
+  });
+
+  it("guard: the last listener of a channel stopping unlistens it, and only that channel", async () => {
+    const { client, sent } = fakeClient();
+    const n = pgNotifications(client);
+    const stopA = await n.listen("a", () => {});
+    await n.listen("b", () => {});
+    await stopA();
+    expect(sent).toEqual([`LISTEN "a"`, `LISTEN "b"`, `UNLISTEN "a"`]);
+    // and a listener after that listens again
+    await n.listen("a", () => {});
+    expect(sent.at(-1)).toBe(`LISTEN "a"`);
+  });
+
+  it.skipIf(!process.env["DATABASE_URL"])("on a real Postgres, two servers' relays on one listening client: one stopping leaves the other hearing", async () => {
+    const listening = new pg.Client({ connectionString: process.env["DATABASE_URL"] });
+    const admin = new pg.Client({ connectionString: process.env["DATABASE_URL"] });
+    await listening.connect();
+    await admin.connect();
+    try {
+      const real: Queryable = { query: async (text, params) => (await admin.query(text, params as unknown[])) as never };
+      const n = pgNotifications(listening);
+      const channel = `rayfold_shared_${process.pid}`;
+      const first = new PgRelay(n, real, { origin: "b1", channel });
+      const second = new PgRelay(n, real, { origin: "b2", channel });
+      const heard = new Signal<RelayMessage>();
+      const stopFirst = await first.subscribe(() => {});
+      const stopSecond = await second.subscribe((m) => heard.push(m));
+      await stopFirst();
+      await new PgRelay(pgNotifications(admin), real, { origin: "a", channel }).publish(change("Book:b1"));
+      await heard.atLeast(1, "the second relay hearing a after the first stopped");
+      expect(heard.items).toEqual([change("Book:b1")]);
+      await stopSecond();
+    } finally {
+      await admin.end();
+      await listening.end();
     }
   });
 });

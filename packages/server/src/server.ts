@@ -87,7 +87,8 @@ export class RayfoldServer {
   private relayStopped: unknown;
   private readonly drainer = new AbortController();
   private active = 0;
-  private onIdle: (() => void) | undefined;
+  /** Everyone waiting in `drain()` for the last batch to end. */
+  private idle: Array<() => void> = [];
   /** Field-usage telemetry, when the server was given a sink (spec 11). */
   readonly usage: UsageSink | undefined;
   /** What this server did, when it was given a sink. Counts nothing without one. */
@@ -168,19 +169,47 @@ export class RayfoldServer {
     };
   }
 
-  /** Execute a batch; frames arrive as they are produced. */
+  /**
+   * Execute a batch; frames arrive as they are produced. The batch starts running now, whether or not its frames are
+   * read, so it counts as in flight from here until it has finished running and its reader, if it has one, is done
+   * with its frames: `drain()` waits for both, so a frame that ends an op is not lost to a closing connection.
+   */
   execute(envelope: RequestEnvelope, opts: ExecuteOptions = {}): AsyncIterable<Frame> {
-    return this.counted(executeBatch(this.rt, envelope, opts));
-  }
-
-  /** A batch is in flight from its first frame being asked for until it ends, so `drain()` can wait for it. */
-  private async *counted(frames: AsyncIterable<Frame>): AsyncGenerator<Frame> {
     this.active++;
-    try {
-      yield* frames;
-    } finally {
-      if (--this.active === 0) this.onIdle?.();
-    }
+    let ran = false;
+    let reading = false;
+    let read = false;
+    let ended = false;
+    const end = () => {
+      if (ended || !ran || (reading && !read)) return;
+      ended = true;
+      if (--this.active === 0) for (const wake of this.idle.splice(0)) wake();
+    };
+    const frames = executeBatch(this.rt, envelope, opts, () => {
+      ran = true;
+      end();
+    });
+    const done = () => {
+      read = true;
+      end();
+    };
+    return {
+      [Symbol.asyncIterator]: (): AsyncIterator<Frame> => {
+        reading = true;
+        const it = frames[Symbol.asyncIterator]();
+        return {
+          next: async () => {
+            const r = await it.next();
+            if (r.done) done();
+            return r;
+          },
+          return: async () => {
+            done();
+            return it.return ? it.return() : { value: undefined, done: true };
+          },
+        };
+      },
+    };
   }
 
   /** Aborts once the server is shutting down. Live queries and streams end on it with a retryable `unavailable`. */
@@ -203,14 +232,16 @@ export class RayfoldServer {
     if (!this.drainer.signal.aborted) this.drainer.abort(new RayfoldError("unavailable", "The server is shutting down"));
     if (this.active === 0) return;
     await new Promise<void>((resolve) => {
-      let timer: ReturnType<typeof setTimeout>;
       const finish = () => {
         clearTimeout(timer);
-        this.onIdle = undefined;
+        const i = this.idle.indexOf(finish);
+        if (i >= 0) this.idle.splice(i, 1);
         resolve();
       };
-      timer = setTimeout(finish, opts.timeoutMs ?? 10_000);
-      this.onIdle = finish;
+      const timer = setTimeout(finish, opts.timeoutMs ?? 10_000);
+      // the timeout bounds the wait; it must not be what keeps the process up (see close())
+      (timer as { unref?: () => void }).unref?.();
+      this.idle.push(finish);
     });
   }
 

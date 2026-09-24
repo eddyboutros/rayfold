@@ -1,6 +1,6 @@
 {
   "rayfold": "0.1",
-  "hash": "562663dc75cb3dc1cc5ab90de180f9eeabc44a9ee312846e78e6a6b444ac004b",
+  "hash": "7fb44054edd70f691d3560cc27959509a762762ba7a914a573f741cb6daf58a3",
   "ir": {
     "rayfold": "0.1",
     "types": {
@@ -1494,6 +1494,10 @@
             }
           },
           {
+            "name": "simulate",
+            "args": {}
+          },
+          {
             "name": "http",
             "args": {
               "method": {
@@ -1555,6 +1559,10 @@
             }
           },
           {
+            "name": "simulate",
+            "args": {}
+          },
+          {
             "name": "http",
             "args": {
               "method": {
@@ -1609,6 +1617,10 @@
                 }
               }
             }
+          },
+          {
+            "name": "simulate",
+            "args": {}
           }
         ]
       },
@@ -1653,6 +1665,10 @@
                 }
               }
             }
+          },
+          {
+            "name": "simulate",
+            "args": {}
           }
         ]
       },
@@ -1706,6 +1722,10 @@
                 }
               }
             }
+          },
+          {
+            "name": "simulate",
+            "args": {}
           },
           {
             "name": "http",
@@ -1776,6 +1796,10 @@
             }
           },
           {
+            "name": "simulate",
+            "args": {}
+          },
+          {
             "name": "http",
             "args": {
               "method": {
@@ -1831,6 +1855,10 @@
                 }
               }
             }
+          },
+          {
+            "name": "simulate",
+            "args": {}
           },
           {
             "name": "http",
@@ -1898,6 +1926,10 @@
                 }
               }
             }
+          },
+          {
+            "name": "simulate",
+            "args": {}
           }
         ]
       },
@@ -2086,5 +2118,5 @@
       }
     }
   },
-  "lockedAt": "2026-09-10T10:06:46.589Z"
+  "lockedAt": "2026-09-23T23:53:27.563Z"
 }

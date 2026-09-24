@@ -7,6 +7,209 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **A command that commits and then fails to answer still tells live queries and subscribers what changed.** When a
+  non-null field resolved to null or a loader threw after the resolver had returned, the change and the
+  `ok(..., { emit })` events were dropped. Both runtimes now publish them once the command commits.
+
+- **`@defer` works at a union position, and `...on Interface` selects fields on union members that implement it.** Both
+  were silently dropped, so a deferred field never arrived.
+
+- **A deferred frame carries only its own errors.** The frame for `items.1` also collected errors from `items.10`.
+
+- **`@format(pattern:)` must match the whole value in the TypeScript runtime, as on the JVM.** `[a-z]+` accepted any
+  value that merely contained letters. Patterns are compiled once, and inputs over 10,000 characters are refused.
+
+- **Int accepts -2147483648 and Long text is range-checked in the TypeScript runtime.** It refused the Int minimum and
+  accepted Long text of any size; both runtimes now take exactly the 32- and 64-bit ranges.
+
+- **A command marked `@idempotent(false)` ignores an idempotency key instead of replaying it.** The client libraries
+  send a key with every command, so a second call replayed the first instead of running. Specs 01 and 03 now agree.
+
+- **The original exception behind an `internal` error reaches the `op` instrumentation hook.** `Outcome.cause` holds
+  what the resolver threw, stack included, so operators can log it; clients still see only `Internal error`.
+
+- **A long-lived live query on the JVM no longer ends after `maxFrames` changes.** Its re-run frames stop counting
+  toward the per-batch frame cap, as in the TypeScript runtime.
+
+- **An op's own `deadline` counts from the start of the batch in both runtimes.** In TypeScript it started only once the
+  op's references and earlier commands had cleared, so it could run far past what the caller asked for.
+
+- **An unauthorized dry run is refused for permission first in both runtimes.** The JVM runtime revealed whether the
+  command supports dry runs before checking the caller. TypeScript now also remembers an inline shape only when its
+  batch is within budget.
+
+- **`drain()` waits for batches whose frames nobody is reading, and concurrent callers all wake.** In TypeScript a batch
+  counted only once its frames were read, and in both runtimes a second `drain()` made the first wait out its timeout.
+
+- **A NaN or an infinity from a resolver goes out as `null` on the JVM.** It was printed bare, which made the whole
+  answer unreadable JSON; the TypeScript runtime already wrote `null`, as `JSON.stringify` does.
+
+- **A client with a schema tells union members apart again.** Compact frames keep `$type` only on union and interface
+  members, and the TypeScript client dropped it again when the member was an `object` rather than an entity, so
+  `... on Photo` results arrived without a type. It now keeps every `$type` the server sent.
+
+- **`@merge(serverWins)` and `@merge(lww)` apply to every server value.** A pending prediction gave way only to a `set`
+  patch, so a query's data or a compact command's answer (which carries no `set`) left the prediction showing. Both
+  clients now apply the policy wherever the server's value lands, and the TypeScript client no longer edits the
+  prediction array you passed in.
+
+- **A refused batch on a WebSocket fails only itself.** A refusal without an op id went to every batch on the socket:
+  an unrelated live query failed and the refused `client.query` never settled. Both clients now deliver such a frame
+  only to the batch that must own it and close that batch.
+
+- **A WebSocket client speaking RB checks the server's schema.** RB keys are numbered from the schema, and a socket
+  has no `Rayfold-Schema` header, so after a deploy a client read every answer under the wrong field names, without an
+  error. The TypeScript transport now names its schema hash when it connects, and the TypeScript, JVM and Spring Boot
+  servers close a socket naming another one with code 4409. The batches on it fail as `unavailable` and the transport
+  speaks JSON from then on (spec 04 §5). Pass the whole manifest as `binary`, as over HTTP.
+
+- **Leaving a stream early closes it.** Breaking out of `for await (… of client.stream(…))` over the fetch transport
+  kept the HTTP response and the server's stream open; the transport now cancels the body. Aborting `stream()` through
+  its signal ends it quietly over fetch as it did elsewhere, and a stream cut off before `fin` now fails as
+  `unavailable` in both clients instead of looking finished.
+
+- **The offline queue sends itself.** Restored commands waited for an `online` event that never comes after a reload,
+  and new commands queued behind them unsent, also after a server outage that left the network up. The TypeScript
+  client now drains at startup and whenever a command is made while others wait (`drainOnReconnect: false` leaves it
+  all to `drain()`); the Kotlin client drains when a command is made while others wait.
+
+- **`useCommand` sees the latest props.** An `optimistic: (cache) => …` function kept the props and state of the first
+  render, because `run` was keyed on the options as JSON, which drops functions.
+
+- **A watch's first report includes changes made while it loaded.** A command landing after the query's data but
+  before its response ended was hidden by the older response; `watch()` now reports from the cache.
+
+- **RB sends what JSON sends.** `NaN` and the infinities went as doubles and a `Date` as `{}`; both codecs now write
+  `null` for non-finite numbers, and the TypeScript codec writes a `Date` (anything with `toJSON`) as JSON would.
+
+- **Less client memory over a long session.** The client cache kept every command's answer for good, one per distinct
+  set of arguments, and each WebSocket request left a listener on the caller's abort signal. Both are gone; query
+  results are kept as before.
+
+- **Dates and times come back right in any time zone.** `@rayfold/postgres` returned a `date` column a day early east
+  of UTC and `screen()` wrote a `timestamptz` in the session's zone; `JdbcStore` wrote timestamps as JVM local time.
+  Both stores now return a Date as `YYYY-MM-DD` and an Instant as RFC 3339 UTC. TypeScript resolvers now get a Date
+  field as that string rather than a JavaScript `Date`.
+
+- **`screen()` serves a level with more than fifty fields.** Postgres takes at most 100 arguments to one function, and
+  such a level failed.
+
+- **A nested page in `screen()` takes the size the schema or the shape gives it.** A page selected without arguments
+  used the field's declared default only in the runtime; the store fetched 10. `$variables` are read too.
+
+- **`pagesByField` keeps each parent's total past the cursor and fetches at most a page of each.** A parent whose rows
+  all came before `after` got a total of 0, and every child row of every parent was fetched.
+
+- **Relay messages arrive in the order they were sent.** A message too large for a notification was delivered after the
+  smaller ones that followed it on the TypeScript relay.
+
+- **Stopping one relay subscription no longer silences another on the same `pg` client.** `pgNotifications` now keeps a
+  channel listened while anyone still wants it.
+
+- **`JdbcStore.pagesByField` with only null parent keys returns empty pages** instead of sending `IN ()` to Postgres.
+
+- **`PgIdempotencyStore` quotes its table name as `JdbcIdempotencyStore` does**, so a mixed-case name is one table for a
+  mixed fleet. A TypeScript deployment that already configured a mixed-case name has a lower-case table today, and
+  should rename it or pass the lower-case name.
+
+- **A large relay message holding U+0000 goes through.** `jsonb` refused it; such a message is now kept as a JSON
+  string, which both runtimes already read.
+
+- **`rayfold import openapi` reads the parameters it used to miss.** Parameters written on a path and `$ref` parameters
+  become arguments. Names like `first-name` become `firstName` (the `@http` path template follows), and enum values
+  that read alike are told apart. A body property with a parameter's name is left out, with a note, so the imported
+  schema parses and validates.
+
+- **`rayfold import graphql` keeps entities, the built-ins and deprecation reasons.** An `id: String!` or `Int!` becomes
+  `ID`, a type named `Page` (or like another built-in) is renamed with a note, and `@deprecated(reason:)` keeps its
+  reason.
+
+- **A printed schema reads back exactly.** Descriptions ending in a quote, holding `"""` or carriage returns, and
+  defaults with keys that are not names now survive `printSchemaText`. Block strings accept the `\"""` escape and
+  literal objects accept quoted keys, in both runtimes (spec 01 §1).
+
+- **`rayfold gen kotlin` output compiles for more schemas.** A field named `type`, fields named for Kotlin keywords, and
+  enum, Float, JSON and input defaults are written the way Kotlin reads them. A `$` in a default is text, not a
+  template.
+
+- **`rayfold gen java` output compiles for more schemas.** Record components named `notify`, `wait`, `hashCode`,
+  `toString` and the other methods of Object get a trailing underscore, and a backslash-u in a description no longer
+  breaks javac.
+
+- **Schema validation catches more mistakes, the same way in both runtimes.** `T` outside a generic, `Page<…>` as an
+  argument or input field, a bad `@input(Type)`, members named twice, argument and enum value names starting with
+  `__`, and names no schema file could hold (in IR from importers, the builder or a lock file) are errors. An object
+  used only in an error payload is no longer called unreachable.
+
+- **`rayfold gen graphql` output is valid for types with no fields.** Each one gets a placeholder field `_`, and `lost`
+  says so.
+
+- **`rayfold mock` answers `@example(EBOOK)` and `@example(5m)` as the wire carries them**, not as tagged IR values.
+
+- **Policies decide the same on both runtimes.** A TypeScript policy path now reads only an object's own members, so
+  `tags.length` or `viewer.constructor` is null there, as on the JVM.
+
+- **Shape ids sort `item` before `item2`.** Fields are ordered by name, then by arguments. This changes the id of any
+  shape where one field name begins another; both runtimes and the conformance vectors agree (spec 02 §3).
+
+- **`rayfold check --against rayfold.lock.json` compares ordinals by name.** Adding a field between two others is
+  compatible. A written `@ordinal` that disagrees with the lock, or a new field taking a locked ordinal, still fails.
+  Against an older `.rayfold` file a moved field is a warning.
+
+- **Smaller tooling fixes.** The language server and `rayfold check` point at the argument a finding is about. An
+  explorer title holding `$&` or `$'` no longer breaks the page. The builder's `.annotate("interface")` makes an
+  interface, and `rayfold check` no longer calls a nullability-only change inside a list breaking when it is
+  compatible.
+
+- **The spec states the limits servers already applied.** Idempotency records are kept 24 hours with bounded eviction,
+  and an over-limit body is answered 413 `payload_too_large` (spec 03); the 413 and 415 answers are the exceptions to
+  the status a batch's frames imply (spec 04); names starting with `__` or `$` are reserved everywhere (spec 01 §7).
+
+- **Releases run the full test suites before publishing.** A tagged release now runs the TypeScript and JVM checks in
+  a `verify` job, and the npm and Maven jobs wait for it.
+
+- **A client that stops reading no longer makes the Node server buffer for it without bound.** A streaming HTTP
+  response or a WebSocket kept queueing a live query's or a stream's frames for a client that had gone quiet. The
+  TypeScript server now stops the batch once `maxBuffered` bytes (8 MiB by default) wait unread, and ends the response
+  or drops the socket. Cancelling a fetch response's body now ends its batch too, and with it the live query's
+  subscription.
+
+- **`{ "cancel": id }` on a WebSocket stops that op, not its whole batch.** Both servers cancelled every op sent in the
+  same batch as the one named. Now the other ops keep running, as spec 04 §5 says.
+
+- **A WebSocket batch refused as a whole is answered for each of its ops.** An unknown op, a bad envelope or a batch
+  over budget got one error frame with no op id, which a client could not route, so that batch's ops never ended. Both
+  servers now send `{ id, error, fin: true }` for every op id the batch named.
+
+- **CORS preflight works from `allowedOrigins` alone.** The TypeScript server answered `OPTIONS` only when the separate
+  `cors` option was set, the JVM server always answered 501, and Spring Boot answered the preflight itself without the
+  headers. Now an allowed origin gets 204 with the `Access-Control-Allow-*` headers and `Vary: Origin`, as do the
+  responses that follow; any other origin gets no such headers.
+
+- **A WebSocket opened with a capability token closes when the token expires.** The TypeScript server kept serving the
+  socket, live queries included, after the token's `exp`. Now its open ops end `unauthenticated`, later batches are
+  refused, and the socket closes with code 1008.
+
+- **The JVM readiness check keeps to `readinessTimeoutMs`.** A check that blocked its thread, such as a JDBC `isValid`,
+  held `/ready` until it returned, however short the limit. Checks now run on their own threads, and the answer comes
+  at the limit.
+
+- **Closing JVM WebSocket sessions no longer leaks or stalls.** Every session stayed referenced by the server until it
+  drained, and a drain paused 5 seconds on each connection it closed while the connection waited for itself.
+
+- **MCP follows spec 10 more closely.** A JSON-RPC body of `null`, or `null` in a batch, now gets `-32600` instead of
+  failing the TypeScript handler. Every notification now gets 202, not only `initialized`. The HeaderMismatch reply
+  carries `MCP-Protocol-Version`. A resource's URI arguments are converted by type, so `?limit=5` is a number.
+
+- **MCP tool output schemas accept what the tools return.** They required every non-null field, but a tool call
+  answers with the default view, which leaves some out, so clients that validate `structuredContent` refused valid
+  results. The output schemas now require no fields inside objects and entities, in both runtimes.
+
+- **A malformed Host header is a 400, not a 500.** The Node transport built the request URL from the raw `Host` header,
+  so `Host: a b` or a port past 65535 threw. The URL now uses a fixed origin, and such a Host is refused.
+
+- **`stale-while-revalidate` takes the smallest `swr`, as spec 07 says.** Both servers took the largest one.
+
 - **A field asked for with arguments, or under an alias, no longer overwrites another result's.** The client caches
   stored every field of an entity by its output name, so `reviews(page: { first: 1 })` in one result and
   `reviews(page: { first: 3 })` in another, or `x: title` beside `x: stock`, overwrote each other through the shared

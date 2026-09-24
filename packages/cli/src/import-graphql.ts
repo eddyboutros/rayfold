@@ -9,8 +9,9 @@
  * command runs. What cannot be mapped is reported in `notes` rather than guessed at - a mutation says nothing about
  * which errors it throws or what it emits, and a Relay connection is not a `Page`.
  */
-import { RESERVED_OP_NAMES, assertValid, builtinTypes, list, named, type ArgDef, type FieldDef, type JsonValue, type RayfoldSchemaIR, type TypeDef, type TypeRef } from "@rayfold/schema";
+import { RESERVED_OP_NAMES, assertValid, builtinTypes, list, named, type Annotation, type ArgDef, type FieldDef, type JsonValue, type RayfoldSchemaIR, type TypeDef, type TypeRef } from "@rayfold/schema";
 import type {
+  ConstDirectiveNode,
   DocumentNode,
   EnumTypeDefinitionNode,
   FieldDefinitionNode,
@@ -49,6 +50,26 @@ export async function irFromGraphql(sdl: string): Promise<Imported> {
     }
   }
 
+  // a type named like one the protocol defines (Page, Date, ...) would replace it; it is renamed instead
+  const TYPE_KINDS = ["ObjectTypeDefinition", "InterfaceTypeDefinition", "InputObjectTypeDefinition", "UnionTypeDefinition", "EnumTypeDefinition", "ScalarTypeDefinition"];
+  const declared = new Map<string, string>(); // name -> kind of definition
+  for (const definition of document.definitions) {
+    if (!TYPE_KINDS.includes(definition.kind) || !("name" in definition) || !definition.name || roots[definition.name.value]) continue;
+    declared.set(definition.name.value, definition.kind);
+  }
+  const composite = new Set([...declared].filter(([, kind]) => kind !== "ScalarTypeDefinition" && kind !== "EnumTypeDefinition").map(([name]) => name));
+  const renamed = new Map<string, string>();
+  for (const [name, kind] of declared) {
+    const builtin = ir.types[name];
+    // `scalar Date` and `input PageArgs` (as rayfold gen graphql writes it) name the protocol's own, which are kept
+    if (!builtin || (builtin.kind === "scalar" && kind === "ScalarTypeDefinition") || (name === "PageArgs" && kind === "InputObjectTypeDefinition")) continue;
+    let unique = `${name}Type`;
+    for (let n = 2; declared.has(unique) || ir.types[unique]; n++) unique = `${name}Type${n}`;
+    renamed.set(name, unique);
+    notes.push(`${name}: the protocol has a built-in ${name}, so this type is ${unique}.`);
+  }
+  const rename = (name: string): string => renamed.get(name) ?? name;
+
   const rootNodes: Array<{ node: ObjectTypeDefinitionNode; kind: "query" | "command" | "stream" }> = [];
   for (const definition of document.definitions) {
     switch (definition.kind) {
@@ -58,14 +79,20 @@ export async function irFromGraphql(sdl: string): Promise<Imported> {
           rootNodes.push({ node: definition, kind });
           break;
         }
-        const fields = fieldsOf(definition, notes);
-        const identified = fields.find((f) => f.name === "id" && !f.type.nullable);
-        const implemented = (definition.interfaces ?? []).map((i) => i.name.value);
+        const name = rename(definition.name.value);
+        const fields = fieldsOf(definition, notes, rename);
+        // a non-null id of a scalar type is an identity; the IR says so with ID, whatever the SDL spelled it
+        const identified = fields.find((f) => f.name === "id" && !f.type.nullable && f.type.kind === "named" && !composite.has(f.type.name));
+        const implemented = (definition.interfaces ?? []).map((i) => rename(i.name.value));
         if (identified) {
-          ir.types[definition.name.value] = { kind: "entity", name: definition.name.value, ...describe(definition), annotations: [], fields, implements: implemented };
+          if (identified.type.kind === "named" && identified.type.name !== "ID") {
+            notes.push(`${name}.id: ${identified.type.name} became ID, the type an entity's identity has.`);
+            identified.type = named("ID");
+          }
+          ir.types[name] = { kind: "entity", name, ...describe(definition), annotations: [], fields, implements: implemented };
         } else {
-          if (implemented.length) notes.push(`${definition.name.value}: implements ${implemented.join(", ")}, but only an entity can, so the interface was dropped.`);
-          ir.types[definition.name.value] = { kind: "object", name: definition.name.value, ...describe(definition), annotations: [], fields };
+          if (implemented.length) notes.push(`${name}: implements ${implemented.join(", ")}, but only an entity can, so the interface was dropped.`);
+          ir.types[name] = { kind: "object", name, ...describe(definition), annotations: [], fields };
         }
         if (definition.name.value.endsWith("Connection")) {
           notes.push(`${definition.name.value}: a connection is not a page. Rayfold pages are Page<T> with @page(cursor) on the field.`);
@@ -73,28 +100,32 @@ export async function irFromGraphql(sdl: string): Promise<Imported> {
         break;
       }
       case "InterfaceTypeDefinition":
-        ir.types[definition.name.value] = {
+        ir.types[rename(definition.name.value)] = {
           kind: "object",
-          name: definition.name.value,
+          name: rename(definition.name.value),
           ...describe(definition),
           interface: true, // the flag the runtime reads; the annotation is how the schema text says it
           annotations: [{ name: "interface", args: {} }],
-          fields: fieldsOf(definition, notes),
+          fields: fieldsOf(definition, notes, rename),
         };
         break;
       case "InputObjectTypeDefinition":
-        ir.types[definition.name.value] = { kind: "input", name: definition.name.value, ...describe(definition), annotations: [], fields: fieldsOf(definition, notes) };
+        if (ir.types[definition.name.value]?.builtin) {
+          notes.push(`${definition.name.value}: the protocol defines it, so the document's version was left out and references point at the built-in.`);
+          break;
+        }
+        ir.types[rename(definition.name.value)] = { kind: "input", name: rename(definition.name.value), ...describe(definition), annotations: [], fields: fieldsOf(definition, notes, rename) };
         break;
       case "EnumTypeDefinition":
-        ir.types[definition.name.value] = enumType(definition);
+        ir.types[rename(definition.name.value)] = { ...enumType(definition), name: rename(definition.name.value) };
         break;
       case "UnionTypeDefinition":
-        ir.types[definition.name.value] = {
+        ir.types[rename(definition.name.value)] = {
           kind: "union",
-          name: definition.name.value,
+          name: rename(definition.name.value),
           ...describe(definition),
           annotations: [],
-          members: (definition.types ?? []).map((t) => t.name.value),
+          members: (definition.types ?? []).map((t) => rename(t.name.value)),
         };
         break;
       case "ScalarTypeDefinition":
@@ -117,8 +148,8 @@ export async function irFromGraphql(sdl: string): Promise<Imported> {
         kind,
         name,
         ...describe(field),
-        args: (field.arguments ?? []).map((a) => argOf(a, notes)),
-        returns: typeRef(field.type),
+        args: (field.arguments ?? []).map((a) => argOf(a, notes, rename)),
+        returns: typeRef(field.type, rename),
         throws: [],
         emits: [],
         annotations: deprecations(field),
@@ -144,14 +175,14 @@ function enumType(node: EnumTypeDefinitionNode): TypeDef {
   };
 }
 
-function fieldsOf(node: Fielded, notes: string[]): FieldDef[] {
+function fieldsOf(node: Fielded, notes: string[], rename: (name: string) => string): FieldDef[] {
   const nodes = node.kind === "InputObjectTypeDefinition" ? (node.fields ?? []) : (node.fields ?? []);
   return nodes.map((f, i) => {
     const field: FieldDef = {
       name: f.name.value,
       ...describe(f),
-      type: typeRef(f.type),
-      args: f.kind === "FieldDefinition" ? (f.arguments ?? []).map((a) => argOf(a, notes)) : [],
+      type: typeRef(f.type, rename),
+      args: f.kind === "FieldDefinition" ? (f.arguments ?? []).map((a) => argOf(a, notes, rename)) : [],
       annotations: deprecations(f),
       ordinal: i + 1,
     };
@@ -163,18 +194,18 @@ function fieldsOf(node: Fielded, notes: string[]): FieldDef[] {
   });
 }
 
-function argOf(node: InputValueDefinitionNode, notes: string[]): ArgDef {
-  const arg: ArgDef = { name: node.name.value, ...describe(node), type: typeRef(node.type), annotations: deprecations(node) };
+function argOf(node: InputValueDefinitionNode, notes: string[], rename: (name: string) => string): ArgDef {
+  const arg: ArgDef = { name: node.name.value, ...describe(node), type: typeRef(node.type, rename), annotations: deprecations(node) };
   const fallback = valueOf(node.defaultValue, notes);
   if (fallback !== undefined) arg.default = fallback;
   return arg;
 }
 
 /** GraphQL is nullable until `!` says otherwise; Rayfold is the other way round. */
-function typeRef(node: TypeNode, nullable = true): TypeRef {
-  if (node.kind === "NonNullType") return typeRef(node.type, false);
-  if (node.kind === "ListType") return list(typeRef(node.type), nullable);
-  return named(node.name.value, nullable);
+function typeRef(node: TypeNode, rename: (name: string) => string, nullable = true): TypeRef {
+  if (node.kind === "NonNullType") return typeRef(node.type, rename, false);
+  if (node.kind === "ListType") return list(typeRef(node.type, rename), nullable);
+  return named(rename(node.name.value), nullable);
 }
 
 function valueOf(node: ValueNode | undefined, notes: string[]): JsonValue | undefined {
@@ -200,8 +231,12 @@ function valueOf(node: ValueNode | undefined, notes: string[]): JsonValue | unde
   }
 }
 
-function deprecations(node: { directives?: readonly { name: { value: string } }[] | undefined }): Array<{ name: string; args: Record<string, never> }> {
-  return (node.directives ?? []).some((d) => d.name.value === "deprecated") ? [{ name: "deprecated", args: {} }] : [];
+/** `@deprecated`, keeping the reason when the SDL gives one. */
+function deprecations(node: { directives?: readonly ConstDirectiveNode[] | undefined }): Annotation[] {
+  const directive = (node.directives ?? []).find((d) => d.name.value === "deprecated");
+  if (!directive) return [];
+  const reason = directive.arguments?.find((a) => a.name.value === "reason")?.value;
+  return [{ name: "deprecated", args: reason?.kind === "StringValue" ? { reason: reason.value } : {} }];
 }
 
 function describe(node: { description?: { value: string } | undefined }): { description?: string } {
