@@ -11,6 +11,8 @@ import type { RayfoldServer } from "./server.ts";
 import { HTTP_STATUS, RayfoldError, type Frame, type RequestEnvelope, type WireError } from "./protocol.ts";
 import { hostProblem, originProblem, type OriginOptions } from "./guard.ts";
 import { codecFor } from "./http.ts";
+import { publicIR } from "./fetch.ts";
+import { schemaHash } from "@rayfold/schema";
 
 const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 export const SUBPROTOCOL = "rayfold.0.1";
@@ -32,6 +34,8 @@ export interface WsOptions extends OriginOptions {
 /** Attach the Rayfold WebSocket endpoint to a Node HTTP server. */
 export function attachWebSocket(http: Server, server: RayfoldServer, opts: WsOptions = {}): void {
   const path = opts.path ?? "/rayfold/ws";
+  // the manifest publishes the schema without policy expressions, which hashes differently but numbers RB keys the same
+  const sameKeys = new Set([server.hash, schemaHash(publicIR(server.ir))]);
   http.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname !== path || (req.headers.upgrade ?? "").toLowerCase() !== "websocket") {
@@ -69,7 +73,7 @@ export function attachWebSocket(http: Server, server: RayfoldServer, opts: WsOpt
       // RB keys are numbered from the schema, so a client holding another one would read every answer under the wrong
       // names, without an error. The close follows the upgrade because a browser cannot read a refused handshake.
       const schema = url.searchParams.get("schema");
-      if (schema !== null && schema !== server.hash) {
+      if (schema !== null && !sameKeys.has(schema)) {
         const code = Buffer.from([SCHEMA_MISMATCH >> 8, SCHEMA_MISMATCH & 0xff]);
         socket.end(encodeFrame(Buffer.concat([code, Buffer.from(server.hash, "utf8")]), 0x8), () => socket.destroy());
         return;

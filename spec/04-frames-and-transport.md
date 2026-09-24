@@ -193,7 +193,9 @@ Path `/rayfold/ws`, subprotocol `rayfold.0.1`. Text messages are JSON; binary me
 
 RB keys are numbered from the schema ([09 §3](09-binary-format.md)), and a socket carries no `Rayfold-Schema` header
 per answer. A client that sends RB therefore names the schema hash its dictionary was built from in the `schema` query
-parameter of the socket URL. A server whose hash differs completes the upgrade and at once closes the socket with code
+parameter of the socket URL. The server accepts its own hash, and the hash of its schema as its public manifest shows
+it ([§4a](#4a-manifest)): that schema hides policy expressions, so it hashes differently, but it holds the same names,
+and so the same keys. A server whose hash differs from both completes the upgrade and at once closes the socket with code
 `4409` and its own hash as the reason: a browser cannot read a refused handshake, but it can read a close. The client
 fails the batches it sent on that socket with `unavailable` and uses JSON on the sockets it opens after it. Without the
 parameter the server makes no check.

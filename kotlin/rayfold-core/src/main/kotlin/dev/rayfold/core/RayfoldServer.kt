@@ -129,6 +129,9 @@ class RayfoldServer(
     /** sha256 of the canonical IR: the hash `@rayfold/schema` computes for the same schema ([SchemaText.hash]). */
     val hash: String by lazy { SchemaText.hash(ir) }
 
+    /** The hash of the schema as a public manifest shows it: another hash, but the same names, so the same RB keys. */
+    internal val publicHash: String by lazy { SchemaText.hash(ir.withoutPolicies()) }
+
     /**
      * A batch is in flight from its first frame being asked for until it ends, so [drain] can wait for it. The flow is
      * cold: nothing runs before it is collected, so that is also when the batch starts.

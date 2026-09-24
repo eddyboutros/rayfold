@@ -154,13 +154,15 @@ class RayfoldWsSession(
         const val SCHEMA_MISMATCH = 4409
 
         /**
-         * Whether the socket URL's query names a schema other than [server]'s. RB keys are numbered from the schema, so
+         * Whether the socket URL's query names a schema other than [server]'s, as it holds it or as its public manifest
+         * shows it (the same names, so the same keys). RB keys are numbered from the schema, so
          * such a client would read every answer under the wrong names, without an error; the transport closes the socket
          * with [SCHEMA_MISMATCH] and the server's hash, after the upgrade, because a browser cannot read a refused handshake.
          */
         fun schemaMismatch(server: RayfoldServer, rawQuery: String?): Boolean {
             val named = rawQuery?.split('&')?.firstOrNull { it.substringBefore('=') == "schema" } ?: return false
-            return URLDecoder.decode(named.substringAfter('=', ""), Charsets.UTF_8) != server.hash
+            val hash = URLDecoder.decode(named.substringAfter('=', ""), Charsets.UTF_8)
+            return hash != server.hash && hash != server.publicHash
         }
     }
 }

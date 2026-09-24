@@ -128,7 +128,8 @@ and the manifest has the same hash as `schemaHash`. The HTTP transport compares 
 A bare schema IR works in place of the manifest when it is the server's full schema. The manifest's `schema` alone
 does not: it leaves out how policies decide, so it hashes differently, and the transport would stay on JSON.
 
-A socket has no header per answer, so the WebSocket transport names the manifest's hash when it connects. A server
+A socket has no header per answer, so the WebSocket transport names its schema's hash when it connects. The server
+accepts the manifest's `schema` on its own here too, since it holds the same names as the full schema. A server
 holding another schema closes the socket with code `4409` before anything is decoded: the batches sent on it fail with
 [`unavailable`](/errors/unavailable), and every socket the transport opens after that speaks JSON. Load the manifest
 again and create a new transport to use RB.

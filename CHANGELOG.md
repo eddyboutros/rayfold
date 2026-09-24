@@ -173,7 +173,8 @@ Everything under a dated heading is published on npm and Maven Central.
   has no `Rayfold-Schema` header, so after a deploy a client read every answer under the wrong field names, without an
   error. The TypeScript transport now names its schema hash when it connects, and the TypeScript, JVM and Spring Boot
   servers close a socket naming another one with code 4409. The batches on it fail as `unavailable` and the transport
-  speaks JSON from then on (spec 04 §5). Pass the whole manifest as `binary`, as over HTTP.
+  speaks JSON from then on (spec 04 §5). A client given only the manifest's `schema`, as 0.2.1 clients are, keeps
+  RB: its hash differs, but its names, and so its keys, are the server's, and the servers accept it.
 
 - **Leaving a stream early closes it.** Breaking out of `for await (… of client.stream(…))` over the fetch transport
   kept the HTTP response and the server's stream open; the transport now cancels the body. Aborting `stream()` through

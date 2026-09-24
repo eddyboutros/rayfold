@@ -528,6 +528,16 @@ class WebSocketTest {
     }
 
     @Test
+    fun `a socket naming the hash of the schema its public manifest shows is served - the names, and so the RB keys, are the same`() {
+        val bs = Bookstore()
+        val published = SchemaText.hash(bs.server.ir.withoutPolicies())
+        assertTrue(published != bs.server.hash, "the manifest's schema hashes differently")
+        val ws = upgrade(listen(bs).port, target = "/rayfold/ws?schema=${java.net.URLEncoder.encode(published, Charsets.UTF_8)}")
+        ws.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }"}]}""")
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), ws.next()["data"])
+    }
+
+    @Test
     fun `a binary message is RB and is answered in binary RB frames, beside text on the same socket`() {
         val bs = Bookstore()
         val rb = RbCodec(bs.server.ir)

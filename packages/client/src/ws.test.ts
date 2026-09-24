@@ -421,6 +421,20 @@ describe("RB over the WebSocket transport (spec 09 section 4)", () => {
     }
   });
 
+  it("a client given only the manifest's schema, which has no policy expressions, is kept on RB: its keys are the server's", async () => {
+    const manifest = (await (await fetch(wsUrl.replace("ws:", "http:").replace("/ws", "/manifest"), { signal: AbortSignal.timeout(5_000) })).json()) as { schema: typeof bs.server.ir; schemaHash: string };
+    expect(schemaHash(manifest.schema)).not.toBe(manifest.schemaHash); // what an older client sent as its hash
+    const kinds: string[] = [];
+    const transport = createWebSocketTransport({ url: `${wsUrl}?auth=Bearer%20u1`, binary: manifest.schema, WebSocket: recording(kinds) });
+    try {
+      const client = new RayfoldClient({ transport });
+      expect(await client.query("book", { id: "b1" }, { shape: "{ id title }" })).toEqual({ $type: "Book", id: "b1", title: "The Dispossessed" });
+      expect(new Set(kinds)).toEqual(new Set(["binary"]));
+    } finally {
+      transport.close();
+    }
+  });
+
   it("a client whose RB dictionary comes from another schema fails its batch as unavailable, then speaks JSON (guard: the first test stays on RB)", async () => {
     const older = structuredClone(bs.server.ir);
     const book = older.types["Book"] as { fields: Array<{ name: string }> };
