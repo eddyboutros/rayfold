@@ -203,7 +203,7 @@ describe("rayfold check --against", { timeout: 60_000 }, () => {
     const lock = await rayfold("lock", "book.rayfold");
     expect(lock).toEqual({ status: 0, stdout: `wrote rayfold.lock.json (hash ${hash.slice(0, 12)})\n`, stderr: "" });
     const written = JSON.parse(readFileSync(join(work, "rayfold.lock.json"), "utf8")) as Record<string, unknown>;
-    expect(Object.keys(written).sort()).toEqual(["hash", "ir", "lockedAt", "rayfold"]);
+    expect(Object.keys(written).sort()).toEqual(["hash", "highestOrdinals", "ir", "lockedAt", "rayfold"]);
     expect(written).toMatchObject({ rayfold: "0.1", hash, ir: JSON.parse(JSON.stringify(ir)) as unknown });
     expect(Number.isNaN(Date.parse(String(written["lockedAt"])))).toBe(false);
 
@@ -229,6 +229,43 @@ describe("rayfold check --against", { timeout: 60_000 }, () => {
       stdout: "BREAKING  Book.title: ordinal changed 2 -> 7 [ordinal-changed]\n\nFAILED: breaking changes against rayfold.lock.json\n",
       stderr: "",
     });
+  });
+
+  it("re-locking keeps each member's ordinal by name, gives a new one the next never used, and keeps a written @ordinal", async () => {
+    type Locked = { ir: { types: Record<string, { fields?: Array<{ name: string; ordinal: number }>; values?: Array<{ name: string; ordinal: number }> }> }; highestOrdinals: Record<string, number> };
+    const ordinals = () => {
+      const lock = JSON.parse(readFileSync(join(work, "rayfold.lock.json"), "utf8")) as Locked;
+      const of = (type: string) => Object.fromEntries((lock.ir.types[type]!.fields ?? lock.ir.types[type]!.values ?? []).map((m) => [m.name, m.ordinal]));
+      return { Book: of("Book"), Genre: of("Genre"), highest: lock.highestOrdinals };
+    };
+    const first = ["enum Genre { FICTION POETRY }", ...BOOK];
+    expect((await rayfold("lock", file("book.rayfold", first))).status).toBe(0);
+    expect(ordinals()).toEqual({ Book: { id: 1, title: 2, subtitle: 3 }, Genre: { FICTION: 1, POETRY: 2 }, highest: { Book: 3, Genre: 2 } });
+
+    const inserted = ["enum Genre { FICTION DRAMA POETRY }", "entity Book {", "  id: ID", "  isbn: String?", "  title: String", "  subtitle: String?", "}", "query book(id: ID): Book?"];
+    expect((await rayfold("lock", file("book.rayfold", inserted))).status).toBe(0);
+    expect(ordinals()).toEqual({ Book: { id: 1, isbn: 4, title: 2, subtitle: 3 }, Genre: { FICTION: 1, DRAMA: 3, POETRY: 2 }, highest: { Book: 4, Genre: 3 } });
+    // the lock and the schema it came from agree, even with --strict
+    expect(await rayfold("check", "book.rayfold", "--strict")).toEqual({ status: 0, stdout: "\nOK: compatible with rayfold.lock.json (0 changes)\n", stderr: "" });
+
+    // isbn goes (a breaking change `check` reports; `lock` records what it is given): its ordinal 4 is not handed out again
+    const replaced = ["enum Genre { FICTION DRAMA POETRY }", "entity Book {", "  id: ID", "  pages: Int?", "  title: String", "  subtitle: String?", "  code: String @ordinal(9)", "}", "query book(id: ID): Book?"];
+    expect((await rayfold("lock", file("book.rayfold", replaced))).status).toBe(0);
+    expect(ordinals()).toEqual({ Book: { id: 1, pages: 10, title: 2, subtitle: 3, code: 9 }, Genre: { FICTION: 1, DRAMA: 3, POETRY: 2 }, highest: { Book: 10, Genre: 3 } });
+
+    const dropped = ["enum Genre { FICTION DRAMA POETRY }", "entity Book {", "  id: ID", "  title: String", "  subtitle: String?", "  code: String @ordinal(9)", "}", "query book(id: ID): Book?"];
+    expect((await rayfold("lock", file("book.rayfold", dropped))).status).toBe(0);
+    const again = [...dropped.slice(0, 5), "  isbn: String?", ...dropped.slice(5)];
+    expect((await rayfold("lock", file("book.rayfold", again))).status).toBe(0);
+    expect(ordinals().Book).toEqual({ id: 1, title: 2, subtitle: 3, isbn: 11, code: 9 });
+  });
+
+  it("guard - a written @ordinal wins over the ordinal the lock recorded for that member", async () => {
+    expect((await rayfold("lock", file("book.rayfold", BOOK))).status).toBe(0);
+    const renumbered = ["entity Book {", "  id: ID", "  title: String @ordinal(7)", "  subtitle: String?", "}", "query book(id: ID): Book?"];
+    expect((await rayfold("lock", file("book.rayfold", renumbered))).status).toBe(0);
+    const lock = JSON.parse(readFileSync(join(work, "rayfold.lock.json"), "utf8")) as { ir: { types: Record<string, { fields: Array<{ name: string; ordinal: number }> }> } };
+    expect(lock.ir.types["Book"]!.fields.map((f) => [f.name, f.ordinal])).toEqual([["id", 1], ["title", 7], ["subtitle", 3]]);
   });
 
   it("guard - against an older schema file, the same insertion is a warning, which --strict refuses", async () => {

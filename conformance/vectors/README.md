@@ -4,11 +4,12 @@ A **vector** is a pure function and the answer the specification says it has: an
 the hash it produces, or the error it must raise. A **fixture** (`../fixtures`) is a different artifact — a request
 and the frames a server must answer it with.
 
-Both runtimes run these files, so a change to either one fails a test rather than quietly parting two fleets. The
-runners sit next to what they check: `packages/schema/src/vectors.test.ts` and `VectorsTest.kt` for the pure
-functions, `packages/rb/src/vectors.test.ts` for the codec, `packages/server/src/{manifest,error,idempotency,
+Both runtimes run these files, every case and every rule in them, so a change to either one fails a test rather
+than quietly parting two fleets. The runners sit next to what they check: `packages/schema/src/vectors.test.ts` for
+the pure functions, `packages/rb/src/vectors.test.ts` for the codec, `packages/server/src/{manifest,error,idempotency,
 authorization}-vectors.test.ts` for the areas that need a server, and `patch-vectors.test.ts` / `PatchVectorsTest.kt`
-for the client cache.
+for the client cache. On the JVM, `VectorsTest.kt` runs every area but `patch/`, standing up a real server for the
+ones that need one. A runner that meets a case or rule it has no assertion for fails rather than skipping it.
 
 ## The rule that makes them worth having
 
@@ -51,7 +52,7 @@ from the two small ones):
 | `binary/` | `dictionary`, and `values` of `json` → `bytes` | RB tag bytes and the protocol key dictionary (spec 09 §2, §3). `dictionary` is the ordered list of 40 keys; the runner encodes `{key: 1}` for each and checks the id it lands on, since that is the id's only observable effect. Byte strings are hex. |
 | `canonicalization/` | `json`, `canonical` | Canonical JSON (spec 01 §9) — the form the schema hash is taken over. Key ordering by UTF-16 code unit, the escape set, and the unpaired-surrogate rule. |
 | `manifest/` | `members`, `rules` | The discovery document (spec 04 §4a). A document rather than a pure function, so this file pins the *contract* — which members exist, what kind of thing each is, and the rules relating them — and leaves the values free, since they depend on the schema and the configuration. Run against a live server on both sides. |
-| `patch/` | `result`, `patch`, `expect` | Applying a patch to a client's cache (spec 13 §3). An initial result, a patch, and the result a client must hold afterwards, materialised — so the expectation says nothing about how a cache stores anything, which is what lets one file check both. |
+| `patch/` | `result`, `patch`, `expect`; optional `shape`, `stale`, `unheld` | Applying a patch to a client's cache (spec 13 §3). An initial result, a patch, and the result a client must hold afterwards, materialised — so the expectation says nothing about how a cache stores anything, which is what lets one file check both. `shape` is the selection the result was asked with; `stale` is which of the result's entities, and whether the result itself, are marked for refetch afterwards (`inv`, `invOp`); `unheld` sends the patch for a result the client never stored — same op, other arguments — so the held one must see only the cache-wide operations. |
 | `errors/` | `statuses`, `cases` | Which HTTP status each code derives (spec 05 §3), and the rule that decides *how* a refusal arrives: a problem document before a batch is parsed, an error frame once it has been. |
 | `idempotency/` | `ops`, `expect` | What a key promises and to whom (spec 12 §4): replay against re-run counted at the resolver, `already_exists` on reuse, the key bounds, and that two viewers choosing one key do not collide. |
 | `authorization/` | `cases` | The denial table of spec 06 §3, row for row — including the list-element row the two runtimes disagreed on. |

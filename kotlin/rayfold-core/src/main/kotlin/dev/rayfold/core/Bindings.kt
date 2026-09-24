@@ -65,6 +65,20 @@ object Bindings {
 object CacheHeaders {
     const val VARY = "Rayfold-Client, Accept, Authorization"
 
+    private val ENTITY_TAG = Regex("(?:W/)?\"[^\"]*\"")
+
+    /**
+     * Whether an `If-None-Match` header names [etag], by the weak comparison RFC 9110 section 13.1.2 prescribes for it:
+     * a list of entity tags, `W/` ignored on both sides, or `*`. A proxy that compresses a response (nginx with gzip)
+     * makes its ETag weak, and the client sends it back that way.
+     */
+    fun etagMatches(ifNoneMatch: String?, etag: String): Boolean {
+        if (ifNoneMatch.isNullOrEmpty()) return false
+        if (ifNoneMatch.trim() == "*") return true
+        val opaque = etag.removePrefix("W/")
+        return ENTITY_TAG.findAll(ifNoneMatch).any { it.value.removePrefix("W/") == opaque }
+    }
+
     fun apply(ir: RayfoldSchemaIR, ops: List<RequestOp>, frames: List<JsonObject>, viewer: JsonElement, headers: Headers): String =
         apply(ir, ops, frames, viewer) { name, value -> headers.set(name, value) }
 
@@ -170,6 +184,9 @@ class RayfoldBindings(
 
     val bindings: List<Binding> = Bindings.of(server.ir)
 
+    // the manifest lists `http` only where its routes are served
+    init { if (bindings.isNotEmpty()) server.mounted.add("http") }
+
     fun mount(http: HttpServer): HttpContext = http.createContext(options.prefix.ifEmpty { "/" }) { ex ->
         if (!handle(ex)) Guard.refuse(ex, 404, Code.NOT_FOUND, "No route for ${ex.requestMethod} ${ex.requestURI.rawPath}")
     }
@@ -256,7 +273,7 @@ class RayfoldBindings(
         val result = folded.result
         if (b.op.kind == "query") {
             val etag = CacheHeaders.apply(server.ir, RequestEnvelope.from(envelope).ops, frames, v, ex.responseHeaders)
-            if (ex.requestHeaders.getFirst("If-None-Match") == etag) {
+            if (CacheHeaders.etagMatches(ex.requestHeaders.getFirst("If-None-Match"), etag)) {
                 ex.responseHeaders.remove("X-Content-Type-Options") // no body to sniff; the cached response keeps its headers
                 ex.sendResponseHeaders(304, -1)
                 ex.close()

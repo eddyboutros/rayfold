@@ -258,14 +258,15 @@ function opFrom(method: string, path: string, operation: Json, parameters: Json[
   const name = uniqueOpName(operationName(method, path, operation), used);
   const args: ArgDef[] = [];
   /** The first argument of a name keeps it: parameters come before body properties, which carry the same value. */
-  const add = (raw: string, arg: Omit<ArgDef, "name">, what: string): void => {
+  const add = (raw: string, arg: Omit<ArgDef, "name">, what: string): boolean => {
     const as = memberName(raw);
     if (as !== raw) notes.push(`${name}(${raw}): not a name a schema can hold, so the argument is ${as}.`);
     if (args.some((a) => a.name === as)) {
       notes.push(`${name}(${raw}): the ${what} has the name of an argument already taken, so it was left out.`);
-      return;
+      return false;
     }
     args.push({ name: as, ...arg });
+    return true;
   };
 
   for (const parameter of parameters) {
@@ -276,11 +277,13 @@ function opFrom(method: string, path: string, operation: Json, parameters: Json[
     add(raw, { ...describe(parameter), type: typeRefFrom(schema, parameter["required"] !== true, ir, `${name}_${raw}`, notes), annotations: [] }, `${String(where)} parameter`);
   }
 
+  // what `@http(body:)` binds the request body to: without it the runtime never reads the body (spec 04 §8)
+  let bodyArg: JsonValue | undefined;
   const body = bodySchema(operation);
   if (body) {
     const ref = refName(body);
     if (ref) {
-      add("input", { type: named(ref), annotations: [] }, "request body");
+      if (add("input", { type: named(ref), annotations: [] }, "request body")) bodyArg = { $ident: "input" };
     } else {
       const properties = (body["properties"] as Json | undefined) ?? {};
       const required = new Set((body["required"] as string[] | undefined) ?? []);
@@ -288,13 +291,14 @@ function opFrom(method: string, path: string, operation: Json, parameters: Json[
         add(field, { type: typeRefFrom(sub as Json, !required.has(field), ir, `${name}_${field}`, notes), annotations: [] }, "body property");
       }
       if (!Object.keys(properties).length) notes.push(`${name}: the request body had no properties to read, so it takes none.`);
+      else bodyArg = "*";
     }
   }
 
   const returns = resultType(operation, ir, name, notes);
   // a path parameter renamed to be a name is renamed in the template too; the URLs it matches are the same
   const template = path.replace(/\{([^}]*)\}/g, (whole, raw: string) => (NAME.test(raw) ? whole : `{${memberName(raw)}}`));
-  const annotations: Annotation[] = [{ name: "http", args: { method: { $ident: method.toUpperCase() }, path: template as JsonValue } }];
+  const annotations: Annotation[] = [{ name: "http", args: { method: { $ident: method.toUpperCase() }, path: template as JsonValue, ...(bodyArg === undefined ? {} : { body: bodyArg }) } }];
   if (operation["deprecated"] === true) annotations.push({ name: "deprecated", args: {} });
 
   return { kind, name, ...describe(operation), args, returns, throws: [], emits: [], annotations };

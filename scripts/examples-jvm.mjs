@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Builds and tests the JVM examples the documentation site quotes, so every snippet on it is code that compiles and
- * passes its tests. Publishes the runtime to the local Maven repository first: examples/java and examples/spring-boot
+ * Builds and tests the JVM examples the documentation site quotes, so every snippet it imports from them (the `<<<`
+ * regions) is code that compiles and passes its tests. Kotlin and Java blocks written inline in a page are not built
+ * here. Publishes the runtime to the local Maven repository first: examples/java and examples/spring-boot
  * resolve dev.rayfold artifacts from there, while examples/kotlin builds against kotlin/ directly (a composite build).
  * Prints one line per step and stops at the first failure, with that step's output.
  *

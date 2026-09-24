@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { command, defineSchema, entity, query, t, type Infer, type InferResult } from "./index.ts";
 import { typedClient, type Select, type SelectResult, type ShapedClient } from "./select.ts";
+import { createRayfoldServer } from "@rayfold/server";
 
 const Author = entity("Author", { id: t.id(), name: t.string(), bio: t.string().nullable() });
 const Book = entity("Book", {
@@ -78,6 +79,64 @@ describe("a shape narrows the result type", () => {
 
   it("says nothing it does not know: a field the schema has not got is unknown, not an error", () => {
     expectTypeOf<Select<BookT, "{ id nope }">["nope"]>().toBeUnknown();
+  });
+});
+
+describe("a field selected with no sub-shape is typed as its default view", () => {
+  const shop = defineSchema({
+    types: [
+      entity("Publisher", { id: t.id(), name: t.string() }),
+      entity("Writer", {
+        id: t.id(),
+        name: t.string(),
+        tags: t.string().list(),
+        extra: t.json().nullable(),
+        publisher: t.ref("Publisher"),
+        novels: t.page("Novel").args({ page: t.pageArgs().withDefault({ first: 5 }) }),
+      }),
+      entity("Novel", { id: t.id(), title: t.string(), writer: t.ref("Writer") }),
+    ],
+    ops: { novel: query({ id: t.id() }, t.ref("Novel").nullable()), writer: query({ id: t.id() }, t.ref("Writer").nullable()) },
+  });
+  type NovelT = Infer<typeof shop, "Novel">;
+  type WriterT = Infer<typeof shop, "Writer">;
+  type Bare = Select<NovelT, "{ id writer }">;
+
+  it("keeps the scalars, enums, lists of them and JSON, and leaves nested entities out, as the derived view does", () => {
+    expectTypeOf<Bare["writer"]>().toEqualTypeOf<{ $type: "Writer"; id: string; name: string; tags: string[]; extra?: unknown }>();
+    // @ts-expect-error the default view leaves the publisher out, so the server never sends it
+    expectTypeOf<Bare["writer"]["publisher"]>().toBeObject();
+  });
+
+  it("guard - a sub-shape still reaches as deep as it asks", () => {
+    expectTypeOf<Select<NovelT, "{ writer { publisher { name } } }">["writer"]["publisher"]>().toEqualTypeOf<{ $type: "Publisher"; name: string }>();
+  });
+
+  it("a bare page keeps its rows, each through its own default view", () => {
+    type Novels = Select<WriterT, "{ novels }">["novels"];
+    expectTypeOf<Novels["items"]>().toEqualTypeOf<Array<{ $type: "Novel"; id: string; title: string }>>();
+    expectTypeOf<Novels["hasMore"]>().toBeBoolean();
+  });
+
+  it("the server sends exactly what the type says, for a bare entity and a bare page", async () => {
+    const server = createRayfoldServer({
+      schema: shop.ir,
+      resolvers: {
+        Query: {
+          novel: () => ({ id: "n1", title: "Dune", writerId: "w1" }),
+          writer: () => ({ id: "w1", name: "Frank", tags: ["sf"], extra: null, publisherId: "p1" }),
+        },
+        Novel: { writer: (parents: unknown[]) => parents.map(() => ({ id: "w1", name: "Frank", tags: ["sf"], extra: null, publisherId: "p1" })) },
+        Writer: {
+          publisher: (parents: unknown[]) => parents.map(() => ({ id: "p1", name: "Chilton" })),
+          novels: (parents: unknown[]) => parents.map(() => ({ items: [{ id: "n1", title: "Dune", writerId: "w1" }], cursor: null, hasMore: false, total: 1 })),
+        },
+      },
+    });
+    const bare: Select<NovelT, "{ id writer }"> = { $type: "Novel", id: "n1", writer: { $type: "Writer", id: "w1", name: "Frank", tags: ["sf"], extra: null } };
+    const paged: Select<WriterT, "{ novels }"> = { $type: "Writer", novels: { items: [{ $type: "Novel", id: "n1", title: "Dune" }], cursor: null, hasMore: false, total: 1 } };
+    const frames = await server.collect({ ops: [{ id: 1, op: "novel", args: { id: "n1" }, shape: "{ id writer }" }, { id: 2, op: "writer", args: { id: "w1" }, shape: "{ novels }" }] });
+    expect((frames as Array<{ id: number; data: unknown }>).sort((a, b) => a.id - b.id).map((f) => f.data)).toEqual([bare, paged]);
   });
 });
 

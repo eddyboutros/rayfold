@@ -48,7 +48,10 @@ reference to one never resolves).
 Rules:
 
 * A reference may only point to an op with a smaller `id`. Forward or self references are `invalid_argument`
-  for the whole batch (nothing executes).
+  for the whole batch (nothing executes). A reference names an op by its `id`, not by its position in `ops`: an op
+  with a smaller `id` that comes later in the array may be referenced.
+* A reference to a live op (`live: true`) is `invalid_argument` for the whole batch: a live op never finishes, so the
+  reference would wait for as long as the subscription stays open.
 * If the referenced op ends in an error, every dependent op answers `{ "id": 2, "error": { "code":
   "failed_precondition", "type": "DependencyFailed", "data": { "op": 1 } }, "fin": true }` without executing.
 * If the path resolves to `undefined`, the dependent op is `invalid_argument`.

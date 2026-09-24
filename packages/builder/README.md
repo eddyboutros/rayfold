@@ -31,6 +31,16 @@ type RestockArgs = InferArgs<typeof schema, "restock">; // { id: string; qty: nu
 // Hand `schema.ir` to createRayfoldServer({ schema: schema.ir, resolvers }) from @rayfold/server.
 ```
 
+Interfaces, `implements` and field arguments are written as the text writes them:
+
+```ts
+const Node = object("Node", { id: t.id() }).annotate("interface");      // object Node @interface { id: ID }
+const Author = entity("Author", {
+  id: t.id(),
+  books: t.page("Book").args({ page: t.pageArgs().withDefault({ first: 10 }) }), // books(page: PageArgs = { first: 10 }): Page<Book>
+}).implements("Node");                                                    // entity Author implements Node
+```
+
 ## Types from the shape
 
 A shape is a string at the call site, so the types can follow it:

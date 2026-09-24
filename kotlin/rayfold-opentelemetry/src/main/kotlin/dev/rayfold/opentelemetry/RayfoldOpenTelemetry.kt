@@ -69,6 +69,11 @@ class RayfoldOpenTelemetry @JvmOverloads constructor(
                     out.code?.let { span.setAttribute("rayfold.error.code", it) }
                     span.setStatus(StatusCode.ERROR, out.message ?: "")
                 }
+                // what the resolver threw, with its stack, where the code above says only `internal`
+                if (out is Outcome) out.cause?.let { cause ->
+                    span.recordException(cause)
+                    span.setStatus(StatusCode.ERROR, out.message ?: cause.message ?: cause.javaClass.name)
+                }
             }
         } catch (e: CancellationException) {
             throw e // a cancelled live query or a passed deadline is not a failure of the op

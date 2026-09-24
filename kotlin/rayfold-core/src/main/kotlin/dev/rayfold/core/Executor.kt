@@ -344,7 +344,7 @@ class Executor(
     }
 
     /** [nullable]: the slots sit at a nullable position that is not a list element, where a denied entity reads as null. */
-    private val implementors = mutableMapOf<String, Set<String>>()
+    private val implementors = ConcurrentHashMap<String, Set<String>>() // one executor serves concurrent batches
 
     /** Entities that implement an interface. */
     private fun implementorsOf(iface: String): Set<String> =

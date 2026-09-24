@@ -30,6 +30,37 @@ interface Lock {
   hash: string;
   ir: RayfoldSchemaIR;
   lockedAt: string;
+  /**
+   * Per type, the highest field or enum-value ordinal ever assigned. The IR forgets a member once it is removed; this
+   * keeps its ordinal from being given to a new one. Absent from locks written before it existed.
+   */
+  highestOrdinals?: Record<string, number>;
+}
+
+/**
+ * The schema's IR numbered as the lock `previous` numbered it (spec 01 §9.6): a member the lock recorded keeps its
+ * ordinal by name, a written `@ordinal(n)` is kept, and a new member gets the next ordinal above any its type ever used.
+ */
+function carryOrdinals(ir: RayfoldSchemaIR, previous: Lock | undefined): { ir: RayfoldSchemaIR; highest: Record<string, number> } {
+  const highest: Record<string, number> = {};
+  const types = Object.fromEntries(
+    Object.entries(ir.types).map(([name, t]) => {
+      if (t.builtin || !("fields" in t || t.kind === "enum")) return [name, t];
+      const members: Array<{ name: string; ordinal: number; annotations: RayfoldSchemaIR["types"][string]["annotations"] }> = "fields" in t ? t.fields : t.values;
+      const old = previous?.ir.types[name];
+      const oldMembers: Array<{ name: string; ordinal: number }> = !previous ? [] : old && "fields" in old ? old.fields : old?.kind === "enum" ? old.values : [];
+      const written = (m: (typeof members)[number]) => m.annotations.some((a) => a.name === "ordinal");
+      let high = Math.max(0, previous?.highestOrdinals?.[name] ?? 0, ...oldMembers.map((m) => m.ordinal), ...members.filter(written).map((m) => m.ordinal));
+      const numbered = members.map((m) => {
+        if (!previous || written(m)) return m;
+        const kept = oldMembers.find((o) => o.name === m.name)?.ordinal;
+        return { ...m, ordinal: kept ?? ++high };
+      });
+      highest[name] = Math.max(high, ...numbered.map((m) => m.ordinal));
+      return [name, "fields" in t ? { ...t, fields: numbered } : { ...t, values: numbered }];
+    }),
+  );
+  return { ir: { ...ir, types: types as RayfoldSchemaIR["types"] }, highest };
 }
 
 function usage(): never {
@@ -220,7 +251,10 @@ async function main(argv: string[]): Promise<number> {
       if (!path) usage();
       const loaded = loadFile(path);
       const out = flag(rest, "--out") ?? "rayfold.lock.json";
-      const lock: Lock = { rayfold: "0.1", hash: loaded.hash, ir: loaded.ir, lockedAt: new Date().toISOString() };
+      // re-locking keeps the ordinals already published: numbering by position would shift every member after an insertion
+      const previous = existsSync(out) ? (JSON.parse(readFileSync(resolve(out), "utf8")) as Lock) : undefined;
+      const { ir, highest } = carryOrdinals(loaded.ir, previous);
+      const lock: Lock = { rayfold: "0.1", hash: loaded.hash, ir, lockedAt: new Date().toISOString(), highestOrdinals: highest };
       writeFileSync(out, JSON.stringify(lock, null, 2) + "\n");
       console.log(`wrote ${out} (hash ${loaded.hash.slice(0, 12)})`);
       return 0;

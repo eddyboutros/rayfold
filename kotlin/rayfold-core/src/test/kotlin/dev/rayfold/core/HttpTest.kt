@@ -391,7 +391,7 @@ class HttpTest {
         }
     }
 
-    private fun serveExchange(exchange: Exchange) = RayfoldHttp(RayfoldServer(ir, FixtureResolvers.build(fixture, store))).serve(exchange, "/rayfold") { JsonNull }
+    private fun serveExchange(exchange: HttpCall) = RayfoldHttp(RayfoldServer(ir, FixtureResolvers.build(fixture, store))).serve(exchange, "/rayfold") { JsonNull }
 
     @Test
     fun `a failure after the response started is logged as an error with its exception, and the exchange is aborted`() {
@@ -703,6 +703,145 @@ class HttpTest {
         val http = RayfoldHttp(RayfoldServer(schema, Resolvers(queries = mapOf("note" to { _, _ -> obj("""{"id":"n1"}""") })))).start(0)
         started.add(http)
         return http.address.port
+    }
+
+    // ------------------------------------------------------------------ review fixes: routing, caching, Origin, manifest
+
+    @Test
+    fun `only the mount and paths under it are Rayfold's - a path that merely begins with its text is not`() {
+        val a = b64("""{"id":"b1"}""")
+        problem(get("/rayfoldbook?a=$a"), 404, "not_found", "No route for GET /rayfoldbook")
+        problem(get("/rayfold-admin/manifest"), 404, "not_found", "No route for GET /rayfold-admin/manifest")
+        assertNull(store.calls["Query.book"])
+        // guard: a path under the mount is still answered
+        assertEquals(200, get("/rayfold/book?a=$a").statusCode())
+        assertEquals(1, store.calls["Query.book"])
+    }
+
+    @Test
+    fun `a GET answers 304 to a weak ETag, to a list naming the current one, and to a star`() {
+        val path = "/rayfold/book?a=${b64("""{"id":"b1"}""")}"
+        val etag = header(get(path), "ETag") ?: error("no ETag")
+        for (h in listOf("W/$etag", "\"sha256-${"0".repeat(64)}\", $etag", "W/\"x\", W/$etag", "*")) {
+            val res = get(path, "If-None-Match", h)
+            assertEquals(304, res.statusCode(), h)
+            assertEquals("", res.body())
+        }
+        // guard: a list that does not name it, and the opaque tag without its quotes, get the full answer
+        for (h in listOf("\"sha256-${"0".repeat(64)}\", W/\"other\"", etag.removeSurrounding("\""))) {
+            val res = get(path, "If-None-Match", h)
+            assertEquals(200, res.statusCode(), h)
+            assertEquals(etag, header(res, "ETag"))
+        }
+    }
+
+    /** A GET through [RayfoldHttp.serve] with the query string as a servlet container hands it over, undecoded. */
+    private class Get(override val rawQuery: String) : HttpCall {
+        var status = 0
+        val written = ByteArrayOutputStream()
+        override val method = "GET"
+        override val path = "/rayfold/book"
+        override val body: InputStream = InputStream.nullInputStream()
+        override val secure = false
+        override val localAddress: InetAddress? = null
+        override fun header(name: String): String? = if (name.equals("host", ignoreCase = true)) "localhost" else null
+        override fun setHeader(name: String, value: String) = Unit
+        override fun respond(status: Int, length: Long): OutputStream {
+            this.status = status
+            return written
+        }
+        override fun abort() = Unit
+    }
+
+    @Test
+    fun `a malformed percent-escape in a GET query string is a 400, not a 500`() {
+        // the JDK's own server refuses such a request line itself; a servlet container hands the query string over as it came
+        val bad = Get("s=%zz")
+        serveExchange(bad)
+        assertEquals(400, bad.status, bad.written.toString())
+        assertEquals(JsonPrimitive("Query string is not valid percent-encoding"), obj(bad.written.toString())["detail"])
+        assertNull(store.calls["Query.book"])
+        // guard: a well-formed escape still decodes
+        val ok = Get("a=${b64("""{"id":"b1"}""")}&s=${url("{ id }")}")
+        serveExchange(ok)
+        assertEquals(200, ok.status, ok.written.toString())
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), obj(ok.written.toString().trim())["data"])
+    }
+
+    @Test
+    fun `a body type that is not accepted gets a 415 saying which ones are`() {
+        val res = send("POST", "/rayfold", """{"ops":[]}""", "Content-Type", "text/plain")
+        problem(res, 415, "invalid_argument", "Content-Type text/plain is not accepted; send application/rayfold+json")
+        assertEquals("application/rayfold+json, application/json, application/rayfold", header(res, "Accept-Post"))
+        // guard: an accepted type is answered without it
+        val ok = post("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"}}]}""")
+        assertEquals(200, ok.statusCode())
+        assertNull(header(ok, "Accept-Post"))
+    }
+
+    @Test
+    fun `the manifest lists http once the schema's routes are served, not because the schema declares them`() {
+        val schema = SchemaText.load("""entity T { id: ID } query t(id: ID): T? @http(method: GET, path: "/t/{id}")""").ir
+        val server = RayfoldServer(schema, Resolvers(queries = mapOf("t" to { _, _ -> JsonNull })))
+        port = RayfoldHttp(server).start(0).also { started.add(it) }.address.port
+        fun extensions() = (obj(get("/rayfold/manifest").body())["extensions"] as JsonArray).map { (it as JsonPrimitive).content }
+        assertEquals(listOf("live", "rb"), extensions())
+        RayfoldBindings(server)
+        assertEquals(listOf("live", "rb", "http"), extensions())
+        // guard: a schema without @http serves no routes even with bindings mounted, so it claims none
+        val bare = RayfoldServer(SchemaText.load("entity T { id: ID } query t(id: ID): T?").ir, Resolvers(queries = mapOf("t" to { _, _ -> JsonNull })))
+        RayfoldBindings(bare)
+        port = RayfoldHttp(bare).start(0).also { started.add(it) }.address.port
+        assertEquals(listOf("live", "rb"), extensions())
+    }
+
+    /** A command POSTed through [RayfoldHttp.serve] as another server hands it over: [secure] is that server's word on TLS. */
+    private class Write(private val headers: Map<String, String>, override val secure: Boolean) : HttpCall {
+        var status = 0
+        override val method = "POST"
+        override val path = "/rayfold"
+        override val rawQuery: String? = null
+        override val body: InputStream = """{"ops":[{"id":1,"op":"buy","args":{"bookId":"b1","qty":1},"key":"kkkkkkkkkkkkkkkk"}]}""".byteInputStream()
+        override val localAddress: InetAddress? = null
+        override fun header(name: String): String? =
+            (mapOf("host" to "api.example", "content-type" to "application/rayfold+json") + headers.mapKeys { it.key.lowercase() })[name.lowercase()]
+        override fun setHeader(name: String, value: String) = Unit
+        override fun respond(status: Int, length: Long): OutputStream {
+            this.status = status
+            return ByteArrayOutputStream()
+        }
+        override fun abort() = Unit
+    }
+
+    /** The status one write gets, and whether its command ran, on a fresh store. */
+    private fun write(options: HttpOptions, secure: Boolean, vararg headers: Pair<String, String>): Pair<Int, Boolean> {
+        val s = FixtureStore(Fixtures.data(fixture))
+        val call = Write(headers.toMap(), secure)
+        RayfoldHttp(RayfoldServer(ir, FixtureResolvers.build(fixture, s)), options).serve(call, "/rayfold") { obj("""{"id":"u1","role":"customer"}""") }
+        return call.status to (s.calls["Command.buy"] == 1)
+    }
+
+    @Test
+    fun `behind a TLS-terminating proxy the https page of the host writes, where serve used to refuse it`() {
+        assertEquals(200 to true, write(HttpOptions(), secure = false, "Origin" to "https://api.example"))
+        // guard: another host is still refused, and nothing runs
+        assertEquals(403 to false, write(HttpOptions(), secure = false, "Origin" to "https://evil.example"))
+    }
+
+    @Test
+    fun `a page served over http is not the origin of a server reached over https, by the transport's word or the proxy's`() {
+        assertEquals(403 to false, write(HttpOptions(), secure = true, "Origin" to "http://api.example"))
+        assertEquals(403 to false, write(HttpOptions(), secure = false, "Origin" to "http://api.example", "X-Forwarded-Proto" to "https"))
+        // guard: the https page of the host writes over TLS, and a forged X-Forwarded-Proto can only make the rule stricter
+        assertEquals(200 to true, write(HttpOptions(), secure = true, "Origin" to "https://api.example"))
+        assertEquals(403 to false, write(HttpOptions(), secure = true, "Origin" to "http://api.example", "X-Forwarded-Proto" to "http"))
+    }
+
+    @Test
+    fun `a star in allowedOrigins lets any origin write, as it does everywhere else`() {
+        assertEquals(200 to true, write(HttpOptions(allowedOrigins = setOf("*")), secure = true, "Origin" to "https://evil.example"))
+        // guard: without it the same origin is refused
+        assertEquals(403 to false, write(HttpOptions(allowedOrigins = setOf("https://app.example")), secure = true, "Origin" to "https://evil.example"))
     }
 
     @Test

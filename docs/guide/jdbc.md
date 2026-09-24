@@ -37,7 +37,8 @@ val server = RayfoldServer(ir, resolvers)
 ```
 
 The store asks for a connection per query and closes it again, which is what a pool expects: hand it
-`dataSource::getConnection`, not one long-lived connection.
+`dataSource::getConnection`, not one long-lived connection. A `date` column comes back as `YYYY-MM-DD` text and a
+timestamp as RFC 3339 in UTC, whatever the JVM's time zone.
 
 ## Idempotency records for more than one server
 

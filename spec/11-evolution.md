@@ -35,7 +35,10 @@ three and fails on breaking ones; `--strict` also fails on warnings.
 Runtimes record (op, field path, client, last seen). `rayfold check <schema.rayfold> --unused <usage.json> --since 30d` lists members with no traffic, from an exported usage snapshot.
 
 ## Lockfile
-`rayfold.lock.json` records ordinals and the schema hash. `rayfold lock` updates it; committing it and running
+`rayfold.lock.json` records ordinals and the schema hash. `rayfold lock` updates it, carrying the recorded ordinals
+forward by name: a member the lock already holds keeps its ordinal wherever it now sits, a member with `@ordinal(n)`
+takes `n`, and a new member takes the next ordinal above the highest its type has ever used (the lock keeps that
+highest per type in `highestOrdinals`), so an ordinal is never reused. Committing it and running
 `rayfold check --against rayfold.lock.json` in CI is what turns these rules into a build failure rather than a
 convention.
 

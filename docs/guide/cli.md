@@ -39,7 +39,7 @@ OK: examples/bookstore-ts/bookstore.rayfold is valid (hash 7fb44054edd7)
 `--against` compares with an earlier schema, or with a lockfile, and refuses a breaking change. With no `--against`
 it uses `rayfold.lock.json` when one is beside you, so in a repository that has a lockfile the bare command already
 checks compatibility. `--strict` additionally fails on warnings — changes that are compatible but worth a look, such
-as a new field appearing before an existing one. See
+as a policy added to an operation that had none. See
 [Changing a schema safely](../learn/evolution.md) for what counts as breaking.
 
 Ordinals are compared by name. Against a lockfile, every field and enum value keeps the ordinal the lock recorded for
@@ -50,7 +50,8 @@ is a warning (`ordinal-shifted`, fatal under `--strict`), and a changed `@ordina
 to make a mid-type insertion pass cleanly.
 
 `--resolvers` loads a module and reports fields the schema declares that nothing resolves, and resolvers with no
-field to attach to. It answers "are the resolvers complete?" before a request does.
+field to attach to. It answers "are the resolvers complete?" before a request does. It runs beside the compatibility
+check, not instead of it, and either one failing fails the command.
 
 `--unused` reads an exported usage snapshot and lists members no client asked for inside `--since` (default `30d`),
 so a removal is a fact rather than a guess. Servers record usage per client from the `Rayfold-Client` header.
@@ -62,8 +63,13 @@ rayfold lock <schema.rayfold> [--out rayfold.lock.json]
 ```
 
 Writes `rayfold.lock.json`: the field ordinals the binary format depends on, and the schema hash. Commit it. With it
-in the repository, `check` compares against it by default, so a reordered field or a reused ordinal fails in CI
-rather than corrupting a decode in production.
+in the repository, `check` compares against it by default, so a changed or reused ordinal fails in CI rather than
+corrupting a decode in production.
+
+Run again over an existing lock, it keeps the ordinals that lock recorded: every field and enum value keeps its
+number by name, wherever it now sits in the type, and a new one gets the next number above any the type has ever
+used, so the number of a removed member is never handed out again. A written `@ordinal(n)` is recorded as written.
+The lock keeps each type's highest number so far in `highestOrdinals`.
 
 ## hash
 

@@ -85,6 +85,45 @@ describe("a store that fails after the command committed", () => {
     expect(terminal).toHaveLength(1);
     expect(terminal[0]).toMatchObject({ id: 1, ok: { id: "t1", seat: 1 } });
   });
+
+  /** The same schema plus a query a later op can pass the command's result to. */
+  const committing = (store: MemoryIdempotencyStore, counters?: MemoryCounters) => {
+    let runs = 0;
+    const server = createRayfoldServer({
+      schema: `${SCHEMA} query seat(n: Int): Ticket`,
+      resolvers: {
+        Command: { book: async ({ seat }: { seat: number }) => (runs++, { id: `t${seat}`, seat }) },
+        Query: { seat: ({ n }: { n: number }) => ({ id: `s${n}`, seat: n }) },
+      },
+      idempotency: store,
+      ...(counters ? { counters } : {}),
+    });
+    const batch = { ops: [{ id: 1, op: "book", args: { seat: 1 }, key: KEY }, { id: 2, op: "seat", args: { n: { $ref: "1.seat" } } }] };
+    return { server, batch, runs: () => runs };
+  };
+
+  it("counts the op as the success its client was told, and keeps the key held so a retry cannot run the command again", async () => {
+    const counters = new MemoryCounters();
+    const store = new UnwritableStore();
+    const { server, batch, runs } = committing(store, counters);
+    const frames = await server.collect(batch, { viewer });
+    // the op after it reads its result, rather than failing on a dependency the client saw succeed
+    expect(frames.find((f) => (f as { id?: number }).id === 2)).toEqual({ id: 2, data: { $type: "Ticket", id: "s1", seat: 1 }, meta: { cost: 1 }, fin: true });
+    expect(runs()).toBe(1);
+    // released, the key would be free for a retry to run the command a second time; held, a retry waits out the lease
+    expect((await store.claim(hashJson(viewer), KEY, 1_000)).state).toBe("inflight");
+    expect(counters.snapshot()).toContainEqual({ name: "rayfold.idempotency", labels: { record: "failed" }, count: 1 });
+  });
+
+  it("guard: with a store that records, the key holds the answer and a retry replays it", async () => {
+    const store = new MemoryIdempotencyStore();
+    const { server, batch, runs } = committing(store);
+    await server.collect(batch, { viewer });
+    expect((await store.claim(hashJson(viewer), KEY, 1_000)).state).toBe("done");
+    const retry = await server.collect(batch, { viewer });
+    expect(retry[0]).toMatchObject({ id: 1, ok: { id: "t1", seat: 1 }, meta: { replay: true } });
+    expect(runs()).toBe(1);
+  });
 });
 const replayed = (frames: Frame[]): boolean => Boolean((frames[0] as { meta?: { replay?: boolean } }).meta?.replay);
 

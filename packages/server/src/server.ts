@@ -310,7 +310,8 @@ export class RayfoldServer {
       trustedShapes: !!o.trustedShapes,
     };
     const extensions = ["live", "rb"];
-    if (Object.values(this.ir.ops).some((o) => o.annotations.some((a) => a.name === "http"))) extensions.push("http");
+    // served, not merely declared: `@http` in the schema says nothing about whether createBindingHandler is mounted
+    if (this.mounted.has("http")) extensions.push("http");
     if (this.mounted.has("mcp")) extensions.push("mcp");
     if (this.mounted.has("upload")) extensions.push("upload");
     return { rayfold: "0.1", schemaHash: this.hash, extensions, limits };

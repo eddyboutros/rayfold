@@ -31,7 +31,9 @@ npx @rayfold/cli import graphql schema.graphql --out api.rayfold
 
 `Query` fields become queries, `Mutation` fields commands, `Subscription` fields streams, and the type system carries
 across almost whole. The change that touches every line is nullability, which is the other way round: `String!`
-becomes `String`, and `String` becomes `String?`.
+becomes `String`, and `String` becomes `String?`. A type with a non-null `id` becomes an entity, its `id` an `ID`
+even where the SDL said `String!` or `Int!`. A type named like one Rayfold defines, such as `Page`, is renamed, and
+descriptions and `@deprecated` reasons come across.
 
 A mutation says nothing about what it can fail with or what it emits, and a Relay connection is not a `Page`, so the
 importer leaves a note rather than inventing either. The notes go to stderr; the schema goes to stdout.
@@ -47,7 +49,8 @@ npx @rayfold/cli gen graphql api.rayfold --out schema.graphql
 Types, fields, arguments, defaults, descriptions and deprecations carry over, and nullability flips back. Queries become
 `Query` fields, commands `Mutation` fields and streams `Subscription` fields. `Page<Book>` becomes a `BookPage` type,
 since GraphQL has no generics. Every `Query`, `Mutation` and `Subscription` field is nullable, because each Rayfold
-operation succeeds or fails on its own.
+operation succeeds or fails on its own. A type with no fields, which GraphQL does not allow, gets a placeholder field
+`_`.
 
 What GraphQL has no way to say is listed on stderr rather than dropped without a word: the errors an operation throws,
 the idempotency key and patches of a command, live queries, cacheable reads, operations that use each other's results,

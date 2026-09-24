@@ -44,7 +44,9 @@ The handler answers `false` for a path that is not its own, so it chains in fron
 is `/mcp`; pass `path` to change it. A server serving MCP says `mcp` in its manifest, so a client can tell.
 
 `POST` only, `application/json` only, and the `Origin` of the request is checked — without that, any web page open in
-a browser could drive a local or intranet server. Configure `allowedOrigins` as you do for the main endpoint.
+a browser could drive a local or intranet server. Configure `allowedOrigins` as you do for the main endpoint. A body
+over `maxBody` (`maxBodyBytes` on the JVM, 1 MiB by default) is refused with `413`, and a notification gets `202` with
+no body.
 
 ## What an agent sees
 
@@ -60,6 +62,9 @@ Argument schemas come from the operation's own arguments, so an agent gets the t
 descriptions you wrote once. A tool's `outputSchema` describes what a call returns, which is the default view: it
 declares every field, but requires none, since the view may leave some out. Resource arguments in the URI are
 converted by their declared types, so `?limit=5` passes the number 5 to an `Int` argument.
+
+A command called as a tool, unless it is `@idempotent(false)`, gets an idempotency key made from the operation and
+its arguments: the same call sent again is answered with the first one's result rather than run twice.
 
 The `.simulate` variant appears **only** where the command declares `@simulate`. The runtime cannot make a resolver
 honour a dry run that never checks `ctx.simulate`, so it does not offer a dry run it cannot keep — an agent that

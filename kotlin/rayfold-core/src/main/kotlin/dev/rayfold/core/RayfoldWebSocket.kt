@@ -14,6 +14,9 @@ import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -158,11 +161,14 @@ class RayfoldWebSocket(
             }
             // browsers send the page's Origin on the handshake and attach cookies: without this check any site could open a socket as the user
             val refused = Guard.hostProblem(headers["host"], socket.localAddress, options.allowedHosts)
-                ?: Guard.originProblem(headers["origin"], headers["host"], options.allowedOrigins)
+                ?: Guard.originProblem(headers["origin"], headers["host"], options.allowedOrigins, Guard.reachedOverTls(false, headers["x-forwarded-proto"]))
             if (refused != null) { respond(403, "Forbidden", refused); return null }
             val key = headers["sec-websocket-key"] ?: run { respond(400, "Bad Request", "Missing Sec-WebSocket-Key"); return null }
             val request = WsRequest(method, target, headers, socket.localSocketAddress as InetSocketAddress, socket.remoteSocketAddress as InetSocketAddress)
-            val v = try { viewer(request) } catch (e: Exception) { respond(500, "Internal Server Error", "Internal error"); return null }
+            // a hook that refuses (a bad token) is answered as HTTP answers it: 401 for unauthenticated, not 500
+            val v = try { viewer(request) } catch (e: RayfoldException) {
+                respond(HTTP_STATUS[e.code] ?: 500, "Refused", HTTP_STATUS[e.code]?.let { e.message } ?: "Internal error"); return null
+            } catch (e: Exception) { respond(500, "Internal Server Error", "Internal error"); return null }
             val accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((key + GUID).toByteArray(Charsets.ISO_8859_1)))
             val offered = headers["sec-websocket-protocol"]?.split(",")?.map { it.trim() } ?: emptyList()
             val proto = if (SUBPROTOCOL in offered) "Sec-WebSocket-Protocol: $SUBPROTOCOL\r\n" else ""
@@ -223,9 +229,17 @@ class RayfoldWebSocket(
                     val message = fragments.toByteArray()
                     fragments.reset()
                     assembled = 0
-                    if (binary) session.onBinary(message) else session.onText(message.toString(Charsets.UTF_8))
+                    if (binary) session.onBinary(message) else session.onText(utf8(message) ?: return closeWith(1007, "invalid UTF-8", input))
                 }
             }
+        }
+
+        /** RFC 6455 section 8.1: a text message that is not UTF-8 fails the connection, rather than being read with replacements. */
+        private fun utf8(bytes: ByteArray): String? = try {
+            Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes)).toString()
+        } catch (e: CharacterCodingException) {
+            null
         }
 
         private fun number(input: InputStream, bytes: Int): Long? {

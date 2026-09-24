@@ -144,6 +144,37 @@ class BindingsTest {
     }
 
     @Test
+    fun `GET answers 304 to the weak ETag a compressing proxy hands out, to a list naming it, and to a star`() {
+        val bs = Bookstore()
+        val base = serve(bs.server)
+        val etag = get("$base/books/b1").h("etag") ?: error("no ETag")
+        for (header in listOf("W/$etag", "\"sha256-${"0".repeat(64)}\", $etag", "*")) {
+            val res = get("$base/books/b1", mapOf("If-None-Match" to header))
+            assertEquals(304, res.statusCode(), header)
+            assertEquals("", res.body())
+        }
+        // guard: a weak list that names only other tags gets the full answer
+        val other = get("$base/books/b1", mapOf("If-None-Match" to "W/\"sha256-${"0".repeat(64)}\", W/\"x\""))
+        assertEquals(200, other.statusCode())
+        assertEquals(BOOK_B1, other.json())
+    }
+
+    @Test
+    fun `a Long path parameter past 2^53 reaches the resolver digit for digit`() {
+        val seen = mutableListOf<JsonElement?>()
+        val ir = SchemaText.load("""entity L { id: ID n: Long } query byN(n: Long): L? @http(method: GET, path: "/longs/{n}")""").ir
+        val server = RayfoldServer(ir, Resolvers(queries = mapOf("byN" to { args, _ -> seen.add(args["n"]); buildJsonObject { put("id", "l"); put("n", args["n"] ?: JsonNull) } })))
+        val base = serve(server)
+        val res = get("$base/longs/9007199254740993")
+        assertEquals(200, res.statusCode(), res.body())
+        assertEquals("9007199254740993", ((res.json() as JsonObject)["n"] as JsonPrimitive).content)
+        assertEquals(listOf("9007199254740993"), seen.map { (it as JsonPrimitive).content })
+        // guard: past the Long range it is refused before the resolver runs
+        assertEquals(400, get("$base/longs/9223372036854775808").statusCode())
+        assertEquals(1, seen.size)
+    }
+
+    @Test
     fun `GET with a foreign or outdated If-None-Match gets a full 200 with the current ETag`() {
         val bs = Bookstore()
         val base = serve(bs.server)

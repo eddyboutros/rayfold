@@ -325,6 +325,23 @@ class WebSocketTest {
         assertEquals(obj("""{"total":0}"""), signedIn.next()["data"])
     }
 
+    @Test
+    fun `a viewer hook that refuses a token is answered 401 at the handshake, as HTTP answers it, and one that crashes 500 (guard)`() {
+        val bs = Bookstore()
+        val l = RayfoldWebSocket(bs.server) {
+            when (it.header("Authorization")) {
+                "Bearer bad" -> throw RayfoldException(Code.UNAUTHENTICATED, "Invalid or expired token")
+                else -> error("the identity provider is down")
+            }
+        }.start(0).also { listeners.add(it) }
+        val refused = upgrade(l.port, mapOf("Authorization" to "Bearer bad"))
+        assertEquals(401, refused.status)
+        assertEquals("Invalid or expired token", refused.rest())
+        val crashed = upgrade(l.port, mapOf("Authorization" to "Bearer other"))
+        assertEquals(500, crashed.status)
+        assertEquals("Internal error", crashed.rest(), "an unexpected exception says nothing about the server")
+    }
+
     // ------------------------------------------------------------------ spec 12
 
     @Test
@@ -423,6 +440,30 @@ class WebSocketTest {
         at.frame(0x1, exact.copyOfRange(0, 500), fin = false)
         at.frame(0x0, exact.copyOfRange(500, 1024))
         assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), at.next()["data"])
+    }
+
+    @Test
+    fun `a text message that is not UTF-8 closes with 1007 and runs nothing, even when its bytes read as a batch`() {
+        val bs = Bookstore()
+        val l = listen(bs)
+        // a lone continuation byte inside a string: decoding with replacement would have run this batch
+        val bytes = """{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","key":"@"}]}""".toByteArray()
+        bytes[bytes.indexOf('@'.code.toByte())] = 0x80.toByte()
+        val bad = upgrade(l.port)
+        bad.frame(0x1, bytes)
+        val close = bad.read()
+        assertEquals(1007, closeCode(close))
+        assertEquals("invalid UTF-8", close?.second?.copyOfRange(2, close.second.size)?.toString(Charsets.UTF_8))
+        assertNull(bad.read(), "then the server closes")
+        assertNull(bs.store.calls["Query.book"])
+        // guard: a character split across two fragments is valid once the message is whole, and is answered
+        val message = """{"ops":[{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ id }","key":"é"}]}""".toByteArray()
+        val cut = message.indexOf(0xc3.toByte()) + 1
+        val ok = upgrade(l.port)
+        ok.frame(0x1, message.copyOfRange(0, cut), fin = false)
+        ok.frame(0x0, message.copyOfRange(cut, message.size))
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), ok.next()["data"])
+        assertEquals(1, bs.store.calls["Query.book"])
     }
 
     @Test

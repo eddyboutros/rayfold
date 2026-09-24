@@ -251,12 +251,16 @@ function validateEnvelope(rt: BatchRuntime, envelope: RequestEnvelope): WireErro
   if (envelope.ops.length === 0) return bad("ops must not be empty");
   if (envelope.ops.length > rt.options.maxOps) return { code: "resource_exhausted", message: `At most ${rt.options.maxOps} ops per batch` };
   if (envelope.meta?.deadline !== undefined && !validDeadline(envelope.meta.deadline)) return bad(`meta.deadline: expected whole milliseconds from 0 to ${MAX_DEADLINE_MS}`);
-  const ids = new Set<number>();
+  // every op by id before any reference is checked: a reference names an op by its id, not by where it stands in the
+  // list, so an earlier id that comes later in the array is still an op it may point to
+  const byId = new Map<number, RequestOp>();
   for (const [i, req] of envelope.ops.entries()) {
     if (!req || typeof req !== "object") return bad(`ops[${i}]: expected an object`);
     if (!Number.isInteger(req.id) || req.id <= 0) return bad(`ops[${i}].id: expected a positive integer`);
-    if (ids.has(req.id)) return bad(`ops[${i}].id: duplicate id ${req.id}`);
-    ids.add(req.id);
+    if (byId.has(req.id)) return bad(`ops[${i}].id: duplicate id ${req.id}`);
+    byId.set(req.id, req);
+  }
+  for (const [i, req] of envelope.ops.entries()) {
     if (typeof req.op !== "string" || !rt.ir.ops[req.op]) return bad(`ops[${i}].op: unknown operation ${JSON.stringify(req.op)}`);
     if (req.args !== undefined && (req.args === null || typeof req.args !== "object" || Array.isArray(req.args))) return bad(`ops[${i}].args: expected an object`);
     if (req.shape !== undefined && typeof req.shape !== "string") return bad(`ops[${i}].shape: expected a string`);
@@ -266,7 +270,9 @@ function validateEnvelope(rt: BatchRuntime, envelope: RequestEnvelope): WireErro
     for (const d of collectRefs(req.args ?? {})) {
       if (!Number.isInteger(d) || d <= 0) return bad(`ops[${i}].args: bad $ref`);
       if (d >= req.id) return bad(`ops[${i}].args: $ref to op ${d} must point to an earlier op`);
-      if (!ids.has(d)) return bad(`ops[${i}].args: $ref to unknown op ${d}`);
+      if (!byId.has(d)) return bad(`ops[${i}].args: $ref to unknown op ${d}`);
+      // a live op never finishes, so a reference to it would wait for as long as the subscription stays open (spec 03 §2)
+      if (byId.get(d)!.live === true) return bad(`ops[${i}].args: $ref to op ${d}, which is live and never finishes`);
     }
     if (req.live && rt.ir.ops[req.op]!.kind !== "query") return bad(`ops[${i}].live: only queries can be live`);
     // `@live(false)` opts a query out: a search whose every keystroke would re-run it, say. Declared in the schema
@@ -493,7 +499,15 @@ async function runOp(
             (patch) => rt.changes.publish(changeFromPatch(patch)),
           );
           results.set(id, result);
-          if (token !== undefined) await rt.idempotency.put(viewerScope, key as string, { argsHash, frame: structuredClone(full), compactFrame: structuredClone(compact), at: rt.options.now() }, token);
+          if (token !== undefined) {
+            try {
+              await rt.idempotency.put(viewerScope, key as string, { argsHash, frame: structuredClone(full), compactFrame: structuredClone(compact), at: rt.options.now() }, token);
+            } catch {
+              // The command committed and its `ok` is sent, so the op succeeded. The key is not released either: a
+              // retry waits out the lease rather than running the command a second time straight away.
+              rt.counters?.add("rayfold.idempotency", 1, { record: "failed" });
+            }
+          }
         } catch (e) {
           // A command that failed before it changed anything leaves no record, so a retry runs it. One that failed
           // after its effect records the failure, so a retry is answered with it instead of running the command again.

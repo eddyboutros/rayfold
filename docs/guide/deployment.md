@@ -62,10 +62,11 @@ Two routes beside the endpoint, for whatever probes your platform runs:
 | `GET /rayfold/health` | `200 {"status":"ok"}` while the process runs | the liveness probe: restart the process when it stops answering |
 | `GET /rayfold/ready` | `200 {"ready":true,"reasons":[]}`, or `503` with every reason it should not take traffic | the readiness probe: route traffic only while it answers 200 |
 
-A server is not ready while it is still connecting to the relay (`relay: not listening yet`), when that failed
-(`relay:` followed by whatever stopped it), once it is shutting down (`shutting down`), and when a check you configured
-fails or does not answer within `readinessTimeoutMs` (default 2 seconds): `db: connection refused`, `db: no answer
-within 2000 ms`. The body says which, so a pod that never becomes ready explains itself.
+A server is not ready while it is still connecting to the relay (`relay: not listening yet`), when that failed or the
+connection dropped later (`relay:` followed by whatever stopped it), once it is shutting down (`shutting down`), and
+when a check you configured fails or does not answer within `readinessTimeoutMs` (default 2 seconds): `db: connection
+refused`, `db: no answer within 2000 ms`. On the JVM a check that blocks its thread, such as a JDBC `isValid`, is
+still answered at the limit. The body says which, so a pod that never becomes ready explains itself.
 
 ```yaml
 livenessProbe:
@@ -127,7 +128,7 @@ createRayfoldServer({ schema, resolvers, counters });   // then GET {base}/stats
 | `rayfold.refused` | `reason`: host, origin, media, method, route | These are answered **before** a batch is built, so no tracing hook ever sees one |
 | `rayfold.ops` | `kind`, `outcome` | Counted without any instrumentation configured |
 | `rayfold.errors` | `op`, `code`, `type` | Every declared error is `domain` on the wire and carries its name in `type`, so a code alone puts a schema's whole error vocabulary in one bucket |
-| `rayfold.idempotency` | `claim`: owned, done, inflight | A replayed command is otherwise invisible |
+| `rayfold.idempotency` | `claim`: owned, done, inflight; `record`: failed | A replayed command is otherwise invisible. `record: failed` counts committed commands the store could not record: their keys stay held until the lease runs out |
 | `rayfold.live.opened` / `.reran` / `.closed` | `op` | One live query is a single op for its whole life; `opened` minus `closed` is a leak you can see |
 
 Both runtimes emit the same names. A full sink keeps counting what it already knows and reports `countersDropped`

@@ -13,8 +13,9 @@ A **capability token** is the narrow alternative. It names a viewer, the operati
 expires. It is signed, so verifying one needs no storage and no round trip, and it can be narrowed further and passed
 on.
 
-This is the extension `cap`, defined in [spec 06 §6](../../spec/06-auth.md). It is TypeScript-only today; there is no
-JVM equivalent.
+This is the extension `cap`, defined in [spec 06 §6](../../spec/06-auth.md). Minting and verifying tokens is
+TypeScript-only today. The JVM runtime enforces the operation list all the same: a viewer your hook builds with
+`caps.ops`, from a token a TypeScript service signed for instance, can call only the operations it names.
 
 ## Mint one
 
@@ -86,7 +87,9 @@ one. Removal is the one narrowing a server can verify without knowing what a fac
 ## Keeping them safe
 
 - **Keep lives short.** Minutes, not days. A token cannot be revoked — expiry is the whole revocation story — so its
-  life is the blast radius. `jti` names a token if you want to keep your own deny list.
+  life is the blast radius. `jti` names a token if you want to keep your own deny list. A WebSocket opened with a
+  token does not outlive it: at `exp` its open operations end with `unauthenticated` and the socket closes with code
+  `1008`.
 - **Give the smallest `ops` that works.** The list is what the runtime enforces; everything else is your schema's
   policies doing their usual job.
 - **Treat it as a credential in transit.** It is not secret from its holder, but anyone who has it is its holder.

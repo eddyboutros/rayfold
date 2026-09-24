@@ -66,11 +66,13 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
       init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
       init.duplex = "half"; // the body is still arriving when the request is made
     } else if (body && body.length) init.body = new Uint8Array(body);
-    // A fixed origin: the Host header travels as a header, which is what the handler reads the host from.
+    // A fixed origin: the Host header travels as a header, which is what the handler reads the host from. The scheme
+    // is the socket's, which the Origin rule compares.
     let request: Request;
     try {
       const target = req.url ?? "/";
-      request = new Request(target.startsWith("/") ? `http://localhost${target}` : new URL(target, "http://localhost").href, init as RequestInit);
+      const own = (req.socket as { encrypted?: boolean }).encrypted === true ? "https://localhost" : "http://localhost";
+      request = new Request(target.startsWith("/") ? `${own}${target}` : new URL(target, own).href, init as RequestInit);
     } catch {
       return refuse(res, 400, "invalid_argument", "Request target is not a valid path");
     }

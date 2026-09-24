@@ -481,11 +481,16 @@ class BatchRunner(
             try { StrictJson.check(meta, "meta") } catch (e: RayfoldException) { return e }
             (meta as? JsonObject)?.get("deadline")?.let { d -> if (d !is JsonNull && deadlineOf(d) == null) return bad("meta.deadline: $DEADLINE_RULE") }
         }
-        val ids = mutableSetOf<Int>()
+        // every op by id before any reference is checked: a reference names an op by its id, not by where it stands in
+        // the list, so an earlier id that comes later in the array is still an op it may point to
+        val byId = mutableMapOf<Int, RequestOp>()
         env.ops.forEachIndexed { i, req ->
-            val raw = rawOps[i] as? JsonObject ?: return bad("ops[$i]: expected an object")
+            if (rawOps[i] !is JsonObject) return bad("ops[$i]: expected an object")
             if (req.id <= 0) return bad("ops[$i].id: expected a positive integer")
-            if (!ids.add(req.id)) return bad("ops[$i].id: duplicate id ${req.id}")
+            if (byId.put(req.id, req) != null) return bad("ops[$i].id: duplicate id ${req.id}")
+        }
+        env.ops.forEachIndexed { i, req ->
+            val raw = rawOps[i] as JsonObject
             val op = ir.ops[req.op]
             if (req.op.isEmpty() || op == null) return bad("ops[$i].op: unknown operation \"${req.op}\"")
             raw["args"]?.let { if (it !is JsonObject) return bad("ops[$i].args: expected an object") }
@@ -496,7 +501,9 @@ class BatchRunner(
             for (d in Args.collectRefs(req.args)) {
                 if (d <= 0) return bad("ops[$i].args: bad \$ref")
                 if (d >= req.id) return bad("ops[$i].args: \$ref to op $d must point to an earlier op")
-                if (d !in ids) return bad("ops[$i].args: \$ref to unknown op $d")
+                val target = byId[d] ?: return bad("ops[$i].args: \$ref to unknown op $d")
+                // a live op never finishes, so a reference to it would wait for as long as the subscription stays open (spec 03 section 2)
+                if (target.live) return bad("ops[$i].args: \$ref to op $d, which is live and never finishes")
             }
             if (req.live && op.kind != "query") return bad("ops[$i].live: only queries can be live")
             // `@live(false)` opts a query out; declared in the schema and enforced nowhere, so it opened live anyway
@@ -532,6 +539,10 @@ class BatchRunner(
                 val rawArgs = Args.resolveRefs(p.req.args, { opId, path -> Args.getPath(results[opId], path) }, "ops.$id.args") as JsonObject
                 Args.coerce(ir, p.op.args, rawArgs, "${p.op.name}()", p.op.returns)
             }
+            // A capability may call only the operations it names (spec 06 section 6). A viewer hook can hand this runtime
+            // a viewer carrying one (a token verified by a TypeScript server sharing the secret, or by the app itself),
+            // so the rule is kept here too; any other viewer is left to the schema's own policies.
+            if (!capabilityAllows(viewer, p.op.name)) throw RayfoldException(Code.PERMISSION_DENIED, "This capability does not allow ${p.op.name}()")
             usage?.record(UsageEvent(p.op.name, "", opts.client), System.currentTimeMillis())
             // the op's own job, so a resolver (and Values.isCancelled() for Java) can see a deadline or a caller
             // hanging up. Left at its default here, isCancelled answered false for every resolver ever written.
@@ -658,15 +669,17 @@ class BatchRunner(
                 val changed: (List<JsonObject>) -> Unit = { changes.publish(Live.changeFromPatch(it)) }
                 executor.runCommand(p.op, args, p.shape, p.explicit, p.cost, ctx, sink::emit, policyChecked = true, changed = changed) { committed = true }
             }
-            claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, frame, compactFrame), it.token) }
+            // The command committed and its `ok` is sent. A store that then fails to record it must not turn the op
+            // into a failure (a second terminal frame), nor release the key for a retry to run the command again.
             settled = true
+            claim?.let { record(it, IdempotencyRecord(it.hash, frame, compactFrame)) }
             results[p.req.id] = result
             return null
         } catch (e: CommittedCommandException) {
             // the side effect happened, so this failure is the answer a retry must get, not a second run
             val ef = Frames.error(p.req.id, e.error)
-            claim?.let { idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, ef, ef), it.token) }
             settled = true
+            claim?.let { record(it, IdempotencyRecord(it.hash, ef, ef)) }
             sink.send(ef)
             return Ended(e.error.toWire(), e.thrown)
         } catch (e: CancellationException) {
@@ -675,12 +688,25 @@ class BatchRunner(
             // sends the op's canceled or deadline_exceeded frame itself; this one is only ever replayed.
             if (committed) claim?.let {
                 val ef = Frames.error(p.req.id, RayfoldException(Code.CANCELED, "${p.op.name}() committed, then the op ended before its result was delivered"))
-                idempotency.put(it.scope, it.key, IdempotencyRecord(it.hash, ef, ef), it.token)
                 settled = true
+                record(it, IdempotencyRecord(it.hash, ef, ef))
             }
             throw e
         } finally {
             if (!settled) claim?.let { idempotency.release(it.scope, it.key, it.token) }
+        }
+    }
+
+    /**
+     * Records a committed command's answer. A store that fails here leaves the claim held rather than released, so a
+     * retry waits out the lease instead of running the command a second time; the failure is logged and counted.
+     */
+    private fun record(claim: Claimed, record: IdempotencyRecord) {
+        try {
+            idempotency.put(claim.scope, claim.key, record, claim.token)
+        } catch (e: Exception) {
+            counters?.add("rayfold.idempotency", mapOf("record" to "failed"))
+            log.log(System.Logger.Level.ERROR, "Could not record the answer of a committed command; its key stays held until the lease runs out", e)
         }
     }
 
@@ -790,6 +816,14 @@ class BatchRunner(
     private fun sha256(s: String): String = MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
     private companion object {
+        val log: System.Logger = System.getLogger(BatchRunner::class.java.name)
+
+        /** Whether a viewer holding a capability (`caps.ops`) may call [op]; a viewer without one is not a capability holder. */
+        fun capabilityAllows(viewer: JsonElement, op: String): Boolean {
+            val ops = ((viewer as? JsonObject)?.get("caps") as? JsonObject)?.get("ops") as? JsonArray ?: return true
+            return ops.any { it is JsonPrimitive && it.isString && it.content == op }
+        }
+
         const val DEADLINE_RULE = "expected an integer number of milliseconds from 0 to ${RequestOp.MAX_DEADLINE_MS}"
 
         /** Backoff between claims while another run holds the key: 50, 100, 200, 400, then 500 ms. */

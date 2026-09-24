@@ -48,6 +48,9 @@ Resolvers are suspend functions over kotlinx.serialization JSON. A command retur
 `CommandResult(result, patch, emit)` for extra cache patches and events. Throw
 `RayfoldException.domain("OutOfStock", data, message)` for an error the operation declares with `throws`.
 
+`allowedOrigins` also answers a browser's CORS preflight from those origins with `204` and the
+`Access-Control-Allow-*` headers, and adds them to the responses that follow; other origins get none.
+
 If you prefer plain Java types and functional interfaces, use `rayfold-java` ([Java guide](java-spring.md)).
 
 `HttpOptions(explorer = true)` serves the [explorer](explorer.md) at `/rayfold/explorer`, the same page
@@ -80,7 +83,9 @@ class KtorCall(private val call: ApplicationCall) : HttpCall {
 ```
 
 Two members earn their place. `secure` and `localAddress` feed the Origin and loopback-Host checks, so a host that
-cannot answer them truthfully weakens those rules rather than breaking them. And `respond(status, length)` takes
+cannot answer them truthfully weakens those rules rather than breaking them. Over TLS, or behind a proxy that sends
+`X-Forwarded-Proto: https`, a page served over plain http is not the server's own origin; a `secure` that answers
+false behind a TLS-terminating proxy still lets the server's own https pages write. And `respond(status, length)` takes
 `-1` for `length` when the body streams, which is how a live query or a stream stays open instead of being buffered.
 
 The repository has two worked implementations to copy: `JdkCall` for the JDK HTTP server, and `ServletCall` in the

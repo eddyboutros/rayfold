@@ -118,7 +118,7 @@ interface HttpCall {
     fun header(name: String): String?
     val body: InputStream
 
-    /** True over HTTPS: the Origin check compares the scheme too. */
+    /** True over HTTPS. A page served over plain http is then not this server's origin (see [Guard.originProblem]). */
     val secure: Boolean
 
     /** The address the request arrived on, for the loopback Host rule; null when the server does not say. */
@@ -131,6 +131,14 @@ interface HttpCall {
     /** Ends the exchange early: the response has started, so it can no longer carry an error. */
     fun abort()
 }
+
+/** The HTTP status each error code answers with (spec 05 section 3), for every entry point that answers as HTTP. */
+internal val HTTP_STATUS = mapOf(
+    Code.INVALID_ARGUMENT to 400, Code.FAILED_PRECONDITION to 400, Code.OUT_OF_RANGE to 400, Code.UNAUTHENTICATED to 401,
+    Code.PERMISSION_DENIED to 403, Code.NOT_FOUND to 404, Code.ALREADY_EXISTS to 409, Code.ABORTED to 409,
+    Code.RESOURCE_EXHAUSTED to 429, Code.CANCELED to 499, Code.UNIMPLEMENTED to 501, Code.UNAVAILABLE to 503,
+    Code.DEADLINE_EXCEEDED to 504, Code.DOMAIN to 422,
+)
 
 /**
  * HTTP transport (spec/04 section 4): POST/QUERY batches as NDJSON frames or RB (spec 09), GET /rayfold/{op}?a=&s=&v=
@@ -149,13 +157,6 @@ class RayfoldHttp(
     // the manifest says which extensions are served beside the endpoint
     init { if (options.uploads != null) server.mounted.add("upload") }
 
-    private val STATUS = mapOf(
-        Code.INVALID_ARGUMENT to 400, Code.FAILED_PRECONDITION to 400, Code.OUT_OF_RANGE to 400, Code.UNAUTHENTICATED to 401,
-        Code.PERMISSION_DENIED to 403, Code.NOT_FOUND to 404, Code.ALREADY_EXISTS to 409, Code.ABORTED to 409,
-        Code.RESOURCE_EXHAUSTED to 429, Code.CANCELED to 499, Code.UNIMPLEMENTED to 501, Code.UNAVAILABLE to 503,
-        Code.DEADLINE_EXCEEDED to 504, Code.DOMAIN to 422,
-    )
-
     private val redacted by lazy { server.ir.withoutPolicies() }
 
     /** One page per mount path: the page carries the endpoint it talks to. */
@@ -163,11 +164,8 @@ class RayfoldHttp(
 
     private val rb by lazy { RbCodec(server.ir) }
 
-    /** `http` is listed when the schema binds REST-style routes. */
-    private val routes = server.ir.ops.values.any { o -> o.annotations.any { it.name == "http" } }
-
-    /** Read on every request: an MCP endpoint may be mounted after this one. */
-    private fun extensions() = listOf("live", "rb") + (if (routes) listOf("http") else emptyList()) +
+    /** Read on every request: bindings or an MCP endpoint may be mounted after this one. */
+    private fun extensions() = listOf("live", "rb") + (if ("http" in server.mounted) listOf("http") else emptyList()) +
         (if ("mcp" in server.mounted) listOf("mcp") else emptyList()) + (if ("upload" in server.mounted) listOf("upload") else emptyList())
 
     /** An HTTP-level refusal whose status or problem type has no protocol code of its own (415, 413). */
@@ -272,7 +270,8 @@ class RayfoldHttp(
                 }
                 safe = call.method == "QUERY" || call.header("Rayfold-Safe") == "true"
             } else if (call.method == "GET") {
-                val q = (call.rawQuery ?: "").split("&").filter { it.isNotEmpty() }.associate { kv -> kv.substringBefore("=") to java.net.URLDecoder.decode(kv.substringAfter("=", ""), "UTF-8") }
+                // a malformed escape (`%zz`) is the client's error, a 400, not the decoder's exception as a 500
+                val q = RayfoldBindings.parseQuery(call.rawQuery).toMap()
                 envelope = buildJsonObject {
                     put("ops", JsonArray(listOf(buildJsonObject {
                         put("id", 1); put("op", sub.removePrefix("/"))
@@ -300,13 +299,13 @@ class RayfoldHttp(
                 val frames = runBlocking { server.collect(batch, opts) }
                 val etag = if (safe) CacheHeaders.apply(server.ir, env.ops, frames, v, call::setHeader) else null
                 if (etag != null && cors) call.setHeader("Vary", "${CacheHeaders.VARY}, Origin")
-                if (etag != null && call.header("If-None-Match") == etag) return call.respond(304, 0).close()
+                if (etag != null && CacheHeaders.etagMatches(call.header("If-None-Match"), etag)) return call.respond(304, 0).close()
                 // spec 07 section 3: a batch that is not marked safe is never stored. Set before the single-frame
                 // return below, which used to leave without a cache header at all.
                 if (!safe) call.setHeader("Cache-Control", "no-store")
                 if (wantsSingle && frames.size == 1) {
                     val f = frames[0]
-                    val status = (f["error"] as? JsonObject)?.let { e -> STATUS[Code.entries.first { it.wire == (e["code"] as JsonPrimitive).content }] ?: 500 } ?: 200
+                    val status = (f["error"] as? JsonObject)?.let { e -> HTTP_STATUS[Code.entries.first { it.wire == (e["code"] as JsonPrimitive).content }] ?: 500 } ?: 200
                     return json(call, status, f)
                 }
                 return if (wantsRb) bytes(call, RbCodec.CONTENT_TYPE, rb.encodeFrames(frames)) else bytes(call, FRAMES_TYPE, ndjson(frames))
@@ -411,13 +410,12 @@ class RayfoldHttp(
     private fun checkOrigin(call: HttpCall) {
         val m = call.method
         if (m == "GET" || m == "QUERY" || (m == "POST" && call.header("Rayfold-Safe") == "true")) return
-        val origin = call.header("Origin") ?: return
-        val scheme = if (call.secure) "https" else "http"
-        val host = call.header("Host")
-        if (host != null && origin.equals("$scheme://$host", ignoreCase = true)) return
-        if (origin in options.allowedOrigins) return
+        // the rule every other entry point applies, `*` included; the scheme counts only where the request is known to
+        // have arrived over TLS, so a server behind a TLS-terminating proxy still takes its own pages' writes
+        val secure = Guard.reachedOverTls(call.secure, call.header("X-Forwarded-Proto"))
+        val refused = Guard.originProblem(call.header("Origin"), call.header("Host"), options.allowedOrigins, secure) ?: return
         server.counters?.add("rayfold.refused", mapOf("reason" to "origin"))
-        throw RayfoldException(Code.PERMISSION_DENIED, "Origin $origin is not allowed")
+        throw RayfoldException(Code.PERMISSION_DENIED, refused)
     }
 
     /** Only JSON or RB bodies: text/plain and form posts are what a cross-site page can send without a preflight. Returns the media type. */
@@ -426,6 +424,7 @@ class RayfoldHttp(
         val media = raw?.substringBefore(';')?.trim()?.lowercase()
         if (media == null || media !in BODY_TYPES) {
             server.counters?.add("rayfold.refused", mapOf("reason" to "media"))
+            call.setHeader("Accept-Post", BODY_TYPES.joinToString(", "))
             throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${raw ?: "(none)"} is not accepted; send application/rayfold+json", "unsupported_media_type")
         }
         return media
@@ -545,7 +544,7 @@ class RayfoldHttp(
         val p = e as? HttpProblem ?: when (e) {
             // a request can only overflow the stack by nesting, which is the client's error, not the server's
             is StackOverflowError -> HttpProblem(400, Code.INVALID_ARGUMENT, "Request is nested too deeply")
-            else -> RayfoldException.of(e).let { re -> HttpProblem(STATUS[re.code] ?: 500, re.code, re.message) }
+            else -> RayfoldException.of(e).let { re -> HttpProblem(HTTP_STATUS[re.code] ?: 500, re.code, re.message) }
         }
         val body = buildJsonObject {
             put("type", Guard.PROBLEM_TYPE_BASE + p.type); put("title", p.type.replace('_', ' '))

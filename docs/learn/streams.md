@@ -87,8 +87,9 @@ for await (const ev of client.stream<{ bookId: string; stock: number }>(
 }
 ```
 
-Stop by aborting the signal; the loop returns rather than throwing, because a cancellation you asked for is not an
-error. Anything else the server sends is thrown as a `RayfoldClientError` with its code.
+Stop by aborting the signal, or by breaking out of the loop, which closes the stream on the server too; aborting makes
+the loop return rather than throw, because a cancellation you asked for is not an error. Anything else the server
+sends is thrown as a `RayfoldClientError` with its code, and a stream cut off before `fin` fails as `unavailable`.
 
 In Kotlin it is a `Flow`:
 

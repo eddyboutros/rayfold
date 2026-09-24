@@ -14,7 +14,11 @@ import { createRayfoldServer } from "./server.ts";
 const ROOT = new URL("../../../conformance/vectors/manifest/document.json", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const contract = JSON.parse(readFileSync(ROOT, "utf8")) as {
   members: Array<{ name: string; type: string; required: boolean; keys?: string[] }>;
+  rules: Array<{ name: string; check: string }>;
 };
+
+/** The rules this runner checks, each in its own test below; a rule added to the contract must be added here too. */
+const CHECKED = ["hex64", "matchesHeader", "redacted"];
 
 const SCHEMA = `
   entity Book { id: ID title: String costPrice: Decimal? @allow(read: viewer.role == "admin") }
@@ -32,6 +36,25 @@ describe("conformance vectors: manifest", () => {
   it("serves exactly the members the contract names", async () => {
     const { body } = await served();
     expect(Object.keys(body).sort()).toEqual(contract.members.map((m) => m.name).sort());
+  });
+
+  it("each member is the kind of thing the contract names", async () => {
+    const { body } = await served();
+    const kinds: Record<string, (v: unknown) => boolean> = {
+      string: (v) => typeof v === "string",
+      hex64: (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v),
+      "string[]": (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
+      object: (v) => v !== null && typeof v === "object" && !Array.isArray(v),
+    };
+    for (const m of contract.members) {
+      const check = kinds[m.type];
+      expect(check, `${m.name}: no check for type ${m.type}`).toBeDefined();
+      expect(check!(body[m.name]), `${m.name} should be ${m.type}: was ${JSON.stringify(body[m.name])}`).toBe(true);
+    }
+  });
+
+  it("every rule the contract lists is checked here", () => {
+    expect(contract.rules.map((r) => r.check).sort()).toEqual([...CHECKED].sort());
   });
 
   it("schemaHash is bare lower-case hex, not a prefixed shape id", async () => {

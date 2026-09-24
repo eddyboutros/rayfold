@@ -10,7 +10,7 @@
  */
 import { annotation, canonicalJson, fieldsOf, fromBase64url, referencesViewer, sha256Hex, type Expr, type RayfoldSchemaIR, type TypeRef } from "@rayfold/schema";
 import { RbCodec, RB_CONTENT_TYPE } from "@rayfold/rb";
-import { hostProblemOf, mediaTypeOf, originProblemOf, PROBLEM_TYPE_BASE, type OriginOptions } from "./guard.ts";
+import { hostProblemOf, mediaTypeOf, originProblemOf, PROBLEM_TYPE_BASE, reachedOverTls, type OriginOptions } from "./guard.ts";
 import { openApiFor } from "./openapi.ts";
 import { HTTP_STATUS, RayfoldError, type ErrorCode, type Frame, type RequestEnvelope, type WireError } from "./protocol.ts";
 import type { RayfoldServer } from "./server.ts";
@@ -259,6 +259,18 @@ export function cacheHeadersFor(server: RayfoldServer, envelope: RequestEnvelope
   };
 }
 
+/**
+ * Whether an `If-None-Match` header names this ETag, by the weak comparison RFC 9110 §13.1.2 prescribes for it: a
+ * list of entity tags, `W/` ignored on both sides, or `*`. A proxy that compresses a response (nginx with gzip) makes
+ * its ETag weak, and the client sends it back that way.
+ */
+export function etagMatches(ifNoneMatch: string | null | undefined, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  if (ifNoneMatch.trim() === "*") return true;
+  const opaque = etag.replace(/^W\//, "");
+  return (ifNoneMatch.match(/(?:W\/)?"[^"]*"/g) ?? []).some((tag) => tag.replace(/^W\//, "") === opaque);
+}
+
 function parseB64(v: string, name: string): unknown {
   try {
     return JSON.parse(fromBase64url(v));
@@ -310,9 +322,9 @@ const UPLOAD_TYPE = "application/octet-stream";
  * page cannot send without asking, a size bound enforced while reading rather than after, and an identified sender
  * unless the server says otherwise.
  */
-async function upload(request: Request, opts: FetchOptions, host: string | null): Promise<Response> {
+async function upload(request: Request, opts: FetchOptions, host: string | null, secure: boolean): Promise<Response> {
   const { store, maxBytes = 25 * 1024 * 1024, viewerRequired = true } = opts.uploads!;
-  const badOrigin = originProblemOf(request.headers.get("origin"), host, opts);
+  const badOrigin = originProblemOf(request.headers.get("origin"), host, opts, secure);
   if (badOrigin) return problemResponse(403, "permission_denied", badOrigin);
   const ct = mediaTypeOf(request.headers.get("content-type"));
   if (ct !== UPLOAD_TYPE) {
@@ -361,7 +373,8 @@ async function upload(request: Request, opts: FetchOptions, host: string | null)
  * under Hono, or a Next.js route handler.
  */
 export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {}): (request: Request) => Promise<Response> {
-  const base = opts.path ?? "/rayfold";
+  // a mount at "/" is a mount at the root, not at the empty path under it
+  const base = (opts.path ?? "/rayfold").replace(/\/+$/, "");
   const maxBody = opts.maxBody ?? 1_048_576;
   if (opts.uploads) server.mounted.add("upload"); // the manifest says which extensions are served beside the endpoint
 
@@ -380,6 +393,7 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
     count("rayfold.requests", { method: request.method });
 
     const host = request.headers.get("host") ?? url.host;
+    const secure = reachedOverTls(url.protocol === "https:", request.headers.get("x-forwarded-proto"));
     const badHost = hostProblemOf(host, opts.loopback ?? false, opts);
     if (badHost) {
       count("rayfold.refused", { reason: "host" });
@@ -397,13 +411,14 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
       common["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe, Rayfold-Upload-Name, Rayfold-Upload-Type";
       common["Access-Control-Allow-Methods"] = "GET, POST, QUERY, OPTIONS";
     }
-    if (!url.pathname.startsWith(base)) {
+    // the mount itself or a path under it: `/rayfoldxbook` is not `/rayfold/xbook`, and `/rayfold-admin` is not ours
+    const sub = url.pathname === base ? "" : url.pathname.startsWith(`${base}/`) ? url.pathname.slice(base.length) : null;
+    if (sub === null) {
       count("rayfold.refused", { reason: "route" });
       return withCommon(problemResponse(404, "not_found", `No route for ${url.pathname}`));
     }
     if (request.method === "OPTIONS") return withCommon(new Response(null, { status: 204, headers: { Allow: "GET, POST, QUERY, OPTIONS" } }));
 
-    const sub = url.pathname.slice(base.length);
     try {
       if (sub === "/manifest" && request.method === "GET") {
         if (opts.manifest === "off") throw new RayfoldError("not_found", `No route for ${url.pathname}`);
@@ -432,7 +447,7 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
         if (request.method !== "POST") {
           throw Object.assign(new RayfoldError("unimplemented", `Method ${request.method} not allowed on ${base}/uploads`), { headers: { Allow: "POST" } });
         }
-        return withCommon(await upload(request, opts, host));
+        return withCommon(await upload(request, opts, host, secure));
       }
 
       let envelope: RequestEnvelope;
@@ -453,7 +468,7 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
           // cannot send them without a CORS preflight and cannot read the answer, so only data-changing requests need the
           // Origin check. This keeps reads working behind proxies that rewrite Host.
           const declaredSafe = request.method === "QUERY" || request.headers.get("rayfold-safe") === "true";
-          const badOrigin = declaredSafe ? null : originProblemOf(request.headers.get("origin"), host, opts);
+          const badOrigin = declaredSafe ? null : originProblemOf(request.headers.get("origin"), host, opts, secure);
           if (badOrigin) {
             count("rayfold.refused", { reason: "origin" });
             return withCommon(problemResponse(403, "permission_denied", badOrigin));
@@ -533,7 +548,7 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
           if (common["Vary"]) headers["Vary"] += `, ${common["Vary"]}`;
         } else headers["Cache-Control"] = "no-store";
         const noneMatch = request.headers.get("if-none-match");
-        if (safe && noneMatch && noneMatch === headers["ETag"]) {
+        if (safe && etagMatches(noneMatch, headers["ETag"]!)) {
           // no body to sniff; the cached response keeps its own headers
           const { "X-Content-Type-Options": _sniff, ...rest } = headers;
           return new Response(null, { status: 304, headers: rest });

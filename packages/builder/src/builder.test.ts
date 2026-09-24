@@ -133,6 +133,45 @@ describe("code-first builder", () => {
     expect(schemaHash(built.ir)).toBe(text.hash);
   });
 
+  it("declares implements and field arguments, with the IR and hash of the same schema written as text", () => {
+    const built = defineSchema({
+      types: [
+        object("Node", { id: t.id() }).annotate("interface"),
+        object("Priced", { price: t.decimal() }).annotate("interface"),
+        entity("Author", {
+          id: t.id(),
+          name: t.string(),
+          books: t.page("Book").args({ page: t.pageArgs().withDefault({ first: 10 }), format: t.string().nullable().doc("Only this format.") }),
+          initials: t.string().args({ dots: t.boolean().withDefault(true) }),
+        }).implements("Node"),
+        entity("Book", { id: t.id(), title: t.string(), price: t.decimal() }).implements("Node", "Priced"),
+      ],
+      ops: { author: query({ id: t.id() }, t.ref("Author").nullable()), nodes: query({}, t.ref("Node").list()) },
+    });
+    const text = loadSchema(`
+      object Node @interface { id: ID }
+      object Priced @interface { price: Decimal }
+      entity Author implements Node {
+        id: ID
+        name: String
+        books(page: PageArgs = { first: 10 }, """Only this format.""" format: String?): Page<Book>
+        initials(dots: Boolean = true): String
+      }
+      entity Book implements Node Priced { id: ID title: String price: Decimal }
+      query author(id: ID): Author?
+      query nodes: [Node]
+    `);
+    expect(built.ir).toEqual(text.ir);
+    expect(schemaHash(built.ir)).toBe(text.hash);
+    expect(built.ir.types["Book"]).toMatchObject({ implements: ["Node", "Priced"] });
+    expect((built.ir.types["Author"] as { fields: Array<{ name: string; args: unknown[] }> }).fields.find((f) => f.name === "books")?.args).toHaveLength(2);
+  });
+
+  it("guard - a paged field without arguments still fails page-args, and only an entity implements an interface", () => {
+    expect(() => defineSchema({ types: [entity("A", { id: t.id(), books: t.page("B") }), entity("B", { id: t.id() })], ops: {} })).toThrow(/page-args|must accept page: PageArgs/);
+    expect(() => object("O", { id: t.id() }).implements("Node")).toThrow("O: only an entity implements an interface, and this is kind object");
+  });
+
   it("a name no schema file could hold is refused at definition time (guard - a name is accepted)", () => {
     expect(() => defineSchema({ types: [entity("A", { id: t.id(), "first-name": t.string() })], ops: {} })).toThrow(/A\.first-name: Field name "first-name" is not a name/);
     expect(() => defineSchema({ types: [entity("A", { id: t.id(), first_name: t.string() })], ops: {} })).not.toThrow();

@@ -432,6 +432,57 @@ class IdempotencyTest {
         assertTrue(counters.snapshot().none { it.name == "rayfold.errors" })
     }
 
+    /** A store that claims but cannot record: what a server sees when its database goes away after a command committed. */
+    private class Unwritable(private val inner: IdempotencyStore = MemoryIdempotencyStore()) : IdempotencyStore by inner {
+        override fun put(scope: String, key: String, record: IdempotencyRecord, token: String) = throw IllegalStateException("the database went away")
+    }
+
+    /** The command, then a query reading its result through a `$ref`. */
+    private fun recording(store: IdempotencyStore, runs: AtomicInteger, counters: MemoryCounters? = null): Pair<RayfoldServer, JsonObject> {
+        val ir = SchemaText.load("entity Book { id: ID stock: Int } command restock(bookId: ID, qty: Int): Book query stockOf(n: Int): Book").ir
+        val server = RayfoldServer(
+            ir,
+            Resolvers(
+                commands = mapOf("restock" to numbered(runs)),
+                queries = mapOf("stockOf" to { a, _ -> obj("""{"id":"s","stock":${a["n"]}}""") }),
+            ),
+            idempotency = store,
+            counters = counters,
+        )
+        val env = buildJsonObject {
+            put("ops", JsonArray(listOf(restockOp("{ id stock }"), obj("""{"id":2,"op":"stockOf","args":{"n":{"${'$'}ref":"1.stock"}},"shape":"{ stock }"}"""))))
+        }
+        return server to env
+    }
+
+    @Test
+    fun `a store that fails to record a committed command - one terminal frame, a success for the op, and the key kept held`() = runTest(timeout = 5.seconds) {
+        val store = Unwritable()
+        val runs = AtomicInteger()
+        val counters = MemoryCounters()
+        val (server, env) = recording(store, runs, counters)
+        val frames = server.collect(env, u1)
+        val book = """{"${'$'}type":"Book","id":"b1","stock":1}"""
+        assertEquals(listOf(obj("""{"id":1,"ok":$book,"patch":[{"set":"Book:b1","value":$book}],"meta":{"cost":1},"fin":true}""")), frames.filter { it.opId() == 1 })
+        // the op after it reads its result, rather than failing on a dependency its client saw succeed
+        assertEquals(listOf(obj("""{"id":2,"data":{"${'$'}type":"Book","stock":1},"meta":{"cost":1},"fin":true}""")), frames.filter { it.opId() == 2 })
+        assertEquals(1, runs.get())
+        // released, the key would be free for a retry to run the command again; held, a retry waits out the lease
+        assertTrue(store.claim(scopeOf(u1), key, 1_000) is IdempotencyClaim.InFlight)
+        assertEquals(1L, countOf(counters, "rayfold.idempotency", mapOf("record" to "failed")))
+    }
+
+    @Test
+    fun `guard - with a store that records, the key holds the answer and a retry replays it`() = runTest(timeout = 5.seconds) {
+        val store = MemoryIdempotencyStore()
+        val runs = AtomicInteger()
+        val (server, env) = recording(store, runs)
+        server.collect(env, u1)
+        assertTrue(store.claim(scopeOf(u1), key, 1_000) is IdempotencyClaim.Done)
+        assertTrue(server.collect(env, u1).first { it.opId() == 1 }.replayed())
+        assertEquals(1, runs.get())
+    }
+
     private fun countOf(c: MemoryCounters, name: String, labels: Map<String, String>): Long =
         c.snapshot().find { it.name == name && labels.all { (k, v) -> it.labels[k] == v } }?.count ?: 0L
 }

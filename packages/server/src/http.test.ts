@@ -6,6 +6,8 @@ import { RbCodec } from "@rayfold/rb";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { listen, publicIR, type HttpOptions } from "./http.ts";
 import { createMcpHandler } from "./mcp.ts";
+import { createBindingHandler } from "./bindings.ts";
+import { originProblem } from "./guard.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 
@@ -242,7 +244,7 @@ describe("discovery", () => {
   it("GET /rayfold/manifest exposes the schema and limits, but not how access is decided", async () => {
     const res = await fetch(`${base}/rayfold/manifest`);
     const m = await res.json();
-    expect(m).toMatchObject({ rayfold: "0.1", schemaHash: bs.server.hash, limits: { budget: 1000, maxOps: 50, maxDepth: 8, maxFields: 500, trustedShapes: false }, extensions: ["live", "rb", "http"] });
+    expect(m).toMatchObject({ rayfold: "0.1", schemaHash: bs.server.hash, limits: { budget: 1000, maxOps: 50, maxDepth: 8, maxFields: 500, trustedShapes: false }, extensions: ["live", "rb"] });
     expect(m.schema).toEqual(JSON.parse(JSON.stringify(publicIR(bs.server.ir))));
     const costPrice = m.schema.types.Book.fields.find((f: { name: string }) => f.name === "costPrice");
     expect(costPrice.annotations).toContainEqual(expect.objectContaining({ name: "allow", args: {} })); // guarded, but the rule stays private
@@ -259,12 +261,24 @@ describe("discovery", () => {
 
   it("the manifest lists mcp once an MCP endpoint is mounted beside the server, and not before", async () => {
     const extensions = async () => ((await (await fetch(`${base}/rayfold/manifest`)).json()) as { extensions: string[] }).extensions;
-    expect(await extensions()).toEqual(["live", "rb", "http"]);
+    expect(await extensions()).toEqual(["live", "rb"]);
     createMcpHandler(bs.server);
-    expect(await extensions()).toEqual(["live", "rb", "http", "mcp"]);
+    expect(await extensions()).toEqual(["live", "rb", "mcp"]);
     // guard: another server over the same schema serves no MCP endpoint, so its manifest does not claim one
     const other = createBookstore();
-    expect(other.server.manifest().extensions).toEqual(["live", "rb", "http"]);
+    expect(other.server.manifest().extensions).toEqual(["live", "rb"]);
+  });
+
+  it("the manifest lists http once the schema's @http routes are served, not because the schema declares them", async () => {
+    const extensions = async () => ((await (await fetch(`${base}/rayfold/manifest`)).json()) as { extensions: string[] }).extensions;
+    expect(bs.server.ir.ops["book"]!.annotations.some((a) => a.name === "http")).toBe(true);
+    expect(await extensions()).toEqual(["live", "rb"]);
+    createBindingHandler(bs.server);
+    expect(await extensions()).toEqual(["live", "rb", "http"]);
+    // guard: a schema without @http serves no routes even with the handler mounted, so it claims none
+    const bare = createRayfoldServer({ schema: "entity T { id: ID } query t(id: ID): T?", resolvers: { Query: { t: () => null } } });
+    createBindingHandler(bare);
+    expect(bare.manifest().extensions).toEqual(["live", "rb"]);
   });
 });
 
@@ -317,6 +331,32 @@ describe("the Origin rule covers data-changing requests only", () => {
     expect(JSON.parse(refused.body)).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/permission_denied", title: "permission denied", status: 403, detail: `Origin ${other} is not allowed`, code: "permission_denied" });
     expect(bs.store.books.get("b1")!.stock).toBe(6);
     expect(bs.store.calls["Command.restock"]).toBe(1);
+  });
+
+  it("a page served over http is not the origin of a server a proxy says is reached over https, and its write runs nothing", async () => {
+    const host = new URL(base).host;
+    const body = JSON.stringify({ ops: [restock] });
+    const refused = await rawPost(`${base}/rayfold`, { "content-type": "application/rayfold+json", origin: `http://${host}`, "x-forwarded-proto": "https", authorization: "Bearer admin" }, body);
+    expect(refused.status).toBe(403);
+    expect(JSON.parse(refused.body)).toMatchObject({ code: "permission_denied", detail: `Origin http://${host} is not allowed` });
+    expect(bs.store.calls["Command.restock"]).toBeUndefined();
+    // guard: the https page of the same host is this server's own, behind the proxy that terminates TLS for it
+    const own = await rawPost(`${base}/rayfold`, { "content-type": "application/rayfold+json", origin: `https://${host}`, "x-forwarded-proto": "https", authorization: "Bearer admin" }, body);
+    expect(own.status).toBe(200);
+    expect(bs.store.calls["Command.restock"]).toBe(1);
+    // guard: a proxy that says nothing leaves the server seeing plain http, and the https page of the host still writes
+    const silent = await rawPost(`${base}/rayfold`, { "content-type": "application/rayfold+json", origin: `https://${host}`, authorization: "Bearer admin" }, JSON.stringify({ ops: [{ ...restock, key: "fedcba9876543210" }] }));
+    expect(silent.status).toBe(200);
+    expect(bs.store.calls["Command.restock"]).toBe(2);
+  });
+
+  it("the Node request's own TLS socket counts as https for every transport that reads it, WebSocket and MCP included", () => {
+    const req = (encrypted: boolean, origin: string) => ({ headers: { host: "api.example", origin }, socket: { encrypted } });
+    expect(originProblem(req(true, "http://api.example"))).toBe("Origin http://api.example is not allowed");
+    expect(originProblem(req(true, "https://api.example"))).toBeNull();
+    // guard: over plain http both schemes of the host pass, as a TLS-terminating proxy needs
+    expect(originProblem(req(false, "http://api.example"))).toBeNull();
+    expect(originProblem(req(false, "https://api.example"))).toBeNull();
   });
 });
 

@@ -171,6 +171,8 @@ class JdbcStoreTest {
         entity UnsharedTicket @deny(read: status == "closed") { id: ID deskId: ID status: String? }
         entity UnownedTicket @allow(read: ownerId == null) { id: ID deskId: ID ownerId: ID? }
         entity NotClosedTicket @allow(read: !(status == "closed")) { id: ID deskId: ID status: String? }
+        entity NotOpenAsListTicket @allow(read: !(["open"] in status)) { id: ID deskId: ID status: String? }
+        entity NotOpenTicket @allow(read: !(status in ["open"])) { id: ID deskId: ID status: String? }
         entity Desk { id: ID mine: [MyUrgentTicket] }
         query openTickets: [OpenTicket]
         query regionalTickets(page: PageArgs = { first: 20 }): Page<RegionalTicket>
@@ -179,6 +181,8 @@ class JdbcStoreTest {
         query unsharedTickets: [UnsharedTicket]
         query unownedTickets: [UnownedTicket]
         query notClosedTickets: [NotClosedTicket]
+        query notOpenAsListTickets: [NotOpenAsListTicket]
+        query notOpenTickets: [NotOpenTicket]
         query desk(id: ID): Desk?
     """.trimIndent()
 
@@ -226,7 +230,7 @@ class JdbcStoreTest {
             { recorded(DriverManager.getConnection(url)) },
             JdbcStoreOptions(
                 ticketIr,
-                listOf("OpenTicket", "RegionalTicket", "MyUrgentTicket", "VisibleTicket", "RankedTicket", "UnsharedTicket", "UnownedTicket", "NotClosedTicket").associateWith { JdbcTable("tickets") },
+                listOf("OpenTicket", "RegionalTicket", "MyUrgentTicket", "VisibleTicket", "RankedTicket", "UnsharedTicket", "UnownedTicket", "NotClosedTicket", "NotOpenAsListTicket", "NotOpenTicket").associateWith { JdbcTable("tickets") },
                 Naming.SNAKE,
             ),
         )
@@ -253,6 +257,8 @@ class JdbcStoreTest {
                     "unsharedTickets" to list("unsharedTickets", "UnsharedTicket"),
                     "unownedTickets" to list("unownedTickets", "UnownedTicket"),
                     "notClosedTickets" to list("notClosedTickets", "NotClosedTicket"),
+                    "notOpenAsListTickets" to list("notOpenAsListTickets", "NotOpenAsListTicket"),
+                    "notOpenTickets" to list("notOpenTickets", "NotOpenTicket"),
                     "desk" to { args, _ -> buildJsonObject { put("id", args["id"] ?: error("no id")) } },
                 ),
                 fields = mapOf("Desk" to mapOf("mine" to mine)),
@@ -423,6 +429,27 @@ class JdbcStoreTest {
         assertEquals("""SELECT * FROM "tickets" WHERE (NOT COALESCE(("status" = ?), FALSE)) ORDER BY "id"""", sent.single().sql)
         assertEquals(listOf<Any?>("closed"), sent.single().params.toList())
         assertEquals(3, sent.single().rows.get(), "the closed tickets were never read")
+    }
+
+    @Test
+    fun `a field on the right of in is left to the runtime, so its negation keeps every row the policy allows`() {
+        // `["open"] in status` asks whether a list is an element of a string: false for every row, so all are allowed
+        val frames = collect(ticketServer(), """{"id":1,"op":"notOpenAsListTickets","shape":"{ id status }"}""", agent)
+        assertEquals(
+            frame("""{"id":1,"data":[{"${'$'}type":"NotOpenAsListTicket","id":"t1","status":"open"},{"${'$'}type":"NotOpenAsListTicket","id":"t2","status":"closed"},{"${'$'}type":"NotOpenAsListTicket","id":"t3","status":null},{"${'$'}type":"NotOpenAsListTicket","id":"t4","status":"open"},{"${'$'}type":"NotOpenAsListTicket","id":"t5","status":"closed"}],"meta":{"cost":1},"fin":true}"""),
+            frames,
+        )
+        assertEquals("""SELECT * FROM "tickets" ORDER BY "id"""", sent.single().sql)
+        assertEquals(5, sent.single().rows.get())
+
+        // guard: with the field on the left, `in` is still pushed down exactly, and the open tickets are never read
+        val guard = collect(ticketServer(), """{"id":1,"op":"notOpenTickets","shape":"{ id status }"}""", agent)
+        assertEquals(
+            frame("""{"id":1,"data":[{"${'$'}type":"NotOpenTicket","id":"t2","status":"closed"},{"${'$'}type":"NotOpenTicket","id":"t3","status":null},{"${'$'}type":"NotOpenTicket","id":"t5","status":"closed"}],"meta":{"cost":1},"fin":true}"""),
+            guard,
+        )
+        assertEquals("""SELECT * FROM "tickets" WHERE (NOT COALESCE(("status" IN (?)), FALSE)) ORDER BY "id"""", sent.single().sql)
+        assertEquals(3, sent.single().rows.get())
     }
 
     /** A store over the tickets whose connections record into [sent], for calls made straight to the store. */

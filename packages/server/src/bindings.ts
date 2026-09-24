@@ -16,7 +16,7 @@ import type { RayfoldServer } from "./server.ts";
 import { HTTP_STATUS, RayfoldError, type Frame, type RequestEnvelope, type RequestOp, type WireError } from "./protocol.ts";
 // from fetch.ts, not http.ts: openapi.ts reads `bindingsOf` from here, and going through the Node transport for it
 // would pull node:http into every runtime that imports the endpoint
-import { cacheHeadersFor } from "./fetch.ts";
+import { cacheHeadersFor, etagMatches } from "./fetch.ts";
 import { BodyTooLarge, PROBLEM_TYPE_BASE, hostProblem, mediaType, originProblem, refuse, refuseBody, type OriginOptions } from "./guard.ts";
 
 // where the route model lived before the OpenAPI document needed it without a transport
@@ -34,6 +34,7 @@ export function createBindingHandler(server: RayfoldServer, opts: BindingOptions
   const bindings = bindingsOf(server.ir);
   const prefix = opts.prefix ?? "";
   const maxBody = opts.maxBody ?? 1_048_576;
+  if (bindings.length) server.mounted.add("http"); // the manifest lists `http` only where its routes are served
 
   return async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -113,7 +114,7 @@ export function createBindingHandler(server: RayfoldServer, opts: BindingOptions
       const result = folded.result;
       if (b.op.kind === "query") {
         for (const [name, value] of Object.entries(cacheHeadersFor(server, envelope, frames, viewer))) res.setHeader(name, value);
-        if (header(req, "if-none-match") && header(req, "if-none-match") === res.getHeader("ETag")) {
+        if (etagMatches(header(req, "if-none-match"), String(res.getHeader("ETag")))) {
           res.removeHeader("X-Content-Type-Options"); // no body to sniff; the cached response keeps its headers
           res.writeHead(304).end();
           return true;
@@ -162,6 +163,9 @@ export function fromText(op: OpDef, name: string, text: string): unknown {
       return /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : text;
     case "Boolean":
       return text === "true" ? true : text === "false" ? false : text;
+    case "Long":
+      // past 2^53 a JSON number loses digits, so such a Long stays text, as a client sends it in a body
+      return /^-?\d+$/.test(text) && Number.isSafeInteger(Number(text)) ? Number(text) : text;
     case "ID":
     case "String":
     case "Decimal":

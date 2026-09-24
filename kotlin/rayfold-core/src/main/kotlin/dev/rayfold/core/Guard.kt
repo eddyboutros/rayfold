@@ -1,6 +1,7 @@
 package dev.rayfold.core
 
 import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpsExchange
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.InputStream
@@ -57,18 +58,33 @@ object Guard {
         hostProblem(ex.requestHeaders.getFirst("Host"), ex.localAddress?.address, allowedHosts)
 
     /**
-     * Null when the request is not a cross-origin browser request, or its origin is allowed; otherwise the reason.
-     * Same origin means the origin's host[:port] equals the Host header, as `new URL(origin).host` does in the TS guard.
+     * Whether the request reached this server over TLS: the transport's own word, or a proxy's `X-Forwarded-Proto`
+     * saying `https`. The header is only ever believed in that direction, so a client that forges it can make the Origin
+     * rule stricter for itself and never looser.
      */
-    fun originProblem(origin: String?, host: String?, allowedOrigins: Set<String>): String? {
+    fun reachedOverTls(transportSecure: Boolean, forwardedProto: String?): Boolean =
+        transportSecure || forwardedProto?.substringBefore(',')?.trim()?.lowercase() == "https"
+
+    /**
+     * Null when the request is not a cross-origin browser request, or its origin is allowed; otherwise the reason.
+     * Same origin means the origin's host[:port] equals the Host header, as `new URL(origin).host` does in the TS guard,
+     * and a page served over plain http is never the origin of a server reached over https ([secure], from
+     * [reachedOverTls]): a network attacker can write that page. The other direction is let through, because a server
+     * behind a TLS-terminating proxy that sends no `X-Forwarded-Proto` sees plain http for its own https pages.
+     */
+    fun originProblem(origin: String?, host: String?, allowedOrigins: Set<String>, secure: Boolean = false): String? {
         if (origin == null) return null // browsers send Origin on every state-changing request; other clients need not
         if ("*" in allowedOrigins || origin in allowedOrigins) return null
-        if (host != null && originHost(origin) == host.lowercase()) return null // same origin (Host is checked on its own)
+        val sameHost = host != null && originHost(origin) == host.lowercase() // Host is checked on its own
+        if (sameHost && !(secure && origin.substringBefore(':').equals("http", ignoreCase = true))) return null
         return "Origin $origin is not allowed"
     }
 
     fun originProblem(ex: HttpExchange, allowedOrigins: Set<String>): String? =
-        originProblem(ex.requestHeaders.getFirst("Origin"), ex.requestHeaders.getFirst("Host"), allowedOrigins)
+        originProblem(
+            ex.requestHeaders.getFirst("Origin"), ex.requestHeaders.getFirst("Host"), allowedOrigins,
+            reachedOverTls(ex is HttpsExchange, ex.requestHeaders.getFirst("X-Forwarded-Proto")),
+        )
 
     /** `host[:port]` of an origin with the scheme's default port left out; null for "null" and malformed origins. */
     private fun originHost(origin: String): String? {

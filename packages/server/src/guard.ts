@@ -13,7 +13,7 @@ import { RayfoldError } from "./protocol.ts";
  */
 interface NodeRequestLike {
   headers: Record<string, string | string[] | undefined>;
-  socket: { localAddress?: string | undefined };
+  socket: { localAddress?: string | undefined; encrypted?: boolean | undefined };
 }
 
 /** A header as these checks read it: Node gives a list for a few headers, none of which is read here. */
@@ -55,11 +55,27 @@ export function hostProblemOf(host: string | null | undefined, loopback: boolean
   return null;
 }
 
-export function originProblemOf(origin: string | null | undefined, host: string | null | undefined, o: OriginOptions = {}): string | null {
+/**
+ * Whether the request reached this server over TLS: the transport's own word, or a proxy's `X-Forwarded-Proto` saying
+ * `https`. The header is only ever believed in that direction, so a client that forges it can make the Origin rule
+ * stricter for itself and never looser.
+ */
+export function reachedOverTls(transportSecure: boolean, forwardedProto: string | null | undefined): boolean {
+  return transportSecure || forwardedProto?.split(",")[0]?.trim().toLowerCase() === "https";
+}
+
+/**
+ * Same origin means the Origin's host[:port] equals the Host header, and a page served over plain http is never the
+ * origin of a server reached over https: a network attacker can write that page. The other direction is let through,
+ * because a server behind a TLS-terminating proxy that sends no `X-Forwarded-Proto` sees plain http for its own https
+ * pages. `secure` comes from {@link reachedOverTls}.
+ */
+export function originProblemOf(origin: string | null | undefined, host: string | null | undefined, o: OriginOptions = {}, secure = false): string | null {
   if (origin === undefined || origin === null) return null; // browsers send Origin on every state-changing request; other clients need not
   if (o.allowedOrigins?.includes("*") || o.allowedOrigins?.includes(origin)) return null;
   try {
-    if (new URL(origin).host === (host ?? "").toLowerCase()) return null; // same origin (Host is checked on its own)
+    const u = new URL(origin);
+    if (u.host === (host ?? "").toLowerCase() && !(secure && u.protocol === "http:")) return null; // same origin (Host is checked on its own)
   } catch {
     /* "null" and malformed origins are never allowed */
   }
@@ -78,7 +94,7 @@ export function hostProblem(req: NodeRequestLike, o: OriginOptions = {}): string
 
 /** null when the request is not a cross-origin browser request, or its origin is allowed; otherwise the reason. */
 export function originProblem(req: NodeRequestLike, o: OriginOptions = {}): string | null {
-  return originProblemOf(one(req.headers.origin), one(req.headers.host), o);
+  return originProblemOf(one(req.headers.origin), one(req.headers.host), o, reachedOverTls(req.socket.encrypted === true, one(req.headers["x-forwarded-proto"])));
 }
 
 /** The media type of the request body, lower-cased, without parameters. */

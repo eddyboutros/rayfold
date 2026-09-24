@@ -36,7 +36,8 @@ entity Book @cache(maxAge: 60s, scope: public) {
 
 The server works out the headers from the queries in the request and the entity types in their results:
 
-1. `max-age` is the smallest `maxAge` among them. Types and queries without `@cache` do not count. When nothing in
+1. `max-age` is the smallest `maxAge` among them, and `stale-while-revalidate` the smallest `swr` among those that
+   declare one. Types and queries without `@cache` do not count. When nothing in
    the response declares one, the answer is `public, max-age=0, no-cache` — or `private, max-age=0, no-cache` when
    the request carried a viewer.
 2. The scope is `public` unless something makes it `private`: a `scope: private`, a request that carries a viewer
@@ -124,6 +125,9 @@ ETag: "sha256-2bb3560f97fce4601507e62eaab8c1c8c181550463cb49da01319f52a94e7333"
 Vary: Rayfold-Client, Accept, Authorization
 Rayfold-Schema: 683ba13db1697a2f4714aac7338e87d0f0120aaddd9a5a93ed1dc91283ff2d38
 ```
+
+A weak form of the tag (`W/"sha256-..."`, what nginx sends on when it compresses the response), a list of tags that
+names it, and `*` all get the `304` too.
 
 After a customer buys a copy, the same request gets `200`, `"stock":2` and a new `ETag`. The server still runs the
 query to compute the hash: a `304` saves bytes and parsing on the way back, not work on the server.

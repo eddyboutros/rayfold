@@ -455,6 +455,8 @@ export function compilePolicy(e: Expr, env: ExprEnv, columnOf: (field: string) =
       const left = rowField(e.l);
       const right = rowField(e.r);
       if ((left === undefined) === (right === undefined)) return LOOSE; // both sides read the row, or neither is a plain field
+      // `list in field` asks whether a list is an element of the field, which no column comparison says
+      if (e.op === "in" && left === undefined) return LOOSE;
       const field = (left ?? right)!;
       const other = left !== undefined ? e.r : e.l;
       if (readsRow(other)) return LOOSE;

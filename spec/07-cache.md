@@ -32,7 +32,9 @@ When neither `maxAge` nor `swr` survives the minimum — the case for a schema w
 carries `no-cache` as well: `public, max-age=0, no-cache`, or `private, max-age=0, no-cache` for an identified
 viewer.
 
-Conditional requests (`If-None-Match`) answer `304` with no body. A `POST` batch that is not marked safe MUST carry
+Conditional requests (`If-None-Match`) answer `304` with no body. The header is compared as RFC 9110 section 13.1.2
+says for it: weakly (`W/"x"` matches `"x"`), against each entity tag of a comma-separated list, and `*` matches any
+response. A proxy that compresses a response turns its `ETag` weak, and the client sends it back that way. A `POST` batch that is not marked safe MUST carry
 `Cache-Control: no-store`, so it is never held by a shared cache; clients that want shared caching for a read use `QUERY` (or `POST` + `Rayfold-Safe: true` where `QUERY`
 is unavailable) or `GET`. Because a whole batch of queries is one safe request, a complete screen (for
 example book + author + reviews) is one cache entry and one `304`, where resource-per-URL designs need one

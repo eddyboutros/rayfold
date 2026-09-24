@@ -27,8 +27,11 @@ npx @rayfold/cli import openapi openapi.json --out api.rayfold
 ```
 
 A `GET` becomes a query, anything that changes data becomes a command, `components.schemas` become types, and every
-operation keeps the URL it already has with `@http`. An object with a non-null `id` becomes an entity, since that is
-what gives the cache and the patches something to address.
+operation keeps the URL it already has with `@http`. A JSON request body keeps its place too: a body that names a
+schema becomes an `input` argument (`body: input`), and a body written inline becomes one argument per property
+(`body: "*"`). An object with a non-null `id` becomes an entity, since that is
+what gives the cache and the patches something to address. Parameters become arguments, those declared on the path
+and through `$ref` included, and a name like `first-name` becomes `firstName`, with the `@http` path following it.
 
 What the document cannot say, the importer does not invent: what may be cached, who may read what, which errors a
 command throws, which events it emits. Those are the parts that make the schema worth having, and they go in by hand.

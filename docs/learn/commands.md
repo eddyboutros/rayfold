@@ -206,7 +206,9 @@ type](../errors/index.md) has a page with its causes and what to do.
 
 A command marked `@simulate` accepts `"simulate": true`. The resolver sees `ctx.simulate` and returns what would
 happen without writing anything, which lets a form preview a result or an AI agent check a plan before acting.
-Without the annotation, a dry run is refused with [`failed_precondition`](/errors/failed_precondition).
+Without the annotation, a dry run is refused with [`failed_precondition`](/errors/failed_precondition); a caller who
+may not run the command is refused for that first. The clients leave their cache alone for a dry run: its result and
+patch are not applied.
 
 ## Next
 

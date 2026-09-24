@@ -315,6 +315,26 @@ describe("frames as the protocol allows them", () => {
     expect(bs.store.calls["Query.book"]).toBe(1); // only the message at the limit ran
   });
 
+  it("a text message that is not UTF-8 closes the socket with 1007 and runs nothing, even when its bytes read as a batch", async () => {
+    const host = await serve(bs.server);
+    const c = await rawClient(host);
+    // a batch with a lone continuation byte inside a string: Buffer.toString would have replaced it and run the batch
+    const bytes = Buffer.from(JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }", key: "@" }] }), "utf8");
+    bytes[bytes.indexOf(0x40)] = 0x80;
+    c.send(TEXT, bytes);
+    await bounded(c.ended, "the socket closing on invalid UTF-8");
+    expect(c.frames.items).toEqual([{ opcode: CLOSE, text: "1007 invalid UTF-8" }]);
+    expect(bs.store.calls["Query.book"]).toBeUndefined();
+    // guard: a text message split so that one character straddles two fragments is valid once whole, and is answered
+    const ok = await rawClient(host);
+    const message = Buffer.from(JSON.stringify({ ops: [{ id: 2, op: "book", args: { id: "b1" }, shape: "{ id }", key: "é" }] }), "utf8");
+    const cut = message.indexOf(0xc3) + 1;
+    ok.send(TEXT, message.subarray(0, cut), false);
+    ok.send(CONTINUATION, message.subarray(cut));
+    await ok.frames.atLeast(1, "the answer to a message whose character straddles two fragments");
+    expect(ok.frames.items).toEqual([{ opcode: TEXT, text: JSON.stringify(bookFrame(2, "b1")) }]);
+  });
+
   it("a message that is not JSON, or JSON that is not an envelope, is answered with an error and the socket stays open", async () => {
     const host = await serve(bs.server);
     const c = await rawClient(host);

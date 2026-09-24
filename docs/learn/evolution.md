@@ -67,7 +67,8 @@ OK: compatible with rayfold.lock.json (4 changes)
 The lockfile records each field's number (its ordinal), and a field keeps its number by name. Adding `pages` between
 `title` and `stock` instead of at the end is as compatible as adding it last: against `rayfold.lock.json` the check
 reports only `Book.pages: field added`. What breaks is a number that changes: an `@ordinal(n)` that disagrees with the
-lock, or a new field given one the lock already assigned.
+lock, or a new field given one the lock already assigned. Locking again keeps those numbers: `pages` gets the next
+number the type has not used, and `title` and `stock` keep theirs.
 
 Checked against an older copy of the `.rayfold` file instead of a lockfile, there is no record of the numbers, so the
 fields after `pages` are reported as moved:

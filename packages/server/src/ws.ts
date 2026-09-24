@@ -216,15 +216,17 @@ function handleConnection(socket: Duplex, head: Buffer, viewer: unknown, server:
   let messageBinary = false;
   const maxMessage = opts.maxMessage ?? 1_048_576;
   let refused = false;
-  const tooBig = () => {
+  /** Ends the connection with a close frame, flushed before the socket is closed. */
+  const closeWith = (code: number, reason: string) => {
     refused = true;
     buf = Buffer.alloc(0);
     fragments = [];
     for (const ac of ops.values()) ac.abort(new RayfoldError("canceled", "Canceled"));
     ops.clear();
-    // close code 1009 (message too big); flushed before the socket is closed
-    socket.end(encodeFrame(Buffer.concat([Buffer.from([0x03, 0xf1]), Buffer.from("message too big")]), 0x8), () => socket.destroy());
+    socket.end(encodeFrame(Buffer.concat([Buffer.from([code >> 8, code & 0xff]), Buffer.from(reason)]), 0x8), () => socket.destroy());
   };
+  const tooBig = () => closeWith(1009, "message too big");
+  const utf8 = new TextDecoder("utf-8", { fatal: true });
   socket.on("data", (chunk: Buffer) => {
     if (refused) return;
     buf = Buffer.concat([buf, chunk]);
@@ -252,6 +254,14 @@ function handleConnection(socket: Duplex, head: Buffer, viewer: unknown, server:
         const message = Buffer.concat(fragments);
         fragments = [];
         assembled = 0;
+        if (!messageBinary) {
+          // RFC 6455 section 8.1: a text message that is not UTF-8 fails the connection with 1007
+          try {
+            utf8.decode(message);
+          } catch {
+            return closeWith(1007, "invalid UTF-8");
+          }
+        }
         onMessage(message, messageBinary);
       }
     }

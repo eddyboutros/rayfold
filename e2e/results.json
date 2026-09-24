@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-24T00:07:32.946Z",
+  "generatedAt": "2026-09-24T09:56:12.125Z",
   "rows": [
     {
       "aspect": "Product page (book + author + 3 reviews)",
@@ -1486,7 +1486,7 @@
                 "authorization": "Bearer u1",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"f0bbf0a2f1e94bc3a5552d0e024e24d3\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"placeOrder\",\"args\":{\"input\":{\"lines\":[{\"bookId\":\"b1\",\"qty\":1}]}},\"shape\":\"{ id status total }\",\"key\":\"75cbed206f604dacb2627f996ae0a2ab\"}]}"
             },
             "response": {
               "status": 200,
@@ -1620,7 +1620,7 @@
                 "authorization": "Bearer admin",
                 "content-type": "application/rayfold+json"
               },
-              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"7181be90ab8f468e86070bb158f73f37\"}]}"
+              "body": "{\"rayfold\":\"0.1\",\"ops\":[{\"id\":1,\"op\":\"restock\",\"args\":{\"bookId\":\"b2\",\"qty\":1},\"key\":\"2148f7289464443fb3d8c6b17f9886f2\"}]}"
             },
             "response": {
               "status": 200,

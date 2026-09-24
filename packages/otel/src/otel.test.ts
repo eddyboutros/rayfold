@@ -147,6 +147,33 @@ describe("OpenTelemetry tracing", () => {
     expect(named("rayfold query broken").status.code).toBe(SpanStatusCode.ERROR);
   });
 
+  it("what a resolver threw is an exception event on its op span, with its message and stack, though the client is told only `internal`", async () => {
+    const server = createRayfoldServer({
+      schema: `entity A { id: ID } query broken: A query fine: A`,
+      instrumentation: rayfoldTracing({ tracer }),
+      resolvers: {
+        Query: {
+          broken: () => {
+            throw new Error("the disk is full");
+          },
+          fine: () => ({ id: "a1" }),
+        },
+      },
+    });
+    const frames = await server.collect({ ops: [{ id: 1, op: "broken" }, { id: 2, op: "fine" }] });
+    expect(frames.find((f) => (f as { id?: number }).id === 1)).toEqual({ id: 1, error: { code: "internal", message: "Internal error" }, fin: true });
+    const op = named("rayfold query broken");
+    expect(op.status).toEqual({ code: SpanStatusCode.ERROR, message: "Internal error" });
+    const exceptions = op.events.filter((e) => e.name === "exception");
+    expect(exceptions).toHaveLength(1);
+    expect(exceptions[0]!.attributes).toMatchObject({ "exception.type": "Error", "exception.message": "the disk is full" });
+    expect(String(exceptions[0]!.attributes?.["exception.stacktrace"])).toContain("the disk is full");
+    // guard: an op that succeeded carries no exception event and no error status
+    const fine = named("rayfold query fine");
+    expect(fine.events).toEqual([]);
+    expect(fine.status.code).not.toBe(SpanStatusCode.ERROR);
+  });
+
   it("guard: without instrumentation nothing is recorded and the frames are the same", async () => {
     const batch = { ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ title author { name } }" }] };
     const traced = await createBookstore({ instrumentation: rayfoldTracing({ tracer }) }).server.collect(batch);

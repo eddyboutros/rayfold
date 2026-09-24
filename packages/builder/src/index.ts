@@ -32,6 +32,10 @@ export interface TRef<T = unknown> extends Phantom<T> {
   readonly annotations: Annotation[];
   readonly default?: JsonValue;
   readonly description?: string;
+  /** The field's arguments, as `books(page: PageArgs = { first: 10 }): Page<Book>` declares them in text. */
+  readonly fieldArgs?: ArgDef[];
+  /** Arguments of an entity or object field: `t.page("Book").args({ page: t.pageArgs().withDefault({ first: 10 }) })`. */
+  args(args: Record<string, TRef<unknown>>): TRef<T>;
   nullable(): TRef<T | null>;
   list(): TRef<T[]>;
   doc(text: string): TRef<T>;
@@ -48,12 +52,14 @@ export interface TRef<T = unknown> extends Phantom<T> {
   annotate(name: string, args?: Record<string, AnnotValue>): TRef<T>;
 }
 
-function mk<T>(ref: TypeRef, annotations: Annotation[] = [], extra: { default?: JsonValue; description?: string } = {}): TRef<T> {
+function mk<T>(ref: TypeRef, annotations: Annotation[] = [], extra: { default?: JsonValue; description?: string; fieldArgs?: ArgDef[] } = {}): TRef<T> {
   const self: TRef<T> = {
     ref,
     annotations,
     ...(extra.default !== undefined ? { default: extra.default } : {}),
     ...(extra.description !== undefined ? { description: extra.description } : {}),
+    ...(extra.fieldArgs !== undefined ? { fieldArgs: extra.fieldArgs } : {}),
+    args: (a) => mk<T>(ref, annotations, { ...extra, fieldArgs: argDefs(a) }),
     nullable: () => mk<T | null>({ ...ref, nullable: true }, annotations, extra),
     list: () => mk<T[]>({ kind: "list", of: ref, nullable: false }, annotations, extra),
     doc: (text) => mk<T>(ref, annotations, { ...extra, description: text }),
@@ -120,6 +126,8 @@ export interface TypeBuilder<K extends TypeDef["kind"], N extends string, F exte
   /** Named view; `default` is what callers get with no shape. */
   view(name: string, shape: string): TypeBuilder<K, N, F>;
   annotate(name: string, args?: Record<string, AnnotValue>): TypeBuilder<K, N, F>;
+  /** The interfaces an entity implements, as `entity Book implements Node Priced` says in text. Entities only. */
+  implements(...interfaces: string[]): TypeBuilder<K, N, F>;
   cache(maxAgeMs: number, scope?: "public" | "private", swrMs?: number): TypeBuilder<K, N, F>;
   allow(read: string, write?: string): TypeBuilder<K, N, F>;
   doc(text: string): TypeBuilder<K, N, F>;
@@ -127,7 +135,7 @@ export interface TypeBuilder<K extends TypeDef["kind"], N extends string, F exte
 
 function fieldDefs(fields: FieldMap, allowDefaults: boolean): FieldDef[] {
   return Object.entries(fields).map(([name, f], i) => {
-    const d: FieldDef = { name, type: f.ref, args: [], annotations: f.annotations, ordinal: i + 1 };
+    const d: FieldDef = { name, type: f.ref, args: f.fieldArgs ?? [], annotations: f.annotations, ordinal: i + 1 };
     if (f.description !== undefined) d.description = f.description;
     if (allowDefaults && f.default !== undefined) d.default = f.default;
     return d;
@@ -146,6 +154,10 @@ function typeBuilder<K extends TypeDef["kind"], N extends string, F extends Fiel
     // the parser sets the interface flag from the annotation (parser.ts), and the IR (so the hash) carries both
     annotate: (an, args = {}) =>
       withDef({ ...def, annotations: [...def.annotations, { name: an, args }], ...(an === "interface" && def.kind === "object" ? { interface: true } : {}) } as TypeDef),
+    implements: (...interfaces) => {
+      if (def.kind !== "entity") throw new Error(`${name}: only an entity implements an interface, and this is kind ${def.kind}`);
+      return withDef({ ...def, implements: [...def.implements, ...interfaces] });
+    },
     cache: (maxAgeMs, scope = "public", swrMs) =>
       withDef({ ...def, annotations: [...def.annotations, { name: "cache", args: { maxAge: { $duration: maxAgeMs }, scope: { $ident: scope }, ...(swrMs !== undefined ? { swr: { $duration: swrMs } } : {}) } }] }),
     allow: (read, write) => {

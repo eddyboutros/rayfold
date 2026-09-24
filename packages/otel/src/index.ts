@@ -60,6 +60,11 @@ async function outcomeOf(span: Span, run: () => Promise<Outcome>): Promise<Outco
       span.setAttribute("rayfold.error.code", out.error.code);
       span.setStatus({ code: SpanStatusCode.ERROR, message: out.error.message });
     }
+    // what the resolver threw, with its stack, where the error above says only `internal`: an operator's one look at it
+    if (out.cause !== undefined) {
+      span.recordException(out.cause instanceof Error ? out.cause : String(out.cause));
+      span.setStatus({ code: SpanStatusCode.ERROR, message: out.error?.message ?? String(out.cause) });
+    }
     return out;
   } catch (e) {
     failed(span, e);

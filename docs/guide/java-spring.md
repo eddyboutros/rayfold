@@ -104,6 +104,9 @@ rayfold.max-body-bytes=1048576
 rayfold.max-depth=8
 ```
 
+A browser on an origin in `rayfold.allowed-origins` gets its CORS preflight answered with `204` and the
+`Access-Control-Allow-*` headers, as do the responses that follow; no other origin gets them.
+
 ### Live queries and WebSocket
 
 Live queries work over the HTTP endpoint as they are: the response stays open and gets keep-alives while nothing
@@ -125,7 +128,10 @@ records in the database, so every instance shares them and a keyed command runs 
 ```java
 @Bean
 IdempotencyStore idempotency(DataSource dataSource) {
-    return new JdbcIdempotencyStore(dataSource::getConnection);
+    // the store takes a Kotlin () -> Connection, which cannot throw SQLException from Java
+    return new JdbcIdempotencyStore(() -> {
+        try { return dataSource.getConnection(); } catch (SQLException e) { throw new IllegalStateException(e); }
+    });
 }
 ```
 

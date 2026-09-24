@@ -2,7 +2,7 @@
   "name": "authorization/denial-outcomes",
   "about": "What a caller gets when a policy refuses. This is the table where a disagreement is a confidentiality bug rather than an inconvenience: one implementation returning null where another fails the operation is the difference between 'this entity is hidden from you' and 'this entity exists and is hidden from you', and the second tells an attacker something the first does not.",
   "source": "spec 06 §3, row for row. The expectation is the table, not either runtime - the two are known to disagree on one row, which is why the file exists.",
-  "schema": "entity Secret @allow(read: viewer.role == \"admin\") { id: ID code: String }\nentity Note { id: ID title: String secret: Secret? mustHave: Secret owner: String @allow(read: viewer.role == \"admin\") sometimes: String? @partial @allow(read: viewer.role == \"admin\") }\nentity Box { id: ID items: [Secret] maybe: [Secret?] }\nquery note(id: ID): Note?\nquery box(id: ID): Box?\nquery boxWithGap(id: ID): Box?\nquery adminOnly(id: ID): Note? @allow(read: viewer.role == \"admin\")",
+  "schema": "entity Secret @allow(read: viewer.role == \"admin\") { id: ID code: String }\nentity Note { id: ID title: String secret: Secret? mustHave: Secret owner: String @allow(read: viewer.role == \"admin\") sometimes: String? @partial @allow(read: viewer.role == \"admin\") }\nentity Box { id: ID items: [Secret] maybe: [Secret?] }\nquery note(id: ID): Note?\nquery box(id: ID): Box?\nquery boxWithGap(id: ID): Box?\nquery adminOnly(id: ID): Note? @allow(read: viewer.role == \"admin\")\nentity Folder { id: ID secret: Secret }\nview Folder.default = { id secret { id } }\nquery folder(id: ID): Folder?",
   "viewer": {
     "id": "u1",
     "role": "customer"
@@ -89,6 +89,13 @@
       "expect": "omitted",
       "field": "owner",
       "why": "a default view never leaks and never fails: the caller did not ask for this field by name, so it is simply not there"
+    },
+    {
+      "name": "a type only in a default view",
+      "op": "folder",
+      "expect": "null",
+      "at": "secret",
+      "why": "the member is present and null, even at a position the schema declares non-null: a default view never fails the operation. The same member asked for by name fails it (the non-null row above), so this is the default view's rule and not the position's"
     },
     {
       "name": "guard: what the viewer may read still arrives",

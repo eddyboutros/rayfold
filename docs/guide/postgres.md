@@ -27,6 +27,9 @@ const resolvers = {
 };
 ```
 
+A `Date` field reaches your resolvers as `YYYY-MM-DD` text, not a JavaScript `Date`, whatever the time zone, and an
+`Instant` goes out as RFC 3339 in UTC. `JdbcStore` on the JVM returns both the same way.
+
 ## One statement for a whole screen
 
 The resolvers above send one query per nesting level, which is already the shape of the problem GraphQL solves with
@@ -52,10 +55,10 @@ const resolvers = {
 ```
 
 `kind: "one"` names the field on *this* type holding the other row's key; `kind: "page"` names the field on the *other*
-type holding this row's key. Nested pages are first pages, which is what a screen shows; the root page still takes a
-cursor. A field the shape selects must be a mapped column or a declared relation, so a shape that reaches past the
-mapping is refused rather than quietly served wrong. For the same reason a field selected twice under two aliases must
-be selected the same way both times.
+type holding this row's key. Nested pages are first pages, which is what a screen shows, of the size the shape asks
+for or else the field's declared default; the root page still takes a cursor. A field the shape selects must be a
+mapped column or a declared relation, so a shape that reaches past the mapping is refused rather than quietly served
+wrong. For the same reason a field selected twice under two aliases must be selected the same way both times.
 
 A relation that takes arguments, such as `Author.books(page:)`, needs no loader here: the runtime serves the page
 `screen` already gathered. `checkWiring` cannot see that from the resolvers alone and still reports it as
@@ -87,6 +90,10 @@ new PgIdempotencyStore(pool, { table: "rayfold_idempotency", ttlMs: 24 * 3600_00
 
 `idempotencySchema()` returns the table and index the store needs, so you can put them in your own migrations instead
 of calling `migrate()`.
+
+The table name is quoted, as `JdbcIdempotencyStore` quotes it, so a mixed-case name is one table for a fleet of both
+runtimes. Earlier versions of this store folded such a name to lower case: if you configured one, rename that table or
+pass the lower-case name.
 
 ## Live updates across servers
 

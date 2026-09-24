@@ -91,6 +91,7 @@ entity Order @allow(read: viewer.id == customerId || viewer.role == "admin") {
 ```
 
 An expression that cannot be evaluated, such as comparing text with a boolean, fails closed: `@allow` does not allow.
+A path reads only an object's own fields, the same in both runtimes, so `tags.length` is `null`: write `len(tags)`.
 
 ## What a caller sees when a rule says no
 

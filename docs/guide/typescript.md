@@ -51,14 +51,20 @@ and a field the schema does not have is `unknown` rather than an error.
 | In the shape | In the type |
 | --- | --- |
 | `alias: field` | the field under its alias |
+| `author` with no sub-shape | the default view the server derives for it: scalar and enum fields only, nested entities and objects left out, a page's rows through their own default view |
 | `field(first: 2)` | arguments do not change the type, so they are ignored |
 | `@partial`, `@eager` | how a field is delivered, not what it is: ignored |
 | `@defer { ... }` | optional, because those fields need not be in the first frame |
 | `...on Type { ... }` | optional, because the member may not be the one that came back |
 | `...Book.card` | the view's text lives in the schema, not in the call, so the whole type stands |
 
-That last row is the one limit: a shape that spreads a named view types as the full entity. It is wider than the
+That last row is one limit: a shape that spreads a named view types as the full entity. It is wider than the
 truth, never narrower, so nothing a caller reads is a lie.
+
+The other is a `default` view the schema declares itself. A bare field is typed as the view the server derives when
+none is declared, since the type cannot see the view's text; if the type declares `view Author.default`, ask for the
+fields you read (`author { name }`) and the type follows the shape instead. Scalar fields that take arguments are not in
+the derived view either, and the type cannot see arguments, so select those explicitly too.
 
 ## In React
 

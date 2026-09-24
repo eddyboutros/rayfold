@@ -7,6 +7,91 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **The endpoint answers only its own mount.** The fetch and Node handlers treated any path that merely began with the
+  mount's text as theirs, so `/rayfoldbook` ran the op `book` and `/rayfold-admin/...` was routed into Rayfold. Only
+  the mount and paths under it are answered now.
+
+- **A weak or listed `If-None-Match` gets its `304`.** An ETag made weak by a compressing proxy (`W/"sha256-…"`), a
+  list of tags, and `*` were compared as exact strings, so they never revalidated. Both runtimes and the REST bindings
+  now compare them the way RFC 9110 says.
+
+- **Large `Long` values in REST paths and query strings arrive exactly.** In TypeScript a `Long` past 2^53 went
+  through `JSON.parse`, lost digits and was refused. It now stays text, as the JVM runtime already did.
+
+- **An http page cannot write to a server reached over https.** The Origin rule now refuses an `http:` origin when the
+  request came over TLS, as the transport or `X-Forwarded-Proto: https` says. On the JVM, `RayfoldHttp` now applies the
+  same rule as every other entry point: it honours `*` in `allowedOrigins`, and no longer refuses the server's own
+  https pages behind a TLS-terminating proxy or in the Spring starter.
+
+- **A malformed query string on the JVM is a 400.** `GET /rayfold/op?s=%zz` answered `internal` 500; it is now
+  `invalid_argument`.
+
+- **The manifest lists `http` only when REST routes are served.** It listed it whenever the schema declared `@http`,
+  even with no bindings mounted.
+
+- **The JVM's 415 names the accepted types.** It now carries `Accept-Post`, as the TypeScript runtime's does.
+
+- **WebSocket text that is not UTF-8 closes the connection with 1007.** Both runtimes decoded it with replacement
+  characters and could run the batch.
+
+- **A JVM WebSocket whose viewer hook refuses a token answers 401.** It answered every exception from the hook with
+  500; it now answers as HTTP does, 401 for `unauthenticated`, as the Node server already did.
+
+- **A `$ref` to a live op is refused, and references go by op id.** A reference to a live op waited as long as the
+  subscription stayed open; it is now `invalid_argument` for the batch. A reference to a smaller id placed later in the
+  `ops` array is now accepted, as spec 03 intends.
+
+- **A store that cannot record a committed command no longer fails the op.** The client had already been sent `ok`.
+  The op now stays a success, gets no second answer, and keeps its key until the lease ends, so a retry cannot run the
+  command again at once. The failure is counted as `rayfold.idempotency{record:"failed"}` and logged on the JVM.
+
+- **The JVM enforces capability operation lists.** A viewer carrying `caps.ops` may call only the operations it names,
+  as spec 06 requires and the TypeScript runtime already did.
+
+- **Resolver exceptions show up in traces.** `@rayfold/otel` and `RayfoldOpenTelemetry` record what a resolver threw
+  on its op span as an exception event with its stack, while the client is still told only `internal`.
+
+- **The JVM executor is safe under concurrent batches.** Its interface-implementors memo was a plain map written by
+  concurrent batches.
+
+- **The Postgres and JDBC stores no longer drop rows when a policy puts the field on the right of `in`.** A policy such
+  as `!(["x"] in name)` was sent to SQL as `name = ANY(...)` and treated as exact, but the policy reads a list as never
+  being an element of a text field, so under a negation the query dropped rows the policy allows. Both stores now leave
+  that comparison to the runtime; `name in [...]` is still sent to SQL.
+
+- **`rayfold lock` keeps the ordinals already locked when you run it again.** It numbered fields by position again, so
+  inserting a field in the middle of a type shifted every field after it. Now each field and enum value keeps its
+  locked number by name, a new one gets the next number the type has never used, and a written `@ordinal(n)` is kept.
+  The lock records each type's highest number in `highestOrdinals`, so a removed member's number is never reused.
+
+- **`rayfold import openapi` binds request bodies.** Imported commands had no `body:` in their `@http` binding, so the
+  runtime never read the body. A body that names a schema now becomes `body: input`, and one written inline
+  `body: "*"`.
+
+- **The TypeScript builder can declare `implements` and field arguments.** `entity(...).implements("Node")` and
+  `t.page("Book").args({ page: t.pageArgs().withDefault({ first: 10 }) })` produce the same schema, and the same hash,
+  as the text. A paged field on an entity could not be declared before, because it always failed `page-args`.
+
+- **`Select` types a field chosen with no sub-shape as what the server sends.** `{ author }` was typed as the full
+  `Author`, so `book.author.publisher.name` type-checked but was undefined at runtime. It is now typed as the default
+  view the server derives: scalar and enum fields, no nested objects, and a page's rows through their own default
+  view. A `default` view the schema declares is not visible to the type, so select the fields you read in that case.
+
+- **Every published vector runs on both runtimes.** The JVM ran only the status half of `errors/`, skipped two of the
+  three manifest rules, and skipped the null-list-element row of `authorization/`. It now runs every case and rule
+  against a real server, and both runners fail on an expectation they don't know rather than skipping it.
+
+- **The `patch/` vectors cover all of spec 13.** New cases pin `at` at a path, `inv` and `invOp` staleness (and a `set`
+  clearing it), a deleted root entity reading as null, nested entities inside `set`, a `del` reaching another entity's
+  fields, and operations on a result the client does not hold. Both caches already agreed.
+
+- **`authorization/` has the last row of spec 06 §3.** A denied type reached only through a default view is present and
+  null, even at a non-null position, and the operation does not fail. Both runtimes already did this.
+
+- **The docs match the code again.** Pages across the guides and the learn section now describe this release's
+  behaviour; one Spring Boot snippet that did not compile in Java compiles; `kotlin/README.md` no longer says JVM
+  resolvers get no pushed-down read policy.
+
 - **A command that commits and then fails to answer still tells live queries and subscribers what changed.** When a
   non-null field resolved to null or a loader threw after the resolver had returned, the change and the
   `ok(..., { emit })` events were dropped. Both runtimes now publish them once the command commits.

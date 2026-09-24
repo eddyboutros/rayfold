@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadSchema, printSchemaText, typeRefToString } from "@rayfold/schema";
-import { openApiFor } from "@rayfold/server";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { createBindingHandler, createRayfoldServer, openApiFor } from "@rayfold/server";
 import { irFromOpenApi } from "./import-openapi.ts";
 import { irFromGraphql } from "./import-graphql.ts";
 import { bounded } from "../../../e2e/wait.ts";
@@ -361,6 +363,80 @@ describe("a schema from a GraphQL SDL", () => {
     expect((ir.types["E"] as { values: Array<{ annotations: unknown[] }> }).values[0]!.annotations).toEqual([{ name: "deprecated", args: { reason: "use B" } }]);
     expect(printSchemaText(ir)).toContain('query plain: E? @deprecated(reason: "gone")');
     expect(loadSchema(printSchemaText(ir)).ir).toEqual(ir);
+  });
+});
+
+describe("an imported schema served over its HTTP bindings", () => {
+  const ok = { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/Shelf" } } } } };
+  const DOC = {
+    components: {
+      schemas: {
+        Shelf: { type: "object", required: ["id"], properties: { id: { type: "string" }, label: { type: "string" }, size: { type: "integer" } } },
+        NewShelf: { type: "object", properties: { label: { type: "string" }, size: { type: "integer" } } },
+      },
+    },
+    paths: {
+      "/shelves": {
+        get: { operationId: "shelves", parameters: [{ name: "size", in: "query", schema: { type: "integer" } }], responses: ok },
+        post: { operationId: "addShelf", requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/NewShelf" } } } }, responses: ok },
+      },
+      "/shelves/{id}": {
+        patch: {
+          operationId: "relabel",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: { content: { "application/json": { schema: { type: "object", properties: { label: { type: "string" } } } } } },
+          responses: ok,
+        },
+      },
+    },
+  };
+  const servers: Server[] = [];
+  afterAll(() => servers.forEach((s) => (s.closeAllConnections(), s.close())));
+
+  async function serve(text: string): Promise<string> {
+    const server = createRayfoldServer({
+      schema: text,
+      resolvers: {
+        Query: { shelves: (a: { size?: number }) => ({ id: "s0", label: "by query", size: a.size ?? null }) },
+        Command: {
+          addShelf: (a: { input: { label?: string; size?: number } }) => ({ id: "s1", label: a.input.label ?? null, size: a.input.size ?? null }),
+          relabel: (a: { id: string; label?: string }) => ({ id: a.id, label: a.label ?? null, size: null }),
+        },
+      },
+    });
+    // idempotency keys are scoped to a caller, so a keyed POST needs one
+    const handler = createBindingHandler(server, { viewer: () => ({ id: "u1" }) });
+    const http = createServer((req, res) => void handler(req, res).then((handled) => handled || res.writeHead(404).end()));
+    servers.push(http);
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", () => resolve()));
+    return `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+  }
+
+  const send = async (url: string, method: string, body?: unknown, headers: Record<string, string> = {}) => {
+    const res = await fetch(url, { method, headers: { "content-type": "application/json", ...headers }, signal: AbortSignal.timeout(5_000), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    return { status: res.status, body: (await res.json()) as unknown };
+  };
+
+  it("binds a request body to the argument it became, whole or spread, so the served schema reads it", async () => {
+    const { ir } = irFromOpenApi(DOC);
+    expect(ir.ops["addShelf"]!.annotations[0]!.args["body"]).toEqual({ $ident: "input" });
+    expect(ir.ops["relabel"]!.annotations[0]!.args["body"]).toBe("*");
+    const text = printSchemaText(ir);
+    expect(text).toContain('@http(method: POST, path: "/shelves", body: input)');
+    expect(text).toContain('@http(method: PATCH, path: "/shelves/{id}", body: "*")');
+
+    const base = await serve(text);
+    const added = await send(`${base}/shelves`, "POST", { label: "poetry", size: 12 }, { "idempotency-key": "key-0123456789abcdef" });
+    expect(added).toEqual({ status: 200, body: { $type: "Shelf", id: "s1", label: "poetry", size: 12 } });
+    const relabelled = await send(`${base}/shelves/s7`, "PATCH", { label: "drama" });
+    expect(relabelled).toEqual({ status: 200, body: { $type: "Shelf", id: "s7", label: "drama", size: null } });
+  });
+
+  it("guard - a GET that takes only query parameters binds no body, and still reads its parameters", async () => {
+    const { ir } = irFromOpenApi(DOC);
+    expect(ir.ops["shelves"]!.annotations).toEqual([{ name: "http", args: { method: { $ident: "GET" }, path: "/shelves" } }]);
+    const base = await serve(printSchemaText(ir));
+    expect(await send(`${base}/shelves?size=3`, "GET")).toEqual({ status: 200, body: { $type: "Shelf", id: "s0", label: "by query", size: 3 } });
   });
 });
 

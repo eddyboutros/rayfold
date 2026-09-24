@@ -41,10 +41,14 @@ function serve() {
         box: ({ id }: { id: string }) => ({ id, itemIds: ["s1"] }),
         // a list with a real gap in it, so the denial rule can be told apart from "any null in a list"
         boxWithGap: ({ id }: { id: string }) => ({ id, itemIds: [null] }),
+        folder: () => ({ id: "f1", secretId: "s1" }),
       },
       Note: {
         secret: (rows: Array<{ secretId: string }>) => rows.map((r) => secrets.get(r.secretId) ?? null),
         mustHave: (rows: Array<{ mustHaveId: string }>) => rows.map((r) => secrets.get(r.mustHaveId) ?? null),
+      },
+      Folder: {
+        secret: (rows: Array<{ secretId: string }>) => rows.map((r) => secrets.get(r.secretId) ?? null),
       },
       Box: {
         items: (rows: Array<{ itemIds: Array<string | null> }>) => rows.map((r) => r.itemIds.map((i) => (i === null ? null : (secrets.get(i) ?? null)))),
@@ -99,6 +103,8 @@ describe("conformance vectors: authorization", () => {
           expect(error, why).toBeUndefined();
           expect(dataOf(frames)["title"], why).toBe("A note");
           break;
+        default:
+          throw new Error(`${c.name}: no assertion for expect=${String(c.expect)}`);
       }
     });
   }

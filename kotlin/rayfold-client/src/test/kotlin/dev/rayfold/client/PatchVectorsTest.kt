@@ -2,14 +2,19 @@ package dev.rayfold.client
 
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -43,16 +48,33 @@ class PatchVectorsTest {
                     val key = RayfoldCache.resultKey(op, JsonObject(emptyMap()), null, null)
                     // the shape the result was asked with, where it matters to how the result is stored
                     cache.putResult(key, op, c.req("result"), SelectionLevel.of(c["shape"]?.jsonPrimitive?.content))
-                    cache.applyPatch(c.req("patch").jsonArray.map { it.jsonObject }, key)
-                    assertEquals(
-                        c.req("expect"),
-                        cache.denormalize((cache.getResult(key) ?: error("the result under $key is gone")).data),
-                        c["why"]?.jsonPrimitive?.content ?: name,
-                    )
+                    val unheld = c["unheld"]?.jsonPrimitive?.boolean == true
+                    // same operation, other arguments: a result the client never stored, so nothing may be found by the op name
+                    val target = if (unheld) RayfoldCache.resultKey(op, buildJsonObject { put("page", 2) }, null, null) else key
+                    cache.applyPatch(c.req("patch").jsonArray.map { it.jsonObject }, target)
+                    val why = c["why"]?.jsonPrimitive?.content ?: name
+                    val held = cache.getResult(key) ?: error("the result under $key is gone")
+                    assertEquals(c.req("expect"), cache.denormalize(held.data), why)
+                    if (unheld) assertNull(cache.getResult(target), "$why: a result the client did not hold was created")
+                    c["stale"]?.jsonObject?.let { stale ->
+                        assertEquals(stale.req("result").jsonPrimitive.boolean, held.stale, "$why: the result's staleness")
+                        val marked = stale.req("entities").jsonArray.map { it.jsonPrimitive.content }
+                        for (k in entityKeys(c.req("result"))) assertEquals(k in marked, cache.isStale(k), "$why: $k")
+                    }
                 },
             )
         }
         assertTrue(out.size > 5, "no patch vectors were found under ${root.absolutePath}")
         return out
+    }
+
+    /** Every `Type:id` the initial result mentions, at any depth. */
+    private fun entityKeys(v: JsonElement): Set<String> = when (v) {
+        is JsonArray -> v.flatMap { entityKeys(it) }.toSet()
+        is JsonObject -> {
+            val self = RayfoldCache.entityKey(v)
+            v.values.flatMap { entityKeys(it) }.toSet() + listOfNotNull(self)
+        }
+        else -> emptySet()
     }
 }

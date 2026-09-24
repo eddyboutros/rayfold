@@ -73,6 +73,7 @@ describe("conformance vectors: errors", () => {
           return;
         }
 
+        expect(c.expect, `${c.name}: no assertion for expect=${String(c.expect)}`).toBe("frame");
         // a batch that got far enough to be understood reports on the frame channel, whatever the code
         expect(res.status, why).toBe(200);
         const frames = (await res.text())

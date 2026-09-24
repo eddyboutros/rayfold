@@ -58,7 +58,8 @@ fails that op:
 ```
 
 A reference can only point to an op with a smaller id. Anything else refuses the whole batch before it starts, with a
-frame that has no `id`:
+frame that has no `id`. A WebSocket carries many batches, so there the same error goes to each op id the batch named
+instead:
 
 ```json
 {"error":{"code":"invalid_argument","message":"ops[0].args: $ref to op 2 must point to an earlier op"},"fin":true}
@@ -122,8 +123,8 @@ const server = createRayfoldServer({
 });
 ```
 
-The JVM has two more of its own: `maxFrames` bounds the frames one batch's resolvers may produce, and
-`maxInlineShapes` how many shapes learned from requests are remembered.
+The JVM has two more of its own: `maxFrames` bounds the frames one batch's resolvers may produce (a live query's
+later frames do not count), and `maxInlineShapes` how many shapes learned from requests are remembered.
 
 `maxStreamItems` on the TypeScript server arrived in 0.2.0; the JVM has always had it. On 0.1.0 a TypeScript stream
 is bounded only by the batch's cost.

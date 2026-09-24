@@ -297,6 +297,26 @@ describe("read policies pushed into SQL (spec 06 §4)", () => {
     expect(fetched()).toBe(4);
   });
 
+  it("a field on the right of `in` is left to the runtime: its negation keeps every row, as the policy does", async () => {
+    const schema = `
+      entity NotListed @allow(read: !(["u1"] in customerId)) { id: ID customerId: ID? }
+      entity NotU1 @allow(read: !(customerId in ["u1"])) { id: ID customerId: ID? }
+      query notListed: [NotListed]
+      query notU1: [NotU1]
+    `;
+    const store = createPgStore(counted, { ir: loadSchema(schema).ir, naming: "snake", tables: { NotListed: { table: "order" }, NotU1: { table: "order" } } });
+    const server = createRayfoldServer({
+      schema,
+      resolvers: { Query: { notListed: (_a, ctx) => store.find("NotListed", {}, ctx), notU1: (_a, ctx) => store.find("NotU1", {}, ctx) } },
+    });
+    // `["u1"] in customerId` is false for every row (a list is never an element of an ID), so every order is allowed
+    expect((await run(server, "notListed", { id: "u1" })).data).toEqual([{ $type: "NotListed", id: "o1" }, { $type: "NotListed", id: "o2" }, { $type: "NotListed", id: "o3" }, { $type: "NotListed", id: "o4" }]);
+    expect(fetched()).toBe(4);
+    // guard: with the field on the left, `in` is still pushed down exactly, so SQL fetched only the rows allowed
+    expect((await run(server, "notU1", { id: "u1" })).data).toEqual([{ $type: "NotU1", id: "o2" }, { $type: "NotU1", id: "o4" }]);
+    expect(fetched()).toBe(2);
+  });
+
   it("a page's total counts only the rows the viewer may see", async () => {
     const { server } = bookstore(counted);
     expect(await run(server, "ordersPage", { id: "u1", role: "customer" }, "{ total items { id } }")).toMatchObject({ data: { total: 2, items: [{ id: "o1" }, { id: "o3" }] } });

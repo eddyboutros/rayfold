@@ -87,6 +87,8 @@ describe("conformance vectors: idempotency", () => {
           expect(runs, `${why}: the resolver ran ${runs} times`).toBe(1);
           break;
         }
+        default:
+          throw new Error(`${c.name}: no assertion for expect=${String(c.expect)}`);
       }
     });
   }

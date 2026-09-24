@@ -286,4 +286,89 @@ class ExecutionCoreTest {
         val text = s.collect(batch("""{"id":1,"op":"a","shape":"{ id x xs y }"}"""), u1).single().toString()
         assertEquals(obj("""{"id":1,"data":{"$t":"A","id":"a1","x":null,"xs":[null,null,2.0],"y":1.5},"meta":{"cost":1},"fin":true}"""), kotlinx.serialization.json.Json.parseToJsonElement(text))
     }
+
+    // ---------------------------------------------------------------- capability tokens (spec 06 section 6)
+
+    private fun capServer(ran: MutableList<String>) = server("entity A { id: ID } query a: A query b: A", Resolvers(queries = mapOf(
+        "a" to { _, _ -> ran.add("a"); obj("""{"id":"a"}""") },
+        "b" to { _, _ -> ran.add("b"); obj("""{"id":"b"}""") },
+    )))
+
+    private val both = batch("""{"id":1,"op":"a","shape":"{ id }"}""", """{"id":2,"op":"b","shape":"{ id }"}""")
+
+    @Test
+    fun `a viewer holding a capability runs only the operations its caps ops name, and the others never reach a resolver`() = runTest(timeout = 5.seconds) {
+        val ran = mutableListOf<String>()
+        val frames = capServer(ran).collect(both, obj("""{"id":"u1","caps":{"ops":["a"],"exp":9999999999999,"jti":"t1"}}"""))
+        assertEquals(
+            listOf(
+                obj("""{"id":1,"data":{"$t":"A","id":"a"},"meta":{"cost":1},"fin":true}"""),
+                obj("""{"id":2,"error":{"code":"permission_denied","message":"This capability does not allow b()"},"fin":true}"""),
+            ),
+            frames.sortedBy { it.opId() },
+        )
+        assertEquals(listOf("a"), ran)
+    }
+
+    @Test
+    fun `guard - a viewer without caps ops is no capability holder, and the schema's policies alone decide`() = runTest(timeout = 5.seconds) {
+        for (viewer in listOf(u1, obj("""{"id":"u1","caps":{"exp":9999999999999}}"""), obj("""{"id":"u1","caps":"a"}"""))) {
+            val ran = mutableListOf<String>()
+            val frames = capServer(ran).collect(both, viewer)
+            assertEquals(listOf(null, null), frames.sortedBy { it.opId() }.map { it.errorCode() }, "$viewer")
+            assertEquals(setOf("a", "b"), ran.toSet(), "$viewer")
+        }
+    }
+
+    // ---------------------------------------------------------------- commands keep id order through a cancel
+
+    @Test
+    fun `a command cancelled while it waits for an earlier one still holds the next command until the earlier one ends`() = runTest(timeout = 5.seconds) {
+        val ran = mutableListOf<String>()
+        val firstRunning = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val s = server(
+            "entity A { id: ID } command one: A @idempotent(false) command two: A @idempotent(false) command three: A @idempotent(false)",
+            Resolvers(commands = mapOf(
+                "one" to { _, _ -> ran.add("one"); firstRunning.complete(Unit); releaseFirst.await(); obj("""{"id":"1"}""") },
+                "two" to { _, _ -> ran.add("two"); obj("""{"id":"2"}""") },
+                "three" to { _, _ -> ran.add("three"); obj("""{"id":"3"}""") },
+            )),
+        )
+        val cancelTwo = Job()
+        val frames = Channel<JsonObject>(Channel.UNLIMITED)
+        val envelope = batch("""{"id":1,"op":"one","shape":"{ id }"}""", """{"id":2,"op":"two","shape":"{ id }"}""", """{"id":3,"op":"three","shape":"{ id }"}""")
+        val run = launch {
+            try { s.execute(envelope, ExecuteOptions(opCancel = mapOf(2 to cancelTwo))).collect { frames.send(it) } } finally { frames.close() }
+        }
+        withTimeout(5_000) { firstRunning.await() }
+        cancelTwo.complete()
+        assertEquals(obj("""{"id":2,"error":{"code":"canceled","message":"Canceled"},"fin":true}"""), withTimeout(5_000) { frames.receive() })
+        runCurrent()
+        // command 2 has ended, but command 3 must not overtake command 1, which is still running
+        assertEquals(listOf("one"), ran)
+        assertTrue(frames.isEmpty, "nothing else has answered while command 1 runs")
+        releaseFirst.complete(Unit)
+        withTimeout(5_000) { run.join() }
+        val rest = generateSequence { frames.tryReceive().getOrNull() }.toList()
+        assertEquals(listOf(1, 3), rest.map { it.opId() }, "command 3 answers after command 1")
+        assertEquals(listOf("one", "three"), ran)
+    }
+
+    // ---------------------------------------------------------------- one executor, concurrent batches
+
+    @Test
+    fun `the interface-implementors memo of an executor is safe to fill from concurrent batches`() = runTest(timeout = 5.seconds) {
+        val s = server(
+            "object Named @interface { name: String } entity Author implements Named { id: ID name: String } query named: Named",
+            Resolvers(queries = mapOf("named" to { _, _ -> obj("""{"$t":"Author","id":"a1","name":"A"}""") })),
+        )
+        // every batch this server runs goes through one executor, whichever thread runs it
+        val executor = RayfoldServer::class.java.getDeclaredField("executor").apply { isAccessible = true }.get(s)
+        val memo = Executor::class.java.getDeclaredField("implementors").apply { isAccessible = true }.get(executor)
+        assertTrue(memo is java.util.concurrent.ConcurrentMap<*, *>, "a plain map mutated by concurrent batches: ${memo?.javaClass}")
+        // and it is filled on the way through a real query on an interface
+        assertEquals(null, s.collect(batch("""{"id":1,"op":"named","shape":"{ name }"}""")).single().errorCode())
+        assertEquals(setOf("Author"), (memo as Map<*, *>)["Named"])
+    }
 }

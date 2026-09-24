@@ -153,7 +153,7 @@ Headers:
 |---|---|
 | `rayfold` | the protocol version this server speaks |
 | `schemaHash` | SHA-256 of the canonical IR ([01 §9](01-schema.md)), lower-case hexadecimal and **not** prefixed — unlike a shape id ([02 §3](02-shapes.md)), which is. The same value the `Rayfold-Schema` response header carries. |
-| `extensions` | exactly the extensions this server serves. A client MUST NOT use an extension that is not listed ([process.md](process.md)). |
+| `extensions` | exactly the extensions this server serves. A client MUST NOT use an extension that is not listed ([process.md](process.md)). `http` is listed when the schema's `@http` routes are served beside the endpoint, not merely because the schema declares them. |
 | `limits` | the bounds a batch is judged against ([06 §5](06-auth.md), [12 §3](12-security.md)), so a client can size a batch rather than discover a refusal. `budget`, `maxOps`, `maxDepth` and `maxFields` are defined; a server MAY name others it enforces. |
 | `schema` | the IR ([01 §9](01-schema.md)), with policy expressions redacted unless the server is configured to serve them ([12 §5.6](12-security.md)) |
 
@@ -259,6 +259,8 @@ curl scripts, webhooks, gateways and teams that expect resources.
 * Errors are RFC 9457 problems whose `title` is the Rayfold error type and whose `data` is the typed payload.
   Status: `VersionConflict` -> 412, `domain` -> 422, others per [05 §3](05-errors.md).
 * A path that matches with another method answers `405` with `Allow`.
+* Path and query-string values are text, read by the argument's declared type. A `Long` too large for a JSON number
+  to hold exactly (past 2^53) stays text, as a client sends it in a body, so it reaches the resolver digit for digit.
 
 `GET /rayfold/openapi.json` returns an **OpenAPI 3.2** document generated from the IR and the bindings (3.2 is the
 first version with a `query` operation): parameters, request bodies, result schemas, the `Idempotency-Key` and

@@ -154,6 +154,46 @@ describe("GET bindings", () => {
     expect(await changed.json()).toEqual({ ...BOOK_B1, stock: 4 });
   });
 
+  it("GET answers 304 to the weak ETag a compressing proxy hands out, to a list naming it, and to *", async () => {
+    const bs = createBookstore();
+    const base = await serve(bs.server);
+    const etag = String((await fetch(`${base}/books/b1`)).headers.get("etag"));
+    for (const header of [`W/${etag}`, `"sha256-${"0".repeat(64)}", ${etag}`, "*"]) {
+      const res = await fetch(`${base}/books/b1`, { headers: { "if-none-match": header } });
+      expect(res.status, header).toBe(304);
+      expect(await res.text()).toBe("");
+    }
+    // guard: a weak list that names only other tags gets the full answer
+    const other = await fetch(`${base}/books/b1`, { headers: { "if-none-match": `W/"sha256-${"0".repeat(64)}", W/"x"` } });
+    expect(other.status).toBe(200);
+    expect(await other.json()).toEqual(BOOK_B1);
+  });
+
+  it("a Long path or query parameter past 2^53 reaches the resolver digit for digit, as text; one that fits a number is a number", async () => {
+    const seen: unknown[] = [];
+    const server = createRayfoldServer({
+      schema: `entity L { id: ID n: Long } query byN(n: Long): L? @http(method: GET, path: "/longs/{n}") query longs(n: Long): [L] @http(method: GET, path: "/longs")`,
+      resolvers: {
+        Query: {
+          byN: (args: { n: number | string }) => (seen.push(args.n), { id: "l", n: args.n }),
+          longs: (args: { n: number | string }) => (seen.push(args.n), []),
+        },
+      },
+    });
+    const base = await serve(server);
+    const path = await fetch(`${base}/longs/9007199254740993`);
+    expect(path.status).toBe(200);
+    expect(await path.json()).toEqual({ $type: "L", id: "l", n: "9007199254740993" });
+    expect((await fetch(`${base}/longs?n=-9223372036854775808`)).status).toBe(200);
+    expect((await fetch(`${base}/longs/42`)).status).toBe(200);
+    expect(seen).toEqual(["9007199254740993", "-9223372036854775808", 42]);
+    // guard: past the Long range it is still refused, and the resolver never runs
+    const over = await fetch(`${base}/longs/9223372036854775808`);
+    expect(over.status).toBe(400);
+    expect(await over.json()).toEqual(problemOf("invalid_argument", 400, "byN().n: expected Long"));
+    expect(seen).toHaveLength(3);
+  });
+
   it("GET ?shape= projects the requested shape instead of the default view, with its own ETag", async () => {
     const bs = createBookstore();
     const base = await serve(bs.server);

@@ -26,14 +26,15 @@ Here is the bookshop every guide on this site builds:
 | `event` | A fact a command publishes, such as `StockChanged`. |
 | `scalar` | A scalar of your own: `scalar Money @format("decimal")`. It travels as its base form with a name and a hint on it. |
 
-Twelve scalars are built in, plus the generic `Page<T>`. Five of them are text on the wire in a particular form:
+Twelve scalars are built in, plus the generic `Page<T>`, which a field or an operation may return but an argument or
+an input field may not take. Five of the scalars are text on the wire in a particular form:
 
 | Scalar | On the wire |
 |---|---|
 | `ID`, `String` | a string |
-| `Int`, `Float` | a number |
+| `Int`, `Float` | a number; an `Int` is 32-bit |
 | `Boolean` | `true` or `false` |
-| `Long` | a number, or a string above 2^53 so no digit is lost |
+| `Long` | a 64-bit number, or a string above 2^53 so no digit is lost |
 | `Decimal` | a string, always, for the same reason |
 | `Instant` | RFC 3339 in UTC: `2026-09-18T14:30:00Z` |
 | `Date` | `YYYY-MM-DD` |
@@ -128,7 +129,7 @@ Annotations put rules and hints next to the thing they apply to. The ones you wi
 | `@lazy` | The field arrives in a later frame unless a shape asks for it eagerly. See [deliver a field later](./queries.md#deliver-a-field-later). |
 | `@live(false)` | The query may not be opened [live](./live.md). |
 | `@interface` | The object declares an interface other types implement. |
-| `@format("...", pattern: "...")`, `@unit("...")` | Machine-readable hints for docs and agents; `pattern` is enforced on strings. |
+| `@format("...", pattern: "...")`, `@unit("...")` | Machine-readable hints for docs and agents; `pattern` is enforced on strings and must match the whole value. |
 | `@example(value: ...)` | A sample value, used by docs, the explorer and `rayfold mock`. |
 | `@ordinal(3)` | Fix the wire ordinal by hand instead of letting the lockfile assign it. |
 
@@ -163,6 +164,9 @@ error    unknown-type  Book.stock: Unknown type Integer
   |   ^^^^^
   = no type named Integer is defined; declare it, or import the document that has it
 ```
+
+Names that start with `__` are reserved for the protocol, so the check refuses them for fields, arguments and enum
+values alike.
 
 Run it in CI with `--against` the previous version of the schema and it also reports breaking changes. Editors get
 the same diagnostics through the [language server](../guide/editors.md).

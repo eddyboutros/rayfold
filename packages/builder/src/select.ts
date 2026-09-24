@@ -7,10 +7,12 @@
  *
  * What it understands (spec/02 section 1): fields, `alias: field`, arguments (skipped, they do not change the type),
  * nested shapes, `@partial` and `@eager`, `@defer` blocks and `...on Type { }` spreads (both contribute optional
- * fields, since neither is certain to arrive in the first frame).
+ * fields, since neither is certain to arrive in the first frame). A field with no sub-shape is typed as the default
+ * view the server derives for its type (spec 01 §2.7): scalars and enums, no nested objects.
  *
  * What it does not: a named-view spread (`...Book.card`) names a view whose text lives in the schema, not in the call,
- * so a shape that uses one falls back to the whole type. That is wider than the truth, never narrower.
+ * so a shape that uses one falls back to the whole type. That is wider than the truth, never narrower. Nor does it see
+ * a `default` view the schema declares, or a scalar field's arguments (which keep it out of the derived view).
  */
 import type { InferArgs, InferResult } from "./index.ts";
 
@@ -126,8 +128,34 @@ type Narrow<T, E extends Entry, Depth extends unknown[]> = E["name"] extends key
     ? Pick<T, E["name"]>[E["name"]] extends infer V
       ? SelectDeep<V, E["sub"], [...Depth, 0]>
       : never
-    : Pick<T, E["name"]>[E["name"]]
+    : DefaultView<Pick<T, E["name"]>[E["name"]]>
   : unknown; // a field the schema does not have: the server will answer for it, we will not pretend to know
+
+/** A value the derived default view keeps: a scalar or an enum, or a list of them (JSON is `unknown`, and a scalar). */
+type ScalarLike<V> = unknown extends V
+  ? true
+  : [NonNullable<V>] extends [never]
+    ? true
+    : NonNullable<V> extends readonly (infer E)[]
+      ? ScalarLike<E>
+      : NonNullable<V> extends object
+        ? false
+        : true;
+
+type PageLike = { items: readonly unknown[]; hasMore: boolean };
+
+/**
+ * What a field selected with no sub-shape brings back: its type's derived default view (spec 01 §2.7), every scalar
+ * and enum field, nested objects left out, and a page's `items` through their own default view. A `default` view the
+ * schema declares is not visible here, so this is the view the server derives when none is declared.
+ */
+type DefaultView<T> = T extends readonly (infer E)[]
+  ? DefaultView<E>[]
+  : T extends PageLike
+    ? Flat<{ [K in keyof T as K extends "items" ? K : ScalarLike<T[K]> extends true ? K : never]: K extends "items" ? DefaultView<T[K]> : T[K] }>
+    : T extends object
+      ? Flat<{ [K in keyof T as ScalarLike<T[K]> extends true ? K : never]: T[K] }>
+      : T;
 
 type Applied<T, E extends Entry[], Depth extends unknown[]> = Marker<T> & {
   [K in E[number] as K["optional"] extends true ? never : undefined extends Narrow<T, K, Depth> ? never : OutName<K>]: Narrow<T, K, Depth>;

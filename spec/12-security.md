@@ -43,7 +43,13 @@ handshakes:
    `Rayfold-Safe: true`, which may hold only queries. They cannot change data, a foreign page cannot send QUERY or the
    `Rayfold-Safe` header without a CORS preflight, and it cannot read the answer. Requests without `Origin` come from
    non-browser clients and are unaffected. Behind a proxy that rewrites Host, list the public origin, or writes are
-   refused while reads keep working.
+   refused while reads keep working. `*` in the allowed origins allows any origin.
+   The server's own origin is the one whose host and port equal the `Host` header. When the request reached the
+   server over TLS, as the transport says or as a proxy's `X-Forwarded-Proto: https` says, an `http:` origin is not
+   the server's own: a network attacker can write a page served over plain http. The scheme is not compared the other
+   way, because a server behind a TLS-terminating proxy that sends no `X-Forwarded-Proto` sees plain http for its own
+   https pages. `X-Forwarded-Proto` is only ever believed when it says `https`, so a forged one can make the rule
+   stricter and never looser.
 3. **Host.** A server reached on a loopback address (127.0.0.0/8 or ::1) MUST answer only loopback host names
    (`localhost`, `127.0.0.1`, `[::1]`) unless it is configured with an explicit host list. Other hosts get `403`.
    This defeats DNS rebinding, where a page renames its own domain to 127.0.0.1 and would otherwise count as same
@@ -58,7 +64,8 @@ handshakes:
    Too Large` (problem type `payload_too_large`, code `resource_exhausted`), because retrying the same body cannot
    help. After refusing, it SHOULD keep draining the upload up to a bound, so the refusal reaches the client, then
    close the connection. WebSocket frames and assembled messages MUST be capped too (default 1 MiB); an oversized
-   one closes the connection with code 1009.
+   one closes the connection with code 1009. A text message that is not valid UTF-8 closes the connection with code
+   1007 (RFC 6455 section 8.1) and runs nothing.
 2. **Nesting.** Arguments and variables nested deeper than 64 levels MUST fail the batch with `invalid_argument`
    before anything walks them recursively. Shape text nested deeper than 64 levels MUST be refused while parsing. RB
    values nested deeper than 64 levels MUST be refused while decoding, and an RB length prefix larger than the

@@ -12,7 +12,7 @@ Seven modules. `rayfold-core` runs the same conformance fixtures as the TypeScri
 | `rayfold-client` | The client for Kotlin and Android: normalized cache kept current by patches, batches, `watch`/`live`/`stream` flows, typed results, optimistic commands and an offline queue. Java 17 bytecode, no server code; checked against Android API level 26. | [Kotlin client](../docs/guide/kotlin.md#a-client) |
 | `rayfold-client-okhttp` | The WebSocket transport on OkHttp, for Android. | [Android](../docs/guide/kotlin.md#android) |
 | `rayfold-opentelemetry` | OpenTelemetry spans for batches, ops and loader calls. | [Tracing](../docs/guide/tracing.md) |
-| `rayfold-jdbc` | What a fleet shares over JDBC: `JdbcIdempotencyStore`, `JdbcUploadStore` and `PgRelay`, in the same tables the TypeScript runtime creates. | [JDBC](../docs/guide/jdbc.md) |
+| `rayfold-jdbc` | `JdbcStore`, a SQL database behind resolvers with read policies pushed into `WHERE`; and what a fleet shares over JDBC: `JdbcIdempotencyStore`, `JdbcUploadStore` and `PgRelay`, in the same tables the TypeScript runtime creates. | [JDBC](../docs/guide/jdbc.md) |
 
 ```
 ./gradlew check                       # every module's tests, and the Android API check of the client modules
@@ -71,4 +71,5 @@ Where it differs from the TypeScript runtime:
   listener bounds its handshake per listener. Under the Spring starter the servlet container's own timeouts apply.
 - `RayfoldWebSocket` listens on its own port, since the JDK server cannot upgrade a connection; the Spring starter
   serves the WebSocket on the application's port.
-- Resolvers get no pushed-down read policy (`ctx.policy` in TypeScript); the runtime's own check filters rows.
+- `ctx.policy` carries the pushable read policy, as in TypeScript. `JdbcStore` applies it in SQL; the runtime's
+  own check still filters every row.

@@ -107,6 +107,132 @@
       ],
       "why": "normalisation is the point: one entity, however many results mention it"
     },
-    {"name": "a field selected under an alias stays with the result, and a set changes only the entity's own fields", "shape": "{ id x: title stock }", "result": [{"$type": "Book", "id": "b1", "x": "Dune", "stock": 3}], "patch": [{"set": "Book:b1", "value": {"title": "Dune Messiah", "stock": 5}}], "expect": [{"$type": "Book", "id": "b1", "x": "Dune", "stock": 5}], "why": "x is what this result asked for, not a field of the book: kept on the entity it was overwritten by any other result selecting another field as x (spec 07 §3). A set names the book's own fields, so stock follows it and x waits for the result to be read again"}
+    {"name": "a field selected under an alias stays with the result, and a set changes only the entity's own fields", "shape": "{ id x: title stock }", "result": [{"$type": "Book", "id": "b1", "x": "Dune", "stock": 3}], "patch": [{"set": "Book:b1", "value": {"title": "Dune Messiah", "stock": 5}}], "expect": [{"$type": "Book", "id": "b1", "x": "Dune", "stock": 5}], "why": "x is what this result asked for, not a field of the book: kept on the entity it was overwritten by any other result selecting another field as x (spec 07 §3). A set names the book's own fields, so stock follows it and x waits for the result to be read again"},
+    {
+      "name": "at merges fields into the plain object at a path of this result",
+      "result": { "total": 2, "columns": [{ "name": "todo", "count": 1 }, { "name": "done", "count": 1 }] },
+      "patch": [
+        { "at": "columns.1", "value": { "count": 2 } },
+        { "at": "", "value": { "total": 3 } }
+      ],
+      "expect": { "total": 3, "columns": [{ "name": "todo", "count": 1 }, { "name": "done", "count": 2 }] },
+      "why": "spec 13 §2: the path is dotted with array positions included, `\"\"` is the result itself, and the merge names fields rather than replacing the object - `name` stays"
+    },
+    {
+      "name": "inv marks an entity stale and keeps what the client holds",
+      "result": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma" }
+      ],
+      "patch": [{ "inv": ["Book:b2"] }],
+      "expect": [
+        { "$type": "Book", "id": "b1", "title": "Dune" },
+        { "$type": "Book", "id": "b2", "title": "Emma" }
+      ],
+      "stale": { "result": false, "entities": ["Book:b2"] },
+      "why": "spec 13 §2: the client refetches on next read; it does not discard what it holds. Only the named entity is marked, and marking an entity is not marking the results that hold it - that is invOp"
+    },
+    {
+      "name": "a set clears the staleness an inv left",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "patch": [
+        { "inv": ["Book:b1"] },
+        { "set": "Book:b1", "value": { "stock": 5 } }
+      ],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 5 }],
+      "stale": { "result": false, "entities": [] },
+      "why": "spec 13 §2: a set clears staleness for that entity, so the order matters - the same two operations the other way round leave it stale"
+    },
+    {
+      "name": "invOp marks this operation's results stale and keeps what they hold",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune" }],
+      "patch": [{ "invOp": ["books"] }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune" }],
+      "stale": { "result": true, "entities": [] },
+      "why": "a result marked stale is refetched on next read, and read until then: invOp is not a delete"
+    },
+    {
+      "name": "guard: invOp of another operation leaves this result fresh",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune" }],
+      "patch": [{ "invOp": ["authors"] }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune" }],
+      "stale": { "result": false, "entities": [] },
+      "why": "or the case above passes against a client that marks every result stale on any invOp"
+    },
+    {
+      "name": "a deleted root entity reads as null",
+      "result": { "$type": "Book", "id": "b1", "title": "Dune" },
+      "patch": [{ "del": "Book:b1" }],
+      "expect": null,
+      "why": "spec 13 §5: a result whose root entity was deleted holds null, which is what a nullable query would have answered anyway. Not an empty object, and not a dangling reference"
+    },
+    {
+      "name": "a nested entity in set is stored in its own right, not copied into its parent",
+      "result": [
+        { "$type": "Book", "id": "b1", "title": "Dune", "author": { "$type": "Author", "id": "a1", "name": "F. Herbert" } },
+        { "$type": "Book", "id": "b2", "title": "Dune Messiah", "author": { "$type": "Author", "id": "a1", "name": "F. Herbert" } }
+      ],
+      "patch": [{ "set": "Book:b1", "value": { "author": { "$type": "Author", "id": "a1", "name": "Frank Herbert" } } }],
+      "expect": [
+        { "$type": "Book", "id": "b1", "title": "Dune", "author": { "$type": "Author", "id": "a1", "name": "Frank Herbert" } },
+        { "$type": "Book", "id": "b2", "title": "Dune Messiah", "author": { "$type": "Author", "id": "a1", "name": "Frank Herbert" } }
+      ],
+      "why": "spec 13 §2: nested entities in `value` are themselves stored and replaced by references. The other book reaching the new name is the only way to see that: a cache that kept the author inside Book:b1 shows two authors where there is one"
+    },
+    {
+      "name": "a del reaches a list held in another entity's field",
+      "result": [
+        {
+          "$type": "Author",
+          "id": "a1",
+          "name": "Frank Herbert",
+          "books": [
+            { "$type": "Book", "id": "b1", "title": "Dune" },
+            { "$type": "Book", "id": "b2", "title": "Dune Messiah" }
+          ]
+        }
+      ],
+      "patch": [{ "del": "Book:b1" }],
+      "expect": [
+        {
+          "$type": "Author",
+          "id": "a1",
+          "name": "Frank Herbert",
+          "books": [{ "$type": "Book", "id": "b2", "title": "Dune Messiah" }]
+        }
+      ],
+      "why": "spec 13 §2: every reference goes, from results and from other entities' fields alike. The list here belongs to Author:a1, not to the result, so a cache that only cleans its results leaves a dangling reference behind"
+    },
+    {
+      "name": "a del of the entity a field points to leaves that field null",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "author": { "$type": "Author", "id": "a1", "name": "Frank Herbert" } }],
+      "patch": [{ "del": "Author:a1" }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune", "author": null }],
+      "why": "spec 13 §5: every reference to a deleted entity goes, and where it was the only value it reads as null, as a deleted root does - not an empty object, and not a dangling reference"
+    },
+    {
+      "name": "at and list for a result the client does not hold are ignored, and the rest of the patch still applies",
+      "unheld": true,
+      "result": {
+        "total": 2,
+        "items": [
+          { "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 },
+          { "$type": "Book", "id": "b2", "title": "Emma", "stock": 1 }
+        ]
+      },
+      "patch": [
+        { "list": "items", "del": [0] },
+        { "at": "", "value": { "total": 1 } },
+        { "set": "Book:b1", "value": { "stock": 5 } }
+      ],
+      "expect": {
+        "total": 2,
+        "items": [
+          { "$type": "Book", "id": "b1", "title": "Dune", "stock": 5 },
+          { "$type": "Book", "id": "b2", "title": "Emma", "stock": 1 }
+        ]
+      },
+      "why": "spec 13 §3: the patch frame names a result this client never asked for - the same operation with other arguments - so its result-scoped operations are ignored rather than an error, and applied to no other result. The set acts on the cache as a whole and still lands, because every operation is total"
+    }
   ]
 }

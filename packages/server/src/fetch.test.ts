@@ -99,6 +99,57 @@ describe("the fetch handler answers a batch", () => {
     expect(await commandOverGet.json()).toMatchObject({ detail: "Safe requests (GET/QUERY) may only contain queries" });
   });
 
+  it("answers only the mount and paths under it: a path that merely begins with the mount's text is not Rayfold's", async () => {
+    const b64 = Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url");
+    for (const path of [`/rayfoldbook?a=${b64}`, `/rayfold-admin/manifest`, `/rayfoldx`]) {
+      const res = await get(path);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: "not_found", detail: `No route for ${path.split("?")[0]}` });
+    }
+    expect(bs.store.calls["Query.book"]).toBeUndefined();
+    // guard: the mount itself and paths under it are still answered
+    expect((await get(`/rayfold/book?a=${b64}`)).status).toBe(200);
+    expect(bs.store.calls["Query.book"]).toBe(1);
+    expect((await post({ ops: [{ id: 1, op: "book", args: { id: "b1" } }] })).status).toBe(200);
+    // guard: a mount given with a trailing slash is the same mount
+    const slashed = createFetchHandler(bs.server, { path: "/api/" });
+    expect((await slashed(new Request("http://api.example/api/manifest"))).status).toBe(200);
+    expect((await slashed(new Request("http://api.example/apix/manifest"))).status).toBe(404);
+  });
+
+  it("answers 304 to a weak ETag, to a list naming the current one, and to *, as RFC 9110's weak comparison says", async () => {
+    const url = `/rayfold/book?a=${Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url")}`;
+    const etag = (await get(url)).headers.get("etag")!;
+    for (const header of [`W/${etag}`, `"sha256-${"0".repeat(64)}", ${etag}`, `W/"x", W/${etag}`, "*"]) {
+      const res = await get(url, { "if-none-match": header });
+      expect(res.status, header).toBe(304);
+      expect(await res.text()).toBe("");
+    }
+    // guard: a list that does not name it, and the opaque tag without its quotes, get the full answer
+    for (const header of [`"sha256-${"0".repeat(64)}", W/"other"`, etag.slice(1, -1)]) {
+      const res = await get(url, { "if-none-match": header });
+      expect(res.status, header).toBe(200);
+      expect(res.headers.get("etag")).toBe(etag);
+    }
+  });
+
+  it("a page served over http is not the origin of a server reached over https, so its write is refused and runs nothing", async () => {
+    const write = (url: string, origin: string, headers: Record<string, string> = {}, key = KEY) =>
+      handler(new Request(url, { method: "POST", headers: { "content-type": "application/rayfold+json", accept: "application/json", origin, authorization: "Bearer admin", ...headers }, body: JSON.stringify({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key }] }) }));
+    const refused = await write("https://api.example/rayfold", "http://api.example");
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ code: "permission_denied", detail: "Origin http://api.example is not allowed" });
+    // a TLS-terminating proxy that says so makes the handler judge as it would behind TLS
+    expect((await write("http://api.example/rayfold", "http://api.example", { "x-forwarded-proto": "https" })).status).toBe(403);
+    expect(bs.store.calls["Command.restock"]).toBeUndefined();
+    // guard: the https page of the same host writes, directly and behind a proxy that says nothing about TLS
+    expect((await write("https://api.example/rayfold", "https://api.example")).status).toBe(200);
+    expect((await write("http://api.example/rayfold", "https://api.example", {}, "fedcba9876543210")).status).toBe(200);
+    // guard: a forged X-Forwarded-Proto can only make the rule stricter: saying http over TLS changes nothing
+    expect((await write("https://api.example/rayfold", "http://api.example", { "x-forwarded-proto": "http" })).status).toBe(403);
+    expect(bs.store.calls["Command.restock"]).toBe(2);
+  });
+
   it("refuses a body over the limit without reading it whole", async () => {
     const small = createFetchHandler(bs.server, { maxBody: 64 });
     const res = await small(

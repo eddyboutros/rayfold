@@ -24,6 +24,9 @@ endpoint like any other client; and shows the frames as they arrive, each with i
 `@simulate` can be run as a **dry run**, which reports what would happen and writes nothing. A query can be sent
 `live`, and the frames keep arriving as the data changes.
 
+The operations come from the endpoint's manifest, so a server with `manifest: "off"` has nothing to list, and the page
+says there is no manifest.
+
 It is one self-contained document: nothing loads from any other origin, so it works offline and on a closed network.
 Its script and styles are inline, so where a `Content-Security-Policy` applies, its path needs `'unsafe-inline'` for
 `script-src` and `style-src`.

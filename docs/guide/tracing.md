@@ -10,7 +10,8 @@ Book.author` span serves every book on the page, and its `rayfold.parents` attri
 | `rayfold query book`, `rayfold command placeOrder`, ... | `rayfold.op`, `rayfold.op.kind`, `rayfold.op.id`, `rayfold.cost` |
 | `rayfold load Book.author` | `rayfold.type`, `rayfold.field`, `rayfold.parents` |
 
-A failed op gets status `ERROR` and `rayfold.error.code`; a loader that throws records the exception. A request with a
+A failed op gets status `ERROR` and `rayfold.error.code`; a loader that throws records the exception. What a resolver
+threw is recorded on its op span as an exception event, with its stack, though the client is told only `internal`. A request with a
 W3C `traceparent` header continues the caller's trace, and so does `meta.traceparent` in an envelope sent over
 WebSocket. Resolvers run inside their loader's span, so spans that an instrumented database client starts nest under it.
 
@@ -47,5 +48,7 @@ Instrumentation rayfoldTracing(OpenTelemetry openTelemetry) {
 ## Other tools
 
 `instrumentation` is a plain set of three hooks (`batch`, `op` and `loader`, each wrapping the work it reports), so
-metrics or logging need no OpenTelemetry at all: implement `Instrumentation` directly. On the JVM its hooks are
+metrics or logging need no OpenTelemetry at all: implement `Instrumentation` directly. The `Outcome` an `op` hook gets
+back holds, in `cause`, what a failed op's resolver threw, stack included, where the client sees only `internal`: log
+it there. On the JVM its hooks are
 Kotlin `suspend` functions, so write them in Kotlin; Java code can use `RayfoldOpenTelemetry` instead.

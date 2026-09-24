@@ -80,15 +80,50 @@ class VectorsTest {
         val http = RayfoldHttp(server) { JsonNull }.start(0)
         try {
             val port = http.address.port
-            val text = java.net.URI("http://127.0.0.1:$port/rayfold/manifest").toURL().readText()
-            val body = Json.parseToJsonElement(text).jsonObject
+            val res = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build().send(
+                java.net.http.HttpRequest.newBuilder(java.net.URI("http://127.0.0.1:$port/rayfold/manifest")).GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString(),
+            )
+            val body = Json.parseToJsonElement(res.body()).jsonObject
 
             assertEquals(named.sorted(), body.keys.sorted(), "the manifest must serve exactly the members spec 04 section 4a names")
+            val hex64 = Regex("^[0-9a-f]{64}$")
+            for (m in contract.req("members").jsonArray.map { it.jsonObject }) {
+                val name = m.str("name")
+                val value = body[name]
+                val kind = m.str("type")
+                val ok = when (kind) {
+                    "string" -> (value as? JsonPrimitive)?.isString == true
+                    "hex64" -> (value as? JsonPrimitive)?.takeIf { it.isString }?.let { hex64.matches(it.content) } == true
+                    "string[]" -> value is JsonArray && value.all { (it as? JsonPrimitive)?.isString == true }
+                    "object" -> value is JsonObject
+                    else -> error("$name: no check for type $kind")
+                }
+                assertTrue(ok, "$name should be $kind: was $value")
+                m["keys"]?.let { keys ->
+                    for (k in keys.jsonArray) assertTrue(k.jsonPrimitive.content in (value as JsonObject), "$name.${k.jsonPrimitive.content} is missing")
+                }
+            }
+
             val hash = body["schemaHash"]?.jsonPrimitive?.content
-            assertTrue(hash != null && Regex("^[0-9a-f]{64}$").matches(hash), "schemaHash is bare lower-case hex, not a prefixed shape id: was $hash")
-            val limits = body["limits"]?.jsonObject ?: error("no limits")
-            val keys = (contract.req("members").jsonArray.first { it.jsonObject.str("name") == "limits" }).jsonObject.req("keys").jsonArray
-            for (k in keys) assertTrue(limits.containsKey(k.jsonPrimitive.content), "limits.${k.jsonPrimitive.content} is missing")
+            for (rule in contract.req("rules").jsonArray.map { it.jsonObject }) {
+                val why = rule.str("name")
+                when (rule.str("check")) {
+                    // a shape id is "sha256:..." and this is not. Both get called "the hash", which is how an
+                    // implementer gets it wrong once and then cannot see it
+                    "hex64" -> assertTrue(hash != null && hex64.matches(hash), "$why: was $hash")
+                    "matchesHeader" -> assertEquals(hash, res.headers().firstValue("Rayfold-Schema").orElse(null), why)
+                    "redacted" -> {
+                        val served = body.req("schema")
+                        // a policy is present but its expression is gone, which is also why the hash cannot be
+                        // recomputed from what was served
+                        assertTrue("costPrice" in served.toString(), "$why: the policy-bearing field is missing altogether")
+                        assertTrue("admin" !in served.toString(), "$why: $served")
+                        assertTrue(sha256(Canonical.json(served)) != hash, "$why: the served schema hashes to schemaHash")
+                    }
+                    else -> error("$why: no runner for check ${rule.str("check")}")
+                }
+            }
         } finally {
             http.stop(0)
         }
@@ -207,7 +242,9 @@ class VectorsTest {
                     "note" to { _, _ -> note },
                     "adminOnly" to { _, _ -> note },
                     "box" to { _, _ -> buildJsonObject { put("id", "b1") } },
-                    "boxWithGap" to { _, _ -> buildJsonObject { put("id", "b1") } },
+                    // a list with a real gap in it, so the denial rule can be told apart from "any null in a list"
+                    "boxWithGap" to { _, _ -> buildJsonObject { put("id", "b1"); put("gap", true) } },
+                    "folder" to { _, _ -> buildJsonObject { put("id", "f1") } },
                 ),
                 fields = mapOf(
                     "Note" to mapOf(
@@ -216,8 +253,12 @@ class VectorsTest {
                     ),
                     "Box" to mapOf(
                         "items" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext -> parents.map { JsonArray(listOf(secret)) } },
-                        // one list holds a denied entity, the other a real gap, so the denial rule can be told apart
-                        "maybe" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext -> parents.map { JsonArray(listOf(secret)) } },
+                        "maybe" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext ->
+                            parents.map { JsonArray(listOf(if ("gap" in it) JsonNull else secret)) }
+                        },
+                    ),
+                    "Folder" to mapOf(
+                        "secret" to { parents: List<JsonObject>, _: JsonObject, _: RayfoldContext -> parents.map { secret } },
                     ),
                 ),
             ),
@@ -227,9 +268,6 @@ class VectorsTest {
         for (case in doc.req("cases").jsonArray) {
             val c = case.jsonObject
             val name = c.str("name")
-            // the gap case needs a resolver that returns a null element; it is covered on the TypeScript side, and
-            // the JVM's own LiveDiffTest covers null elements, so it is skipped rather than given a second server
-            if (c.str("expect") == "nullElement") continue
             out.add(
                 DynamicTest.dynamicTest("authorization/$name") {
                     val viewer = if (c.containsKey("viewer")) c.req("viewer") else doc.req("viewer")
@@ -244,7 +282,9 @@ class VectorsTest {
                     val why = c["why"]?.jsonPrimitive?.content ?: name
                     val expect = c.str("expect")
                     if (expect == "error") {
-                        assertEquals(c.str("code"), (error?.get("error") as? JsonObject)?.get("code")?.jsonPrimitive?.content, why)
+                        val denied = error?.get("error") as? JsonObject
+                        assertEquals(c.str("code"), denied?.get("code")?.jsonPrimitive?.content, why)
+                        c["path"]?.let { assertEquals(it.jsonPrimitive.content, denied?.get("path")?.jsonPrimitive?.content, "$why: path") }
                         return@dynamicTest
                     }
                     assertTrue(error == null, "$why: expected no error, got $error")
@@ -255,6 +295,10 @@ class VectorsTest {
                         "null" -> {
                             assertEquals(JsonNull, data[c.str("at")], "$why: a denied entity at a nullable position reads as null")
                             // absence carries no error, or the error itself would say the entity exists
+                            assertEquals(emptyList(), errors, why)
+                        }
+                        "nullElement" -> {
+                            assertEquals(JsonArray(listOf(JsonNull)), data[c.str("at")], why)
                             assertEquals(emptyList(), errors, why)
                         }
                         "omitted" -> {
@@ -282,9 +326,9 @@ class VectorsTest {
     }
 
     /**
-     * The status each error code derives (spec 05 section 3). A proxy routes on this and a client branches on it, so
-     * two runtimes that map a code differently are not interchangeable. The problem-document-or-frame half of the
-     * area needs a server and is covered by the TypeScript runner and by HttpTest here.
+     * The status each error code derives (spec 05 section 3), and - against a real server - whether a refusal arrives
+     * as a problem document or an error frame. A proxy routes on the status and a client branches on the form, so two
+     * runtimes that differ here are not interchangeable.
      */
     @TestFactory
     fun errors(): List<DynamicTest> {
@@ -298,6 +342,63 @@ class VectorsTest {
                 DynamicTest.dynamicTest("errors/$name is $expected") {
                     val code = Code.entries.first { it.wire == name }
                     assertEquals(expected, Guard.status(code), c["why"]?.jsonPrimitive?.content ?: name)
+                },
+            )
+        }
+
+        val members = doc.req("problemShape").jsonObject.req("members").jsonArray.map { it.jsonPrimitive.content }
+        // book costs 5: over budget only when the vector asks for it, so the flag is what puts the batch over
+        val ir = SchemaText.load("entity Book { id: ID title: String }\nquery book(id: ID): Book? @cost(base: 5)").ir
+        for (case in doc.req("cases").jsonArray) {
+            val c = case.jsonObject
+            val name = c.str("name")
+            val why = c["why"]?.jsonPrimitive?.content ?: name
+            out.add(
+                DynamicTest.dynamicTest("errors/$name") {
+                    val request = c.req("request").jsonObject
+                    val overBudget = request["overBudget"]?.jsonPrimitive?.content == "true"
+                    val server = RayfoldServer(
+                        ir,
+                        Resolvers(queries = mapOf("book" to { _, _ -> null })),
+                        if (overBudget) BatchOptions(budget = 3) else BatchOptions(),
+                    )
+                    val http = RayfoldHttp(server, HttpOptions(maxBodyBytes = 200)) { buildJsonObject { put("id", "u1") } }.start(0)
+                    try {
+                        val id = if (request["oversize"]?.jsonPrimitive?.content == "true") "x".repeat(400) else "b1"
+                        val op = request["op"]?.jsonPrimitive?.content ?: "book"
+                        val body = """{"ops":[{"id":1,"op":"$op","args":{"id":"$id"}}]}"""
+                        val res = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build().send(
+                            java.net.http.HttpRequest.newBuilder(java.net.URI("http://127.0.0.1:${http.address.port}/rayfold"))
+                                .header("Content-Type", request["contentType"]?.jsonPrimitive?.content ?: "application/rayfold+json")
+                                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
+                                .build(),
+                            java.net.http.HttpResponse.BodyHandlers.ofString(),
+                        )
+                        when (c.str("expect")) {
+                            "problem" -> {
+                                assertEquals(c.str("status").toInt(), res.statusCode(), why)
+                                val contentType = res.headers().firstValue("Content-Type").orElse("")
+                                assertTrue("application/problem+json" in contentType, "$why: served as $contentType")
+                                val problem = Json.parseToJsonElement(res.body()).jsonObject
+                                for (m in members) assertTrue(m in problem, "$why: member $m is missing from $problem")
+                                assertEquals(c.str("code"), problem.str("code"), why)
+                                val type = c.str("type")
+                                assertTrue(type in problem.str("type"), "$why: type was ${problem.str("type")}")
+                                // lower case, and the underscores gone: "invalid argument", never "Invalid argument"
+                                assertEquals(type.replace('_', ' '), problem.str("title"), "$why: the title is the problem type, spaced and lower-case")
+                            }
+                            "frame" -> {
+                                // a batch that got far enough to be understood reports on the frame channel, whatever the code
+                                assertEquals(200, res.statusCode(), why)
+                                val frames = res.body().trim().lines().map { Json.parseToJsonElement(it).jsonObject }
+                                val codes = frames.mapNotNull { (it["error"] as? JsonObject)?.str("code") }
+                                assertEquals(listOf(c.str("code")), codes, why)
+                            }
+                            else -> error("$name: no assertion for expect=${c.str("expect")}")
+                        }
+                    } finally {
+                        http.stop(0)
+                    }
                 },
             )
         }

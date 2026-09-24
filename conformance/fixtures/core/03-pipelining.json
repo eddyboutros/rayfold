@@ -1364,6 +1364,102 @@
         "id": "u1",
         "role": "customer"
       }
+    },
+    {
+      "name": "a reference names an op by its id, not by its place in the array",
+      "request": {
+        "ops": [
+          {
+            "id": 2,
+            "op": "book",
+            "args": {
+              "id": {
+                "$ref": "1.id"
+              }
+            },
+            "shape": "{ id title }"
+          },
+          {
+            "id": 1,
+            "op": "book",
+            "args": {
+              "id": "b1"
+            },
+            "shape": "{ id }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Book",
+            "id": "b1"
+          },
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        },
+        {
+          "id": 2,
+          "data": {
+            "$type": "Book",
+            "id": "b1",
+            "title": "T1"
+          },
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ],
+      "viewer": {
+        "id": "u1",
+        "role": "customer"
+      },
+      "calls": {
+        "Query.book": 2
+      }
+    },
+    {
+      "name": "a reference to a live op is a batch-level error: a live op never finishes, so it would wait for ever",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "book",
+            "args": {
+              "id": "b1"
+            },
+            "shape": "{ id }",
+            "live": true
+          },
+          {
+            "id": 2,
+            "op": "book",
+            "args": {
+              "id": {
+                "$ref": "1.id"
+              }
+            },
+            "shape": "{ id title }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "error": {
+            "code": "invalid_argument",
+            "message": "ops[1].args: $ref to op 1, which is live and never finishes"
+          },
+          "fin": true
+        }
+      ],
+      "viewer": {
+        "id": "u1",
+        "role": "customer"
+      }
     }
   ]
 }

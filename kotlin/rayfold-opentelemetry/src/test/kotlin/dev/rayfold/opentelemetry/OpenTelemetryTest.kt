@@ -175,6 +175,33 @@ class OpenTelemetryTest {
     }
 
     @Test
+    fun `what a resolver threw is an exception event on its op span, with its stack, though the client is told only internal`() {
+        val s = RayfoldServer(
+            SchemaText.load("entity A { id: ID } query broken: A query fine: A").ir,
+            Resolvers(queries = mapOf(
+                "broken" to { _, _ -> throw IllegalStateException("the disk is full") },
+                "fine" to { _, _ -> buildJsonObject { put("id", "a1") } },
+            )),
+            instrumentation = RayfoldOpenTelemetry(tracer),
+        )
+        val frames = collect(s, """{"ops":[{"id":1,"op":"broken"},{"id":2,"op":"fine"}]}""")
+        assertEquals(obj("""{"id":1,"error":{"code":"internal","message":"Internal error"},"fin":true}"""), frames.single { it["id"]?.jsonPrimitive?.content == "1" })
+        val op = named("rayfold query broken")
+        assertEquals(StatusCode.ERROR, op.status.statusCode)
+        assertEquals("Internal error", op.status.description)
+        val exception = op.events.single()
+        assertEquals("exception", exception.name)
+        val attrs = exception.attributes.asMap().entries.associate { (k, v) -> k.key to v }
+        assertEquals("java.lang.IllegalStateException", attrs["exception.type"])
+        assertEquals("the disk is full", attrs["exception.message"])
+        assertEquals(true, attrs["exception.stacktrace"].toString().contains("the disk is full"))
+        // guard: the op that worked carries no event and no error status
+        val fine = named("rayfold query fine")
+        assertEquals(emptyList(), fine.events)
+        assertEquals(StatusCode.UNSET, fine.status.statusCode)
+    }
+
+    @Test
     fun `a cancelled live op ends its span without an error, and its batch span ends too`() {
         val s = server()
         val cancel = Job()

@@ -67,7 +67,7 @@ internal class RayfoldHandshakeInterceptor(private val properties: RayfoldProper
         // the local address is a literal IP, so this does no name lookup
         val local = servlet.localAddr?.let { runCatching { InetAddress.getByName(it) }.getOrNull() }
         val refused = Guard.hostProblem(host, local, properties.allowedHosts?.toSet())
-            ?: Guard.originProblem(servlet.getHeader("Origin"), host, properties.allowedOrigins.toSet())
+            ?: Guard.originProblem(servlet.getHeader("Origin"), host, properties.allowedOrigins.toSet(), Guard.reachedOverTls(servlet.isSecure, servlet.getHeader("X-Forwarded-Proto")))
         if (refused != null) {
             response.setStatusCode(HttpStatus.FORBIDDEN)
             response.body.write(refused.toByteArray())
