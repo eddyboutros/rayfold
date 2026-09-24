@@ -426,7 +426,8 @@ describe("an imported schema served over its HTTP bindings", () => {
     expect(text).toContain('@http(method: PATCH, path: "/shelves/{id}", body: "*")');
 
     const base = await serve(text);
-    const added = await send(`${base}/shelves`, "POST", { label: "poetry", size: 12 }, { "idempotency-key": "key-0123456789abcdef" });
+    const key = "key-0123456789abcdef";
+    const added = await send(`${base}/shelves`, "POST", { label: "poetry", size: 12 }, { "idempotency-key": key });
     expect(added).toEqual({ status: 200, body: { $type: "Shelf", id: "s1", label: "poetry", size: 12 } });
     const relabelled = await send(`${base}/shelves/s7`, "PATCH", { label: "drama" });
     expect(relabelled).toEqual({ status: 200, body: { $type: "Shelf", id: "s7", label: "drama", size: null } });
