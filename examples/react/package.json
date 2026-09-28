@@ -20,7 +20,7 @@
     "@rayfold/server": "*",
     "@vitejs/plugin-react": "^6.1.1",
     "jose": "^6.2.12",
-    "tsx": "^4.20.0",
+    "tsx": "^4.23.15",
     "vite": "^8.3.0"
   }
 }
