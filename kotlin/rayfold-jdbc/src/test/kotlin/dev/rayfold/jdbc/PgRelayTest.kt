@@ -387,6 +387,13 @@ class PgRelayTest {
         /** Every poll for notifications, and every NOTIFY sent on this connection. */
         val polls = java.util.concurrent.atomic.AtomicInteger()
         val notified = java.util.concurrent.atomic.AtomicInteger()
+        private val polled = java.util.concurrent.Semaphore(0)
+
+        /** Waits, at most 5 s, until the loop has polled [n] more times; false when it has not. */
+        fun awaitPolls(n: Int): Boolean = polled.tryAcquire(n, 5, java.util.concurrent.TimeUnit.SECONDS)
+
+        /** Forgets the polls so far, so the next [awaitPolls] counts only polls from now on. */
+        fun forgetPolls() { polled.drainPermits() }
 
         /** Until set, polls find nothing: the test registers its listeners first. */
         @Volatile var delivering = false
@@ -401,8 +408,8 @@ class PgRelayTest {
         } as org.postgresql.PGNotification
         private val pg = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(org.postgresql.PGConnection::class.java)) { _, m, _ ->
             if (m.name != "getNotifications") null
-            else if (!delivering) emptyArray<org.postgresql.PGNotification>().also { polls.incrementAndGet() }
-            else generateSequence { queue.poll() }.map { (c, p) -> notification(c, p) }.toList().toTypedArray().also { polls.incrementAndGet() }
+            else if (!delivering) emptyArray<org.postgresql.PGNotification>().also { polls.incrementAndGet(); polled.release() }
+            else generateSequence { queue.poll() }.map { (c, p) -> notification(c, p) }.toList().toTypedArray().also { polls.incrementAndGet(); polled.release() }
         }
         private val notify = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(java.sql.PreparedStatement::class.java)) { _, m, _ ->
             when (m.name) {
@@ -433,9 +440,9 @@ class PgRelayTest {
         val rec = Recording()
         val n = PgNotifications(rec.connection, pollMs = 1)
         val stop = n.listen("a") {}
+        assertTrue(rec.awaitPolls(1), "the loop polls while someone listens")
         // the poll loop spins on the connection, taking turns with these NOTIFYs on the fair lock
         repeat(3) { n.notify("a", "x") }
-        assertTrue(rec.polls.get() > 0, "the loop polls while someone listens")
         // the unsubscribe waits for the loop's last poll, outside the lock that poll needs; that a poll cannot start
         // after it returns is a race no test can hold open without a clock, so this pins the loop stopping at all
         withTimeout(5_000) { stop() }
@@ -453,9 +460,8 @@ class PgRelayTest {
         val first = n.listen("a") {}
         val second = n.listen("b") {}
         withTimeout(5_000) { first() }
-        val after = rec.polls.get()
-        repeat(5) { n.notify("b", "x") }
-        assertTrue(rec.polls.get() > after, "the loop stopped while b was still listened to")
+        rec.forgetPolls()
+        assertTrue(rec.awaitPolls(1), "the loop stopped while b was still listened to")
         withTimeout(5_000) { second() }
     }
 
