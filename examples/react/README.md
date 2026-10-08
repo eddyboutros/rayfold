@@ -11,7 +11,8 @@ fetching again.
 - `src/auth.ts`: who the caller is, from the signed token (JWT) the client sends
 - `src/session.ts`: the signed-in user's access token, where your identity provider's SDK goes
 - `src/server.ts` and `src/bookshop.ts`: the same bookshop server as in `examples/typescript`
-- `src/app.test.ts`: the components against a real server
+- `src/app.test.ts`: the components against a real server, over HTTP
+- `src/App.unit.test.tsx`: the components tested with no network, on a server in the test's own process
 - `vite.config.ts`: sends `/rayfold` from the Vite dev server to the Rayfold server
 
 ## Run it

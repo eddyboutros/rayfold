@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { PassThrough } from "node:stream";
 import { readFileSync } from "node:fs";
-import { RayfoldLanguageServer, diagnosticsFor, indexDocument, serveStdio } from "./index.ts";
+import { RayfoldLanguageServer, diagnosticsFor, indexDocument, rangeForPath, serveStdio } from "./index.ts";
 import { bounded } from "../../../e2e/wait.ts";
 import { DEF_KEYWORDS } from "./positions.ts";
+import { parseSchemaText } from "@rayfold/schema";
 
 const SCHEMA = [
   "entity Book @cache(maxAge: 60s, scope: public) {",
@@ -65,6 +66,27 @@ describe("the document index", () => {
     expect(index.declarations.filter((d) => d.container === "Book").map((d) => d.name)).toEqual(["id", "title", "author"]);
   });
 
+  it("an annotation with arguments on a field is not a member, and each operation ends where it ends", () => {
+    const text = ["entity Author { id: ID }", "entity Book {", "  id: ID", "  editor: Author @load(single)", "}", "query book(id: ID): Book", "  @cost(base: 1)", "command touch(id: ID): Book", "view Book.card = { id }"].join("\n");
+    const range = (a: number, b: number, c: number, d: number) => ({ start: { line: a, character: b }, end: { line: c, character: d } });
+    expect(indexDocument(text).declarations.map((d) => [d.path, d.full])).toEqual([
+      ["Author", range(0, 0, 0, 24)],
+      ["Author.id", range(0, 16, 0, 18)],
+      ["Book", range(1, 0, 4, 1)],
+      ["Book.id", range(2, 2, 2, 4)],
+      ["Book.editor", range(3, 2, 3, 8)],
+      ["book", range(5, 0, 6, 16)], // its annotation on the next line is part of it
+      ["touch", range(7, 0, 7, 27)], // and the view after it is not
+      ["Book.card", range(8, 0, 8, 14)],
+    ]);
+  });
+
+  it("a path that names nothing in the text is placed nowhere, not on the first line", () => {
+    expect(rangeForPath(indexDocument(SCHEMA), "Nowhere.atAll")).toEqual({ start: { line: 0, character: 0 }, end: { line: 0, character: 0 } });
+    // guard: a member's owner is found when the member is not
+    expect(rangeForPath(indexDocument(SCHEMA), "Book.nope")).toEqual({ start: { line: 0, character: 7 }, end: { line: 0, character: 11 } });
+  });
+
   it("reads enum values, and a view's name", () => {
     const index = indexDocument(["enum Status { open closed }", "entity Book { id: ID }", "view Book.card = { id }"].join("\n"));
     expect(index.declarations.filter((d) => d.kind === "enumValue").map((d) => d.path)).toEqual(["Status.open", "Status.closed"]);
@@ -75,11 +97,9 @@ describe("the document index", () => {
 describe("diagnostics", () => {
   it("places a validation finding on the member it is about", () => {
     const text = ["entity Book {", "  id: ID", "  price: Money", "}", "query book(id: ID): Book"].join("\n");
-    const [only, ...rest] = diagnosticsFor(text);
-    expect(rest).toEqual([]);
-    expect(only?.code).toBe("unknown-type");
-    expect(only?.severity).toBe(1);
-    expect(only?.range).toEqual({ start: { line: 2, character: 2 }, end: { line: 2, character: 7 } }); // on `price`
+    expect(diagnosticsFor(text)).toEqual([
+      { range: { start: { line: 2, character: 2 }, end: { line: 2, character: 7 } }, severity: 1, code: "unknown-type", source: "rayfold", message: "Unknown type Money" }, // on `price`
+    ]);
   });
 
   it("places a finding about an argument on the argument, of an operation or of a field", () => {
@@ -96,9 +116,9 @@ describe("diagnostics", () => {
   });
 
   it("reports a syntax error where the text breaks", () => {
-    const [only] = diagnosticsFor(["entity Book {", "  id: ID", ""].join("\n"));
-    expect(only?.message).toMatch(/Unexpected|Expected/);
-    expect(only?.range.start.line).toBe(2);
+    expect(diagnosticsFor(["entity Book {", "  id: ID", ""].join("\n"))).toEqual([
+      { range: { start: { line: 2, character: 0 }, end: { line: 2, character: 0 } }, severity: 1, source: "rayfold", message: "Expected name but found end of input (3:1)" },
+    ]);
   });
 
   it("guard - a schema that is right reports nothing", () => {
@@ -119,6 +139,10 @@ describe("diagnostics", () => {
 
     s.receive({ jsonrpc: "2.0", method: "textDocument/didClose", params: { textDocument: { uri: URI } } });
     expect(diagnosticsOf(sent)).toEqual([]);
+    // a closed document is forgotten: there is nothing left to hover, and nothing to outline
+    expect(s.document(URI)).toBeUndefined();
+    expect(request(s, sent, "textDocument/hover", { textDocument: { uri: URI }, position: { line: 2, character: 3 } })).toBeNull();
+    expect(request(s, sent, "textDocument/documentSymbol", { textDocument: { uri: URI } })).toEqual([]);
   });
 });
 
@@ -133,7 +157,7 @@ describe("what an editor asks for", () => {
       "cache", "allow", "deny", "load", "page", "cost", "deprecated", "lazy", "partial", "live", "input", "interface",
       "idempotent", "format", "unit", "range", "example", "ordinal", "version", "http", "simulate", "merge",
     ]);
-    expect(items.find((i) => i.label === "cache")?.documentation).toContain("entity");
+    expect(items.find((i) => i.label === "cache")).toEqual({ label: "cache", kind: 10, detail: "@cache", documentation: "Allowed on: entity, query." });
   });
 
   it("offers types where a type belongs, and keywords where a declaration belongs", () => {
@@ -158,15 +182,38 @@ describe("what an editor asks for", () => {
     const op = request(s, sent, "textDocument/hover", { textDocument: { uri: URI }, position: { line: 11, character: 8 } }) as {
       contents: { value: string };
     };
-    expect(op.contents.value).toContain("query books(first: Int): [Book]");
+    expect(op).toEqual({ contents: { kind: "markdown", value: "```rayfold\nquery books(first: Int): [Book]\n```" }, range: { start: { line: 11, character: 6 }, end: { line: 11, character: 11 } } });
 
     const field = request(s, sent, "textDocument/hover", { textDocument: { uri: URI }, position: { line: 3, character: 3 } }) as {
       contents: { value: string };
     };
-    expect(field.contents.value).toContain("Book.author: Author");
+    expect(field).toEqual({ contents: { kind: "markdown", value: "```rayfold\nBook.author: Author\n```" }, range: { start: { line: 3, character: 2 }, end: { line: 3, character: 8 } } });
 
     // guard: a blank line has nothing to show
     expect(request(s, sent, "textDocument/hover", { textDocument: { uri: URI }, position: { line: 5, character: 0 } })).toBeNull();
+  });
+
+  it("hover tells what the schema says: descriptions, annotations, what an operation fails with and emits", () => {
+    const rich = [
+      '"""A book."""',
+      "entity Book @cache(maxAge: 60s) {",
+      "  id: ID",
+      '  """What it costs."""',
+      '  price: Decimal @unit("USD") @allow(read: viewer != null)',
+      "}",
+      "error Gone { id: ID }",
+      "event Sold { id: ID }",
+      '"""Buy one."""',
+      "command buy(id: ID): Book throws Gone emits Sold",
+      "enum Tone { WARM COOL }",
+    ].join("\n");
+    const { server: s, sent } = opened(rich);
+    const hover = (line: number, character: number) => (request(s, sent, "textDocument/hover", { textDocument: { uri: URI }, position: { line, character } }) as { contents: { value: string } }).contents.value;
+    expect(hover(9, 9)).toBe("```rayfold\ncommand buy(id: ID): Book\n```\n\nBuy one.\n\nFails with: Gone.\n\nEmits: Sold.");
+    expect(hover(4, 3)).toBe("```rayfold\nBook.price: Decimal\n```\n\nWhat it costs.\n\n@unit @allow");
+    expect(hover(1, 8)).toBe("```rayfold\nentity Book\n```\n\nA book.\n\n@cache");
+    expect(hover(10, 13)).toBe("```rayfold\nTone.WARM\n```");
+    expect(hover(10, 6)).toBe("```rayfold\nenum Tone\n```");
   });
 
   it("jumps from a type reference to its declaration", () => {
@@ -196,7 +243,7 @@ describe("what an editor asks for", () => {
   it("answers an unknown request, and lets an unknown notification pass", () => {
     const { server: s, sent } = opened();
     s.receive({ jsonrpc: "2.0", id: 7, method: "textDocument/codeLens" });
-    expect(sent.find((m) => m["id"] === 7)).toMatchObject({ error: { code: -32601 } });
+    expect(sent.find((m) => m["id"] === 7)).toEqual({ jsonrpc: "2.0", id: 7, error: { code: -32601, message: "Method not found: textDocument/codeLens" } });
 
     const before = sent.length;
     s.receive({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles" });
@@ -208,7 +255,7 @@ describe("what an editor asks for", () => {
     expect(diagnosticsFor(text).filter((d) => d.severity === 1)).toEqual([]);
     const index = indexDocument(text);
     expect(index.byPath.get("Book")?.kind).toBe("type");
-    expect(index.declarations.filter((d) => d.kind === "op").length).toBeGreaterThan(3);
+    expect(index.declarations.filter((d) => d.kind === "op").map((d) => d.name).sort()).toEqual(Object.keys(parseSchemaText(text).ops).sort());
   });
 });
 
@@ -264,10 +311,13 @@ describe("over stdio, as an editor speaks it", () => {
     );
 
     const messages = await read(2);
-    expect((messages[0] as { result: { capabilities: Record<string, unknown> } }).result.capabilities).toMatchObject({
-      hoverProvider: true,
-      definitionProvider: true,
-      documentSymbolProvider: true,
+    expect(messages[0]).toEqual({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        capabilities: { textDocumentSync: 1, completionProvider: { triggerCharacters: ["@", ":", "<", "|"] }, hoverProvider: true, definitionProvider: true, documentSymbolProvider: true },
+        serverInfo: { name: "rayfold", version: "0.1" },
+      },
     });
     const published = messages[1] as { method: string; params: { uri: string; diagnostics: Array<{ code: string }> } };
     expect(published.method).toBe("textDocument/publishDiagnostics");
@@ -332,6 +382,15 @@ describe("over stdio, as an editor speaks it", () => {
       ]),
     );
     expect(await read(1)).toEqual([{ jsonrpc: "2.0", id: 7, result: null }]);
+  });
+
+  it("drops a Content-Length that is not a whole number of bytes, and answers the next message whole", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    serveStdio(input, output);
+    const read = reader(output);
+    input.write(Buffer.concat([Buffer.from("Content-Length: 1.5\r\n\r\n", "utf8"), frame({ jsonrpc: "2.0", id: 8, method: "shutdown" })]));
+    expect(await read(1)).toEqual([{ jsonrpc: "2.0", id: 8, result: null }]);
   });
 
   it("guard - it keeps serving while the editor is still talking", async () => {

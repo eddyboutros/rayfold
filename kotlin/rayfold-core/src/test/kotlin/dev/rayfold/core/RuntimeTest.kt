@@ -96,7 +96,7 @@ class RuntimeTest {
     private val stockShop = SchemaText.load("entity Book { id: ID stock: Int } query book(id: ID): Book? command restock(id: ID, qty: Int): Book @simulate").ir
 
     @Test
-    fun `a command's own result, and every op after it, load again, and a dry run keeps what was loaded (mirrors server test)`() = runTest(timeout = 5.seconds) {
+    fun `a command's own result, and every op after it, load again, and the ops after a dry run keep what was loaded (mirrors server test)`() = runTest(timeout = 5.seconds) {
         var stock = 1
         var loads = 0
         val server = RayfoldServer(stockShop, Resolvers(
@@ -113,12 +113,35 @@ class RuntimeTest {
 
         val dry = run(simulate = true)
         assertEquals(listOf("1", "1", "1"), (1..3).map { stockOf(dry[it]) }, "a dry run changed nothing")
-        assertEquals(1, loads, "so the ops after it keep the first op's load")
+        assertEquals(2, loads, "so the op after it keeps the first op's load; the dry run's own answer, which describes what would happen, loads for itself")
 
         loads = 0
         val frames = run(simulate = false)
         assertEquals(listOf("1", "11", "11"), (1..3).map { stockOf(frames[it]) })
         assertEquals(2, loads, "before the command, then once for its result and the op after it")
+    }
+
+    @Test
+    fun `a dry run answers what would happen, not what an earlier op loaded (mirrors server test)`() = runTest(timeout = 5.seconds) {
+        // spec 03: a dry run's result describes what would happen. The memo held the author op 1 loaded for Book:b1,
+        // and the would-be book points at another author.
+        val names = mapOf("a1" to "Ann", "a2" to "Bob")
+        val server = RayfoldServer(
+            SchemaText.load("entity Author { id: ID name: String } entity Book { id: ID author: Author } query book(id: ID): Book? command move(id: ID, authorId: ID): Book @simulate").ir,
+            Resolvers(
+                queries = mapOf("book" to { args, _ -> buildJsonObject { put("id", args.getValue("id")); put("authorId", "a1") } }),
+                commands = mapOf("move" to { args, _ -> CommandResult(buildJsonObject { put("id", args.getValue("id")); put("authorId", args.getValue("authorId")) }) }),
+                fields = mapOf("Book" to mapOf("author" to { parents, _, _ ->
+                    parents.map { p -> val id = (p["authorId"] as kotlinx.serialization.json.JsonPrimitive).content; buildJsonObject { put("id", id); put("name", names.getValue(id)) } }
+                })),
+            ),
+        )
+        val frames = server.collect(obj(
+            """{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id author { name } }"},""" +
+                """{"id":2,"op":"move","args":{"id":{"${'$'}ref":"1.id"},"authorId":"a2"},"shape":"{ author { name } }","key":"move-0000000000001","simulate":true}]}""",
+        ), u1).associateBy { (it["id"] as kotlinx.serialization.json.JsonPrimitive).content.toInt() }
+        assertEquals("\"Ann\"", ((frames.getValue(1)["data"] as JsonObject)["author"] as JsonObject)["name"].toString())
+        assertEquals("\"Bob\"", ((frames.getValue(2)["ok"] as JsonObject)["author"] as JsonObject)["name"].toString())
     }
 
     @Test

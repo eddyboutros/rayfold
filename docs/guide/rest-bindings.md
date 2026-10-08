@@ -43,6 +43,10 @@ body only when the binding names `body`, one argument or `"*"` for all of them; 
 
 ### Names your clients already send
 
+::: info Next release
+`@http(name:)` is not in 0.2.1; it arrives in the next release.
+:::
+
 A route may have to accept a name the schema cannot hold, such as `?first-name=` or `{"zip-code": "02139"}`. Give the
 argument or the input field its wire name with `@http(name:)`:
 
@@ -60,7 +64,12 @@ The routes then read `first-name` from the query string or the body, and `zip-co
 and an invalid value is reported under the name the client sent. Only the routes use the wire name: the route does
 not take `firstName` instead, while `/rayfold`, MCP and the generated clients keep using `firstName`. Path templates
 still name the argument (`{firstName}`), and responses keep the schema's names. The OpenAPI document publishes the
-wire names.
+wire names, in its parameters, its request bodies and its path templates, where `{firstName}` is published as
+`{first-name}`.
+
+`@http(name:)` takes exactly one non-empty string, and a wire name may not be the name or the wire name of another
+argument of the operation, or another field of the input; either mistake is a schema error (`bad-http-name`,
+`http-name-collision`).
 
 ## Serve them
 

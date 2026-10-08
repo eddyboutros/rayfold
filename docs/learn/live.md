@@ -50,6 +50,7 @@ When the client stops listening, the operation ends:
 |---|---|
 | `data` without `fin` | the first result, and whenever a change cannot be described as a patch, such as rows in a new order |
 | `patch` | the change can be described: `set` for entities whose fields changed, `at` and `list` for parts of the result |
+| `at` with `data` | a [deferred part](./queries.md#deliver-a-field-later) of the first result (`@defer`, `@lazy`), in a frame of its own after it |
 | `error` with `fin` | the client cancelled, or running the query again failed, for example because the viewer lost access |
 
 A change that leaves the result as it was sends nothing.
@@ -59,7 +60,9 @@ A change that leaves the result as it was sends nothing.
 You do not tell the server what to watch. Every command's patch goes onto the server's change bus. Each live query
 remembers the entities its last result contained and the types it can reach; when a change touches one of them, the
 server runs the query again with the same arguments, shape and viewer, and sends the difference. Changes that arrive
-while it runs are folded into one more run.
+while it runs are folded into one more run. A query whose result is an interface, such as `query people: [Named]`,
+watches every entity type that implements it, so a newly created member shows up; on servers up to 0.2.1 it showed only
+after a reload.
 
 That makes live queries correct by default: the same policies apply to every update as to the first result, and a
 query can never show a field its viewer may not read. A server can also put changes from elsewhere, such as rows
@@ -122,6 +125,10 @@ that book updates too, not only the live one. In React, only the components show
   changed back while you were away leaves no trace. If you need the steps, [an event stream](./streams.md) is the
   right shape for it, not a live query.
 - Stop by calling the function `live` returned, by unmounting the component, or by aborting the request.
+
+::: info Next release
+`maxBuffered`, and the Kotlin client reopening a dropped live query (with `onError`), arrive in the next release.
+:::
 
 ## Next
 

@@ -239,7 +239,7 @@ describe("5. Errors: typed, structured, machine-actionable", () => {
     const y1 = await rayfoldCall([{ id: 1, op: "placeOrder", args: { input: { lines: [{ bookId: "b1", qty: "two" }] } }, key: "e2e-bad-00000000001" }], U1);
     expect(y1.frames[0]!["error"]).toMatchObject({ code: "invalid_argument", message: "placeOrder().input.lines.0.qty: expected Int" });
     const g1 = await gqlCall(`mutation { placeOrder(lines: [{ bookId: "b1", qty: "two" }]) { id } }`, {}, U1);
-    expect(g1.body.errors![0]!.message).toContain("Int");
+    expect(g1.body.errors!.map((e) => e.message)).toEqual([`Int cannot represent non-integer value: "two"`]);
     const r1 = await jsonPost(`${rest.base}/orders`, { lines: [{ bookId: "b1", qty: "two" }] }, U1);
     expect(r1.status).toBe(201); // accepted silently: "two" coerced to NaN by the handler
     // out of range: qty 0 is a valid Int everywhere, but the Rayfold contract says @range(min: 1)

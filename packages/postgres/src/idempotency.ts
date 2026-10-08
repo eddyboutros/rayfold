@@ -97,11 +97,14 @@ export class PgIdempotencyStore implements IdempotencyStore {
     return record;
   }
 
+  // A record has expired once `now - at >= ttlMs` (spec 03 section 4). Reading, taking a key over and sweeping all
+  // draw that line in the same place, and so does JdbcIdempotencyStore: in a fleet of both runtimes on one table, a
+  // millisecond of disagreement is a command one server replays and another runs again.
   async get(scope: string, key: string): Promise<IdempotencyRecord | undefined> {
-    const fresh = this.now() - this.ttlMs;
+    const expired = this.now() - this.ttlMs;
     const { rows } = await this.sql.query<Row>(
-      `SELECT args_hash, frame, compact_frame, token, held_until, at FROM ${this.table} WHERE scope = $1 AND key = $2 AND frame IS NOT NULL AND at >= $3`,
-      [scope, key, fresh],
+      `SELECT args_hash, frame, compact_frame, token, held_until, at FROM ${this.table} WHERE scope = $1 AND key = $2 AND frame IS NOT NULL AND at > $3`,
+      [scope, key, expired],
     );
     return rows[0] ? this.record(rows[0]) : undefined;
   }
@@ -110,12 +113,12 @@ export class PgIdempotencyStore implements IdempotencyStore {
     const t = this.now();
     const token = `${t.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     // One statement decides it: the row is inserted when the key is free, and taken over when the claim on it ran out
-    // or its record is past the TTL. Anything else leaves the row alone and returns nothing.
+    // or its record has expired. Anything else leaves the row alone and returns nothing.
     const taken = await this.sql.query<{ token: string }>(
       `INSERT INTO ${this.table} (scope, key, token, held_until, at) VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (scope, key) DO UPDATE SET args_hash = NULL, frame = NULL, compact_frame = NULL, token = EXCLUDED.token, held_until = EXCLUDED.held_until, at = EXCLUDED.at
        WHERE (${this.table}.frame IS NULL AND (${this.table}.held_until IS NULL OR ${this.table}.held_until <= $5))
-          OR (${this.table}.frame IS NOT NULL AND ${this.table}.at < $6)
+          OR (${this.table}.frame IS NOT NULL AND ${this.table}.at <= $6)
        RETURNING token`,
       [scope, key, token, t + leaseMs, t, t - this.ttlMs],
     );
@@ -152,7 +155,7 @@ export class PgIdempotencyStore implements IdempotencyStore {
 
   /** Expired records go on every write; the cap is trimmed every hundredth one, since it costs a scan. */
   private async sweep(): Promise<void> {
-    await this.sql.query(`DELETE FROM ${this.table} WHERE frame IS NOT NULL AND at < $1`, [this.now() - this.ttlMs]);
+    await this.sql.query(`DELETE FROM ${this.table} WHERE frame IS NOT NULL AND at <= $1`, [this.now() - this.ttlMs]);
     if (++this.puts % 100 !== 0) return;
     // spec 12 §3: keys in flight count against the bound, so the room left for records is the bound minus the
     // commands running at that moment — the rank is taken over every row, records and claims alike. But a key a

@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { createServer } from "node:net";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Readable } from "node:stream";
+import type { Readable, Writable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { generateGraphql, generateJava, generateKotlin, generateTypeScript, loadSchema } from "@rayfold/schema";
 import { MCP_PROTOCOL_VERSION } from "@rayfold/server";
@@ -143,6 +144,23 @@ describe("rayfold check --against", { timeout: 60_000 }, () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("lists breaking changes first, then warnings, then compatible ones, whatever order they were found in", async () => {
+    const old = file("old.rayfold", [...BOOK, "query books: [Book]"]);
+    const next = ["entity Book @allow(read: viewer != null) {", "  id: ID", "  title: String", "  subtitle: String?", "  isbn: String?", "}", "query book(id: ID): Book?"];
+    expect(await rayfold("check", file("new.rayfold", next), "--against", old)).toEqual({
+      status: 1,
+      stdout: [
+        "BREAKING  books(): query books removed (deprecate with a sunset date first) [op-removed]",
+        "warning   Book: a policy was added where none existed; some callers may now be denied [policy-added]",
+        "ok        Book.isbn: field added [field-added]",
+        "",
+        "FAILED: breaking changes against old.rayfold",
+        "",
+      ].join("\n"),
+      stderr: "",
+    });
   });
 
   it("guard - passes an added field", async () => {
@@ -363,6 +381,28 @@ describe("rayfold import", { timeout: 60_000 }, () => {
     });
   });
 
+  it("with --out, writes the schema to the file, and still notes on stderr what it could not say", async () => {
+    const sdl = file("shop.graphql", ["type Book {", "  id: ID!", "}", "", "type Query {", "  book(id: ID!): Book", "}", "", "type Mutation {", "  restock(id: ID!): Book!", "}"]);
+    expect(await rayfold("import", "graphql", sdl, "--out", "shop.rayfold")).toEqual({
+      status: 0,
+      stdout: "wrote shop.rayfold\n",
+      stderr: 'note      restock: a mutation says nothing about what it can fail with; add "throws" once you know.\n',
+    });
+    expect(readFileSync(join(work, "shop.rayfold"), "utf8")).toBe(["entity Book {", "  id: ID", "}", "", "query book(id: ID): Book?", "", "command restock(id: ID): Book", ""].join("\n"));
+  });
+
+  it("refuses a source it does not know, and a document it cannot read", async () => {
+    expect(await rayfold("import", "wsdl", file("shop.wsdl", ["<definitions/>"]))).toEqual({ status: 1, stdout: "", stderr: "Unsupported source wsdl (openapi, graphql)\n" });
+    const parseError = (() => {
+      try {
+        return JSON.parse("{ not json\n") as never;
+      } catch (e) {
+        return (e as Error).message;
+      }
+    })();
+    expect(await rayfold("import", "openapi", file("broken.json", ["{ not json"]))).toEqual({ status: 1, stdout: "", stderr: `${parseError}\n` });
+  });
+
   it("prints the schema an OpenAPI document describes", async () => {
     writeFileSync(
       join(work, "shop.json"),
@@ -537,6 +577,43 @@ describe("rayfold hash, explain and shapes", { timeout: 60_000 }, () => {
   });
 });
 
+describe("rayfold lsp", { timeout: 60_000 }, () => {
+  const frame = (message: Record<string, unknown>): string => {
+    const body = JSON.stringify(message);
+    return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
+  };
+  const lsps: Array<{ child: ChildProcessByStdio<Writable, Readable, Readable>; closed: Promise<number | null> }> = [];
+  const lsp = (): { child: ChildProcessByStdio<Writable, Readable, Readable>; out: () => string; closed: Promise<number | null> } => {
+    const child = spawn(process.execPath, ["--import", tsx, main, "lsp"], { cwd: work, stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (out += chunk));
+    const closed = new Promise<number | null>((resolve) => child.once("close", (code) => resolve(code)));
+    lsps.push({ child, closed });
+    return { child, out: () => out, closed };
+  };
+  afterEach(async () => {
+    for (const { child, closed } of lsps.splice(0)) {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await bounded(closed, "rayfold lsp is gone");
+    }
+  });
+
+  it("answers over stdio, and exits with 0 when the editor sends exit", async () => {
+    const { child, out, closed } = lsp();
+    child.stdin.write(frame({ jsonrpc: "2.0", id: 1, method: "shutdown" }));
+    child.stdin.write(frame({ jsonrpc: "2.0", method: "exit" }));
+    expect(await bounded(closed, "rayfold lsp exits", START_MS)).toBe(0);
+    expect(out()).toBe(frame({ jsonrpc: "2.0", id: 1, result: null }));
+  });
+
+  it("exits with 0 when the editor closes the pipe", async () => {
+    const { child, out, closed } = lsp();
+    child.stdin.end();
+    expect(await bounded(closed, "rayfold lsp exits", START_MS)).toBe(0);
+    expect(out()).toBe("");
+  });
+});
+
 describe("rayfold mock", { timeout: 60_000 }, () => {
   const SCHEMA = [
     "entity Book {",
@@ -603,8 +680,18 @@ describe("rayfold mock", { timeout: 60_000 }, () => {
 });
 
 describe("rayfold dev", { timeout: 60_000 }, () => {
-  it("serves an example on the port it got, as the caller its token names, with the explorer beside it", async () => {
-    const proc = start(["dev", fileURLToPath(new URL("../../../examples/bookstore-ts", import.meta.url)), "--port", "0"]);
+  it("serves an example on the port it is given, as the caller its token names, with the explorer beside it", async () => {
+    // a port the system just handed out and took back, so `--port` is shown to be the one it listens on
+    const free = await bounded(
+      new Promise<number>((resolve) => {
+        const probe = createServer().listen(0, () => {
+          const { port } = probe.address() as import("node:net").AddressInfo;
+          probe.close(() => resolve(port));
+        });
+      }),
+      "a free port",
+    );
+    const proc = start(["dev", fileURLToPath(new URL("../../../examples/bookstore-ts", import.meta.url)), "--port", String(free)]);
     await bounded(
       new Promise<void>((ready) => {
         const check = () => /\n {2}schema {4}\w+\n$/.test(proc.stdout) && ready();
@@ -615,9 +702,7 @@ describe("rayfold dev", { timeout: 60_000 }, () => {
       START_MS,
     );
 
-    const port = /http:\/\/localhost:(\d+)\/\n/.exec(proc.stdout)?.[1];
-    expect(port).toBeDefined();
-    expect(port).not.toBe("0");
+    const port = String(free);
     expect(proc.stdout).toBe(
       [
         `Rayfold dev server: http://localhost:${port}/`,

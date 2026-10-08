@@ -16,7 +16,6 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -146,6 +145,7 @@ class UploadTest {
         }
         val none = post(served.base, bytes(8), "Content-Type", "")
         assertEquals(415, none.statusCode(), none.body())
+        assertEquals("Content-Type (none) is not accepted; send application/octet-stream", detail(none))
         assertEquals(0, served.store.size, "nothing was stored by any of them")
     }
 
@@ -209,7 +209,7 @@ class UploadTest {
     fun `says it serves the upload extension in its manifest, and does not when it has no store`() {
         val served = serve()
         val extensions = ((obj(get("${served.base}/rayfold/manifest").body())["extensions"] as? JsonArray) ?: JsonArray(emptyList())).map { (it as JsonPrimitive).content }
-        assertContains(extensions, "upload")
+        assertEquals(listOf("live", "rb", "upload"), extensions)
 
         val bare = serve(uploads = false, server = RayfoldServer(ir, Resolvers()))
         val without = ((obj(get("${bare.base}/rayfold/manifest").body())["extensions"] as? JsonArray) ?: JsonArray(emptyList())).map { (it as JsonPrimitive).content }
@@ -270,8 +270,8 @@ class UploadTest {
         val third = store.put(ByteArrayInputStream(bytes(1_024)), null, null, u1)
 
         assertNull(store.open(first.id), "the oldest made room")
-        assertTrue(store.open(second.id) != null)
-        assertTrue(store.open(third.id) != null)
+        assertEquals(second, store.open(second.id)?.first)
+        assertEquals(third, store.open(third.id)?.first)
         assertEquals(2, store.size)
         assertEquals(2_048L, store.bytes)
     }

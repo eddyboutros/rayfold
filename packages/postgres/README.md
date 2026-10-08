@@ -55,7 +55,7 @@ wrapper (for logging or transactions).
 | `find(type, where, ctx)` | one `SELECT ... WHERE field = $n ... ORDER BY id` | a short list |
 | `page(type, { first, after }, where, ctx)` | one query with `count(*) OVER ()` | a `Page<T>` in key order: `items`, `cursor`, `hasMore`, `total` |
 | `pagesByField(type, field, parents, { first, after }, ctx)` | one query with window functions | a paged one-to-many field for a whole level of parents at once |
-| `screen(type, shape, { first, after }, where, ctx)` | one query, nested levels by correlated subquery | a whole nested screen at once; depth costs no extra round trip and each level's policy is pushed into its own `WHERE`. Every selected field must be a mapped column or a declared `relation` |
+| `screen(type, shape, { first, after }, where, ctx)` | one query, nested levels by correlated subquery | a whole nested screen at once; depth costs no extra round trip and each level's policy is pushed into its own `WHERE`. Every selected field must be a mapped column or a declared `relation`. Each row also carries the columns its read rules read, so a rule on a field the shape left out still holds |
 
 ## Read policies in SQL
 

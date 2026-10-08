@@ -1,10 +1,14 @@
 import { PGlite } from "@electric-sql/pglite";
 import { createRayfoldServer, ok, type RayfoldContext, type RayfoldServer, type RelayMessage, type RequestEnvelope } from "@rayfold/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import pg from "pg";
 import { PgRelay, pgNotifications, pgliteNotifications, type Notifications, type Queryable } from "./index.ts";
 import { bounded, Signal } from "../../../e2e/wait.ts";
+
+// every test boots its own PGlite, a Postgres compiled to WASM, which on a busy runner takes seconds by itself, the
+// first one in a worker longest; the waits for a signal inside each test keep their own 5 s bound
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 /**
  * The relay over a real LISTEN/NOTIFY: two servers on one PGlite, each with its own relay, sharing nothing else. What
@@ -348,6 +352,22 @@ describe("pgNotifications shares one connection's LISTEN between its listeners",
     expect(lost.map((e) => (e as Error).message)).toEqual(["rayfold relay: the listening connection ended"]);
     await stopSecond();
     expect(sent).toEqual([`LISTEN "rayfold"`, `UNLISTEN "rayfold"`]);
+    // nothing of either listener stays on the shared client
+    expect(["notification", "error", "end"].map((e) => client.listenerCount(e))).toEqual([0, 0, 0]);
+  });
+
+  it("notify sends one pg_notify with the channel and payload as parameters, and a refusal is the caller's", async () => {
+    const sent: Array<[string, unknown[] | undefined]> = [];
+    const client = Object.assign(new EventEmitter(), {
+      query: async (text: string, params?: unknown[]) => {
+        sent.push([text, params]);
+        if (params?.[1] === "refused") throw new Error("the connection is gone");
+      },
+    });
+    const n = pgNotifications(client);
+    await n.notify("rayfold", "hello");
+    expect(sent).toEqual([["SELECT pg_notify($1, $2)", ["rayfold", "hello"]]]);
+    await expect(n.notify("rayfold", "refused")).rejects.toThrow("the connection is gone");
   });
 
   it("guard: the last listener of a channel stopping unlistens it, and only that channel", async () => {

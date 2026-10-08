@@ -7,6 +7,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -42,6 +43,8 @@ class RayfoldWsSession(
     private val sendText: (String) -> Unit,
     private val sendBinary: (ByteArray) -> Unit,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    /** Called once the viewer's capability has expired and its ops' last frames are out: the transport closes with 1008. */
+    private val onExpired: () -> Unit = {},
     private val onGoingAway: () -> Unit = {},
 ) {
     /** Running op ids, each mapped to its own cancel job, so `{ "cancel": id }` stops that op and not its batch. */
@@ -58,6 +61,37 @@ class RayfoldWsSession(
 
     // disposed in close(): the server outlives its sessions, and each handler holds its session until drain
     private val drainHandle = server.draining.invokeOnCompletion { goingAway() }
+
+    /** When the viewer's capability expires, epoch milliseconds (spec 06 section 6), if it holds one. */
+    private val exp: Long? = (((viewer as? JsonObject)?.get("caps") as? JsonObject)?.get("exp") as? JsonPrimitive)
+        ?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toLong()
+    private val revoked = AtomicBoolean(false)
+    private val expiredSent = AtomicBoolean(false)
+
+    private fun expired() = exp != null && exp <= server.now()
+
+    // spec 04 section 5: a capability's socket is served until its exp, live queries included, and ends there. Launched
+    // even when it has already passed, so the transport is never called back from inside this constructor.
+    init {
+        if (exp != null) scope.launch {
+            while (!expired()) delay((exp - server.now()).coerceIn(1, 24L * 60 * 60 * 1000))
+            revoke()
+        }
+    }
+
+    /** Ends every open op `unauthenticated`; the socket closes with 1008 once their last frames are out. */
+    private fun revoke() {
+        if (revoked.compareAndSet(false, true)) {
+            val reason = RayfoldException(Code.UNAUTHENTICATED, "Capability has expired")
+            ops.values.toSet().forEach { it.completeExceptionally(reason) }
+        }
+        endWhenIdle()
+    }
+
+    private fun endWhenIdle() {
+        if (!revoked.get() || running.get() > 0 || closed.get()) return
+        if (expiredSent.compareAndSet(false, true)) onExpired()
+    }
 
     fun onText(text: String) {
         val msg = try {
@@ -88,6 +122,12 @@ class RayfoldWsSession(
         val env = RequestEnvelope.from(m)
         for (o in env.ops) if (o.id > 0 && ops.containsKey(o.id)) return send(batchError("op id ${o.id} is already in use on this connection"), binary)
         val ids = env.ops.map { it.id }.filter { it > 0 }.distinct()
+        if (revoked.get() || expired()) {
+            val refusal = buildJsonObject { put("code", Code.UNAUTHENTICATED.wire); put("message", "Capability has expired") }
+            if (ids.isEmpty()) send(buildJsonObject { put("error", refusal); put("fin", true) }, binary)
+            for (id in ids) send(buildJsonObject { put("id", id); put("error", refusal); put("fin", true) }, binary)
+            return revoke()
+        }
         val mine = ids.associateWith { Job() }
         ops.putAll(mine)
         running.incrementAndGet()
@@ -112,7 +152,7 @@ class RayfoldWsSession(
             } finally {
                 for ((id, job) in mine) ops.remove(id, job)
                 running.decrementAndGet()
-                if (server.draining.isCompleted) goingAway()
+                if (server.draining.isCompleted) goingAway() else endWhenIdle()
             }
         }
     }

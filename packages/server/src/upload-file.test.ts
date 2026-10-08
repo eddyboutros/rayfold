@@ -105,7 +105,7 @@ describe("uploads on disk", () => {
 
     // guard: inside its lifetime it is still there, so the sweep below is not simply dropping everything
     clock += 59_999;
-    expect(await store.open(kept.id)).toBeDefined();
+    expect((await store.open(kept.id))?.upload).toEqual({ id: kept.id, size: 16, at: 1_000, viewer: { id: "u1" } });
 
     clock += 1;
     expect(await store.open(kept.id)).toBeUndefined();
@@ -140,7 +140,7 @@ describe("uploads on disk", () => {
       }
       // guard: a real id is still served, so the rule refuses names rather than everything
       const kept = (await (await post(handler, filling(8))).json()) as { id: string };
-      expect(await store.open(kept.id)).toBeDefined();
+      expect((await store.open(kept.id))?.upload.size).toBe(8);
       expect(await readFile(join(outside, "escape.bin"), "utf8")).toBe("not yours");
     } finally {
       await rm(join(outside, "escape.bin"), { force: true });
@@ -174,7 +174,7 @@ describe("uploads on disk", () => {
     expect(after.status).toBe(201);
     const kept = (await after.json()) as { id: string; size: number };
     expect(kept.size).toBe(16);
-    expect(await store.open(kept.id)).toBeDefined();
+    expect((await store.open(kept.id))?.upload.size).toBe(16);
   });
 
   it("delete takes the bytes and the metadata together", async () => {
@@ -186,5 +186,26 @@ describe("uploads on disk", () => {
     await store.delete(kept.id);
     expect(await readdir(dir)).toEqual([]);
     expect(await store.open(kept.id)).toBeUndefined();
+  });
+});
+
+describe("ids on disk, at the edges", () => {
+  it("an id generator that hands out a path is refused before anything is written", async () => {
+    const store = new FileUploadStore({ dir, id: () => "../escape" });
+    await expect(store.put(new Blob([filling(4)]).stream(), {})).rejects.toThrow('FileUploadStore: an id must match /^[A-Za-z0-9_-]{1,128}$/, got "../escape"');
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it("delete never reaches outside the directory, whatever it is asked to delete", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "rayfold-outside-"));
+    try {
+      await writeFile(join(outside, "keep.bin"), "x", "utf8");
+      await writeFile(join(outside, "keep.json"), "{}", "utf8");
+      const store = new FileUploadStore({ dir });
+      await store.delete(`../${outside.split(/[\\/]/).pop()}/keep`);
+      expect((await readdir(outside)).sort()).toEqual(["keep.bin", "keep.json"]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });

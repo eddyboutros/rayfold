@@ -40,6 +40,11 @@ await client.command("placeOrder", { input: { lines: [{ bookId: "b1", qty: 1 }] 
 - In React, `useCommand` takes the same `optimistic` option:
   `const [buy] = useCommand("placeOrder", { optimistic: (cache) => [...] })`.
 
+::: info Next release
+Draining at startup, in TypeScript, and behind a new command, in both clients, arrives in the next release. In 0.2.1
+the TypeScript queue drains on the `online` event and through `drain()`, and the Kotlin one through `drain()`.
+:::
+
 ## Kotlin and Android
 
 ```kotlin

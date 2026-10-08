@@ -57,3 +57,18 @@ describe("field-usage telemetry (spec 11)", () => {
     ]);
   });
 });
+
+describe("the snapshot", () => {
+  it("keeps the latest time a member was seen, though calls are recorded out of order", () => {
+    const usage = new MemoryUsage();
+    usage.record({ op: "book", path: "", client: "web" }, AT + 1_000);
+    usage.record({ op: "book", path: "", client: "web" }, AT);
+    expect(usage.snapshot()).toEqual([{ op: "book", path: "", client: "web", lastSeen: new Date(AT + 1_000).toISOString(), count: 2 }]);
+  });
+
+  it("orders by operation, then member, then client", () => {
+    const usage = new MemoryUsage();
+    for (const [op, path, client] of [["b", "", "web"], ["a", "X.y", "web"], ["a", "X.y", "ios"], ["a", "", "web"]] as const) usage.record({ op, path, client }, AT);
+    expect(usage.snapshot().map((e) => `${e.op} ${e.path} ${e.client}`)).toEqual(["a  web", "a X.y ios", "a X.y web", "b  web"]);
+  });
+});

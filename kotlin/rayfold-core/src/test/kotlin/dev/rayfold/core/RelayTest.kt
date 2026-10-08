@@ -176,6 +176,7 @@ class RelayTest {
         assertEquals(2, b.reads.get())
         assertEquals(0, a.reads.get(), "a answered no live query and re-ran nothing")
         onB.stop()
+        assertEquals(0, b.server.changes.size)
     }
 
     @Test
@@ -243,6 +244,7 @@ class RelayTest {
         assertEquals(patch(6), onB.next(), "b hears its own change, and nothing of a's second one")
         assertEquals(3, b.reads.get())
         onB.stop()
+        assertEquals(0, b.server.changes.size)
     }
 
     @Test

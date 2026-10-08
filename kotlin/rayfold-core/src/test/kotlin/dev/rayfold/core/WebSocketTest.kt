@@ -281,7 +281,7 @@ class WebSocketTest {
         ws.text("""{"ops":[{"id":7,"op":"book","args":{"id":"b2"},"shape":"{ id }"}]}""")
         assertEquals(obj("""{"error":{"code":"invalid_argument","message":"op id 7 is already in use on this connection"},"fin":true}"""), ws.next())
         ws.text("""{"cancel":7}""")
-        assertEquals("canceled", ws.next().errorCode())
+        assertEquals(obj("""{"id":7,"error":{"code":"canceled","message":"Canceled"},"fin":true}"""), ws.next())
         ws.text("""{"ops":[{"id":7,"op":"book","args":{"id":"b2"},"shape":"{ id }"}]}""")
         assertEquals(obj("""{"${'$'}type":"Book","id":"b2"}"""), ws.next()["data"])
         ws.text("""{"ops":[{"id":7,"op":"book","args":{"id":"b3"},"shape":"{ id }"}]}""")
@@ -319,7 +319,7 @@ class WebSocketTest {
         val l = listen(bs)
         val anon = upgrade(l.port)
         anon.text("""{"ops":[{"id":1,"op":"myOrders"}]}""")
-        assertEquals("unauthenticated", anon.next().errorCode())
+        assertEquals(obj("""{"id":1,"error":{"code":"unauthenticated","message":"Sign in to access myOrders()"},"fin":true}"""), anon.next())
         val signedIn = upgrade(l.port, mapOf("Authorization" to "Bearer u1"))
         signedIn.text("""{"ops":[{"id":1,"op":"myOrders","shape":"{ total }"}]}""")
         assertEquals(obj("""{"total":0}"""), signedIn.next()["data"])
@@ -352,7 +352,7 @@ class WebSocketTest {
         assertEquals(403, attack.status)
         assertEquals("nosniff", attack.header("X-Content-Type-Options"))
         assertEquals("Origin https://evil.example is not allowed", attack.rest())
-        assertEquals(0, bs.server.changes.size)
+        assertEquals(emptyMap(), bs.store.calls.toMap(), "nothing ran")
     }
 
     @Test
@@ -558,5 +558,36 @@ class WebSocketTest {
         ws.frame(0x2, bytes.copyOfRange(0, 5), fin = false)
         ws.frame(0x0, bytes.copyOfRange(5, bytes.size))
         assertEquals(listOf(obj("""{"id":3,"data":{"${'$'}type":"Book","id":"b2"},"meta":{"cost":1},"fin":true}""")), binaryFrames())
+    }
+
+    @Test
+    fun `a capability's socket ends at its exp - its live op ends unauthenticated, a later batch is refused per op, and the socket closes 1008`() {
+        val clock = java.util.concurrent.atomic.AtomicLong(1_000L)
+        val ir = SchemaText.load("entity Book { id: ID } query book(id: ID): Book?").ir
+        val server = RayfoldServer(ir, Resolvers(queries = mapOf("book" to { _, _ -> obj("""{"id":"b1"}""") })), now = { clock.get() })
+        val holder = obj("""{"id":"u1","caps":{"ops":["book"],"exp":5000,"jti":"t1"}}""")
+        val l = RayfoldWebSocket(server) { holder }.start(0).also { listeners.add(it) }
+        val ws = upgrade(l.port)
+        ws.text("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","live":true}]}""")
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1"}"""), ws.next()["data"], "guard: served before its exp")
+        clock.set(5_001L)
+        ws.text("""{"ops":[{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ id }"}]}""")
+        val ends = listOf(ws.next(), ws.next()).associateBy { it["id"].toString() }
+        for (id in listOf("1", "2")) {
+            assertEquals("unauthenticated", (ends[id]?.get("error") as? JsonObject)?.get("code")?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }, "op $id: $ends")
+        }
+        assertEquals(1008, closeCode(ws.untilClosed().lastOrNull { it.first == 0x8 }))
+    }
+
+    @Test
+    fun `a frame of 126 to 65535 bytes carries its length in two bytes, the shortest form the RFC requires`() {
+        val bs = Bookstore()
+        val ws = upgrade(listen(bs).port)
+        ws.text("""{"ops":[{"id":1,"op":"books","shape":"{ items { id title } }"}]}""")
+        assertEquals(0x81, ws.input.read(), "one final text frame")
+        assertEquals(126, ws.input.read() and 0x7f, "a two-byte length")
+        val len = (ws.input.read() shl 8) or ws.input.read()
+        assertTrue(len in 126..65535, "the length the two bytes give: $len")
+        assertEquals(1, obj(ws.input.readNBytes(len).toString(Charsets.UTF_8)).opId())
     }
 }

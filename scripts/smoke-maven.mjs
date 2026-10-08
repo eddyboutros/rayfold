@@ -2,7 +2,8 @@
 /**
  * Publishes the JVM modules to the local Maven repository (~/.m2) and builds a fresh Gradle project outside this
  * repository against them, the way a user's project would: Kotlin code that reads a schema, serves it with the Java
- * API over HTTP and calls it with the Kotlin client, plus a Java class using the Java API. Proves the POMs carry
+ * API over HTTP, calls it with the Kotlin client and again in process with rayfold-test, plus a Java class using the
+ * Java API. Proves the POMs carry
  * the right dependencies and that the published jars work together.
  *
  *   node scripts/smoke-maven.mjs [--keep]
@@ -28,6 +29,7 @@ import dev.rayfold.client.HttpTransport
 import dev.rayfold.client.RayfoldClient
 import dev.rayfold.client.args
 import dev.rayfold.java.Rayfold
+import dev.rayfold.test.RayfoldTest
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -56,8 +58,11 @@ fun main() {
             val after = client.command("restock", args("id" to "b1", "qty" to 2), "{ stock }")
             check(before.jsonObject["title"]?.jsonPrimitive?.content == "Dune" && before.jsonObject["stock"]?.jsonPrimitive?.content == "3") { "query: " + before }
             check(after.jsonObject["stock"]?.jsonPrimitive?.content == "5") { "command: " + after }
-            println("smoke ok")
         }
+        // rayfold-test brings the server, the client and the Java API with it, and calls the server with no network
+        val inProcess = RayfoldTest.of(server).signedInAs(mapOf("id" to "smoke")).command("restock", args("id" to "b1", "qty" to 2), "{ stock }")
+        check(inProcess.jsonObject["stock"]?.jsonPrimitive?.content == "7") { "rayfold-test: " + inProcess }
+        println("smoke ok")
     } finally {
         http.stop(0)
     }
@@ -68,6 +73,7 @@ const JAVA_CHECK = `package smoke;
 
 import dev.rayfold.core.RayfoldServer;
 import dev.rayfold.java.Rayfold;
+import dev.rayfold.test.RayfoldTest;
 
 import java.util.Map;
 
@@ -79,6 +85,10 @@ public final class JavaCheck {
         return Rayfold.server("entity A { id: ID } query a(id: ID): A?")
             .query("a", (args, ctx) -> Map.of("id", args.getString("id")))
             .build();
+    }
+
+    public static Map<String, Object> called() {
+        return RayfoldTest.of(server()).query("a", Map.of("id", "a1"));
     }
 }
 `;
@@ -105,6 +115,7 @@ dependencies {
     implementation("${group}:rayfold-java:${version}")
     implementation("${group}:rayfold-client:${version}")
     implementation("${group}:rayfold-jdbc:${version}")
+    implementation("${group}:rayfold-test:${version}")
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) } }
 java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }

@@ -1,6 +1,6 @@
 # Rayfold on the JVM
 
-Seven modules. `rayfold-core` runs the same conformance fixtures as the TypeScript reference
+Eight modules. `rayfold-core` runs the same conformance fixtures as the TypeScript reference
 (`../conformance/fixtures`), and `rayfold-core` and `rayfold-client` the shared vectors
 (`../conformance/vectors`):
 
@@ -13,6 +13,10 @@ Seven modules. `rayfold-core` runs the same conformance fixtures as the TypeScri
 | `rayfold-client-okhttp` | The WebSocket transport on OkHttp, for Android. | [Android](../docs/guide/kotlin.md#android) |
 | `rayfold-opentelemetry` | OpenTelemetry spans for batches, ops and loader calls. | [Tracing](../docs/guide/tracing.md) |
 | `rayfold-jdbc` | `JdbcStore`, a SQL database behind resolvers with read policies pushed into `WHERE`; and what a fleet shares over JDBC: `JdbcIdempotencyStore`, `JdbcUploadStore` and `PgRelay`, in the same tables the TypeScript runtime creates. | [JDBC](../docs/guide/jdbc.md) |
+| `rayfold-test` | Unit tests for an application's server without a network: `RayfoldTest`, a blocking caller per viewer whose waits are bounded, for Kotlin and Java; and `LocalTransport`, the client against the server in one process. | The bookshop's tests in [Kotlin](../examples/kotlin/src/test/kotlin/com/example/bookshop/BookshopUnitTest.kt), [Java](../examples/java/src/test/java/com/example/bookshop/BookshopUnitTest.java) and [Spring Boot](../examples/spring-boot/src/test/java/com/example/bookshop/BookshopUnitTest.java) |
+
+> **Next release.** `rayfold-test`, and the server's `now` clock it tests time with, are not in 0.2.1; they arrive in
+> the next release.
 
 ```
 ./gradlew check                       # every module's tests, and the Android API check of the client modules

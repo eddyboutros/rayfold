@@ -1,0 +1,78 @@
+{
+  "name": "mcp/bridge",
+  "about": "What the MCP bridge answers over Streamable HTTP. An agent's MCP client is written against the MCP specification, not against Rayfold, so every place the bridge parts from what spec 10 promises is a client that hangs on a notification, crashes on a reply it cannot read, refuses a valid tool result, or runs a command twice. Each case is one or more POSTs to the endpoint, in order, against one server.",
+  "source": "spec 10 §1 (the endpoint, notifications, Invalid Request, HeaderMismatch), §2 (outputSchema, the call key), §3 (resource arguments), and spec 12 §3.1 (the body cap). Written from those sections, not from either runtime.",
+  "rule": [
+    "A request without an `id` is a notification whatever its method, and is answered HTTP 202 with no body.",
+    "A body, or a batch entry, that is not a JSON object is answered with JSON-RPC error -32600.",
+    "A HeaderMismatch reply is a JSON-RPC response, so it carries `MCP-Protocol-Version` like every other.",
+    "A resource URI's argument values are text, coerced by each argument's declared type: `?limit=1` is the Int 1.",
+    "A tool result is the default view, so `outputSchema` requires no field of an object or entity type, and every result validates against it.",
+    "A command's call key is `mcp-` + SHA-256 of the canonical `{op, args}`: the same call twice replays, two commands with the same arguments both run.",
+    "A body over the cap (default 1 MiB) is a 413 problem `payload_too_large`, code `resource_exhausted`."
+  ],
+  "schema": "entity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author }\nquery book(id: ID): Book?\nquery books(limit: Int = 3): [Book]\ncommand restock(id: ID, qty: Int): Book\ncommand reserve(id: ID, qty: Int): Book",
+  "resolvers": "`book` answers { id: <its id argument>, title: \"T\", author: { id: \"a1\", name: \"A\" } }. `books` answers the first `limit` of three such books (b1, b2, b3). `restock` and `reserve` each count a run and answer the book with their `id`. Every request is made as the viewer { id: \"u1\" }, with the endpoint's default options.",
+  "cases": [
+    {
+      "name": "a notification of a method the bridge also answers as a request",
+      "steps": [{ "request": { "json": { "jsonrpc": "2.0", "method": "tools/list" } }, "expect": { "status": 202, "noBody": true } }],
+      "why": "only `notifications/initialized` used to get 202; any other notification was answered with a body the client never asked for"
+    },
+    {
+      "name": "a notification of a method the bridge does not know",
+      "steps": [{ "request": { "json": { "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": 7 } } }, "expect": { "status": 202, "noBody": true } }]
+    },
+    {
+      "name": "guard: the same method with an id is a request and is answered",
+      "steps": [{ "request": { "json": { "jsonrpc": "2.0", "id": 1, "method": "tools/list" } }, "expect": { "status": 200, "headers": { "MCP-Protocol-Version": "2026-07-28" } } }]
+    },
+    {
+      "name": "a body of null",
+      "steps": [{ "request": { "json": null }, "expect": { "error": -32600 } }],
+      "why": "null parses as JSON, so it gets past the parse step; it used to fail the handler instead of being answered"
+    },
+    {
+      "name": "null inside a batch",
+      "steps": [{ "request": { "json": [null, { "jsonrpc": "2.0", "id": 2, "method": "ping" }] }, "expect": { "batchErrors": [-32600, null] } }],
+      "why": "the bad entry is answered on its own and the good one still runs"
+    },
+    {
+      "name": "a HeaderMismatch reply carries the protocol version",
+      "steps": [{ "request": { "headers": { "Mcp-Method": "tools/call" }, "json": { "jsonrpc": "2.0", "id": 1, "method": "tools/list" } }, "expect": { "status": 400, "error": -32020, "headers": { "MCP-Protocol-Version": "2026-07-28" } } }]
+    },
+    {
+      "name": "a resource URI argument is coerced by its declared type",
+      "steps": [{ "request": { "json": { "jsonrpc": "2.0", "id": 1, "method": "resources/read", "params": { "uri": "rayfold://query/books?limit=1" } } }, "expect": { "resourceItems": 1 } }],
+      "why": "`limit` is an Int; handed over as the text \"1\" it fails validation as a String"
+    },
+    {
+      "name": "a tool result in the default view validates against the tool's outputSchema",
+      "steps": [{ "request": { "json": { "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "book", "arguments": { "id": "b1" } } } }, "expect": { "isError": false, "validatesOutputSchemaOf": "book" } }],
+      "why": "the default view of Book leaves out `author`, a non-null field. An outputSchema that requires every non-null field makes a client that validates structuredContent refuse a correct answer"
+    },
+    {
+      "name": "two commands called with the same arguments both run",
+      "steps": [
+        { "request": { "json": { "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "restock", "arguments": { "id": "b1", "qty": 1 } } } }, "expect": { "isError": false } },
+        { "request": { "json": { "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "reserve", "arguments": { "id": "b1", "qty": 1 } } } }, "expect": { "isError": false } }
+      ],
+      "runs": { "restock": 1, "reserve": 1 },
+      "why": "a key taken from the arguments alone makes the second a reuse of the first's key, refused as already_exists"
+    },
+    {
+      "name": "the same command called twice with the same arguments replays",
+      "steps": [
+        { "request": { "json": { "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "restock", "arguments": { "id": "b1", "qty": 1 } } } }, "expect": { "isError": false } },
+        { "request": { "json": { "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "restock", "arguments": { "id": "b1", "qty": 1 } } } }, "expect": { "isError": false } }
+      ],
+      "runs": { "restock": 1, "reserve": 0 },
+      "why": "guard for the case above: the key is per call, so a retried tool call does not run the command again"
+    },
+    {
+      "name": "a body over the default cap",
+      "steps": [{ "request": { "oversize": 1048577 }, "expect": { "status": 413, "problem": { "type": "payload_too_large", "code": "resource_exhausted" } } }],
+      "why": "the cap holds without configuration: one POST must not make a server hold as much as a client cares to send. The body is a JSON-RPC request padded with whitespace to this many bytes"
+    }
+  ]
+}

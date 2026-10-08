@@ -300,3 +300,22 @@ describe("openApiFor", () => {
     expect(await res.json()).toEqual(openApiFor(bs.server.ir));
   });
 });
+
+describe("openApiFor, in the corners", () => {
+  it("a body bound to one argument names its input type's fields by wire name, when nothing else defined that type first", () => {
+    const doc = openApiFor(loadSchema(`entity Hit { id: ID } input Where { zipCode: String? @http(name: "zip-code") } command tag(id: ID, where: Where): Hit @http(method: PUT, path: "/hits/{id}", body: where)`).ir) as Obj;
+    expect(doc.components.schemas.Where).toEqual({ type: "object", properties: { "zip-code": { anyOf: [{ type: "string" }, { type: "null" }] } }, additionalProperties: false });
+  });
+
+  it("a parameter carries the argument's description", () => {
+    const doc = openApiFor(loadSchema(`entity Hit { id: ID } query hit(\n"""The hit to read."""\nid: ID): Hit? @http(method: GET, path: "/hits/{id}")`).ir) as Obj;
+    expect(doc.paths["/hits/{id}"].get.parameters[0]).toEqual({ name: "id", in: "path", required: true, schema: { type: "string" }, description: "The hit to read." });
+  });
+
+  it("a policy on a member of a union the result can hold lists 401 and 403", () => {
+    const responses = (schema: string) => Object.keys((openApiFor(loadSchema(schema).ir) as Obj).paths["/hit"].get.responses);
+    const base = `entity Open { id: ID } query hit: Hit @http(method: GET, path: "/hit")`;
+    expect(responses(`${base} entity Shut @allow(read: viewer != null) { id: ID } union Hit = Open | Shut`)).toEqual(["200", "304", "400", "401", "403"]);
+    expect(responses(`${base} entity Shut { id: ID } union Hit = Open | Shut`)).toEqual(["200", "304", "400"]); // guard
+  });
+});

@@ -166,9 +166,9 @@ class ExecutionCoreTest {
         val runs = mutableListOf<String>()
         val s = idemServer(runs)
         val call = batch("""{"id":1,"op":"kept","args":{"n":1},"key":"$key"}""")
-        s.collect(call, u1)
+        val first = s.collect(call, u1).single()
         val replay = s.collect(call, u1).single()
-        assertEquals(JsonPrimitive(true), (replay["meta"] as JsonObject)["replay"])
+        assertEquals(JsonObject(first + ("meta" to obj("""{"cost":1,"replay":true}"""))), replay)
         assertEquals(listOf("kept"), runs)
     }
 
@@ -249,9 +249,15 @@ class ExecutionCoreTest {
     @Test
     fun `an unauthorized dry run of a command without @simulate is refused for permission, revealing nothing else`() = runTest(timeout = 5.seconds) {
         val s = server("""entity A { id: ID } command careless: A @idempotent(false) @allow(write: viewer.role == "admin")""", Resolvers(commands = mapOf("careless" to { _, _ -> obj("""{"id":"a"}""") })))
-        assertEquals("permission_denied", s.collect(batch("""{"id":1,"op":"careless","simulate":true}"""), obj("""{"id":"u1","role":"customer"}""")).single().errorCode())
+        assertEquals(
+            listOf(obj("""{"id":1,"error":{"code":"permission_denied","message":"Not allowed to access careless()"},"fin":true}""")),
+            s.collect(batch("""{"id":1,"op":"careless","simulate":true}"""), obj("""{"id":"u1","role":"customer"}""")),
+        )
         // guard: an authorized caller learns the command takes no dry run
-        assertEquals("failed_precondition", s.collect(batch("""{"id":1,"op":"careless","simulate":true}"""), obj("""{"id":"u9","role":"admin"}""")).single().errorCode())
+        assertEquals(
+            listOf(obj("""{"id":1,"error":{"code":"failed_precondition","message":"careless() does not support dry runs"},"fin":true}""")),
+            s.collect(batch("""{"id":1,"op":"careless","simulate":true}"""), obj("""{"id":"u9","role":"admin"}""")),
+        )
     }
 
     // ---------------------------------------------------------------- 12. drain()
@@ -269,7 +275,7 @@ class ExecutionCoreTest {
         assertFalse(first.isCompleted || second.isCompleted, "the command still runs")
         release.complete(Unit)
         first.await(); second.await(); batchJob.join()
-        assertTrue(currentTime < 10_000, "both drains woke when the batch ended, at $currentTime ms, not at the timeout")
+        assertEquals(0L, currentTime, "both drains woke when the batch ended, not at the timeout")
         assertEquals(0, s.inflight)
     }
 
@@ -355,20 +361,68 @@ class ExecutionCoreTest {
         assertEquals(listOf("one", "three"), ran)
     }
 
-    // ---------------------------------------------------------------- one executor, concurrent batches
+    // ---------------------------------------------------------------- an interface position
+
+    private val interfaceSchema = """object Named @interface { name: String }
+        object Titled @interface { title: String }
+        entity Author implements Named { id: ID name: String }
+        entity Bot implements Named { id: ID name: String model: String }
+        entity Book implements Titled { id: ID title: String }
+        query named(of: [String]): [Named]
+    """
+
+    private fun interfaceServer() = server(interfaceSchema, Resolvers(queries = mapOf("named" to { a, _ ->
+        val values = mapOf(
+            "Author" to obj("""{"$t":"Author","id":"a1","name":"A"}"""),
+            "Bot" to obj("""{"$t":"Bot","id":"r1","name":"R","model":"m1"}"""),
+            "Book" to obj("""{"$t":"Book","id":"b1","title":"T"}"""),
+        )
+        kotlinx.serialization.json.JsonArray((a["of"] as kotlinx.serialization.json.JsonArray).map { values.getValue((it as JsonPrimitive).content) })
+    })))
 
     @Test
-    fun `the interface-implementors memo of an executor is safe to fill from concurrent batches`() = runTest(timeout = 5.seconds) {
-        val s = server(
-            "object Named @interface { name: String } entity Author implements Named { id: ID name: String } query named: Named",
-            Resolvers(queries = mapOf("named" to { _, _ -> obj("""{"$t":"Author","id":"a1","name":"A"}""") })),
+    fun `each value at an interface position is projected as the implementor its type names`() = runTest(timeout = 5.seconds) {
+        assertEquals(
+            listOf(obj("""{"id":1,"data":[{"$t":"Author","name":"A"},{"$t":"Bot","name":"R","model":"m1"},{"$t":"Author","name":"A"}],"meta":{"cost":1},"fin":true}""")),
+            interfaceServer().collect(batch("""{"id":1,"op":"named","args":{"of":["Author","Bot","Author"]},"shape":"{ name ...on Bot { model } }"}""")),
         )
-        // every batch this server runs goes through one executor, whichever thread runs it
-        val executor = RayfoldServer::class.java.getDeclaredField("executor").apply { isAccessible = true }.get(s)
-        val memo = Executor::class.java.getDeclaredField("implementors").apply { isAccessible = true }.get(executor)
-        assertTrue(memo is java.util.concurrent.ConcurrentMap<*, *>, "a plain map mutated by concurrent batches: ${memo?.javaClass}")
-        // and it is filled on the way through a real query on an interface
-        assertEquals(null, s.collect(batch("""{"id":1,"op":"named","shape":"{ name }"}""")).single().errorCode())
-        assertEquals(setOf("Author"), (memo as Map<*, *>)["Named"])
+    }
+
+    @Test
+    fun `guard - a value of an entity that implements only another interface is refused at an interface position`() = runTest(timeout = 5.seconds) {
+        assertEquals(
+            listOf(obj("""{"id":1,"error":{"code":"internal","message":"Interface Named value at 1 lacks a valid $t","path":"1"},"fin":true}""")),
+            interfaceServer().collect(batch("""{"id":1,"op":"named","args":{"of":["Author","Book"]},"shape":"{ name }"}""")),
+        )
+    }
+
+    // ---------------------------------------------------------------- a loader answers for exactly its parents
+
+    private fun loaderServer(answers: List<String>) = server(
+        "entity A { id: ID name: String } query all: [A]",
+        Resolvers(
+            queries = mapOf("all" to { _, _ -> kotlinx.serialization.json.JsonArray(listOf(obj("""{"id":"a1"}"""), obj("""{"id":"a2"}"""))) }),
+            fields = mapOf("A" to mapOf("name" to { _, _, _ -> answers.map { JsonPrimitive(it) } })),
+        ),
+    )
+
+    @Test
+    fun `a loader that answers for more parents than it was given is refused, not trimmed`() = runTest(timeout = 5.seconds) {
+        assertEquals(
+            listOf(obj("""{"id":1,"error":{"code":"internal","message":"Loader for A.name returned 3 for 2 parents","path":"0.name"},"fin":true}""")),
+            loaderServer(listOf("one", "two", "three")).collect(batch("""{"id":1,"op":"all","shape":"{ name }"}""")),
+        )
+    }
+
+    @Test
+    fun `a loader that answers for fewer parents than it was given is refused too (guard - one answer per parent is served)`() = runTest(timeout = 5.seconds) {
+        assertEquals(
+            listOf(obj("""{"id":1,"error":{"code":"internal","message":"Loader for A.name returned 1 for 2 parents","path":"0.name"},"fin":true}""")),
+            loaderServer(listOf("only one")).collect(batch("""{"id":1,"op":"all","shape":"{ name }"}""")),
+        )
+        assertEquals(
+            listOf(obj("""{"id":1,"data":[{"$t":"A","name":"one"},{"$t":"A","name":"two"}],"meta":{"cost":1},"fin":true}""")),
+            loaderServer(listOf("one", "two")).collect(batch("""{"id":1,"op":"all","shape":"{ name }"}""")),
+        )
     }
 }

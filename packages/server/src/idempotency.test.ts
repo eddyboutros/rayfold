@@ -201,7 +201,7 @@ describe("one command per key, across servers sharing a store", () => {
     const other = createRayfoldServer({ schema: SCHEMA, resolvers: { Command: { book: async () => ({ id: "t1", seat: 1 }) } }, idempotency: store });
     const retry = await book(other);
     expect(retry[0]).toMatchObject({ error: { code: "internal" } });
-    expect(await store.get(hashJson(viewer), KEY)).toBeDefined();
+    expect((await store.get(hashJson(viewer), KEY))?.frame).toEqual(first[0]);
   });
 
   it("waits while a server still holds the key, and takes it over once that server's lease runs out", async () => {
@@ -515,6 +515,49 @@ describe("one command per key, across servers sharing a store", () => {
     expect(compact).toEqual([{ ...first[0], id: 7, meta: { replay: true } }]);
   });
 
+  it("a retry waiting in this process wakes the moment the holder records its answer, not at its next backoff", async () => {
+    // the backoff timers are faked and never advanced: only the store's own wake-up can end the wait
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const store = new MemoryIdempotencyStore();
+    const claims = spyClaims(store);
+    const f = fleet(2, { store, hold: true });
+    const first = book(f.servers[0]!);
+    const retry = book(f.servers[1]!);
+    await claims.until((c) => c.includes("inflight"), "the retry finding the key held");
+    f.open();
+    expect((await first)[0]).toMatchObject({ ok: { id: "t1" } });
+    expect((await retry)[0]).toEqual({ id: 1, ok: { $type: "Ticket", id: "t1", seat: 1 }, patch: [{ set: "Ticket:t1", value: { $type: "Ticket", id: "t1", seat: 1 } }], meta: { cost: 1, replay: true }, fin: true });
+    expect(claims.items).toEqual(["owned", "inflight", "done"]);
+    expect(f.runs()).toBe(1);
+  });
+
+  it("a retry whose op ends while the store is still answering stops then, rather than after a backoff", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const store = new MemoryIdempotencyStore();
+    await store.claim(hashJson(viewer), KEY, 60_000); // another server holds the key
+    let answer = () => {};
+    const slow = new Promise<void>((r) => (answer = r));
+    const asked = new Signal<string>();
+    const claim = store.claim.bind(store);
+    vi.spyOn(store, "claim").mockImplementation(async (...a) => {
+      asked.push("claim");
+      await slow;
+      return claim(...a);
+    });
+    const f = fleet(1, { store });
+    const ac = new AbortController();
+    const frames: Frame[] = [];
+    const ended = (async () => {
+      for await (const fr of f.servers[0]!.execute({ ops: [{ id: 1, op: "book", args: { seat: 1 }, key: KEY }] }, { viewer, signal: ac.signal })) frames.push(fr);
+    })();
+    await asked.atLeast(1, "the store asked for the key");
+    ac.abort();
+    answer(); // the store says "held" only now, after the op ended
+    await ended;
+    expect(frames).toEqual([{ id: 1, error: { code: "canceled", message: "Canceled" }, fin: true }]);
+    expect(f.runs()).toBe(0);
+  });
+
   it("hands the store the lease the server was configured with, 30 seconds unless set", async () => {
     const store = new MemoryIdempotencyStore();
     const claim = vi.spyOn(store, "claim");
@@ -522,5 +565,52 @@ describe("one command per key, across servers sharing a store", () => {
     expect(claim).toHaveBeenLastCalledWith(hashJson(viewer), KEY, 30_000);
     await book(fleet(1, { store, leaseMs: 1_234 }).servers[0]!, KEY + "b");
     expect(claim).toHaveBeenLastCalledWith(hashJson(viewer), KEY + "b", 1_234);
+  });
+});
+
+describe("the in-memory store wakes whoever waits on a key", () => {
+  const scope = "s";
+  const woke = (p: Promise<void> | undefined) => bounded(p ?? Promise.reject(new Error("no claim to wait on")), "the waiters woken");
+
+  it("when the holder records its answer, when it lets the key go, and when another takes over a lapsed lease", async () => {
+    let t = 0;
+    const store = new MemoryIdempotencyStore(60_000, () => t);
+    const a = await store.claim(scope, "put", 100);
+    const putting = store.settled(scope, "put");
+    if (a.state !== "owned") throw new Error(a.state);
+    await store.put(scope, "put", { argsHash: "h", frame: {}, at: t }, a.token);
+    await woke(putting);
+
+    const b = await store.claim(scope, "release", 100);
+    const releasing = store.settled(scope, "release");
+    if (b.state !== "owned") throw new Error(b.state);
+    await store.release(scope, "release", b.token);
+    await woke(releasing);
+    expect(await store.claim(scope, "release", 100)).toEqual({ state: "owned", token: expect.any(String) });
+
+    await store.claim(scope, "lapsed", 100);
+    const lapsing = store.settled(scope, "lapsed");
+    t = 100;
+    expect(await store.claim(scope, "lapsed", 100)).toEqual({ state: "owned", token: expect.any(String) });
+    await woke(lapsing);
+  });
+
+  it("only the holder's token renews, records or releases; any other leaves the claim as it was", async () => {
+    let t = 0;
+    const store = new MemoryIdempotencyStore(60_000, () => t);
+    const held = await store.claim(scope, "k", 100);
+    if (held.state !== "owned") throw new Error(held.state);
+    expect(await store.renew(scope, "k", "not-the-token", 10_000)).toBe(false);
+    await store.put(scope, "k", { argsHash: "h", frame: { stolen: true }, at: t }, "not-the-token");
+    await store.release(scope, "k", "not-the-token");
+    t = 99;
+    expect(await store.claim(scope, "k", 100)).toEqual({ state: "inflight", heldUntil: 100 });
+    t = 100; // the forged renewal did not extend it
+    expect(await store.claim(scope, "k", 100)).toEqual({ state: "owned", token: expect.any(String) });
+    // guard: the holder's own token renews
+    const mine = await store.claim(scope, "j", 100);
+    if (mine.state !== "owned") throw new Error(mine.state);
+    expect(await store.renew(scope, "j", mine.token, 1_000)).toBe(true);
+    expect(await store.claim(scope, "j", 100)).toEqual({ state: "inflight", heldUntil: 1_100 });
   });
 });

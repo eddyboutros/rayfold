@@ -267,6 +267,12 @@ describe("generateKotlin", () => {
     expect(text).toContain('    @SerialName("\\$type") val type: String = "A",\n    val id: String,\n    val when2: Int,');
   });
 
+  it("a Page field keeps its item type, and a nullable list defaults to null", () => {
+    const kotlin = generateKotlin(loadSchema(`entity Review { id: ID } entity Book { id: ID reviews(page: PageArgs): Page<Review> tags: [String]? } query book: Book`).ir).split("\n");
+    const at = kotlin.indexOf("data class Book(");
+    expect(kotlin.slice(at, at + 6)).toEqual(["data class Book(", '    @SerialName("\\$type") val type: String = "Book",', "    val id: String,", "    val reviews: Page<Review>,", "    val tags: List<String>? = null,", ")"]);
+  });
+
   it("an object with no fields is a plain class, not an empty data class", () => {
     const { ir } = loadSchema(`object Empty {} query e: Empty`);
     expect(generateKotlin(ir).split("\n").slice(12, 15)).toEqual(["@Serializable", "class Empty", ""]);

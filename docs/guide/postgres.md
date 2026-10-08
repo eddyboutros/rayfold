@@ -60,6 +60,11 @@ for or else the field's declared default; the root page still takes a cursor. A 
 mapped column or a declared relation, so a shape that reaches past the mapping is refused rather than quietly served
 wrong. For the same reason a field selected twice under two aliases must be selected the same way both times.
 
+Each row also carries the columns its type's read rule reads, and the rules of the fields it selects, whether the
+shape asks for them or not, so the runtime can check those rules on every row: a rule such as
+`@allow(read: this.publishedAt != null)` holds on a screen that does not select `publishedAt`. The runtime leaves those
+columns out of the answer.
+
 A relation that takes arguments, such as `Author.books(page:)`, needs no loader here: the runtime serves the page
 `screen` already gathered. `checkWiring` cannot see that from the resolvers alone and still reports it as
 `missing-loader`, so filter that finding for the fields your screens gather.

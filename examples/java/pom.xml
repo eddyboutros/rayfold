@@ -30,6 +30,13 @@
       <version>10.9.1</version>
     </dependency>
 
+    <!-- calls the server from a unit test, with no network between them -->
+    <dependency>
+      <groupId>dev.rayfold</groupId>
+      <artifactId>rayfold-test</artifactId>
+      <version>0.2.1</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

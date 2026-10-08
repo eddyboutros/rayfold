@@ -4,8 +4,14 @@
 |---|---|
 | `dev.rayfold:rayfold-java` | A Rayfold server with a Java API: a builder, functional resolver interfaces, records and maps as results. |
 | `dev.rayfold:rayfold-spring-boot-starter` | The same inside Spring Boot 4: annotated methods on your beans, Spring MVC, Spring Security. |
+| `dev.rayfold:rayfold-test` | Unit tests for either without a network: a blocking caller per viewer, with maps in and plain values out. Test scope. |
 
-Both read `.rayfold` schema files directly. Java 21 or later.
+Both servers read `.rayfold` schema files directly. Java 21 or later.
+
+::: info Next release
+`rayfold-test`, `.clock(...)`, `ctx.now()` and the starter's use of a `Clock` bean are not in 0.2.1; they arrive in
+the next release.
+:::
 
 ## Plain Java
 
@@ -50,6 +56,9 @@ HttpServer http = Rayfold.http(server)
 - `queryAsync`, `commandAsync` and `fieldAsync` take resolvers that return a `CompletionStage`.
 - Registering a resolver for an operation or field the schema does not have fails when you call it, not at the first
   request.
+- `.clock(clock)` gives the server the clock it tells the time by, a `java.time.Clock` or epoch milliseconds from a
+  `LongSupplier`: `now()` in a policy and `ctx.now()` in a resolver read it, and idempotency records expire by it.
+  Without one it is the system clock ([Testing](testing.md#time)).
 
 ## Spring Boot
 
@@ -118,6 +127,14 @@ the same Origin check. `rayfold.websocket=false` turns it off.
 
 Declare an `Instrumentation` bean, such as `new RayfoldOpenTelemetry(openTelemetry)` from `rayfold-opentelemetry`,
 and every batch, op and loader call becomes a span ([Tracing](tracing.md)).
+
+### Time and tests
+
+When the application declares a `java.time.Clock` bean, the server tells the time by it, so a test that replaces the
+bean moves the server's time too. Without one, or with several and none of them primary, it is the system clock.
+
+A test can autowire the `RayfoldServer` the starter built and call it with `rayfold-test`, as any viewer and with no
+port open ([Testing](testing.md)).
 
 ### More than one instance
 

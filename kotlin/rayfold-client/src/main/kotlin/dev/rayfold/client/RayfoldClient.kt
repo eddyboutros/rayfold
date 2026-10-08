@@ -312,7 +312,8 @@ class RayfoldClient @JvmOverloads constructor(private val transport: Transport, 
                         id == null && error != null -> if (ended == null) ended = RayfoldClientException.of(error)
                         id != h.id -> {}
                         error != null -> if (ended == null) ended = RayfoldClientException.of(error)
-                        ("data" in f && "at" !in f) || "patch" in f || "fin" in f -> {
+                        // a deferred part (`at`) is reported too: a live query sends no `fin` to wait for
+                        "data" in f || "patch" in f || "fin" in f -> {
                             failures = 0 // the connection is good again
                             cache.getResult(rk)?.let { trySend(cache.denormalize(it.data)) }
                         }

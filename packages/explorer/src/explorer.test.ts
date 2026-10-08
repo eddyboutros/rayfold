@@ -36,7 +36,7 @@ describe("the explorer page", () => {
     const base = await start();
     const page = await fetch(`${base}/rayfold/explorer`);
     expect(page.status).toBe(200);
-    expect(page.headers.get("content-type")).toContain("text/html");
+    expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(page.headers.get("cache-control")).toBe("no-store"); // never cached: it carries the endpoint it talks to
     const html = await page.text();
     expect(html).toContain('"endpoint":"/rayfold"');

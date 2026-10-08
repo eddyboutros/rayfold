@@ -89,13 +89,14 @@ class LiveTest {
         live.next()
         command(bs.server, "placeOrder", """{"input":{"lines":[{"bookId":"b1","qty":2}]}}""", KEY, u1)
         assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":3,"left":3},"meta":{"cost":1}}"""), live.next())
-        live.stop()
+        assertEquals(listOf(canceled), live.stop())
 
         val plain = LiveRun(this, bs.server, """{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}""")
         plain.next()
         command(bs.server, "placeOrder", """{"input":{"lines":[{"bookId":"b1","qty":1}]}}""", KEY + "2", u1)
         assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":2}}]}"""), plain.next(), "guard: without the alias it is the patch it always was")
-        plain.stop()
+        assertEquals(listOf(canceled), plain.stop())
+        assertEquals(0, bs.server.changes.size)
     }
 
     @Test
@@ -105,6 +106,21 @@ class LiveTest {
         val patch = (frame["patch"] as JsonArray).map { it as JsonObject }
         assertEquals(obj("""{"${'$'}type":"Book","id":"b1","stock":6}"""), patch.single { it["set"] == JsonPrimitive("Book:b1") }["value"])
         assertTrue(patch.any { (it["set"] as JsonPrimitive).content.startsWith("Review:") }, "guard: the reviews in the page are still patched as themselves")
+    }
+
+    @Test
+    fun `a live query's deferred part comes after its first result, as for any query, and once (mirrors live test)`() = runTest(timeout = 5.seconds) {
+        val bs = Bookstore()
+        val live = LiveRun(this, bs.server, """{"id":1,"op":"author","args":{"id":"a1"},"shape":"{ id name bio }","live":true}""")
+        // bio is @lazy, so deferred: the first frame must not carry it
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Author","id":"a1","name":"Ursula K. Le Guin"},"meta":{"cost":1}}"""), live.next())
+        assertEquals(obj("""{"id":1,"at":"","data":{"bio":"American author of speculative fiction."}}"""), live.next())
+        // the folded result counts the deferred part, so a change to it reaches the query
+        bs.store.authors["a1"] = obj("""{"id":"a1","name":"Ursula K. Le Guin","bio":"Wrote Earthsea."}""")
+        bs.server.changes.publish(Change(setOf("Author:a1"), emptySet()))
+        assertEquals(obj("""{"id":1,"patch":[{"set":"Author:a1","value":{"bio":"Wrote Earthsea."}}]}"""), live.next())
+        assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, bs.server.changes.size)
     }
 
     @Test
@@ -243,7 +259,7 @@ class LiveTest {
         )
         val server = RayfoldServer(Oracle.ir("bookstore.ir.json"), resolvers)
         val live = LiveRun(this, server, """{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id stock }","live":true}""")
-        assertTrue("data" in live.next(), "guard: the first run succeeds")
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":5},"meta":{"cost":1}}"""), live.next(), "guard: the first run succeeds")
         server.changes.publish(Change(setOf("Book:b1"), emptySet()))
         assertEquals(obj("""{"id":1,"error":{"code":"unavailable","message":"store offline"},"fin":true}"""), live.next())
         live.job.join()
@@ -258,7 +274,7 @@ class LiveTest {
             bs.server.execute(obj("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","live":true}],"meta":{"deadline":100}}""")).collect { frames.send(it) }
             frames.close()
         }
-        assertTrue("data" in withTimeout(5_000) { frames.receive() })
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1}}"""), withTimeout(5_000) { frames.receive() })
         assertEquals(1, bs.server.changes.size, "guard: subscribed until the deadline")
         assertEquals(obj("""{"id":1,"error":{"code":"deadline_exceeded","message":"Batch deadline exceeded"},"fin":true}"""), withTimeout(5_000) { frames.receive() })
         job.join()
@@ -302,6 +318,59 @@ class LiveTest {
         fx.server.changes.publish(Change(setOf("Book:b2"), emptySet()))
         // the row that appeared travels on its own (spec 04 section 2b), and a union member keeps its type inside it
         assertEquals(obj("""{"id":1,"patch":[{"list":"","ins":[{"at":2,"value":{"${'$'}type":"Book","id":"b2","title":"T2"}}]}]}"""), live.next())
+        assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, fx.server.changes.size)
+    }
+
+    @Test
+    fun `an interface position wakes for a new entity of a type that implements it (guard - an unrelated type wakes nothing)`() = runTest(timeout = 5.seconds) {
+        val people = java.util.concurrent.CopyOnWriteArrayList(listOf(obj("""{"${'$'}type":"Person","id":"p1","name":"Ada"}""")))
+        var runs = 0
+        val server = RayfoldServer(
+            SchemaText.load("object Named @interface { id: ID name: String } entity Person implements Named { id: ID name: String } entity Robot { id: ID } query people: [Named]").ir,
+            Resolvers(queries = mapOf("people" to { _, _ -> runs++; JsonArray(people.toList()) })),
+        )
+        val live = LiveRun(this, server, """{"id":1,"op":"people","shape":"{ id name }","live":true}""")
+        assertEquals(obj("""{"id":1,"data":[{"${'$'}type":"Person","id":"p1","name":"Ada"}],"meta":{"cost":1}}"""), live.next())
+        server.changes.publish(Change(setOf("Robot:r1"), emptySet()))
+        advanceUntilIdle()
+        assertEquals(1, runs, "a type that cannot appear here wakes nothing")
+        people.add(obj("""{"${'$'}type":"Person","id":"p2","name":"Bo"}"""))
+        server.changes.publish(Change(setOf("Person:p2"), emptySet()))
+        assertEquals(obj("""{"id":1,"patch":[{"list":"","ins":[{"at":1,"value":{"${'$'}type":"Person","id":"p2","name":"Bo"}}]}]}"""), live.next())
+        assertEquals(2, runs)
+        assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, server.changes.size)
+    }
+
+    @Test
+    fun `a live query listens for what its result holds after each re-run, not what it held first`() = runTest(timeout = 5.seconds) {
+        // an entity this deep is past what the query watches by type, so only its key, in the read set, hears it
+        var person = """{"id":"p1","name":"Ada"}"""
+        val server = RayfoldServer(
+            SchemaText.load("object L0 { n: L1 } object L1 { n: L2 } object L2 { n: L3 } object L3 { n: L4 } object L4 { p: Person } entity Person { id: ID name: String } query deep: L0").ir,
+            Resolvers(queries = mapOf("deep" to { _, _ -> obj("""{"n":{"n":{"n":{"n":{"p":$person}}}}}""") })),
+        )
+        val live = LiveRun(this, server, """{"id":1,"op":"deep","shape":"{ n { n { n { n { p { id name } } } } } }","live":true}""")
+        live.next()
+        person = """{"id":"p2","name":"Bo"}"""
+        server.changes.publish(Change(setOf("Person:p1"), emptySet()))
+        assertEquals(obj("""{"id":1,"data":{"n":{"n":{"n":{"n":{"p":{"${'$'}type":"Person","id":"p2","name":"Bo"}}}}}},"meta":{"cost":6}}"""), live.next())
+        person = """{"id":"p2","name":"Bea"}"""
+        server.changes.publish(Change(setOf("Person:p2"), emptySet()))
+        assertEquals(obj("""{"id":1,"patch":[{"set":"Person:p2","value":{"name":"Bea"}}]}"""), live.next(), "p2 is heard, being in the result now")
+        assertEquals(listOf(canceled), live.stop())
+        assertEquals(0, server.changes.size)
+    }
+
+    @Test
+    fun `a row that leaves a live list goes out as a list deletion at its position`() = runTest(timeout = 5.seconds) {
+        val fx = fixtureServer("core/11-unions.json")
+        val live = LiveRun(this, fx.server, """{"id":1,"op":"search","shape":"{ ...on Book { id title } ...on Author { name } }","live":true}""")
+        assertEquals(obj("""{"id":1,"data":[{"${'$'}type":"Book","id":"b1","title":"T1"},{"${'$'}type":"Author","name":"Ann"}],"meta":{"cost":1}}"""), live.next())
+        fx.store.table("Hit").removeAt(0)
+        fx.server.changes.publish(Change(setOf("Book:b1"), emptySet()))
+        assertEquals(obj("""{"id":1,"patch":[{"list":"","del":[0]}]}"""), live.next())
         assertEquals(listOf(canceled), live.stop())
         assertEquals(0, fx.server.changes.size)
     }
@@ -350,7 +419,10 @@ class LiveTest {
             assertEquals("", line(), "nothing changed, so a keep-alive comes next")
             assertEquals(1, bs.server.changes.size, "guard: the open stream holds its subscription")
             runBlocking { command(bs.server, "placeOrder", """{"input":{"lines":[{"bookId":"b1","qty":2}]}}""", KEY, u1) }
-            assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":3}}]}"""), obj(generateSequence { line() }.first { it.isNotEmpty() }))
+            // keep-alives come every 20 ms, so the patch is the first line that is not one, looked for within 5 s overall
+            val until = System.nanoTime() + 5_000_000_000L
+            val patch = generateSequence { check(System.nanoTime() < until) { "no patch within 5 s" }; line() }.first { it.isNotEmpty() }
+            assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":3}}]}"""), obj(patch))
             res.body().close() // the client leaves; the next keep-alive fails to write, which cancels the batch
             untilReleased(bs, ended)
         }
@@ -366,7 +438,8 @@ class LiveTest {
             val input = res.body()
             fun byte(): Int = CompletableFuture.supplyAsync { input.read() }.get(5, TimeUnit.SECONDS)
             val d = rb.decoder()
-            val first = generateSequence { d.feed(byteArrayOf(byte().toByte())) }.first { it.isNotEmpty() }
+            val until = System.nanoTime() + 5_000_000_000L
+            val first = generateSequence { check(System.nanoTime() < until) { "no frame within 5 s" }; d.feed(byteArrayOf(byte().toByte())) }.first { it.isNotEmpty() }
             assertEquals(listOf(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":5},"meta":{"cost":1}}""")), first)
             assertEquals(0, byte(), "a zero-length frame")
             assertEquals(0, byte(), "and another, while nothing changes")

@@ -277,11 +277,13 @@ class LifecycleTest {
         live.awaitEnd()
         updates.awaitEnd()
         assertEquals(1, built.server.inflight)
+        assertEquals(0, built.server.changes.size, "the live query let go of its subscription")
 
         built.release.countDown()
         val answered = command.get(5, TimeUnit.SECONDS)
         assertEquals(200, answered.statusCode())
-        assertTrue(answered.body().contains(""""ok":{"${'$'}type":"Book","id":"b1","stock":4}"""), answered.body())
+        val book = """{"${'$'}type":"Book","id":"b1","stock":4}"""
+        assertEquals(listOf(obj("""{"id":1,"ok":$book,"patch":[{"set":"Book:b1","value":$book}],"meta":{"cost":1},"fin":true}""")), answered.body().lines().filter { it.isNotBlank() }.map(::obj))
         withTimeout(5_000) { draining.await() }
         assertEquals(0, built.server.inflight)
 
@@ -381,6 +383,7 @@ class LifecycleTest {
         assertEquals(1001, ((close[0].toInt() and 0xff) shl 8) or (close[1].toInt() and 0xff))
         assertEquals("server shutting down", close.copyOfRange(2, close.size).toString(Charsets.UTF_8))
         assertNull(ws.read(), "and then the connection is gone")
+        assertEquals(0, built.server.changes.size)
 
         val late = Ws(listener.port)
         assertEquals(101, late.upgrade(), "a socket that connects while draining is accepted")
@@ -425,7 +428,7 @@ class LifecycleTest {
             }
         }
         val server = RayfoldServer(ir, Resolvers(), relay = stuck)
-        assertTrue(server.readiness().reasons.contains("relay: not listening yet"))
+        assertEquals(listOf("relay: not listening yet"), server.readiness().reasons)
         subscribing.await()
         // close() with its own default, so the default is pinned too; its wait runs on this test's virtual clock
         val closing = async { server.close() }
@@ -448,8 +451,10 @@ class LifecycleTest {
             override suspend fun subscribe(onMessage: (RelayMessage) -> Unit): suspend () -> Unit = { stopped.complete(Unit); Unit }
         }
         val server = RayfoldServer(ir, Resolvers(), relay = relay)
-        server.ready()
-        server.close()
-        withTimeout(5_000) { stopped.await() }
+        withTimeout(5_000) {
+            server.ready()
+            server.close()
+            stopped.await()
+        }
     }
 }

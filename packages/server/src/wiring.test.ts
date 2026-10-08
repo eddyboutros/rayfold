@@ -96,3 +96,15 @@ describe("do the resolvers cover the schema", () => {
     ]);
   });
 });
+
+describe("loaders wired where nothing can be loaded", () => {
+  it("on a built-in type, or on a type that has no fields, are reported", () => {
+    const small = loadSchema(`enum Format { A B } union U = Item entity Item { id: ID } query item: Item query items(page: PageArgs = { first: 5 }): Page<Item>`).ir;
+    const resolvers = { Query: { item: () => null, items: () => null }, Page: { items: () => null }, Format: { A: () => null }, U: { x: () => null } } as unknown as Resolvers;
+    expect(checkWiring(small, resolvers)).toEqual([
+      { severity: "warning", code: "unknown-resolver", at: "Page", message: "Loaders are wired for Page, but the schema has no such type" },
+      { severity: "warning", code: "unknown-resolver", at: "Format", message: "Loaders are wired for Format, but a enum has no fields to load" },
+      { severity: "warning", code: "unknown-resolver", at: "U", message: "Loaders are wired for U, but a union has no fields to load" },
+    ]);
+  });
+});

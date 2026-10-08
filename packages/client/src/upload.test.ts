@@ -74,6 +74,31 @@ describe("client.upload", () => {
     expect(store.size).toBe(0);
   });
 
+  it("sends a stream of bytes as it is read, to a URL given with a trailing slash too", async () => {
+    const { url, store } = await serve();
+    const client = new RayfoldClient({ transport: createFetchTransport({ url: url + "//" }) });
+    const chunks = [new Uint8Array(100).fill(1), new Uint8Array(28).fill(2)];
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        const next = chunks.shift();
+        if (next) c.enqueue(next);
+        else c.close();
+      },
+    });
+    expect(await client.upload(body, { name: "streamed.bin" })).toMatchObject({ size: 128, name: "streamed.bin" });
+    expect(store.size).toBe(1);
+  });
+
+  it("an aborted upload is not sent; guard: the same upload without the signal is", async () => {
+    const { client, store } = await serve();
+    const ac = new AbortController();
+    ac.abort();
+    await expect(client.upload(new Uint8Array(8), {}, { signal: ac.signal })).rejects.toMatchObject({ name: "AbortError" });
+    expect(store.size).toBe(0);
+    expect(await client.upload(new Uint8Array(8))).toMatchObject({ size: 8 });
+    expect(store.size).toBe(1);
+  });
+
   it("takes a File's own name and type, and lets the caller say otherwise", async () => {
     const { client } = await serve();
     const file = new File([new Uint8Array(32)], "avatar.png", { type: "image/png" });
@@ -120,8 +145,7 @@ describe("client.upload", () => {
     const client = new RayfoldClient({ transport: createLocalTransport(inProcess, () => viewer) });
     const failed = await client.upload(new Uint8Array(8)).catch((e: unknown) => e);
     expect(failed).toBeInstanceOf(RayfoldClientError);
-    expect((failed as RayfoldClientError).code).toBe("unimplemented");
-    expect((failed as RayfoldClientError).message).toContain("cannot upload");
+    expect({ code: (failed as RayfoldClientError).code, message: (failed as Error).message }).toEqual({ code: "unimplemented", message: "This transport cannot upload; use a fetch transport, or send the bytes yourself" });
   });
 
   it("carries the headers the transport was given, so an upload is authorised like any other request", async () => {

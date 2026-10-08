@@ -5,7 +5,8 @@ import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import { RayfoldError } from "./protocol.ts";
 import { MemoryIdempotencyStore } from "./context.ts";
 import { stripTypes } from "./executor.ts";
-import { pushableFilter } from "./policy.ts";
+import { FrameSink } from "./batch.ts";
+import { hasPolicy, pushableFilter } from "./policy.ts";
 import type { RayfoldContext } from "./context.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 
@@ -292,16 +293,42 @@ describe("loads shared across a batch", () => {
       );
     const stockIn = (frames: Frame[], id: number) => frames.map((f) => f as { id?: number; data?: { stock: number }; ok?: { stock: number } }).find((f) => f.id === id)!;
 
-    // guard: a dry run changed nothing, so the ops after it keep the load the first op made
+    // guard: a dry run changed nothing, so the op after it keeps the load the first op made; the dry run's own answer
+    // describes what would happen, which that load does not know, so it loads for itself
     const dry = await run(true);
     expect([stockIn(dry, 1).data?.stock, stockIn(dry, 2).ok?.stock, stockIn(dry, 3).data?.stock]).toEqual([1, 1, 1]);
-    expect(loads).toBe(1);
+    expect(loads).toBe(2);
 
     loads = 0;
     const frames = await run(false);
     expect([stockIn(frames, 1).data?.stock, stockIn(frames, 2).ok?.stock, stockIn(frames, 3).data?.stock]).toEqual([1, 11, 11]);
     expect(frames.find((f) => (f as { id?: number }).id === 2)).toMatchObject({ patch: [{ set: "Book:b1", value: { stock: 11 } }] });
     expect(loads).toBe(2); // before the command, then once for the command's result and the op after it
+  });
+
+  it("a dry run answers what would happen, not what an earlier op loaded", async () => {
+    // spec 03: a dry run's "result and patches describe what would happen". The memo held the author op 1 loaded for
+    // Book:b1, and the would-be book points at another author.
+    const authors: Record<string, { id: string; name: string }> = { a1: { id: "a1", name: "Ann" }, a2: { id: "a2", name: "Bob" } };
+    const shop = createRayfoldServer({
+      schema: `entity Author { id: ID name: String } entity Book { id: ID author: Author } query book(id: ID): Book? command move(id: ID, authorId: ID): Book @simulate`,
+      resolvers: {
+        Query: { book: ({ id }: { id: string }) => ({ id, authorId: "a1" }) },
+        Command: { move: ({ id, authorId }: { id: string; authorId: string }) => ({ id, authorId }) },
+        Book: { author: (books: Array<{ authorId: string }>) => books.map((b) => authors[b.authorId]) },
+      } as never,
+    });
+    const frames = await shop.collect(
+      {
+        ops: [
+          { id: 1, op: "book", args: { id: "b1" }, shape: "{ id author { name } }" },
+          { id: 2, op: "move", args: { id: { $ref: "1.id" }, authorId: "a2" }, shape: "{ author { name } }", key: "move-0000000000001", simulate: true },
+        ],
+      },
+      { viewer: { id: "u1" } },
+    );
+    expect(frames.find((f) => (f as { id?: number }).id === 1)).toMatchObject({ data: { author: { name: "Ann" } } });
+    expect(frames.find((f) => (f as { id?: number }).id === 2)).toMatchObject({ ok: { author: { name: "Bob" } } });
   });
 
   it("the same entity twice at one level is loaded once", async () => {
@@ -760,12 +787,12 @@ describe("idempotency records", () => {
     expect(bs.store.orders.size).toBe(1);
   });
 
-  it("a record replays through its TTL and is forgotten one millisecond later", async () => {
+  it("a record replays while it is younger than its TTL, and is forgotten at that age", async () => {
     let t = 1_000;
     const b = createBookstore({ idempotency: new MemoryIdempotencyStore(60_000, () => t), now: () => t });
     const call = async () => ((await b.server.collect({ ops: [restock(KEY)] }, { viewer: admin }))[0] as Ok).meta;
     expect(await call()).toEqual({ cost: 2 });
-    t += 60_000;
+    t += 59_999;
     expect(await call()).toEqual({ cost: 2, replay: true });
     t += 1;
     expect(await call()).toEqual({ cost: 2 });
@@ -778,7 +805,7 @@ describe("idempotency records", () => {
     const b = createBookstore({ now: () => t });
     const call = async () => ((await b.server.collect({ ops: [restock(KEY)] }, { viewer: admin }))[0] as Ok).meta;
     expect(await call()).toEqual({ cost: 2 });
-    t = 24 * 3_600_000;
+    t = 24 * 3_600_000 - 1;
     expect(await call()).toEqual({ cost: 2, replay: true });
     t += 1;
     expect(await call()).toEqual({ cost: 2 });
@@ -805,10 +832,125 @@ describe("security: bounded memory", () => {
     for (const k of ["a", "b", "c", "d"]) await finish(store, k, t);
     expect(store.size).toBe(3);
     expect(await store.get("s", "a")).toBeUndefined(); // the oldest went first
-    expect(await store.get("s", "d")).toBeDefined();
+    expect(await store.get("s", "d")).toEqual({ argsHash: "h", frame: {}, at: t });
     t = 1_001;
     await finish(store, "e", t);
     expect(store.size).toBe(1); // b, c and d expired and were swept by the write
+  });
+
+  // spec 03 section 4: a record has expired once it is as old as its time to live. Reading, claiming and sweeping each
+  // draw the line themselves, so each is held to it, from both sides.
+  it("a read answers a millisecond short of the record's time to live, and nothing at it", async () => {
+    let t = 5_000;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    await finish(store, "a", t);
+    t = 5_999;
+    expect(await store.get("s", "a")).toEqual({ argsHash: "h", frame: {}, at: 5_000 });
+    t = 6_000;
+    expect(await store.get("s", "a")).toBeUndefined();
+  });
+
+  it("a claim finds the record a millisecond short of its time to live, and takes the key at it", async () => {
+    let t = 5_000;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    await finish(store, "a", t);
+    t = 5_999;
+    expect(await store.claim("s", "a", 100)).toEqual({ state: "done", record: { argsHash: "h", frame: {}, at: 5_000 } });
+    t = 6_000;
+    expect(await store.claim("s", "a", 100)).toEqual({ state: "owned", token: expect.any(String) });
+  });
+
+  it("a write sweeps nothing a millisecond short of a record's time to live, and the record at it", async () => {
+    let t = 5_000;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    await finish(store, "old", t);
+    t = 5_999;
+    await finish(store, "young", t);
+    expect(store.size).toBe(2);
+    t = 6_000;
+    await finish(store, "new", t);
+    expect(store.size).toBe(2); // old went, without anyone reading it; young has 999 ms left
+    t = 5_999; // looked at from before it expired, so that the read itself drops nothing
+    expect(await store.get("s", "old")).toBeUndefined();
+    expect(await store.get("s", "young")).toEqual({ argsHash: "h", frame: {}, at: 5_999 });
+  });
+
+  it("a read that finds a record expired drops it, so a key nobody writes again does not stay in memory", async () => {
+    let t = 5_000;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    await finish(store, "a", t);
+    t = 5_999;
+    await store.get("s", "a");
+    expect(store.size).toBe(1); // guard: a read short of the line drops nothing
+    t = 6_000;
+    await store.get("s", "a");
+    expect(store.size).toBe(0);
+  });
+
+  it("a record is as old as the time it carries, and the sweep measures it by the store's clock", async () => {
+    let t = 5_000;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    await finish(store, "old", t);
+    // finished at 5_500 by the store's clock, but recorded as of 5_200, when the command answered
+    t = 5_500;
+    await finish(store, "answered", 5_200);
+    t = 6_199;
+    expect(await store.get("s", "answered")).toEqual({ argsHash: "h", frame: {}, at: 5_200 });
+    t = 6_200;
+    expect(await store.get("s", "answered")).toBeUndefined();
+
+    // a write stamped earlier than the store's own time still sweeps what that time has expired
+    t = 6_000;
+    const late = await store.claim("s", "late", 1_000);
+    if (late.state !== "owned") throw new Error(`expected to own the key, got ${late.state}`);
+    await store.put("s", "late", { argsHash: "h", frame: {}, at: 5_900 }, late.token);
+    t = 5_000;
+    expect(await store.get("s", "old")).toBeUndefined();
+  });
+
+  it("a record finished after a younger one is swept in its turn, not held back behind it", async () => {
+    let t = 0;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    const slow = await store.claim("s", "slow", 5_000);
+    if (slow.state !== "owned") throw new Error(`expected to own the key, got ${slow.state}`);
+    await finish(store, "quick", t);
+    t = 500;
+    await store.put("s", "slow", { argsHash: "h", frame: {}, at: t }, slow.token);
+    t = 1_000;
+    await finish(store, "new", t);
+    t = 0; // looked at from before anything expired, so that the reads themselves drop nothing
+    expect(await store.get("s", "quick")).toBeUndefined();
+    expect(await store.get("s", "slow")).toEqual({ argsHash: "h", frame: {}, at: 500 });
+    expect(store.size).toBe(2);
+  });
+
+  it("a claim is in flight until its lease runs out, and the key is free at that moment, past the TTL included", async () => {
+    let t = 0;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    const running = await store.claim("s", "k", 500);
+    if (running.state !== "owned") throw new Error(`expected to own the key, got ${running.state}`);
+    t = 400;
+    expect(await store.renew("s", "k", running.token, 1_600)).toBe(true); // held until 2_000, twice the TTL
+    t = 1_999;
+    expect(await store.claim("s", "k", 100)).toEqual({ state: "inflight", heldUntil: 2_000 });
+    // a write at that moment does not sweep the claim either
+    await finish(store, "other", t);
+    expect(store.size).toBe(2);
+    t = 2_000;
+    expect(await store.claim("s", "k", 100)).toEqual({ state: "owned", token: expect.any(String) });
+  });
+
+  it("a write sweeps a claim whose lease ran out at that moment", async () => {
+    let t = 0;
+    const store = new MemoryIdempotencyStore(1_000, () => t);
+    await store.claim("s", "dead", 300);
+    t = 299;
+    await finish(store, "a", t);
+    expect(store.size).toBe(2); // guard: a millisecond before, the claim stays
+    t = 300;
+    await finish(store, "b", t);
+    expect(store.size).toBe(2); // the dead claim went; a and b are there
+    expect(await store.claim("s", "dead", 100)).toEqual({ state: "owned", token: expect.any(String) });
   });
 
   it("a claim whose holder died and whose key nobody retried does not block the sweep behind it", async () => {
@@ -820,7 +962,7 @@ describe("security: bounded memory", () => {
     for (const k of ["a", "b", "c", "d"]) await finish(store, k, t);
     expect(store.size).toBe(2); // the dead claim went with the oldest records
     expect(await store.get("s", "a")).toBeUndefined();
-    expect(await store.get("s", "d")).toBeDefined();
+    expect(await store.get("s", "d")).toEqual({ argsHash: "h", frame: {}, at: t });
   });
 
   it("guard: a claim still in flight is never swept, and the answer it records afterwards replays", async () => {
@@ -831,7 +973,7 @@ describe("security: bounded memory", () => {
     for (const k of ["a", "b", "c", "d"]) await finish(store, k, t);
     expect(store.size).toBe(2); // the claim counts against the cap and the records made room for it
     expect(await store.get("s", "c")).toBeUndefined();
-    expect(await store.get("s", "d")).toBeDefined();
+    expect(await store.get("s", "d")).toEqual({ argsHash: "h", frame: {}, at: t });
     expect(await store.claim("s", "running", 1_000)).toEqual({ state: "inflight", heldUntil: 1_000 });
     await store.put("s", "running", { argsHash: "h", frame: { ok: 1 }, at: t }, live.token);
     expect(await store.get("s", "running")).toMatchObject({ frame: { ok: 1 } });
@@ -1130,6 +1272,138 @@ describe("a field with arguments and no loader", () => {
   });
 });
 
+describe("envelope rules, each refused whole with its own message", () => {
+  const refused = (ops: unknown[]) => bs.server.collect({ ops } as never);
+  const book = { op: "book", args: { id: "b1" }, shape: "{ id }" };
+
+  it("ids are positive integers: 0 is not one", async () => {
+    expect(await refused([{ id: 0, ...book }])).toEqual([{ error: { code: "invalid_argument", message: "ops[0].id: expected a positive integer" }, fin: true }]);
+    expect(await refused([{ id: 1, ...book }])).toEqual([{ id: 1, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true }]); // guard
+  });
+
+  it("a $ref names an earlier op that is in the batch: not itself, not a missing one", async () => {
+    const ref = (to: number) => ({ op: "book", args: { id: { $ref: `${to}.id` } }, shape: "{ id }" });
+    expect(await refused([{ id: 2, ...book }, { id: 3, ...ref(3) }])).toEqual([{ error: { code: "invalid_argument", message: "ops[1].args: $ref to op 3 must point to an earlier op" }, fin: true }]);
+    expect(await refused([{ id: 2, ...book }, { id: 5, ...ref(1) }])).toEqual([{ error: { code: "invalid_argument", message: "ops[1].args: $ref to unknown op 1" }, fin: true }]);
+    expect(bs.store.calls).toEqual({});
+    // guard: an earlier op that stands later in the list is still an earlier op
+    expect((await refused([{ id: 5, ...ref(2) }, { id: 2, ...book }])).map(idOf)).toEqual([2, 5]);
+  });
+
+  it("args is an object and shape is text", async () => {
+    expect(await refused([{ id: 1, op: "book", args: ["b1"] }])).toEqual([{ error: { code: "invalid_argument", message: "ops[0].args: expected an object" }, fin: true }]);
+    expect(await refused([{ id: 1, op: "book", args: { id: "b1" }, shape: 5 }])).toEqual([{ error: { code: "invalid_argument", message: "ops[0].shape: expected a string" }, fin: true }]);
+  });
+
+  it("args nested 64 deep are refused before anything walks them, and 63 deep are read as usual (guard)", async () => {
+    const nest = (levels: number): unknown => (levels === 0 ? "x" : { a: nest(levels - 1) });
+    // args itself is level 0, so the innermost object here is at level 64
+    expect(await refused([{ id: 1, op: "book", args: nest(65) }])).toEqual([{ error: { code: "invalid_argument", message: "ops[0].args: nested deeper than 64 levels" }, fin: true }]);
+    expect(await refused([{ id: 1, op: "book", args: nest(64) }])).toEqual([{ id: 1, error: { code: "invalid_argument", message: "book().a: unknown argument" }, fin: true }]);
+  });
+});
+
+describe("idempotency keys are 16 to 128 characters", () => {
+  const restock = (key: string, opts: { keyOptional?: boolean } = {}) =>
+    bs.server.collect({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key, shape: "{ stock }" }] }, { viewer: admin, ...opts });
+  const tooShortOrLong = [{ id: 1, error: { code: "invalid_argument", message: "restock(): commands require an idempotency key of 16-128 characters" }, fin: true }];
+
+  it("both bounds included, one past either refused", async () => {
+    expect(await restock("k".repeat(15))).toEqual(tooShortOrLong);
+    expect(await restock("k".repeat(129))).toEqual(tooShortOrLong);
+    expect(bs.store.calls).toEqual({});
+    expect(await restock("k".repeat(16))).toMatchObject([{ id: 1, ok: { stock: 6 } }]);
+    expect(await restock("k".repeat(128))).toMatchObject([{ id: 1, ok: { stock: 7 } }]);
+  });
+
+  it("a transport that makes the key optional still refuses a malformed one that was sent", async () => {
+    expect(await restock("short", { keyOptional: true })).toEqual(tooShortOrLong);
+    expect(bs.store.calls).toEqual({});
+  });
+});
+
+describe("cancellation that came before the batch", () => {
+  it("a signal already aborted ends every op canceled, and no resolver runs", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    expect(await bs.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" } }, { id: 2, op: "restock", args: { bookId: "b1", qty: 1 }, key: KEY }] }, { viewer: admin, signal: ac.signal })).toEqual([
+      { id: 1, error: { code: "canceled", message: "Canceled" }, fin: true },
+      { id: 2, error: { code: "canceled", message: "Canceled" }, fin: true },
+    ]);
+    expect(bs.store.calls).toEqual({});
+  });
+
+  it("an op signal already aborted ends that op alone; its sibling runs (guard)", async () => {
+    const ac = new AbortController();
+    ac.abort(new RayfoldError("canceled", "Canceled by the client"));
+    expect(await bs.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }, { id: 2, op: "book", args: { id: "b2" }, shape: "{ id }" }] }, { opSignals: new Map([[1, ac.signal]]) })).toEqual([
+      { id: 1, error: { code: "canceled", message: "Canceled by the client" }, fin: true },
+      { id: 2, data: { $type: "Book", id: "b2" }, meta: { cost: 1 }, fin: true },
+    ]);
+    expect(bs.store.calls).toEqual({ "Query.book": 1 });
+  });
+});
+
+describe("commands keep their order when one in the middle ends early", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("a later command waits for the earlier one even after the one between them ran out of time", async () => {
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const ran: string[] = [];
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID } command slow: A @idempotent(false) command quick(n: Int): A @idempotent(false)`,
+      resolvers: { Command: { slow: async () => (ran.push("slow"), await held, { id: "s" }), quick: (a: { n: number }) => (ran.push(`quick ${a.n}`), { id: `q${a.n}` }) } },
+    });
+    const p = s.collect({ ops: [{ id: 1, op: "slow", shape: "{ id }" }, { id: 2, op: "quick", args: { n: 2 }, deadline: 10, shape: "{ id }" }, { id: 3, op: "quick", args: { n: 3 }, shape: "{ id }" }] });
+    await vi.advanceTimersByTimeAsync(20); // op 2's deadline passed while it waited for op 1
+    expect(ran).toEqual(["slow"]); // op 3 still waits for op 1, though op 2 is over
+    release();
+    expect((await p).map((f) => [idOf(f), "error" in f ? f.error.code : "ok"])).toEqual([[2, "deadline_exceeded"], [1, "ok"], [3, "ok"]]);
+    expect(ran).toEqual(["slow", "quick 3"]);
+  });
+
+  it("a batch deadline reports itself, whatever the resolver threw when it was stopped", async () => {
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID } query hang: A`,
+      resolvers: { Query: { hang: (_a, ctx) => new Promise((_r, rej) => ctx.signal.addEventListener("abort", () => rej(new Error("socket closed")))) } },
+    });
+    const p = s.collect({ ops: [{ id: 1, op: "hang" }], meta: { deadline: 50 } });
+    await vi.advanceTimersByTimeAsync(60);
+    expect(await p).toEqual([{ id: 1, error: { code: "deadline_exceeded", message: "Batch deadline exceeded" }, fin: true }]);
+  });
+});
+
+describe("planning", () => {
+  it("a shape refused when its op is planned is not remembered, though the batch is within budget", async () => {
+    const shapes = new SecRegistry(secLoadSchema(secSchemaText()).ir);
+    const b = createBookstore({ shapes, maxFields: 2 });
+    expect(await b.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title stock }" }] })).toEqual([
+      { id: 1, error: { code: "resource_exhausted", message: "Shape selects 3 fields, max 2" }, fin: true },
+    ]);
+    expect(shapes.size).toBe(0);
+    await b.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title }" }] }); // guard
+    expect(shapes.size).toBe(1);
+  });
+});
+
+describe("FrameSink", () => {
+  it("passes one terminal frame per op and nothing after it closes", async () => {
+    const sink = new FrameSink();
+    sink.push({ id: 1, data: 1 });
+    sink.push({ id: 1, fin: true });
+    sink.push({ id: 1, error: { code: "internal", message: "late" }, fin: true }); // a second end for op 1
+    sink.push({ id: 2, data: 2, fin: true }); // guard: another op is unaffected
+    sink.close();
+    sink.push({ id: 3, data: 3, fin: true });
+    const read: Frame[] = [];
+    for await (const f of sink) read.push(f);
+    expect(read).toEqual([{ id: 1, data: 1 }, { id: 1, fin: true }, { id: 2, data: 2, fin: true }]);
+    expect(sink.frames).toEqual(read);
+  });
+});
+
 describe("a stream is bounded", () => {
   const SCHEMA = `
 event Tick { id: ID  n: Int }
@@ -1170,5 +1444,238 @@ stream ticks: Tick
     expect(frames.filter((f) => "item" in (f as object))).toHaveLength(2);
     expect(frames[frames.length - 1]).toMatchObject({ id: 1, fin: true });
     expect(frames.some((f) => "error" in (f as object))).toBe(false);
+  });
+});
+
+describe("the manifest and the event bus", () => {
+  it("the manifest says whether only registered shapes are accepted", () => {
+    expect(createBookstore({ trustedShapes: true }).server.manifest().limits).toEqual({ budget: 1000, maxOps: 50, maxDepth: 8, maxFields: 500, trustedShapes: true });
+    expect(bs.server.manifest().limits).toEqual({ budget: 1000, maxOps: 50, maxDepth: 8, maxFields: 500, trustedShapes: false }); // guard
+  });
+
+  it("an event subscription opened with a signal that already aborted ends at once, and one opened without hears events (guard)", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const ended = bs.server.events.subscribe("StockChanged", ac.signal)[Symbol.asyncIterator]();
+    expect(await bounded(ended.next(), "the ended subscription answering")).toEqual({ value: undefined, done: true });
+    const open = bs.server.events.subscribe("StockChanged")[Symbol.asyncIterator]();
+    bs.server.events.publish("StockChanged", { bookId: "b1", stock: 1 });
+    expect(await bounded(open.next(), "the event")).toEqual({ value: { bookId: "b1", stock: 1, seq: 1 }, done: false });
+    await open.return?.();
+  });
+});
+
+describe("argument values at the boundary", () => {
+  const SCHEMA = `entity A { id: ID }
+    input Opts { size: Int = 3 tag: String? }
+    scalar Colour
+    command take(id: ID?, when: Instant?, day: Date?, wait: Duration?, raw: Bytes?, n: Long?, colour: Colour?, opts: Opts?, page: PageArgs?): A @idempotent(false)`;
+  const seen: Array<Record<string, unknown>> = [];
+  const s = createRayfoldServer({ schema: SCHEMA, resolvers: { Command: { take: (a: Record<string, unknown>) => (seen.push(a), { id: "a" }) } } });
+  const outcome = async (args: unknown) => {
+    seen.length = 0;
+    const f = (await s.collect({ ops: [{ id: 1, op: "take", args: args as Record<string, unknown>, shape: "{ id }" }] }))[0]!;
+    return "error" in f ? f.error.message : seen[0];
+  };
+
+  it("each scalar is refused in a form it does not take, and taken in the form it does (guards)", async () => {
+    expect(await outcome({ id: "" })).toBe("take().id: expected ID");
+    expect(await outcome({ when: "2026-09-13" })).toBe("take().when: expected Instant (RFC 3339)");
+    expect(await outcome({ when: "2026-09-13T10:00:00Z" })).toEqual({ when: "2026-09-13T10:00:00Z" });
+    expect(await outcome({ day: "13/09/2026" })).toBe("take().day: expected Date (YYYY-MM-DD)");
+    expect(await outcome({ day: "2026-09-13" })).toEqual({ day: "2026-09-13" });
+    expect(await outcome({ wait: -1 })).toBe("take().wait: expected Duration");
+    expect(await outcome({ wait: "5x" })).toBe("take().wait: expected Duration");
+    expect(await outcome({ wait: "5s" })).toEqual({ wait: "5s" });
+    expect(await outcome({ raw: "ab+/" })).toBe("take().raw: expected Bytes (base64url)");
+    expect(await outcome({ raw: "ab-_" })).toEqual({ raw: "ab-_" });
+    expect(await outcome({ n: 2 ** 60 })).toBe("take().n: expected Long");
+    expect(await outcome({ colour: { r: 1 } })).toBe("take().colour: expected scalar Colour");
+    expect(await outcome({ colour: "red" })).toEqual({ colour: "red" });
+  });
+
+  it("an input type's defaults fill what was left out, and a page inside one is capped", async () => {
+    expect(await outcome({ opts: {} })).toEqual({ opts: { size: 3 } });
+    expect(await outcome({ page: { first: 5_000 } })).toEqual({ page: { first: 200 } });
+  });
+
+  it("an object with $ref and anything else beside it is a plain value, not a reference", async () => {
+    // a real $ref beside it, so the arguments are read only once op 1 has answered, through the reference resolver
+    const frames = await s.collect({ ops: [{ id: 1, op: "take", args: { id: "x" }, shape: "{ id }" }, { id: 2, op: "take", args: { id: { $ref: "1.id" }, opts: { $ref: "1.id", size: 2 } as never }, shape: "{ id }" }] });
+    expect(frames[1]).toEqual({ id: 2, error: { code: "invalid_argument", message: "take().opts.$ref: unknown argument" }, fin: true });
+  });
+
+  it("a __proto__ in the arguments is an argument like any other, refused as unknown, never a prototype", async () => {
+    expect(await outcome(JSON.parse('{"__proto__":{"id":"smuggled"}}'))).toBe("take().__proto__: unknown argument");
+    expect(await outcome(JSON.parse('{"opts":{"__proto__":{"size":9}}}'))).toBe("take().opts.__proto__: unknown argument");
+    // and the same when the arguments wait on a $ref, and so pass through the reference resolver first
+    const args = JSON.parse('{"id":{"$ref":"1.id"},"__proto__":{"colour":"smuggled"}}') as Record<string, unknown>;
+    const frames = await s.collect({ ops: [{ id: 1, op: "take", args: { id: "x" }, shape: "{ id }" }, { id: 2, op: "take", args, shape: "{ id }" }] });
+    expect(frames[1]).toEqual({ id: 2, error: { code: "invalid_argument", message: "take().__proto__: unknown argument" }, fin: true });
+  });
+});
+
+describe("the cost a batch is charged", () => {
+  const SCHEMA = `entity Book { id: ID title: String author: Author reviews(page: PageArgs = { first: 10 }): Page<Review> }
+    entity Author { id: ID name: String } entity Review { id: ID }
+    view Book.card = { id author { name } }
+    query free: Int @cost(base: 0)
+    query top(first: Int = 5): Page<Book>
+    query book(id: ID): Book`;
+  const book = { id: "b1", title: "T", author: { id: "a1", name: "A" }, reviews: { items: [], hasMore: false } };
+  const shop = (budget = 1000) => createRayfoldServer({ schema: SCHEMA, budget, resolvers: { Query: { free: () => 1, top: () => ({ items: [], hasMore: false }), book: () => book } } });
+  const cost = async (op: Record<string, unknown>) => {
+    const f = (await shop().collect({ ops: [{ id: 1, ...op } as never] }))[0] as { meta?: { cost: number }; error?: unknown };
+    return f.meta?.cost ?? f.error;
+  };
+
+  it("is never below 1, even for an op declared free", async () => {
+    expect(await cost({ op: "free" })).toBe(1);
+  });
+
+  it("a page's own first argument with a default is charged at that default", async () => {
+    expect(await cost({ op: "top", shape: "{ items { id } }" })).toBe(1 + 5 + 1);
+  });
+
+  it("a view spread is charged for what it selects", async () => {
+    expect(await cost({ op: "book", args: { id: "b1" }, shape: "{ ...Book.card }" })).toBe(2);
+    expect(await cost({ op: "book", args: { id: "b1" }, shape: "{ id }" })).toBe(1); // guard
+  });
+
+  it("a page size from a variable is charged as sent when it is a whole number up to 200, and as 200 otherwise", async () => {
+    const reviews = (n: unknown) => cost({ op: "book", args: { id: "b1" }, shape: "{ reviews(page: { first: $n }) { items { id } } }", vars: { n } });
+    expect(await reviews(3)).toBe(1 + 1 + 3 + 1);
+    expect(await reviews(1_000)).toBe(1 + 1 + 200 + 1);
+    // a fraction never runs, but its batch is charged for the largest page first
+    expect(await shop(10).collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ reviews(page: { first: $n }) { items { id } } }", vars: { n: 2.5 } }] })).toEqual([
+      { error: { code: "resource_exhausted", message: "Batch cost 203 exceeds budget 10", data: { cost: 203, budget: 10 } }, fin: true },
+    ]);
+  });
+
+  it("a page argument sent as null is charged as the largest page, since nothing says how many rows it asks for", async () => {
+    const s = createRayfoldServer({ schema: `entity Book { id: ID } query list(page: PageArgs?): Page<Book>`, resolvers: { Query: { list: () => ({ items: [], hasMore: false }) } } });
+    expect(await s.collect({ ops: [{ id: 1, op: "list", args: { page: null }, shape: "{ items { id } }" }] })).toEqual([{ id: 1, data: { items: [] }, meta: { cost: 1 + 200 + 1 }, fin: true }]);
+  });
+
+  it("a deferred block is charged like any other selection", async () => {
+    expect(await cost({ op: "book", args: { id: "b1" }, shape: "{ id @defer { author { name } } }" })).toBe(2);
+  });
+});
+
+describe("default views and the shape registry", () => {
+  it("a default view leaves out a scalar field that takes arguments", async () => {
+    let loads = 0;
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID label(upper: Boolean): String } query a: A`,
+      resolvers: { Query: { a: () => ({ id: "a" }) }, A: { label: (ps: unknown[]) => (loads++, ps.map(() => "L")) } } as never,
+    });
+    expect(await s.collect({ ops: [{ id: 1, op: "a" }] })).toEqual([{ id: 1, data: { $type: "A", id: "a" }, meta: { cost: 1 }, fin: true }]);
+    expect(loads).toBe(0);
+  });
+
+  it("the shape registry forgets the least recently used learned shape, counting a lookup as a use", () => {
+    const registry = new SecRegistry(secLoadSchema(secSchemaText()).ir, 2);
+    const a = registry.register({ items: [{ kind: "field", name: "id" }] });
+    const b = registry.register({ items: [{ kind: "field", name: "title" }] });
+    expect(registry.get(a)).toEqual({ items: [{ kind: "field", name: "id" }] });
+    registry.register({ items: [{ kind: "field", name: "stock" }] });
+    expect(registry.get(b)).toBeUndefined();
+    expect(registry.get(a)).toEqual({ items: [{ kind: "field", name: "id" }] });
+  });
+
+  it("a learned shape that is already pinned is kept once, as the pinned one", () => {
+    const registry = new SecRegistry(secLoadSchema(secSchemaText()).ir, 2);
+    const shape = { items: [{ kind: "field" as const, name: "id" }] };
+    const id = registry.register(shape, true);
+    expect(registry.register(shape)).toBe(id);
+    expect(registry.size).toBe(1);
+  });
+});
+
+describe("policies, from the batch", () => {
+  it("a deny that does not read the viewer refuses an anonymous caller as forbidden, not as unauthenticated", async () => {
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID } query locked: A @deny(read: true) query mine: A @deny(read: viewer == null)`,
+      resolvers: { Query: { locked: () => ({ id: "a" }), mine: () => ({ id: "a" }) } },
+    });
+    expect(await s.collect({ ops: [{ id: 1, op: "locked", shape: "{ id }" }, { id: 2, op: "mine", shape: "{ id }" }] })).toEqual([
+      { id: 1, error: { code: "permission_denied", message: "Not allowed to access locked()" }, fin: true },
+      { id: 2, error: { code: "unauthenticated", message: "Sign in to access mine()" }, fin: true },
+    ]);
+  });
+
+  it("a read policy is handed to a loader only when all of it can be pushed down", async () => {
+    const seen: Record<string, unknown> = {};
+    const s = createRayfoldServer({
+      schema: `entity Both @allow(read: viewer.id == ownerId) @deny(read: archived == true) { id: ID ownerId: ID archived: Boolean }
+        entity Clock @allow(read: expiresAt > now()) { id: ID expiresAt: Instant }
+        query both: [Both] query clocks: [Clock]`,
+      resolvers: { Query: { both: (_a, ctx) => ((seen["both"] = ctx.policy.filter), []), clocks: (_a, ctx) => ((seen["clocks"] = ctx.policy.filter), []) } },
+    });
+    await s.collect({ ops: [{ id: 1, op: "both", shape: "{ id }" }, { id: 2, op: "clocks", shape: "{ id }" }] }, { viewer: u1 });
+    expect(seen).toEqual({ both: undefined, clocks: undefined });
+  });
+});
+
+describe("an event subscription that is returned", () => {
+  it("ends, and hears nothing after", async () => {
+    const it = bs.server.events.subscribe("StockChanged")[Symbol.asyncIterator]();
+    await it.return?.();
+    bs.server.events.publish("StockChanged", { bookId: "b1", stock: 1 });
+    expect(await bounded(it.next(), "the returned subscription answering")).toEqual({ value: undefined, done: true });
+  });
+});
+
+describe("errors on the wire", () => {
+  const s = (thrown: () => unknown) =>
+    createRayfoldServer({
+      schema: `entity A { id: ID name: String } query a: A query b: A`,
+      resolvers: {
+        Query: { a: () => { throw thrown(); }, b: () => ({ id: "b" }) },
+        A: { name: () => { throw thrown(); } },
+      } as never,
+    });
+
+  it("say retryable only when it differs from what the code implies, and keep saying it once a path is attached", async () => {
+    const busy = () => new RayfoldError("internal", "Busy", { retryable: true });
+    expect(await s(busy).collect({ ops: [{ id: 1, op: "a" }, { id: 2, op: "b", shape: "{ name }" }] })).toEqual([
+      { id: 1, error: { code: "internal", message: "Busy", retryable: true }, fin: true },
+      { id: 2, error: { code: "internal", message: "Busy", path: "name", retryable: true }, fin: true },
+    ]);
+    // guard: a code that is retryable by its nature carries no flag
+    expect(await s(() => new RayfoldError("aborted", "Conflict")).collect({ ops: [{ id: 1, op: "a" }] })).toEqual([{ id: 1, error: { code: "aborted", message: "Conflict" }, fin: true }]);
+    expect(new RayfoldError("aborted", "x").retryable).toBe(true);
+    expect(new RayfoldError("internal", "x").retryable).toBe(false);
+  });
+
+  it("an AbortError a resolver lets escape is a cancellation, anything else it throws is internal (guard)", async () => {
+    expect(await s(() => new DOMException("The operation was aborted.", "AbortError")).collect({ ops: [{ id: 1, op: "a" }] })).toEqual([{ id: 1, error: { code: "canceled", message: "Canceled" }, fin: true }]);
+    expect(await s(() => new TypeError("x")).collect({ ops: [{ id: 1, op: "a" }] })).toEqual([{ id: 1, error: { code: "internal", message: "Internal error" }, fin: true }]);
+  });
+});
+
+describe("odds and ends of the batch", () => {
+  it("a page's own first argument with a default is charged at that default when the arguments wait on a $ref", async () => {
+    const s = createRayfoldServer({
+      schema: `entity Book { id: ID } query book: Book query top(after: ID, first: Int = 5): Page<Book>`,
+      resolvers: { Query: { book: () => ({ id: "b1" }), top: () => ({ items: [], hasMore: false }) } },
+    });
+    const frames = await s.collect({ ops: [{ id: 1, op: "book", shape: "{ id }" }, { id: 2, op: "top", args: { after: { $ref: "1.id" } }, shape: "{ items { id } }" }] });
+    expect(frames[1]).toEqual({ id: 2, data: { items: [] }, meta: { cost: 1 + 5 + 1 }, fin: true });
+  });
+
+  it("a query that checks a version it was sent fails with the conflict and its data", async () => {
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID v: Int } query a: A`,
+      resolvers: { Query: { a: (_x, ctx) => (ctx.checkVersion("A:a", 3, null), { id: "a", v: 3 }) } },
+    });
+    expect(await s.collect({ ops: [{ id: 1, op: "a", ifVersion: 2 }] })).toEqual([
+      { id: 1, error: { code: "failed_precondition", type: "VersionConflict", message: "A:a is at version 3, not 2", data: { key: "A:a", expected: 2, actual: 3 } }, fin: true },
+    ]);
+  });
+
+  it("hasPolicy sees a deny as a policy, as it sees an allow", () => {
+    const ir = secLoadSchema(`entity A @deny(read: viewer == null) { id: ID } entity B @allow(write: true) { id: ID } entity C { id: ID } query a: A`).ir;
+    expect(["A", "B", "C"].map((t) => hasPolicy(ir.types[t]!.annotations, "read"))).toEqual([true, false, false]);
   });
 });

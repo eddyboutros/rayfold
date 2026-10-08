@@ -194,7 +194,7 @@ class OpenTelemetryTest {
         val attrs = exception.attributes.asMap().entries.associate { (k, v) -> k.key to v }
         assertEquals("java.lang.IllegalStateException", attrs["exception.type"])
         assertEquals("the disk is full", attrs["exception.message"])
-        assertEquals(true, attrs["exception.stacktrace"].toString().contains("the disk is full"))
+        assertEquals(true, attrs["exception.stacktrace"].toString().startsWith("java.lang.IllegalStateException: the disk is full"), "${attrs["exception.stacktrace"]}")
         // guard: the op that worked carries no event and no error status
         val fine = named("rayfold query fine")
         assertEquals(emptyList(), fine.events)
@@ -235,6 +235,40 @@ class OpenTelemetryTest {
         assertEquals("0af7651916cd43dd8448eb211c80319c", batch.traceId)
         assertEquals("b7ad6b7169203331", batch.parentSpanId)
         assertEquals("0af7651916cd43dd8448eb211c80319c", named("rayfold query book").traceId)
+    }
+
+    @Test
+    fun `the caller's tracestate travels with its traceparent into the batch span's context`() {
+        collect(server(), """{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }"}],"meta":{"traceparent":"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01","tracestate":"vendor=opaque"}}""")
+        assertEquals(mapOf("vendor" to "opaque"), named("rayfold batch").spanContext.traceState.asMap())
+        assertEquals(mapOf("vendor" to "opaque"), named("rayfold query book").spanContext.traceState.asMap(), "and on to the op's")
+    }
+
+    @Test
+    fun `a command and a stream are op spans of their kind under the batch`() {
+        val s = RayfoldServer(
+            SchemaText.load("entity A { id: ID } query a: A command make: A @idempotent(false) stream ticks: Int").ir,
+            Resolvers(
+                commands = mapOf("make" to { _, _ -> buildJsonObject { put("id", "m1") } }),
+                streams = mapOf("ticks" to { _, _ -> kotlinx.coroutines.flow.flowOf(kotlinx.serialization.json.JsonPrimitive(1), kotlinx.serialization.json.JsonPrimitive(2)) }),
+            ),
+            instrumentation = RayfoldOpenTelemetry(tracer),
+        )
+        val frames = collect(s, """{"ops":[{"id":1,"op":"make","shape":"{ id }"},{"id":2,"op":"ticks"}]}""")
+        assertEquals(
+            listOf(
+                obj("""{"id":1,"ok":{"${'$'}type":"A","id":"m1"},"patch":[{"set":"A:m1","value":{"${'$'}type":"A","id":"m1"}}],"meta":{"cost":1},"fin":true}"""),
+                obj("""{"id":2,"item":1}"""), obj("""{"id":2,"item":2}"""), obj("""{"id":2,"fin":true}"""),
+            ),
+            frames.sortedBy { it["id"]?.jsonPrimitive?.content },
+        )
+        val batch = named("rayfold batch")
+        val command = named("rayfold command make")
+        val stream = named("rayfold stream ticks")
+        assertEquals(mapOf("rayfold.op" to "make", "rayfold.op.kind" to "command", "rayfold.op.id" to 1L, "rayfold.cost" to 1L), attributes(command))
+        assertEquals(mapOf("rayfold.op" to "ticks", "rayfold.op.kind" to "stream", "rayfold.op.id" to 2L, "rayfold.cost" to 1L), attributes(stream))
+        assertEquals(listOf(batch.spanId, batch.spanId), listOf(command.parentSpanId, stream.parentSpanId))
+        assertEquals(listOf(StatusCode.UNSET), spans().map { it.status.statusCode }.distinct())
     }
 
     @Test

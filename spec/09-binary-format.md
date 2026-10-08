@@ -20,7 +20,7 @@ One tag byte, then payload:
 | `0x00` | null |
 | `0x01` / `0x02` | false / true |
 | `0x03` + zigzag varint | integer (up to ±2^53) |
-| `0x04` + 8 bytes | IEEE 754 double, little-endian (only for non-integers) |
+| `0x04` + 8 bytes | IEEE 754 double, little-endian (only for finite non-integers; NaN and the infinities are written as null, as JSON writes them) |
 | `0x05` + varint length + UTF-8 | string; appended to the per-frame **string table** |
 | `0x06` + varint index | reference to an earlier string in this frame |
 | `0x07` + varint count + values | list |

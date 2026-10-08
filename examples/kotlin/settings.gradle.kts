@@ -6,5 +6,6 @@ includeBuild("../../kotlin") {
     dependencySubstitution {
         substitute(module("dev.rayfold:rayfold-core")).using(project(":rayfold-core"))
         substitute(module("dev.rayfold:rayfold-client")).using(project(":rayfold-client"))
+        substitute(module("dev.rayfold:rayfold-test")).using(project(":rayfold-test"))
     }
 }

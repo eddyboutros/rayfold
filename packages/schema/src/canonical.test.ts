@@ -60,6 +60,13 @@ describe("sha256Hex without node:crypto", () => {
   });
 });
 
+describe("canonical JSON", () => {
+  it("writes undefined as null inside a list, and leaves an undefined member out", () => {
+    expect(canonicalJson([1, undefined, { b: undefined, a: [undefined] }])).toBe('[1,null,{"a":[null]}]');
+    expect(canonicalJson(undefined)).toBe("null");
+  });
+});
+
 describe("base64url without Buffer", () => {
   it("encodes like Buffer", () => {
     const r = rng(3);

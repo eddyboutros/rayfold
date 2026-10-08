@@ -342,7 +342,7 @@ class RayfoldHttp(
         val media = call.header("Content-Type")?.substringBefore(';')?.trim()?.lowercase()
         if (media != UPLOAD_TYPE) {
             call.setHeader("Accept-Post", UPLOAD_TYPE)
-            throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${media ?: "(none)"} is not accepted; send $UPLOAD_TYPE", "unsupported_media_type")
+            throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${media?.ifEmpty { null } ?: "(none)"} is not accepted; send $UPLOAD_TYPE", "unsupported_media_type")
         }
         val v = viewer()
         if (uploads.viewerRequired && v is JsonNull) throw RayfoldException(Code.UNAUTHENTICATED, "An upload needs an identified caller")
@@ -425,7 +425,7 @@ class RayfoldHttp(
         if (media == null || media !in BODY_TYPES) {
             server.counters?.add("rayfold.refused", mapOf("reason" to "media"))
             call.setHeader("Accept-Post", BODY_TYPES.joinToString(", "))
-            throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${raw ?: "(none)"} is not accepted; send application/rayfold+json", "unsupported_media_type")
+            throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${raw?.ifEmpty { null } ?: "(none)"} is not accepted; send application/rayfold+json", "unsupported_media_type")
         }
         return media
     }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createServer, type Server } from "node:http";
+import { createServer, request as httpRequest, type Server } from "node:http";
+import { MemoryUsage } from "./usage.ts";
 import type { AddressInfo } from "node:net";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { createMcpHandler, handleMcp, mcpResources, mcpTools } from "./mcp.ts";
@@ -453,5 +454,140 @@ describe("resource arguments from the URI", () => {
     const res = await read(notes(), "rayfold://query/notes?limit=two");
     expect(res.result).toBeUndefined();
     expect(res.error).toMatchObject({ code: -32000, message: expect.stringContaining("invalid_argument") });
+  });
+});
+
+describe("tools as their schema describes them", () => {
+  const SCHEMA = `
+"""A thing."""
+entity Thing {
+  id: ID
+  """How many."""
+  n: Long @range(min: 0, max: 9)
+  bio: String? @lazy
+}
+"""Find one."""
+query thing(
+  """Its id."""
+  id: ID,
+  limit: Int = 5
+): Thing?
+query maybe(page: PageArgs = { first: 10 }): Page<Thing?>
+command plain(n: Long): Thing
+command dry(n: Long): Thing @simulate
+command free(n: Long): Thing @idempotent(false)
+`;
+  const make = (usage?: MemoryUsage) => {
+    const runs: string[] = [];
+    const server = createRayfoldServer({
+      schema: SCHEMA,
+      ...(usage ? { usage } : {}),
+      resolvers: {
+        Query: { thing: (a: { id: string }) => ({ id: a.id, n: 1, bio: "deferred" }), maybe: () => ({ items: [null], hasMore: false }) },
+        Command: { plain: () => (runs.push("plain"), { id: "p", n: 1 }), dry: () => (runs.push("dry"), { id: "d", n: 1 }), free: () => (runs.push("free"), { id: "f", n: 1 }) },
+      } as never,
+    });
+    return { server, runs };
+  };
+  const tool = (server: RayfoldServer, name: string) => mcpTools(server).find((t) => t.name === name)!;
+
+  it("an argument with a default is optional, and descriptions travel to the schema", () => {
+    const { server } = make();
+    const input = tool(server, "thing").inputSchema;
+    expect(input).toEqual({
+      $schema: SCHEMA_2020,
+      type: "object",
+      properties: { id: { type: "string", description: "Its id." }, limit: { type: "integer" } },
+      required: ["id"],
+      additionalProperties: false,
+    });
+    expect(tool(server, "thing").description).toBe("Find one. Read-only.");
+    const thing = (tool(server, "thing").outputSchema as { $defs: Record<string, unknown> }).$defs["Thing"];
+    expect(thing).toEqual({
+      type: "object",
+      description: "A thing.",
+      additionalProperties: false,
+      properties: {
+        $type: { const: "Thing" },
+        id: { type: "string" },
+        n: { type: ["integer", "string"], description: "How many.", minimum: 0, maximum: 9, "x-rayfold-range": { min: 0, max: 9 } },
+        bio: { anyOf: [{ type: "string" }, { type: "null" }] },
+      },
+    });
+  });
+
+  it("a page of nullable entities keeps its items nullable", () => {
+    const { server } = make();
+    const page = (tool(server, "maybe").outputSchema as { $defs: Record<string, { properties: { items: unknown } }> }).$defs["Page_Thing"]!;
+    expect(page.properties.items).toEqual({ type: "array", items: { anyOf: [{ $ref: "#/$defs/Thing" }, { type: "null" }] } });
+  });
+
+  it("a dry-run tool is offered only for a command that declares @simulate", () => {
+    const { server } = make();
+    expect(mcpTools(server).map((t) => t.name)).toEqual(["thing", "maybe", "plain", "dry", "dry.simulate", "free"]);
+  });
+
+  it("a command that opts out of idempotency runs on every call; one that does not replays (guard)", async () => {
+    const { server, runs } = make();
+    for (let i = 0; i < 2; i++) await call("free", { n: 1 }, u1, 1, server);
+    for (let i = 0; i < 2; i++) await call("plain", { n: 1 }, u1, 1, server);
+    expect(runs).toEqual(["free", "free", "plain"]);
+  });
+
+  it("calls are recorded under the client name mcp, and a deferred part is folded into the result", async () => {
+    const usage = new MemoryUsage();
+    const { server } = make(usage);
+    const r = (await call("thing", { id: "t1" }, u1, 1, server)) as Reply;
+    expect(r.result["structuredContent"]).toEqual({ result: { $type: "Thing", id: "t1", n: 1, bio: "deferred" } });
+    expect([...new Set(usage.snapshot().map((e) => e.client))]).toEqual(["mcp"]);
+  });
+
+  it("a tools/call without a name is invalid params", async () => {
+    const { server } = make();
+    expect(await handleMcp(server, { jsonrpc: "2.0", id: 4, method: "tools/call", params: {} }, null)).toEqual({ jsonrpc: "2.0", id: 4, error: { code: -32602, message: "name is required" } });
+  });
+});
+
+describe("MCP over HTTP refuses before anything runs", () => {
+  let http: Server;
+  let url: string;
+  beforeEach(async () => {
+    const handler = createMcpHandler(bs.server, { viewer: () => u1 });
+    http = createServer((req, res) => void handler(req, res).then((handled) => !handled && res.writeHead(404).end()));
+    await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
+    url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/mcp`;
+  });
+  afterEach(() => new Promise<void>((r) => {
+    http.close(() => r());
+    http.closeAllConnections();
+  }));
+  const place = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "placeOrder", arguments: order("b1", 1) } });
+  const raw = (headers: Record<string, string>) =>
+    new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const u = new URL(url);
+      const req = httpRequest({ host: u.hostname, port: u.port, method: "POST", path: u.pathname, headers }, (r) => {
+        let d = "";
+        r.setEncoding("utf8");
+        r.on("data", (c: string) => (d += c));
+        r.on("end", () => resolve({ status: r.statusCode ?? 0, body: d }));
+      });
+      req.on("error", reject);
+      req.end(place);
+    });
+
+  it("a page on another origin cannot drive it", async () => {
+    const res = await raw({ "content-type": "application/json", origin: "https://evil.example" });
+    expect(res.status).toBe(403);
+    expect(JSON.parse(res.body)).toMatchObject({ code: "permission_denied", detail: "Origin https://evil.example is not allowed" });
+    expect(bs.store.orders.size).toBe(0);
+    expect((await raw({ "content-type": "application/json" })).status).toBe(200); // guard: no Origin, as a non-browser client sends
+    expect(bs.store.orders.size).toBe(1);
+  });
+
+  it("a body that is not application/json is refused 415", async () => {
+    const res = await raw({ "content-type": "text/plain" });
+    expect(res.status).toBe(415);
+    expect(JSON.parse(res.body)).toMatchObject({ code: "invalid_argument", detail: "Content-Type text/plain is not accepted; send application/json" });
+    expect(bs.store.orders.size).toBe(0);
   });
 });

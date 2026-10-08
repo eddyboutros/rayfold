@@ -1,7 +1,7 @@
 {
   "name": "patch/apply",
   "about": "Applying a patch to a client's cache. Every other area in this pack is about what a server produces; this one is about what a client does with it, which is where the protocol's promise about screens staying current is actually kept or broken. A client that applies these differently does not fail loudly - it shows the wrong data.",
-  "source": "spec 13, which states the rules, and 04 §2/§2b, which define the operations. Each case is an initial result, a patch, and the result a client must hold afterwards, materialised - so the expectation is readable and says nothing about how a cache stores anything.",
+  "source": "spec 13, which states the rules, and 04 §2/§2b, which define the operations. Spec 08 §5 for `@merge`: there a case may carry `merge`, the schema's policies by `Type.field`; `predict`, an optimistic prediction shown over the result before the patch; and `refetch`, the result's data arriving again after the patch. Each case is an initial result, a patch, and the result a client must hold afterwards, materialised - so the expectation is readable and says nothing about how a cache stores anything.",
   "op": "books",
   "cases": [
     {
@@ -255,6 +255,61 @@
         ]
       },
       "why": "spec 13 §3: the patch frame names a result this client never asked for - the same operation with other arguments - so its result-scoped operations are ignored rather than an error, and applied to no other result. The set acts on the cache as a whole and still lands, because every operation is total"
+    },
+    {
+      "name": "@merge(serverWins): a server value in a query's data replaces the prediction",
+      "merge": { "Book.title": "serverWins" },
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "predict": [{ "set": "Book:b1", "value": { "title": "Dune (2nd ed.)" } }],
+      "patch": [],
+      "refetch": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }],
+      "why": "spec 08 §5: the policy applies whenever a server value arrives for a field a prediction also set. That value can come as data rather than as a set patch - a refetch, or a compact command's answer, which carries no set - and a client that settled the policy only on set kept showing the prediction over the server's answer"
+    },
+    {
+      "name": "@merge(lww) settles the same way: the server's write is the later one",
+      "merge": { "Book.title": "lww" },
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "predict": [{ "set": "Book:b1", "value": { "title": "Dune (2nd ed.)" } }],
+      "patch": [],
+      "refetch": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }]
+    },
+    {
+      "name": "@merge(serverWins) through a set patch",
+      "merge": { "Book.title": "serverWins" },
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "predict": [{ "set": "Book:b1", "value": { "title": "Dune (2nd ed.)" } }],
+      "patch": [{ "set": "Book:b1", "value": { "title": "Dune Messiah" } }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }]
+    },
+    {
+      "name": "guard: @merge(keepLocal) keeps the prediction until its command settles",
+      "merge": { "Book.title": "keepLocal" },
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "predict": [{ "set": "Book:b1", "value": { "title": "Dune (2nd ed.)" } }],
+      "patch": [],
+      "refetch": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune (2nd ed.)", "stock": 3 }],
+      "why": "or the cases above would pass against a client that drops every prediction when data arrives"
+    },
+    {
+      "name": "guard: a field with no @merge keeps the prediction too",
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "predict": [{ "set": "Book:b1", "value": { "title": "Dune (2nd ed.)" } }],
+      "patch": [],
+      "refetch": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune (2nd ed.)", "stock": 3 }]
+    },
+    {
+      "name": "a policy settles only the field it is on: the prediction's other fields stand",
+      "merge": { "Book.title": "serverWins" },
+      "result": [{ "$type": "Book", "id": "b1", "title": "Dune", "stock": 3 }],
+      "predict": [{ "set": "Book:b1", "value": { "title": "Dune (2nd ed.)", "stock": 99 } }],
+      "patch": [],
+      "refetch": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 3 }],
+      "expect": [{ "$type": "Book", "id": "b1", "title": "Dune Messiah", "stock": 99 }],
+      "why": "the server spoke for stock as well, but stock has no policy, so its prediction stands until the command settles"
     }
   ]
 }

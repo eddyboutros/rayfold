@@ -3,7 +3,8 @@
  * idempotency records and the relay in that database and nothing in memory that another member would need.
  * `e2e/fleet.test.ts` starts two of these as separate processes against a real Postgres.
  *
- * Environment: DATABASE_URL, PORT, NAME (how this member signs the runs it records).
+ * Environment: DATABASE_URL, PORT, NAME (how this member signs the runs it records), and NOW for a member whose
+ * clock stands still at that millisecond: how a test makes a record exactly as old as it says.
  */
 import pg from "pg";
 import { createRayfoldServer, listen, ok, shutdown, type RayfoldContext } from "@rayfold/server";
@@ -13,6 +14,8 @@ const url = process.env["DATABASE_URL"];
 const port = Number(process.env["PORT"]);
 const name = process.env["NAME"] ?? "server";
 if (!url || !port) throw new Error("DATABASE_URL and PORT are required");
+const fixed = process.env["NOW"];
+const now = fixed ? () => Number(fixed) : Date.now;
 
 const SCHEMA = `
   entity Book { id: ID stock: Int }
@@ -28,7 +31,7 @@ await listener.connect();
 
 // The application's own tables were migrated before this process started, as a deploy does. The stores create theirs
 // here, on every member at once, which is how a fleet boots.
-const idempotency = new PgIdempotencyStore(pool);
+const idempotency = new PgIdempotencyStore(pool, { now });
 const relay = new PgRelay(pgNotifications(listener), pool);
 await idempotency.migrate();
 await relay.migrate();
@@ -42,6 +45,7 @@ const server = createRayfoldServer({
   schema: SCHEMA,
   idempotency,
   relay,
+  now,
   resolvers: {
     Query: {
       book: async ({ id }: { id: string }) => (await pool.query<Book>("SELECT id, stock FROM fleet_books WHERE id = $1", [id])).rows[0] ?? null,

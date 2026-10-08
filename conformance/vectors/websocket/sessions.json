@@ -1,0 +1,156 @@
+{
+  "name": "websocket/sessions",
+  "about": "What a server does on its WebSocket transport, where one socket carries many batches and outlives each of them. A client routes frames by op id and learns a schema change from a close, so an answer without an id, a cancel that ends more than it names, or an RB dictionary nobody checked leaves a client waiting for ever or reading every answer under the wrong names, with nothing failing.",
+  "source": "spec 04 §5 (the transport, cancel, a batch refused as a whole, capability expiry, the schema parameter and 4409), spec 12 §3.1 (1007), spec 05 §3 (the status a refusing viewer hook's code derives) and spec 06 §6 (caps.exp). Written from those sections, not from either runtime.",
+  "rule": [
+    "The socket is opened at /rayfold/ws with subprotocol rayfold.0.1. The viewer hook answers each case's `viewer`, or refuses as `hook` says, before the upgrade.",
+    "`connect.schema` is sent as the `schema` query parameter of the socket URL: `$server` stands for the server's schema hash, `$public` for the hash of the schema its public manifest serves (policy expressions hidden), anything else is sent as written. A hash other than those two is closed with 4409 and the server's hash as the reason.",
+    "Steps run in order. `send` writes a text message holding that JSON; `sendHex` writes a text message holding exactly those bytes; `command` runs that operation against the same server from another client, as a change a live query must hear; `clock` sets the server's clock (epoch milliseconds); `expect` reads the next frames, which must be these, compared per op id in order; `close` reads the server's close frame; `ran` checks how many times each resolver ran.",
+    "In an expected frame, the top-level members must be exactly those of the frame the server sent; `error` is compared by its `code` (the message is free text), and the value \"*\" accepts anything present.",
+    "Resolvers: `book` and `pricey` answer the row of `data` with that id, or null; `restock` adds `qty` to that row's stock and answers the row. The server's budget is `budget`, and its clock starts at `clock`."
+  ],
+  "schema": "entity Book { id: ID stock: Int }\nquery book(id: ID): Book? @allow(read: viewer != null)\nquery pricey(id: ID): Book? @cost(base: 50)\ncommand restock(id: ID, qty: Int): Book",
+  "data": [
+    { "id": "b1", "stock": 3 },
+    { "id": "b2", "stock": 5 }
+  ],
+  "budget": 10,
+  "clock": 1000000000000,
+  "viewer": { "id": "u1" },
+  "cases": [
+    {
+      "name": "a text message that is not UTF-8 closes the socket with 1007 and runs nothing",
+      "why": "a batch whose bytes are not UTF-8 read with replacement characters would run as something the client never sent. The bytes are {\"ops\":[{\"id\":1,\"op\":\"book\",\"args\":{\"id\":\"b?\"}}]} with the ? a lone 0x80 byte",
+      "steps": [
+        { "sendHex": "7b226f7073223a5b7b226964223a312c226f70223a22626f6f6b222c2261726773223a7b226964223a226280227d7d5d7d" },
+        { "close": 1007 },
+        { "ran": { "book": 0 } }
+      ]
+    },
+    {
+      "name": "guard: the same batch in valid UTF-8 is answered",
+      "steps": [
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "bé" } }] } },
+        { "expect": [{ "id": 1, "data": null, "meta": "*", "fin": true }] },
+        { "ran": { "book": 1 } }
+      ]
+    },
+    {
+      "name": "a schema hash that is not the server's closes the socket with 4409 and the server's hash",
+      "why": "RB keys are numbered from the schema, and a socket has no Rayfold-Schema header: a client holding another schema would read every answer under the wrong field names. The close follows the upgrade because a browser cannot read a refused handshake",
+      "connect": { "schema": "0000000000000000000000000000000000000000000000000000000000000000" },
+      "steps": [
+        { "close": 4409, "reason": "$server" }
+      ]
+    },
+    {
+      "name": "the server's own schema hash is accepted",
+      "connect": { "schema": "$server" },
+      "steps": [
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b1" }, "shape": "{ id }" }] } },
+        { "expect": [{ "id": 1, "data": { "$type": "Book", "id": "b1" }, "meta": "*", "fin": true }] }
+      ]
+    },
+    {
+      "name": "the public manifest's schema hash is accepted",
+      "why": "the manifest hides policy expressions, so its schema hashes differently, but it holds the same names and so the same RB keys. A client given only the manifest, as 0.2.1 clients are, must keep its socket",
+      "connect": { "schema": "$public" },
+      "steps": [
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b1" }, "shape": "{ id }" }] } },
+        { "expect": [{ "id": 1, "data": { "$type": "Book", "id": "b1" }, "meta": "*", "fin": true }] }
+      ]
+    },
+    {
+      "name": "cancel stops the op it names, and the other op of its batch keeps running",
+      "why": "both servers cancelled every op of the batch the named op came in, so the other live query ended with it",
+      "steps": [
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b1" }, "shape": "{ id stock }", "live": true }, { "id": 2, "op": "book", "args": { "id": "b2" }, "shape": "{ id stock }", "live": true }] } },
+        { "expect": [
+          { "id": 1, "data": { "$type": "Book", "id": "b1", "stock": 3 }, "meta": "*" },
+          { "id": 2, "data": { "$type": "Book", "id": "b2", "stock": 5 }, "meta": "*" }
+        ] },
+        { "send": { "cancel": 1 } },
+        { "expect": [{ "id": 1, "error": { "code": "canceled" }, "fin": true }] },
+        { "command": { "op": "restock", "args": { "id": "b2", "qty": 1 } } },
+        { "expect": [{ "id": 2, "patch": "*" }] }
+      ]
+    },
+    {
+      "name": "a batch over budget is refused for each op id it named",
+      "why": "a socket carries several batches and a client routes by op id: the one refusal without an id that HTTP sends belongs to none of them, and the batch's ops would wait for a fin for ever",
+      "steps": [
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b1" } }, { "id": 2, "op": "pricey", "args": { "id": "b1" } }] } },
+        { "expect": [
+          { "id": 1, "error": { "code": "resource_exhausted" }, "fin": true },
+          { "id": 2, "error": { "code": "resource_exhausted" }, "fin": true }
+        ] }
+      ]
+    },
+    {
+      "name": "a batch naming an unknown operation is refused for each op id it named",
+      "steps": [
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b1" } }, { "id": 2, "op": "nope" }] } },
+        { "expect": [
+          { "id": 1, "error": { "code": "invalid_argument" }, "fin": true },
+          { "id": 2, "error": { "code": "invalid_argument" }, "fin": true }
+        ] },
+        { "ran": { "book": 0 } }
+      ]
+    },
+    {
+      "name": "a bad envelope is refused for each op id it named",
+      "why": "the second op has no id, so the envelope is refused; the first op's id is still the client's to route by",
+      "steps": [
+        { "send": { "ops": [{ "id": 3, "op": "book", "args": { "id": "b1" } }, { "op": "book" }] } },
+        { "expect": [{ "id": 3, "error": { "code": "invalid_argument" }, "fin": true }] }
+      ]
+    },
+    {
+      "name": "ops that carry no usable id get the refusal without one, and the socket keeps serving",
+      "why": "an envelope whose ops are not objects ended a Node server, thrown out of the socket's data handler",
+      "steps": [
+        { "send": { "ops": [null] } },
+        { "expect": [{ "error": { "code": "invalid_argument" }, "fin": true }] },
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b2" }, "shape": "{ id }" }] } },
+        { "expect": [{ "id": 1, "data": { "$type": "Book", "id": "b2" }, "meta": "*", "fin": true }] }
+      ]
+    },
+    {
+      "name": "a viewer hook that refuses as unauthenticated answers the handshake 401",
+      "why": "a refused token is answered as HTTP answers it: the status the code derives, before the socket opens",
+      "hook": "unauthenticated",
+      "steps": [{ "handshake": 401 }]
+    },
+    {
+      "name": "a viewer hook that fails otherwise answers the handshake 500",
+      "hook": "throws",
+      "steps": [{ "handshake": 500 }]
+    },
+    {
+      "name": "a capability's socket ends at its exp: open ops end unauthenticated, a later batch is refused per op, and the socket closes with 1008",
+      "why": "the token was valid when the socket opened, and a socket that outlived it would serve its live queries for good",
+      "viewer": { "id": "u1", "caps": { "ops": ["book", "restock"], "exp": 1000003600000, "jti": "t1" } },
+      "steps": [
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b1" }, "shape": "{ id stock }", "live": true }] } },
+        { "expect": [{ "id": 1, "data": { "$type": "Book", "id": "b1", "stock": 3 }, "meta": "*" }] },
+        { "clock": 1000007200000 },
+        { "send": { "ops": [{ "id": 2, "op": "book", "args": { "id": "b2" }, "shape": "{ id }" }] } },
+        { "expect": [
+          { "id": 1, "error": { "code": "unauthenticated" }, "fin": true },
+          { "id": 2, "error": { "code": "unauthenticated" }, "fin": true }
+        ] },
+        { "close": 1008 },
+        { "ran": { "book": 1 } }
+      ]
+    },
+    {
+      "name": "guard: before its exp a capability's socket is served",
+      "viewer": { "id": "u1", "caps": { "ops": ["book", "restock"], "exp": 1000003600000, "jti": "t1" } },
+      "steps": [
+        { "clock": 1000003599999 },
+        { "send": { "ops": [{ "id": 1, "op": "book", "args": { "id": "b1" }, "shape": "{ id }" }] } },
+        { "expect": [{ "id": 1, "data": { "$type": "Book", "id": "b1" }, "meta": "*", "fin": true }] }
+      ]
+    }
+  ]
+}

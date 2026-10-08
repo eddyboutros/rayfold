@@ -1,8 +1,8 @@
 {
   "name": "idempotency/keys-and-replays",
   "about": "What a key promises, and to whom. This is the area where a disagreement charges someone twice or hands one caller another caller's answer, so the rules are worth being exact about: a record belongs to a viewer, is bound to one command with one set of arguments, and is only consulted after the write policy has been checked.",
-  "source": "spec 12 §4 for the rules and spec 03 §1 for the key itself. Written from those sections. The cross-runtime hashes that make a record portable between implementations are in hashing/binding-and-scope.json; this file is about the behaviour built on them.",
-  "schema": "entity Book { id: ID stock: Int }\ncommand restock(id: ID, qty: Int): Book\ncommand other(id: ID): Book\ncommand free(id: ID): Book @idempotent(false)",
+  "source": "spec 12 §4 for the rules, spec 03 §1 for the key itself, and spec 03 §4 for @idempotent(false) and the instant a record expires. An op's `at` is the server clock, in milliseconds from the case's start, when it is sent; `store: failsToRecord` is a store whose write of a record fails; an op's `with` is a second op, id 2, sent in the same batch. Written from those sections. The cross-runtime hashes that make a record portable between implementations are in hashing/binding-and-scope.json; this file is about the behaviour built on them.",
+  "schema": "entity Book { id: ID stock: Int }\ncommand restock(id: ID, qty: Int): Book\ncommand other(id: ID): Book\ncommand free(id: ID): Book @idempotent(false)\nquery book(id: ID): Book",
   "cases": [
     {
       "name": "a retry with the same key replays instead of running again",
@@ -65,6 +65,49 @@
       "ops": [{ "op": "free", "args": { "id": "b1" }, "viewer": null }],
       "expect": "ok",
       "why": "guard: the refusal above is about keys, not about anonymous callers running commands"
+    },
+    {
+      "name": "a command marked @idempotent(false) ignores a key: a retry runs again",
+      "ops": [
+        { "op": "free", "args": { "id": "b1" }, "key": "0123456789abcdef" },
+        { "op": "free", "args": { "id": "b1" }, "key": "0123456789abcdef" }
+      ],
+      "expect": "bothRan",
+      "runs": 2,
+      "why": "client libraries send a key with every command, so a server that honoured it here would replay the first call to every later one; such a command opts out of the guarantee, and none of its calls is recorded or replayed (spec 03 §4)"
+    },
+    {
+      "name": "a key sent from nobody to an @idempotent(false) command is not refused",
+      "ops": [{ "op": "free", "args": { "id": "b1" }, "key": "0123456789abcdef", "viewer": null }],
+      "expect": "ok",
+      "why": "the key is ignored, so the reason for refusing a keyed command from nobody, a shared replay scope, does not arise"
+    },
+    {
+      "name": "a record has expired once it is exactly as old as its time to live",
+      "ops": [
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "at": 0 },
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "at": 86400000 }
+      ],
+      "expect": "bothRan",
+      "runs": 2,
+      "why": "kept while now - at < ttl and expired once now - at >= ttl, with the 24 hour default. Servers sharing one store must agree on the instant, or a retry arriving then is replayed by one and run again by another"
+    },
+    {
+      "name": "guard: a millisecond younger, the record still replays",
+      "ops": [
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "at": 0 },
+        { "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "at": 86399999 }
+      ],
+      "expect": "replay",
+      "runs": 1,
+      "why": "or the case above would pass against a server that keeps nothing"
+    },
+    {
+      "name": "a store that cannot record a committed command leaves the op its success",
+      "store": "failsToRecord",
+      "ops": [{ "op": "restock", "args": { "id": "b1", "qty": 1 }, "key": "0123456789abcdef", "with": { "op": "book", "args": { "id": { "$ref": "1.id" } } } }],
+      "expect": "ok",
+      "why": "the command committed and its ok was sent, so the op succeeded: it gets no second answer, and the op reading its result in the same batch runs rather than failing as the dependent of a failed op"
     },
     {
       "name": "a key shorter than sixteen characters is refused",

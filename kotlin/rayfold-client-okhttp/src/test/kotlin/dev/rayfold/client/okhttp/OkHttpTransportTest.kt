@@ -218,20 +218,21 @@ class OkHttpTransportTest {
 
     @Test
     fun `a socket the server drops ends its batches with unavailable, and the next batch reconnects`() = bounded {
-        val t = transport()
+        // through a relay, so the drop needs no port bound a second time, which another process may have taken
+        val relay = Relay(listener.port).also { relays.add(it) }
+        val t = transport(to = "ws://127.0.0.1:${relay.port}/rayfold/ws")
         val frames = Channel<JsonObject>(Channel.UNLIMITED)
         val envelope = buildJsonObject { put("ops", JsonArray(listOf(buildJsonObject { put("id", 1); put("op", "book"); put("args", buildJsonObject { put("id", "b1") }); put("shape", "{ id }"); put("live", true) }))) }
         val live = async { t.send(envelope, safe = true).collect { frames.send(it) } }
         assertEquals(Json.parseToJsonElement("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1}}"""), frames.receive())
         assertEquals(1, server.changes.size, "the first frame comes after the live query subscribed")
-        val port = listener.port
-        listener.close() // every connection closes, as when the server restarts
+        relay.cut() // every connection drops, as when the server restarts
         live.await()
         frames.close()
         val rest = frames.toList()
         assertEquals(JsonPrimitive("unavailable"), (rest.last()["error"] as? JsonObject)?.get("code"), "$rest")
-        // back at the same address, so the transport that lost its socket can find the server again
-        listener = RayfoldWebSocket(server) { JsonNull }.start(port)
+        bookQueryEnded.receive()
+        assertEquals(0, server.changes.size, "the server let the dropped live query go")
         assertEquals("Kindred", RayfoldClient(t).query("book", args("id" to "b2"), "{ title }").title(), "guard: the same transport opens a new socket")
     }
 
@@ -260,6 +261,23 @@ class OkHttpTransportTest {
         live.cancelAndJoin()
         bookQueryEnded.receive()
         assertEquals(0, server.changes.size)
-        assertEquals(2, bookQueries.get() - 1, "two runs of the reopened query (first result, the patch re-run) after the one that dropped")
+        assertEquals(3, bookQueries.get(), "the run that dropped, then the reopened query's first result and its patch re-run")
+    }
+
+    @Test
+    fun `closing the transport ends its open batches with unavailable, and the server lets their live queries go`() = bounded {
+        val t = transport("alice")
+        val frames = Channel<JsonObject>(Channel.UNLIMITED)
+        val envelope = buildJsonObject { put("ops", JsonArray(listOf(buildJsonObject { put("id", 1); put("op", "book"); put("args", buildJsonObject { put("id", "b1") }); put("shape", "{ id }"); put("live", true) }))) }
+        val live = async { t.send(envelope, safe = true).collect { frames.send(it) } }
+        assertEquals(Json.parseToJsonElement("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1}}"""), frames.receive())
+        assertEquals(1, server.changes.size)
+        t.close()
+        live.await()
+        frames.close()
+        // the server answers a close with an empty close frame, which OkHttp reports as 1005, no status
+        assertEquals(listOf(Json.parseToJsonElement("""{"id":1,"error":{"code":"unavailable","message":"Connection closed (1005)"},"fin":true}""")), frames.toList())
+        bookQueryEnded.receive()
+        assertEquals(0, server.changes.size)
     }
 }

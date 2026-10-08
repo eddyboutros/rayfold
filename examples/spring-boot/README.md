@@ -13,6 +13,7 @@ on a bean, and Spring Security supplies the viewer. Built with Maven.
 | `src/main/java/com/example/bookshop/SecurityConfig.java` | Spring Security checks each bearer token (a JWT); a development key signs them until an issuer is set |
 | `src/main/java/com/example/bookshop/DevTokens.java` | Development tokens, for local runs and tests |
 | `src/test/java/com/example/bookshop/BookshopApplicationTests.java` | Tests over HTTP against the application on a free port |
+| `src/test/java/com/example/bookshop/BookshopUnitTest.java` | Unit tests with `rayfold-test`: the server Spring built, called with no port open |
 
 ## Prerequisites
 

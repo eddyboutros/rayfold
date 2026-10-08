@@ -32,6 +32,8 @@ schema becomes an `input` argument (`body: input`), and a body written inline be
 (`body: "*"`). An object with a non-null `id` becomes an entity, since that is
 what gives the cache and the patches something to address. Parameters become arguments, those declared on the path
 and through `$ref` included, and a name like `first-name` becomes `firstName`, with the `@http` path following it.
+An optional schema, `anyOf: [X, { type: "null" }]` (how Rayfold itself publishes one) or OpenAPI 3.0's `allOf: [X]`
+beside `nullable: true`, becomes `X?`, so a document a Rayfold server publishes imports back to the same types.
 
 A renamed parameter or request-body property keeps its original name as its wire name, so existing clients go on
 sending what they send today:
@@ -48,6 +50,13 @@ query people(maxCount: Int? @http(name: "max-count")): [Person]
 The bindings read `?max-count=` and `{"first-name": ...}`, and the published OpenAPI document names them that way
 again (see [REST routes and OpenAPI](rest-bindings.md#names-your-clients-already-send)). A response has no wire names,
 so a renamed field of a result type is the one rename still listed on stderr.
+
+::: info Next release
+Part of this section arrives in the next release: request bodies bound with `body:`, parameters declared on the path
+or through `$ref`, names such as `first-name` renamed with their wire names, and optional schemas read as `X?`. The
+0.2.1 importer binds no request body, skips those parameters, keeps parameter and property names as the document
+spells them, and reads an optional nested schema as `JSON`.
+:::
 
 What the document cannot say, the importer does not invent: what may be cached, who may read what, which errors a
 command throws, which events it emits. Those are the parts that make the schema worth having, and they go in by hand.

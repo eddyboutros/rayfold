@@ -25,11 +25,24 @@ function refusingOnce(code: string): { sql: Queryable; calls: string[] } {
 
 describe("ensure", () => {
   it("runs the statement once more after the catalogue race, whichever error Postgres reports it as", async () => {
-    for (const code of ["23505", "42P07"]) {
+    // 42710 is the table's row type, seen when six fleet members booted at once
+    for (const code of ["23505", "42P07", "42710"]) {
       const { sql, calls } = refusingOnce(code);
       await ensure(sql, "CREATE TABLE IF NOT EXISTS t (id int)");
       expect(calls).toEqual(["CREATE TABLE IF NOT EXISTS t (id int)", "CREATE TABLE IF NOT EXISTS t (id int)"]);
     }
+  });
+
+  it("waits for the second run, and a second refusal is the caller's", async () => {
+    const calls: string[] = [];
+    const sql: Queryable = {
+      query: async (text) => {
+        calls.push(text);
+        throw Object.assign(new Error(calls.length === 1 ? "the other server got there first" : "still refused"), { code: calls.length === 1 ? "42P07" : "42501" });
+      },
+    };
+    await expect(ensure(sql, "CREATE TABLE IF NOT EXISTS t (id int)")).rejects.toMatchObject({ message: "still refused", code: "42501" });
+    expect(calls).toHaveLength(2);
   });
 
   it("guard: any other refusal is the caller's, and is not retried", async () => {

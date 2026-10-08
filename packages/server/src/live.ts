@@ -249,7 +249,10 @@ export function splitBySelection(v: unknown, shape: Shape | undefined, views?: V
   return { shared: walk(v, shape, ""), own };
 }
 
-/** Fold `at` frames into a data value so deferred parts take part in diffs. */
+/**
+ * Fold `at` frames into a data value so deferred parts take part in diffs. The value is a copy: the frames are the
+ * ones sent, and merging into the first one's `data` delivered the deferred parts with it, before they were due.
+ */
 export function foldFrames(frames: Frame[]): unknown {
   let data: unknown;
   for (const f of frames) {
@@ -259,7 +262,7 @@ export function foldFrames(frames: Frame[]): unknown {
         const target = getPath(data, f.at.split("."));
         if (target && typeof target === "object") Object.assign(target as Record<string, unknown>, f.data as Record<string, unknown>);
       }
-    } else if ("data" in f) data = f.data;
+    } else if ("data" in f) data = structuredClone(f.data);
   }
   return data;
 }

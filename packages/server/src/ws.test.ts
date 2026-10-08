@@ -3,9 +3,10 @@ import { createServer, request as httpRequest, type Server } from "node:http";
 import { connect as connectTcp, type AddressInfo, type Socket } from "node:net";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
-import { attachWebSocket, decodeFrame, type WsOptions } from "./ws.ts";
+import { attachWebSocket, decodeFrame, encodeFrame, type WsOptions } from "./ws.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import { RayfoldError } from "./protocol.ts";
+import { RbCodec } from "@rayfold/rb";
 
 type Bookstore = ReturnType<typeof createBookstore>;
 const admin = { id: "u9", role: "admin" };
@@ -516,5 +517,138 @@ describe("a capability that expires while its socket is open (spec 06 §6)", () 
     c.send(TEXT, JSON.stringify(readBook(1, "b1")));
     await c.frames.atLeast(1, "the answer");
     expect(c.frames.items).toEqual([{ opcode: TEXT, text: JSON.stringify(bookFrame(1, "b1")) }]);
+  });
+});
+
+describe("the handshake, beyond the Origin rule", () => {
+  /** A raw upgrade request with exactly these headers, so a test can leave one out or name another host. */
+  const handshake = (host: string, headers: Record<string, string>) =>
+    new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: string }>((resolve, reject) => {
+      const req = httpRequest({
+        host: "127.0.0.1",
+        port: Number(host.split(":")[1]),
+        path: "/rayfold/ws",
+        headers: { upgrade: "websocket", connection: "Upgrade", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-websocket-version": "13", ...headers },
+      });
+      req.on("upgrade", (res, socket) => {
+        socket.destroy();
+        resolve({ status: res.statusCode ?? 0, headers: res.headers, body: "" });
+      });
+      req.on("response", (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (c: string) => (body += c));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body }));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+
+  it("a server limited to some host names refuses a handshake naming another", async () => {
+    const host = await serve(bs.server, { allowedHosts: ["api.example"] });
+    expect(await handshake(host, { host: "evil.example" })).toMatchObject({ status: 403, body: "Host evil.example is not allowed" });
+    expect((await handshake(host, { host: "api.example" })).status).toBe(101); // guard
+  });
+
+  it("names the subprotocol only for a client that offered it", async () => {
+    const host = await serve(bs.server);
+    const offered = await handshake(host, { host, "sec-websocket-protocol": "other, rayfold.0.1" });
+    expect(offered.status).toBe(101);
+    expect(offered.headers["sec-websocket-protocol"]).toBe("rayfold.0.1");
+    const plain = await handshake(host, { host });
+    expect(plain.status).toBe(101);
+    expect(plain.headers["sec-websocket-protocol"]).toBeUndefined();
+  });
+
+  it("a socket opened on a server already shutting down is closed as going away", async () => {
+    const host = await serve(bs.server);
+    await bs.server.drain();
+    const { closed } = await connect(host);
+    expect((await closed.atLeast(1, "the socket closing"))[0]).toEqual({ code: 1001, reason: "server shutting down" });
+  });
+});
+
+describe("decodeFrame, the parser every message on a socket goes through", () => {
+  it("waits for the last byte of a frame, and of a masked one, rather than reading a frame short", () => {
+    const masked = Buffer.concat([Buffer.from([0x81, 0x80 | 3]), Buffer.from([1, 2, 3, 4]), Buffer.from([0x61 ^ 1, 0x62 ^ 2, 0x63 ^ 3])]);
+    const plain = encodeFrame(Buffer.from("x".repeat(200)), 0x1);
+    for (const frame of [masked, plain]) {
+      for (let n = 0; n < frame.length; n++) expect(decodeFrame(frame.subarray(0, n)), `${n} of ${frame.length} bytes`).toBeNull();
+    }
+    expect(decodeFrame(masked)).toEqual({ opcode: 0x1, fin: true, payload: Buffer.from("abc"), length: 9 });
+    expect(decodeFrame(plain)).toEqual({ opcode: 0x1, fin: true, payload: Buffer.from("x".repeat(200)), length: 204 });
+  });
+});
+
+describe("sockets, in their details", () => {
+  it("an RB batch is answered in RB, whole or split across a binary frame and a continuation", async () => {
+    const codec = new RbCodec(bs.server.ir);
+    const host = await serve(bs.server);
+    const ws = new WebSocket(`ws://${host}/rayfold/ws`, ["rayfold.0.1"]);
+    sockets.push(ws);
+    ws.binaryType = "arraybuffer";
+    const got = new Signal<unknown>();
+    ws.addEventListener("message", (e) => got.push(typeof e.data === "string" ? e.data : codec.decodeFrames(new Uint8Array(e.data as ArrayBuffer))));
+    await bounded(new Promise<void>((r) => ws.addEventListener("open", () => r(), { once: true })), "socket open");
+    ws.send(codec.encode(readBook(1, "b1")) as Uint8Array<ArrayBuffer>);
+    expect((await got.atLeast(1, "the RB answer"))[0]).toEqual([bookFrame(1, "b1")]);
+
+    const raw = await rawClient(host);
+    const bytes = Buffer.from(codec.encode(readBook(2, "b2")));
+    raw.send(0x2, bytes.subarray(0, 3), false);
+    raw.send(CONTINUATION, bytes.subarray(3));
+    const [answer] = await raw.frames.atLeast(1, "the answer to the split RB message");
+    expect(answer!.opcode).toBe(0x2);
+  });
+
+  it("a frame announcing more than maxMessage is refused before it has all arrived", async () => {
+    const host = await serve(bs.server, { maxMessage: 1_000 });
+    const raw = await rawClient(host);
+    const socket = raws.at(-1)!;
+    // a 16-bit length of 60 000 and a mask, then only 1 100 bytes of it: the rest never comes
+    socket.write(Buffer.concat([Buffer.from([0x81, 0x80 | 126, 60_000 >> 8, 60_000 & 0xff, 1, 2, 3, 4]), Buffer.alloc(1_100, 0x20)]));
+    expect((await raw.frames.atLeast(1, "the close"))[0]).toEqual({ opcode: CLOSE, text: "1009 message too big" });
+  });
+
+  it("an upgrade to some other protocol is not ours", async () => {
+    const host = await serve(bs.server);
+    const answer = await new Promise<string>((resolve, reject) => {
+      const socket = connectTcp({ host: "127.0.0.1", port: Number(host.split(":")[1]) });
+      raws.push(socket);
+      let text = "";
+      socket.on("data", (c) => (text += c.toString("latin1")));
+      socket.on("close", () => resolve(text));
+      socket.on("error", reject);
+      socket.write(`GET /rayfold/ws HTTP/1.1\r\nHost: ${host}\r\nUpgrade: h2c\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`);
+    });
+    expect(answer.split("\r\n")[0]).toBe("HTTP/1.1 404 Not Found");
+  });
+
+  it("an op id frees as soon as its op ends, though its batch runs on, and a later batch's op under it is that batch's to cancel", async () => {
+    const host = await serve(bs.server);
+    const { ws, received } = await connect(host);
+    ws.send(JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }, { id: 2, op: "book", args: { id: "b2" }, shape: "{ id }", live: true }] }));
+    await received.until((xs) => xs.some((f) => (f as { id?: number; fin?: boolean }).id === 1) && xs.some((f) => (f as { id?: number }).id === 2), "both ops answering");
+    ws.send(JSON.stringify(liveBook)); // id 1 again, while the first batch's live op 2 still runs
+    await received.atLeast(3, "the second batch's live op answering");
+    expect(received.items[2]).toEqual({ id: 1, data: { $type: "Book", id: "b1", stock: 5 }, meta: { cost: 1 } });
+    ws.send(JSON.stringify({ cancel: 2 })); // ends the first batch, whose clean-up must leave the second batch's op 1 alone
+    await received.atLeast(4, "op 2 canceled");
+    ws.send(JSON.stringify({ cancel: 1 }));
+    await received.atLeast(5, "the second batch's op 1 canceled");
+    expect(received.items.slice(3)).toEqual([
+      { id: 2, error: { code: "canceled", message: "Canceled" }, fin: true },
+      { id: 1, error: { code: "canceled", message: "Canceled" }, fin: true },
+    ]);
+  });
+});
+
+describe("encodeFrame at its length boundaries", () => {
+  it("writes 125, 126, 65 535 and 65 536 byte payloads in the length form each needs, and they read back", () => {
+    for (const [n, header] of [[125, 2], [126, 4], [65_535, 4], [65_536, 10]] as const) {
+      const frame = encodeFrame(Buffer.alloc(n, 7), 0x2);
+      expect([n, frame.length - n]).toEqual([n, header]);
+      expect(decodeFrame(frame)).toEqual({ opcode: 0x2, fin: true, payload: Buffer.alloc(n, 7), length: n + header });
+    }
   });
 });

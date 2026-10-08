@@ -61,7 +61,9 @@ Rules:
 1. Ops with no unresolved references form the first wave; each wave runs concurrently.
 2. **Commands within a batch execute in ascending `id` order, one at a time**, even when independent. A
    command starts only after all previous commands have finished (success or error). This gives batches
-   transactional readability without a transaction: "do A, then B" means what it says.
+   transactional readability without a transaction: "do A, then B" means what it says. A command's result, and
+   every op that runs after the command, read the state it left, never a value loaded earlier in the batch; a dry
+   run's result reads the state it would leave.
 3. Queries and streams start as soon as their references are resolved and may overlap with anything.
 4. Frames for different ops MAY interleave. Frames for one op are delivered in order.
 
@@ -72,7 +74,9 @@ repeats arrive at the same time: a later repeat waits for the first. A repeat wi
 the stored result and patches with `"meta": { "replay": true }`, in the form (compact or full) the repeat asks for.
 A repeat with the same (K, V) but a different O or A is `already_exists`. The command's write policy is checked
 before a replay is served. A keyed command from a caller with no viewer is `unauthenticated`, because anonymous
-callers would share one replay scope. Servers MUST retain keys for 24 hours and MUST bound the store; a store at
+callers would share one replay scope. Servers MUST retain keys for 24 hours and MUST bound the store. A record is
+kept while its age is less than that time to live and has expired once `now - at >= ttl`, for a read, a claim and a
+sweep alike, so that servers sharing one store agree on the instant a key becomes a new command. A store at
 its bound evicts expired records first, then the oldest, so under that pressure a key can go sooner, and a key held
 by a command still running never does ([12 §3.6](12-security.md)).
 

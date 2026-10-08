@@ -7,6 +7,12 @@
 | `dev.rayfold:rayfold-client-okhttp` | The WebSocket transport on OkHttp, for live queries on Android. |
 | `dev.rayfold:rayfold-opentelemetry` | OpenTelemetry tracing for the server ([Tracing](tracing.md)). |
 | `dev.rayfold:rayfold-jdbc` | A SQL database behind resolvers, with read policies pushed into the query ([JDBC](jdbc.md)). |
+| `dev.rayfold:rayfold-test` | Unit tests for your server without a network: a blocking caller per viewer, and the client against the server in one process. Test scope. |
+
+::: info Next release
+`rayfold-test`, the server's `now` clock, and `live(..., onError)` reopening a dropped live query are not in 0.2.1;
+they arrive in the next release.
+:::
 
 ```kotlin
 dependencies {
@@ -47,6 +53,9 @@ RayfoldWebSocket(server) { request -> userOf(request.header("authorization"))?.l
 Resolvers are suspend functions over kotlinx.serialization JSON. A command returns the changed entity, or
 `CommandResult(result, patch, emit)` for extra cache patches and events. Throw
 `RayfoldException.domain("OutOfStock", data, message)` for an error the operation declares with `throws`.
+`RayfoldServer(..., now = { epochMillis })` gives the server the clock it tells the time by: `now()` in a policy,
+`ctx.now()` in a resolver, when an idempotency record expires, and its uptime. It is the system clock unless a
+[test](testing.md#time) hands in its own.
 
 `allowedOrigins` also answers a browser's CORS preflight from those origins with `204` and the
 `Access-Control-Allow-*` headers, and adds them to the responses that follow; other origins get none.
@@ -132,6 +141,9 @@ Errors the server reports arrive as `RayfoldClientException` with `code`, `type`
 try { client.command("buy", args("id" to "b2", "qty" to 9)) }
 catch (e: RayfoldClientException) { if (e.isType("OutOfStock")) showOnlyLeft(e.data) }
 ```
+
+In a test, `LocalTransport(server) { viewer }` from `rayfold-test` is a transport over a `RayfoldServer` in the same
+process, so the client runs with no network ([Testing](testing.md#the-client-and-its-cache)).
 
 ### Typed results
 

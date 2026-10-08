@@ -167,11 +167,15 @@ class BindingsTest {
         val base = serve(server)
         val res = get("$base/longs/9007199254740993")
         assertEquals(200, res.statusCode(), res.body())
-        assertEquals("9007199254740993", ((res.json() as JsonObject)["n"] as JsonPrimitive).content)
-        assertEquals(listOf("9007199254740993"), seen.map { (it as JsonPrimitive).content })
+        // text, not a number: past 2^53 a JSON number loses digits in most readers (spec 04 section 8, spec 01)
+        assertEquals(JsonPrimitive("9007199254740993"), (res.json() as JsonObject)["n"])
+        assertEquals(listOf<JsonElement?>(JsonPrimitive("9007199254740993")), seen)
+        // guard: a Long a JSON number holds exactly is a number
+        assertEquals(200, get("$base/longs/42").statusCode())
+        assertEquals(JsonPrimitive(42), seen[1])
         // guard: past the Long range it is refused before the resolver runs
         assertEquals(400, get("$base/longs/9223372036854775808").statusCode())
-        assertEquals(1, seen.size)
+        assertEquals(2, seen.size)
     }
 
     @Test

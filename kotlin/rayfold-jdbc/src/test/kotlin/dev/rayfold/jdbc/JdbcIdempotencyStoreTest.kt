@@ -125,10 +125,14 @@ class JdbcIdempotencyStoreTest {
 
     /** The scope the runtime files a viewer's keys under, as [dev.rayfold.core.BatchRunner] derives it. */
     private fun scopeOf(viewer: JsonElement): String =
-        MessageDigest.getInstance("SHA-256").digest(Canonical.json(viewer).toByteArray()).joinToString("") { "%02x".format(it) }
+        MessageDigest.getInstance("SHA-256").digest(Canonical.hashed(viewer).toByteArray()).joinToString("") { "%02x".format(it) }
 
     private fun rows(table: String = "\"$TABLE\""): Int = keepAlive.createStatement().use { s ->
         s.executeQuery("SELECT COUNT(*) FROM $table").use { r -> if (r.next()) r.getInt(1) else 0 }
+    }
+
+    private fun keys(): List<String> = keepAlive.createStatement().use { s ->
+        s.executeQuery("""SELECT "key" FROM "$TABLE" ORDER BY "key"""").use { r -> buildList { while (r.next()) add(r.getString(1)) } }
     }
 
     private fun heldUntil(key: String): Long? = keepAlive.prepareStatement("""SELECT "held_until" FROM "$TABLE" WHERE "scope" = ? AND "key" = ?""").use { s ->
@@ -253,7 +257,11 @@ class JdbcIdempotencyStoreTest {
     fun `a table in another schema is created, quoted and replayed from under its qualified name`() {
         keepAlive.createStatement().use { it.execute("""CREATE SCHEMA "app"""") }
         val qualified = store(table = "app.rayfold_idempotency")
-        assertTrue(qualified.schema().startsWith("""CREATE TABLE IF NOT EXISTS "app"."rayfold_idempotency" ("""), qualified.schema())
+        assertEquals(
+            """CREATE TABLE IF NOT EXISTS "app"."rayfold_idempotency" ("scope" text not null, "key" text not null, "args_hash" text, "frame" text, "compact_frame" text, "token" text, "held_until" bigint, "at" bigint not null, primary key ("scope", "key"))""",
+            qualified.schema(),
+        )
+        assertEquals("""CREATE INDEX IF NOT EXISTS "app_rayfold_idempotency_at" ON "app"."rayfold_idempotency" ("at")""", qualified.index())
         keepAlive.createStatement().use { it.execute(qualified.schema()) }
         val a = server(qualified, resolver = counted)
         val b = server(store(table = "app.rayfold_idempotency"), resolver = counted)
@@ -449,6 +457,19 @@ class JdbcIdempotencyStoreTest {
     // ------------------------------------------------------------------ what the store may keep (spec 12 section 3.6)
 
     @Test
+    fun `releasing a key whose answer is stored leaves the answer, which only a claim in flight can give up`() {
+        val a = store()
+        val token = a.record(key, record)
+        a.release(SCOPE, key, token)
+        assertEquals(record, a.get(SCOPE, key))
+        // guard: a claim still in flight is given up by its own token
+        val other = "${key}2"
+        val owned = a.owns(other)
+        a.release(SCOPE, other, owned.token)
+        assertTrue(a.claim(SCOPE, other, 1_000L) is IdempotencyClaim.Owned, "free again")
+    }
+
+    @Test
     fun `a record is gone once its TTL has passed`() {
         assertEquals(DAY, JdbcIdempotencyOptions().ttlMs)
         val store = store(ttlMs = 100)
@@ -462,6 +483,80 @@ class JdbcIdempotencyStoreTest {
         clock.set(201)
         assertNull(store.get(SCOPE, "later"), "one millisecond past the TTL it is gone")
         assertEquals(0, rows())
+    }
+
+    @Test
+    fun `a put sweeps nothing one millisecond inside a record's TTL, and the record at exactly the TTL`() {
+        val store = store(ttlMs = 100)
+        store.record("old", record)
+        clock.set(99)
+        store.record("young", record)
+        assertEquals(listOf("old", "young"), keys(), "guard: one millisecond inside the TTL the sweep leaves it")
+        clock.set(100)
+        store.record("new", record)
+        assertEquals(listOf("new", "young"), keys(), "swept by the write, with nobody reading it")
+    }
+
+    @Test
+    fun `a record the TypeScript store finished, which holds no token and no lease, expires at the same age`() {
+        val store = store(ttlMs = 100)
+        val frame = record.frame.toString()
+        for (k in listOf("read", "claimed")) {
+            keepAlive.prepareStatement("""INSERT INTO "$TABLE" ("scope", "key", "args_hash", "frame", "compact_frame", "token", "held_until", "at") VALUES (?, ?, 'h', ?, NULL, NULL, NULL, 0)""").use { s ->
+                s.setString(1, SCOPE)
+                s.setString(2, k)
+                s.setString(3, frame)
+                s.executeUpdate()
+            }
+        }
+        clock.set(99)
+        assertEquals(record, store.get(SCOPE, "read"), "guard: one millisecond inside the TTL it replays")
+        assertEquals(record, (store.claim(SCOPE, "claimed", 1_000) as? IdempotencyClaim.Done)?.record)
+        clock.set(100)
+        assertNull(store.get(SCOPE, "read"))
+        assertTrue(store.claim(SCOPE, "claimed", 1_000) is IdempotencyClaim.Owned, "at exactly the TTL the key is a new command's")
+    }
+
+    @Test
+    fun `a put sweeps a claim whose lease ran out from the millisecond it ends, and never one still held`() {
+        val store = store()
+        store.owns("abandoned")
+        assertEquals(1_000L, heldUntil("abandoned"))
+        clock.set(999)
+        store.record("a", record)
+        assertEquals(listOf("a", "abandoned"), keys(), "guard: a millisecond before its lease ends the claim is kept")
+        clock.set(1_000)
+        store.record("b", record)
+        assertEquals(listOf("a", "b"), keys(), "swept by the write once nobody holds it")
+    }
+
+    /** A row as the TypeScript store may leave it: [frame] null for a claim, and no token or lease when they are null. */
+    private fun insertRow(key: String, frame: String?, token: String?, heldUntil: Long?) {
+        keepAlive.prepareStatement("""INSERT INTO "$TABLE" ("scope", "key", "args_hash", "frame", "compact_frame", "token", "held_until", "at") VALUES (?, ?, 'h', ?, NULL, ?, ?, 0)""").use { s ->
+            s.setString(1, SCOPE)
+            s.setString(2, key)
+            s.setObject(3, frame)
+            s.setObject(4, token)
+            s.setObject(5, heldUntil)
+            s.executeUpdate()
+        }
+    }
+
+    @Test
+    fun `a claim left with no lease at all is anyone's to take over`() {
+        insertRow("left", frame = null, token = null, heldUntil = null)
+        clock.set(1)
+        assertTrue(store().claim(SCOPE, "left", 1_000) is IdempotencyClaim.Owned)
+        assertEquals(1_001L, heldUntil("left"))
+    }
+
+    @Test
+    fun `guard - a claim another runtime holds a lease on stays in flight until the lease ends`() {
+        insertRow("held", frame = null, token = "their-token", heldUntil = 5_000)
+        clock.set(4_999)
+        assertEquals(5_000L, (store().claim(SCOPE, "held", 1_000) as? IdempotencyClaim.InFlight)?.heldUntil)
+        clock.set(5_000)
+        assertTrue(store().claim(SCOPE, "held", 1_000) is IdempotencyClaim.Owned)
     }
 
     @Test

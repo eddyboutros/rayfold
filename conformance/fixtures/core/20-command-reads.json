@@ -1,0 +1,648 @@
+{
+  "name": "command reads",
+  "schema": "entity Author { id: ID name: String }\nentity Book { id: ID title: String author: Author blurb(lang: String = \"en\"): String? }\nquery book(id: ID): Book?\ncommand move(bookId: ID, authorId: ID): Book @simulate\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Author": {
+        "kind": "entity",
+        "name": "Author",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ],
+        "implements": []
+      },
+      "Book": {
+        "kind": "entity",
+        "name": "Book",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "title",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "author",
+            "type": {
+              "kind": "named",
+              "name": "Author",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "blurb",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [
+              {
+                "name": "lang",
+                "type": {
+                  "kind": "named",
+                  "name": "String",
+                  "nullable": false
+                },
+                "annotations": [],
+                "default": "en"
+              }
+            ],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ],
+        "implements": []
+      }
+    },
+    "ops": {
+      "book": {
+        "kind": "query",
+        "name": "book",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "move": {
+        "kind": "command",
+        "name": "move",
+        "args": [
+          {
+            "name": "bookId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          },
+          {
+            "name": "authorId",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Book",
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": [
+          {
+            "name": "simulate",
+            "args": {}
+          }
+        ]
+      }
+    },
+    "views": {}
+  },
+  "data": {
+    "Author": [
+      {
+        "id": "a1",
+        "name": "Ann"
+      },
+      {
+        "id": "a2",
+        "name": "Bob"
+      }
+    ],
+    "Book": [
+      {
+        "id": "b1",
+        "title": "Dune",
+        "authorId": "a1",
+        "blurb": "A desert planet."
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "book": {
+        "from": "Book",
+        "where": {
+          "id": "$args.id"
+        },
+        "mode": "one"
+      }
+    },
+    "fields": {
+      "Book": {
+        "author": {
+          "from": "Author",
+          "key": "authorId",
+          "match": "id",
+          "mode": "one"
+        }
+      }
+    },
+    "Command": {
+      "move": {
+        "update": {
+          "table": "Book",
+          "where": {
+            "id": "$args.bookId"
+          },
+          "set": {
+            "authorId": "$args.authorId"
+          }
+        },
+        "returns": "updated"
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "a command answer, and an op after it, read what the command changed",
+      "viewer": {
+        "id": "u1"
+      },
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "book",
+            "args": {
+              "id": "b1"
+            },
+            "shape": "{ id author { name } }"
+          },
+          {
+            "id": 2,
+            "op": "move",
+            "args": {
+              "bookId": {
+                "$ref": "1.id"
+              },
+              "authorId": "a2"
+            },
+            "key": "kkkkkkkkkkkkkkkk",
+            "shape": "{ id author { name } }"
+          },
+          {
+            "id": 3,
+            "op": "book",
+            "args": {
+              "id": {
+                "$ref": "2.id"
+              }
+            },
+            "shape": "{ id author { name } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Book",
+            "id": "b1",
+            "author": {
+              "$type": "Author",
+              "name": "Ann"
+            }
+          },
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        },
+        {
+          "id": 2,
+          "ok": {
+            "$type": "Book",
+            "id": "b1",
+            "author": {
+              "$type": "Author",
+              "name": "Bob"
+            }
+          },
+          "patch": [
+            {
+              "set": "Book:b1",
+              "value": {
+                "$type": "Book",
+                "id": "b1",
+                "author": {
+                  "$type": "Author",
+                  "name": "Bob"
+                }
+              }
+            }
+          ],
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        },
+        {
+          "id": 3,
+          "data": {
+            "$type": "Book",
+            "id": "b1",
+            "author": {
+              "$type": "Author",
+              "name": "Bob"
+            }
+          },
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a dry run answers what would happen and changes nothing for the ops after it",
+      "viewer": {
+        "id": "u1"
+      },
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "book",
+            "args": {
+              "id": "b1"
+            },
+            "shape": "{ id author { name } }"
+          },
+          {
+            "id": 2,
+            "op": "move",
+            "args": {
+              "bookId": {
+                "$ref": "1.id"
+              },
+              "authorId": "a2"
+            },
+            "key": "kkkkkkkkkkkkkkkk",
+            "simulate": true,
+            "shape": "{ id author { name } }"
+          },
+          {
+            "id": 3,
+            "op": "book",
+            "args": {
+              "id": {
+                "$ref": "2.id"
+              }
+            },
+            "shape": "{ id author { name } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Book",
+            "id": "b1",
+            "author": {
+              "$type": "Author",
+              "name": "Ann"
+            }
+          },
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        },
+        {
+          "id": 2,
+          "ok": {
+            "$type": "Book",
+            "id": "b1",
+            "author": {
+              "$type": "Author",
+              "name": "Bob"
+            }
+          },
+          "patch": [
+            {
+              "set": "Book:b1",
+              "value": {
+                "$type": "Book",
+                "id": "b1",
+                "author": {
+                  "$type": "Author",
+                  "name": "Bob"
+                }
+              }
+            }
+          ],
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        },
+        {
+          "id": 3,
+          "data": {
+            "$type": "Book",
+            "id": "b1",
+            "author": {
+              "$type": "Author",
+              "name": "Ann"
+            }
+          },
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a set patch leaves out fields asked under an alias or with arguments",
+      "viewer": {
+        "id": "u1"
+      },
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "move",
+            "args": {
+              "bookId": "b1",
+              "authorId": "a2"
+            },
+            "key": "kkkkkkkkkkkkkkkk",
+            "shape": "{ id t: title blurb(lang: \"fr\") author { name } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "ok": {
+            "$type": "Book",
+            "id": "b1",
+            "t": "Dune",
+            "blurb": "A desert planet.",
+            "author": {
+              "$type": "Author",
+              "name": "Bob"
+            }
+          },
+          "patch": [
+            {
+              "set": "Book:b1",
+              "value": {
+                "$type": "Book",
+                "id": "b1",
+                "author": {
+                  "$type": "Author",
+                  "name": "Bob"
+                }
+              }
+            }
+          ],
+          "meta": {
+            "cost": 2
+          },
+          "fin": true
+        }
+      ]
+    }
+  ]
+}

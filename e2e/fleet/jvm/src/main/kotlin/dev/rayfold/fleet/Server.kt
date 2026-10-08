@@ -9,6 +9,7 @@ import dev.rayfold.core.RayfoldServer
 import dev.rayfold.core.Resolvers
 import dev.rayfold.core.SchemaText
 import dev.rayfold.core.shutdown
+import dev.rayfold.jdbc.JdbcIdempotencyOptions
 import dev.rayfold.jdbc.JdbcIdempotencyStore
 import dev.rayfold.jdbc.PgNotifications
 import dev.rayfold.jdbc.PgRelay
@@ -30,7 +31,8 @@ import kotlinx.serialization.json.put
  * the TypeScript member in `e2e/fleet/server.ts`, so the two run side by side over one Postgres. What the test proves
  * is that they behave as one fleet, not that either works alone.
  *
- * Environment: DATABASE_URL (JDBC or postgres:// form), PORT, NAME.
+ * Environment: DATABASE_URL (JDBC or postgres:// form), PORT, NAME, and NOW for a member whose clock stands still at
+ * that millisecond, as the TypeScript member takes it.
  */
 private const val SCHEMA = """
   entity Book { id: ID stock: Int }
@@ -57,7 +59,9 @@ fun main() = runBlocking {
     val name = System.getenv("NAME") ?: "jvm"
     val connect: () -> Connection = { DriverManager.getConnection(db.url, db.user, db.password) }
 
-    val idempotency = JdbcIdempotencyStore(connect)
+    val now: (() -> Long)? = System.getenv("NOW")?.toLong()?.let { fixed -> { fixed } }
+
+    val idempotency = JdbcIdempotencyStore(connect, JdbcIdempotencyOptions(now = now ?: System::currentTimeMillis))
     val relay = PgRelay(PgNotifications(connect(), connect), connect)
     idempotency.migrate()
     relay.migrate()
@@ -118,7 +122,7 @@ fun main() = runBlocking {
         ),
     )
 
-    val server = RayfoldServer(ir, resolvers, idempotency = idempotency, relay = relay)
+    val server = RayfoldServer(ir, resolvers, idempotency = idempotency, relay = relay, now = now)
     val options = HttpOptions(readiness = mapOf("db" to { connect().use { it.isValid(1) }; Unit }))
     val http = RayfoldHttp(server, options) { buildJsonObject { put("id", "fleet") } }.start(port, host = "127.0.0.1")
     server.ready()

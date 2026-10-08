@@ -38,21 +38,31 @@ class PatchVectorsTest {
         val doc = Json.parseToJsonElement(File(File(root, "patch"), "apply.json").readText()).jsonObject
         val op = doc.str("op")
         val out = mutableListOf<DynamicTest>()
+        // every field a case may carry; one this runner does not know is an expectation it would silently skip
+        val fields = setOf("name", "why", "shape", "unheld", "result", "patch", "expect", "stale", "merge", "predict", "refetch")
 
         for (case in doc.req("cases").jsonArray) {
             val c = case.jsonObject
             val name = c.str("name")
             out.add(
                 DynamicTest.dynamicTest("patch/$name") {
-                    val cache = RayfoldCache()
+                    for (k in c.keys) assertTrue(k in fields, "$name: no runner for case field \"$k\"")
+                    val merge = c["merge"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap()
+                    val cache = RayfoldCache(mergePolicies = merge)
                     val key = RayfoldCache.resultKey(op, JsonObject(emptyMap()), null, null)
                     // the shape the result was asked with, where it matters to how the result is stored
                     val shape = SelectionLevel.of(c["shape"]?.jsonPrimitive?.content)
                     cache.putResult(key, op, c.req("result"), shape)
+                    // a prediction shown over the server's values, as an optimistic command shows one until it settles
+                    c["predict"]?.let { predict ->
+                        cache.addLayer("0123456789abcdef", predict.jsonArray.map { OptimisticOp(it.jsonObject.str("set"), it.jsonObject.req("value").jsonObject) })
+                    }
                     val unheld = c["unheld"]?.jsonPrimitive?.boolean == true
                     // same operation, other arguments: a result the client never stored, so nothing may be found by the op name
                     val target = if (unheld) RayfoldCache.resultKey(op, buildJsonObject { put("page", 2) }, null, null) else key
                     cache.applyPatch(c.req("patch").jsonArray.map { it.jsonObject }, target, shape)
+                    // the result's data arriving again: a server value that comes without a set patch
+                    c["refetch"]?.let { cache.putResult(key, op, it, shape) }
                     val why = c["why"]?.jsonPrimitive?.content ?: name
                     val held = cache.getResult(key) ?: error("the result under $key is gone")
                     assertEquals(c.req("expect"), cache.denormalize(held.data), why)

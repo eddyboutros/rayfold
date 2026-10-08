@@ -100,20 +100,14 @@ class ScalarsStarterTest {
 
     @Test
     void decimalLongInstantDateAndBytesTravelAsTheSchemaEncodesThem() throws Exception {
-        assertThat(reading("{ amount big at zoned day raw }"))
-            .containsEntry("amount", "4.20")
-            .containsEntry("big", "9007199254740993")
-            .containsEntry("at", "2026-09-15T08:30:00Z")
-            .containsEntry("zoned", "2026-09-15T08:30:00Z")
-            .containsEntry("day", "2026-09-15")
-            .containsEntry("raw", "-_8");
+        assertThat(reading("{ amount big at zoned day raw }")).isEqualTo(Map.of(
+            "amount", "4.20", "big", "9007199254740993", "at", "2026-09-15T08:30:00Z",
+            "zoned", "2026-09-15T08:30:00Z", "day", "2026-09-15", "raw", "-_8"));
     }
 
     @Test
     void guardNumbersWithinReachStayNumbersAndTheApplicationsJacksonAnnotationsStillApply() throws Exception {
-        assertThat(reading("{ small ratio }"))
-            .containsEntry("small", 9007199254740991L)
-            .containsEntry("ratio", 0.5);
+        assertThat(reading("{ small ratio }")).isEqualTo(Map.of("small", 9007199254740991L, "ratio", 0.5));
     }
 
     @Test

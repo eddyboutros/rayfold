@@ -7,6 +7,126 @@ Everything under a dated heading is published on npm and Maven Central.
 
 ## Unreleased
 
+- **A live query over an interface type shows new members.** In both runtimes a live query whose result is an
+  interface (`query people: [Named]`) watched only the interface's own name, so creating an entity that implements it
+  never re-ran the query and the new member did not appear until a reload. Both now watch every implementing entity.
+
+- **A schema-aware TypeScript client types the fields it asked for under an alias.** With a schema, a field selected
+  under an alias (`mine: shelf { ... }`) got no `$type` and its entities never reached the cache, in query data,
+  deferred parts, command answers, dry runs and stream items. It now restores both, as it does without an alias.
+
+- **`rayfold check` suggests a fix for a mistake in a field's argument**, such as an unknown type or annotation in
+  `Book.reviews(sort: ...)`, as it already did for fields and operation arguments.
+
+- **A JVM `PgNotifications` listener that stops last waits for the poll loop to let go of the connection.** The loop
+  was cancelled but could poll once more after the last unsubscribe returned, so an application closing its listening
+  connection on shutdown could have it read after it was closed.
+
+- **The JVM words an empty `Content-Type` as the TypeScript server does**: "Content-Type (none) is not accepted".
+
+- **The examples answer correctly in edge cases their tests now cover.** The bookstore example's `addReview` no longer
+  replaces a seeded review (a new review takes the next free id), and the workspace example's `board` answers
+  `not_found` for an unknown project instead of an internal error.
+
+- **The test suites of both runtimes were audited for depth.** About 2,500 deliberate breaks of production code were
+  run against them, and every one a test missed either got a test that catches it or is shown not to change
+  behaviour. The bugs above came out of that audit.
+
+- **A dry run answers what would happen.** Both runtimes answered a `simulate: true` command with fields an earlier op
+  in the batch had loaded, so a dry run that moved a book to another author answered with the old author. The dry
+  run's answer now loads for itself (spec 03 §3).
+
+- **A WebSocket on the JVM ends when its capability expires, as on Node.** The JVM and Spring Boot servers served a
+  capability holder's socket past the token's `exp`. Now its open ops end `unauthenticated`, a later batch is refused
+  for each op, and the socket closes with 1008.
+
+- **Long values past 2^53 in JVM REST paths and query strings stay text.** `RayfoldBindings` read them as JSON
+  numbers, so a `Long` field answered `9007199254740993` as a number.
+
+- **The conformance pack covers this release.** New `http/`, `websocket/`, `mcp/` and `validation/` vector areas;
+  fixtures 16 to 20 (arguments, union positions, deferred parts, access, what a command's answer reads); idempotency
+  cases for `@idempotent(false)`, the expiry instant and a failed record; RB cases for NaN and the infinities; patch
+  cases for `@merge`. Every runner refuses a field it does not read, and the specs state the behaviours the new cases
+  pin. A `@format` value over a documented length may be refused before it is matched (the reference runtimes refuse
+  over 10,000 characters); spec 01 says so as a permission, since Core 0.1 is frozen.
+
+- **`screen()` returns the rows a type's read rule allows, whatever the shape selects.** `@rayfold/postgres` pushed
+  the rule into SQL, but each row carried only the fields the shape asked for, and the runtime, checking the rule
+  again on every row, read the rest as null: a rule such as `@allow(read: this.publishedAt != null)` refused every
+  row of a screen that did not select `publishedAt`. Each row now also carries the columns its type's rules, and its
+  selected fields' rules, read; the runtime leaves them out of the answer. Found by the rayfold-apps help centre.
+
+- **The React and Angular bindings say what happens to data when something fails, and tests hold them to it.** A
+  query that fails after it answered keeps its last data beside `error`, so a screen can say what went wrong without
+  going blank; the next answer clears the error. A command's `data` is the result of its latest run, so a run that
+  fails clears it rather than showing an older success beside a new error. The documentation of `useCommand` and
+  `injectCommand` said "the last successful result", which the code never did; it now describes what they do.
+
+- **A live query's deferred part arrives on its own, after the first result, and the clients show it.** The
+  TypeScript server merged the deferred parts of a live query into the first frame it had already queued, so a `@lazy`
+  or `@defer` field was not deferred at all and then arrived a second time. Both clients, for their part, waited for a
+  `fin` that a live query never sends before reporting a deferred part, so against the JVM server the field stayed
+  missing until something else changed. The first frame now leaves the part out on both servers, and both clients
+  report it as soon as it arrives.
+
+- **Servers starting at the same moment no longer fail to create their tables.** Postgres can refuse a concurrent
+  `CREATE TABLE IF NOT EXISTS` with `42710` ("type ... already exists"); the stores' migrations in both runtimes
+  (`@rayfold/postgres`, and `migrate()` on every `rayfold-jdbc` store) now retry it as they do the other two codes.
+
+- **An application can be unit tested without a network, in every language Rayfold supports.** The new
+  [testing guide](docs/guide/testing.md) shows a resolver, a policy, a declared error, a retried command, a live query
+  and time, each with a tab for TypeScript, Kotlin, Java and Spring Boot, and sections for React and Angular. Its code
+  is embedded from tests in `examples/` that CI runs. `CONTRIBUTING.md` now says what a language needs before it
+  counts as supported: the conformance vectors, tests without a network, and its tab in that guide.
+
+- **A server on the JVM can be unit tested without a network.** The new `dev.rayfold:rayfold-test` gives a test a
+  caller per viewer: `RayfoldTest.of(server).signedInAs(viewer)`, then `query`, `command` and `live`, each a batch the
+  real server runs, so policies, argument checks and idempotency apply as they do behind a transport. An op the server
+  refuses is thrown as the `RayfoldException` it produced, so a test asserts on `code`, or on the `type` and `data` of
+  a declared error. A command gets a fresh idempotency key unless the test passes its own, and `frames` returns the raw
+  frames, `meta.replay` included. Kotlin callers pass `JsonObject` and get `JsonElement`; Java callers pass maps and
+  get plain values.
+
+- **A live query in a JVM test is read one value at a time, and never hangs.** `live(...)` returns once the first
+  result is there; `next()` gives the result after each change, waits 5 seconds at most (`within(ms)`, or `next(ms)`)
+  and fails the test with what it waited for when nothing came. `close()` returns once the server has its subscription
+  back.
+
+- **The Kotlin client runs against a server in the same process.** `LocalTransport(server) { viewer }` is a `Transport`
+  over a `RayfoldServer`, as `createLocalTransport` is in TypeScript: every frame the client reads is one the server
+  produced for that viewer, and cancelling a collection ends the batch on the server.
+
+- **`@rayfold/client/testing` waits for what a watch, a live query or a stream reports next, without sleeping.**
+  `collect((next, fail) => client.live(op, args, options, next, fail))` returns `{ values, next(label, ms), stop() }`.
+  Each `next()` hands out one value in the order they were reported, a failure rejects the call that reaches it, and a
+  value that does not come within 4 seconds fails with the label and what was seen. For a stream, return
+  `client.stream(op, args, { signal })` with the signal `collect` passes as its third argument.
+
+- **The JVM server takes a clock, as the TypeScript server does.** `RayfoldServer(..., now = { clock })` is what the
+  server tells the time by: `now()` in a policy, `ctx.now` in a resolver, when the default idempotency store forgets a
+  record, the time on usage records, and the start time and uptime it reports. In Java it is
+  `Rayfold.server(schema).clock(clock)`, with a `java.time.Clock` or epoch milliseconds from a `LongSupplier`, and
+  `ctx.now()` in a resolver. Without one it is the system clock, as before, so a policy such as
+  `@allow(read: this.publishedAt <= now())` can be tested by moving a clock instead of waiting.
+
+- **The Spring Boot starter runs the server on the application's `Clock` bean.** An application that declares a
+  `java.time.Clock` has the server read the time from it, so a test that replaces the bean moves the server's time
+  too. Without the bean, or with several and no primary one, the server stays on the system clock.
+
+- **An idempotency record has expired once it is as old as its time to live, in both runtimes.** The TypeScript stores
+  (`MemoryIdempotencyStore`, `PgIdempotencyStore`) kept a record that was exactly `ttlMs` old and the JVM stores did
+  not, so in a fleet of both runtimes on one table a retry arriving at that instant was replayed by one server and run
+  again by another. A record is now kept while `now - at < ttl` everywhere, for reads, claims and sweeps, and spec 03
+  §4 says so.
+
+- **Angular waits for Rayfold before it calls the application stable.** `injectQuery` and `injectLive` hold a pending
+  task until their first answer, and `injectCommand` while it runs, so `fixture.whenStable()` in a test and server
+  rendering wait for the data instead of capturing the loading state.
+
+- **The bookshop examples have unit tests.** `bookshop.unit.test.ts` and `App.unit.test.tsx` in the TypeScript and
+  React examples, and `BookshopUnitTest` in the Kotlin, Java and Spring Boot ones, test the shop with no port opened.
+  The Spring Boot one autowires the `RayfoldServer` the starter built.
+
 - **`rayfold import openapi` reads an optional schema as that schema.** `anyOf: [X, { type: "null" }]`, which is how
   Rayfold itself publishes an optional nested type, and OpenAPI 3.0's `allOf: [X]` beside `nullable: true` became
   `JSON`. Both now import as `X?`, so a document Rayfold serves imports back to the same types.

@@ -78,10 +78,14 @@ compute a precise patch MUST at least emit `inv` for touched entities and `invOp
 
 `{ "id": 2, "at": "author.stats", "data": { "salesRank": 12 } }` fills the result at path `at`. Paths use
 dots and integer indices. Deferred frames arrive after the op's first `data` frame and before its `fin`.
+A deferred frame's `errors` holds the `@partial` errors of the fields it delivers and no others, each `path` from the
+root of the result.
 
 ## 4. HTTP transport
 
-**Endpoint:** a single path, conventionally `/rayfold`.
+**Endpoint:** a single path, conventionally `/rayfold`. The endpoint answers that path and the paths under it
+(`{path}/...`), and no other: a path that only begins with the same text, such as `/rayfoldbook` or
+`/rayfold-admin`, is not the endpoint's.
 
 | Method | Body | Use |
 |---|---|---|
@@ -102,7 +106,8 @@ send `POST` with header `Rayfold-Safe: true`; servers treat it as `QUERY` for ca
 **Response:** status `200`, content type `application/rayfold-frames+json`: newline-delimited JSON, one frame per
 line, flushed as produced. When the request carries `Accept: application/json` and the batch has exactly one
 op that finishes in one frame, the server MAY respond with that single frame as a JSON document; the status
-is then derived from the error code ([05 §3](05-errors.md)).
+is then derived from the error code ([05 §3](05-errors.md)). A batch holding a live query or a stream is
+streamed whichever way it was sent, a safe request included, since it never finishes and there is no end to wait for.
 
 A streaming response is paced by the client reading it. A server MUST bound what it holds for a client that stops
 reading, and MAY end the batch at that bound, which unsubscribes its live queries, cutting the response short rather
@@ -114,8 +119,8 @@ SHOULD write a keep-alive at least every 30 seconds: an empty line in NDJSON, a 
 and they are how a server notices a client that went away, since many HTTP servers only see a closed connection
 when they write to it.
 
-Failures the server refuses before it parses a batch — a malformed body, a media type it does not read, a bad Origin
-or Host, a body over the limit — are answered with an RFC 9457 `application/problem+json` body whose `code` member is
+Failures the server refuses before it parses a batch — a malformed body, a query string that is not
+percent-encoding, a media type it does not read, a bad Origin or Host, a body over the limit — are answered with an RFC 9457 `application/problem+json` body whose `code` member is
 the Rayfold error code, with the status derived from that code except in two cases HTTP names itself: a media type it
 does not read is `415` (code `invalid_argument`, problem type `unsupported_media_type`, with `Accept-Post` or
 `Accept-Query`), and a body over the limit is `413` (code `resource_exhausted`, problem type `payload_too_large`). A batch that parses and then fails as a whole, such as one over budget, is an
@@ -189,7 +194,9 @@ it; any other origin gets the `204` without them, so its browser stops there.
 
 ## 5. WebSocket transport
 
-Path `/rayfold/ws`, subprotocol `rayfold.0.1`. Text messages are JSON; binary messages are RB.
+Path `/rayfold/ws`, subprotocol `rayfold.0.1`. Text messages are JSON; binary messages are RB. A viewer hook that
+refuses the handshake's credentials is answered before the upgrade as HTTP answers it: the status its code derives
+([05 §3](05-errors.md)), `401` for `unauthenticated`, and `500` for a failure that is not a protocol error.
 
 RB keys are numbered from the schema ([09 §3](09-binary-format.md)), and a socket carries no `Rayfold-Schema` header
 per answer. A client that sends RB therefore names the schema hash its dictionary was built from in the `schema` query

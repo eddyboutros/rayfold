@@ -332,3 +332,287 @@ describe("drain()", () => {
     expect(s.inflight).toBe(0);
   });
 });
+
+describe("projection, through the batch", () => {
+  const frames = (schema: string, resolvers: Record<string, unknown>, op: Record<string, unknown>, viewer?: unknown) =>
+    createRayfoldServer({ schema, resolvers: resolvers as never }).collect({ ops: [{ id: 1, ...op } as never] }, { viewer });
+
+  it("a command that emits an event it did not declare fails internal, and the event goes nowhere", async () => {
+    const schema = `entity A { id: ID } event Made { id: ID } event Other { id: ID } command make(other: Boolean): A emits Made @idempotent(false)`;
+    const s = createRayfoldServer({
+      schema,
+      resolvers: { Command: { make: (a: { other: boolean }) => ok({ id: "a1" }, { emit: [{ event: a.other ? "Other" : "Made", payload: { id: "a1" } }] }) } },
+    });
+    const heard: string[] = [];
+    s.events.on("*", (p) => heard.push((p as { event: string }).event));
+    expect(await s.collect({ ops: [{ id: 1, op: "make", args: { other: true }, shape: "{ id }" }] })).toEqual([{ id: 1, error: { code: "internal", message: "make emitted undeclared event Other" }, fin: true }]);
+    expect(heard).toEqual([]);
+    // guard: the declared one is published and the command answers
+    expect(await s.collect({ ops: [{ id: 1, op: "make", args: { other: false }, shape: "{ id }" }] })).toEqual([
+      { id: 1, ok: { $type: "A", id: "a1" }, patch: [{ set: "A:a1", value: { $type: "A", id: "a1" } }], meta: { cost: 1 }, fin: true },
+    ]);
+    expect(heard).toEqual(["Made"]);
+  });
+
+  const partialName = `entity A { id: ID name: String? @partial } command make: A @idempotent(false) stream feed: A`;
+  const nameError = { code: "internal", message: "Internal error", path: "name" };
+  const failing = () => {
+    throw new Error("the name service is down");
+  };
+
+  it("a command's @partial errors travel on its compact frame as on its full one", async () => {
+    const resolvers = { A: { name: failing }, Command: { make: () => ({ id: "a1" }) } };
+    expect(await frames(partialName, resolvers, { op: "make", shape: "{ id name }", compact: true })).toEqual([{ id: 1, ok: { id: "a1", name: null }, patch: [], errors: [nameError], fin: true }]);
+    expect(await frames(partialName, resolvers, { op: "make", shape: "{ id name }" })).toEqual([
+      { id: 1, ok: { $type: "A", id: "a1", name: null }, patch: [{ set: "A:a1", value: { $type: "A", id: "a1", name: null } }], meta: { cost: 1 }, errors: [nameError], fin: true },
+    ]);
+  });
+
+  it("a stream item carries its own @partial errors, and the item without them carries none (guard)", async () => {
+    let n = 0;
+    const resolvers = {
+      A: { name: (ps: unknown[]) => (n++ === 0 ? failing() : ps.map(() => "second")) },
+      Stream: {
+        feed: async function* () {
+          yield { id: "a1" };
+          yield { id: "a2" };
+        },
+      },
+    };
+    expect(await frames(partialName, resolvers, { op: "feed", shape: "{ id name }" })).toEqual([
+      { id: 1, item: { $type: "A", id: "a1", name: null }, errors: [nameError] },
+      { id: 1, item: { $type: "A", id: "a2", name: "second" } },
+      { id: 1, fin: true },
+    ]);
+  });
+
+  it("a stream stopped between two items ends with the reason it was stopped for", async () => {
+    // the drain lands while the first item is being projected, so the stream sees it at the top of its loop
+    const holder: { s?: ReturnType<typeof createRayfoldServer> } = {};
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID name: String } stream feed: A`,
+      resolvers: {
+        A: { name: (ps: unknown[]) => (void holder.s?.drain({ timeoutMs: 5_000 }), ps.map(() => "n")) },
+        Stream: {
+          feed: async function* () {
+            yield { id: "a1" };
+            yield { id: "a2" };
+          },
+        },
+      } as never,
+    });
+    holder.s = s;
+    expect(await s.collect({ ops: [{ id: 1, op: "feed", shape: "{ id name }" }] })).toEqual([
+      { id: 1, item: { $type: "A", id: "a1", name: "n" } },
+      { id: 1, error: { code: "unavailable", message: "The server is shutting down" }, fin: true },
+    ]);
+  });
+
+  const docs = `entity Doc @allow(read: viewer.id == ownerId) { id: ID ownerId: ID } query docs: [Doc?]`;
+  const docResolvers = { Query: { docs: () => [{ id: "d1", ownerId: "u1" }, null] } };
+
+  it("a denied entity in a top-level list whose elements may be null fails the op for an explicit shape", async () => {
+    expect(await frames(docs, docResolvers, { op: "docs", shape: "{ id }" }, { id: "u2" })).toEqual([{ id: 1, error: { code: "permission_denied", message: "Not allowed to access Doc at 0", path: "0" }, fin: true }]);
+    // guards: the owner reads it, and the genuinely null element stays null
+    expect(await frames(docs, docResolvers, { op: "docs", shape: "{ id }" }, { id: "u1" })).toEqual([{ id: 1, data: [{ $type: "Doc", id: "d1" }, null], meta: { cost: 1 }, fin: true }]);
+    // guard: a default view never fails on policy, it reads the denied element as null
+    expect(await frames(docs, docResolvers, { op: "docs" }, { id: "u2" })).toEqual([{ id: 1, data: [null, null], meta: { cost: 1 }, fin: true }]);
+  });
+
+  it("a field selected without a sub-shape gets its default view, which never fails on policy", async () => {
+    const schema = `entity Secret @allow(read: viewer != null) { id: ID } entity Box { id: ID secret: Secret } query box: Box`;
+    const resolvers = { Query: { box: () => ({ id: "x", secret: { id: "s" } }) } };
+    expect(await frames(schema, resolvers, { op: "box", shape: "{ id secret }" })).toEqual([{ id: 1, data: { $type: "Box", id: "x", secret: null }, meta: { cost: 2 }, fin: true }]);
+    // guard: the same field with a shape of its own is explicit, and a denial at that non-null position fails the op
+    expect(await frames(schema, resolvers, { op: "box", shape: "{ id secret { id } }" })).toEqual([
+      { id: 1, error: { code: "unauthenticated", message: "Sign in to access Secret at secret", path: "secret" }, fin: true },
+    ]);
+  });
+
+  it("a field with arguments and no loader is served only when every parent carries it", async () => {
+    const schema = `entity Author { id: ID books(page: PageArgs = { first: 10 }): Page<Book> } entity Book { id: ID } query authors: [Author]`;
+    const page = { items: [], hasMore: false };
+    expect(await frames(schema, { Query: { authors: () => [{ id: "a1", books: page }, { id: "a2" }] } }, { op: "authors", shape: "{ id books { hasMore } }" })).toEqual([
+      { id: 1, error: { code: "unimplemented", message: "No loader for Author.books", path: "0.books" }, fin: true },
+    ]);
+    // guard: when they all do, it is
+    expect(await frames(schema, { Query: { authors: () => [{ id: "a1", books: page }, { id: "a2", books: page }] } }, { op: "authors", shape: "{ id books { hasMore } }" })).toEqual([
+      { id: 1, data: [{ $type: "Author", id: "a1", books: { hasMore: false } }, { $type: "Author", id: "a2", books: { hasMore: false } }], meta: { cost: 12 }, fin: true },
+    ]);
+  });
+});
+
+describe("loads remembered for the batch", () => {
+  type Call = { parents: string[]; upper: boolean };
+  const labels = (calls: Call[], fail = 0) =>
+    createRayfoldServer({
+      schema: `entity A { id: ID label(upper: Boolean): String } object Row { id: ID v: String } query a(id: ID): A query same: [A] query rows: [Row]`,
+      resolvers: {
+        Query: { a: (x: { id: string }) => ({ id: x.id }), same: () => [{ id: "a1" }, { id: "a1" }], rows: () => [{ id: "1", x: "first" }, { id: "1", x: "second" }] },
+        A: {
+          label: (ps: Array<{ id: string }>, args: { upper: boolean }) => {
+            calls.push({ parents: ps.map((p) => p.id), upper: args.upper });
+            if (calls.length <= fail) throw new Error("the store blinked");
+            return ps.map((p) => (args.upper ? p.id.toUpperCase() : p.id));
+          },
+        },
+        Row: { v: (ps: Array<{ x: string }>) => ps.map((p) => p.x) },
+      } as never,
+    });
+
+  it("are kept apart by their arguments", async () => {
+    const calls: Call[] = [];
+    expect(await labels(calls).collect({ ops: [{ id: 1, op: "a", args: { id: "a1" }, shape: "{ lo: label(upper: false) hi: label(upper: true) }" }] })).toEqual([
+      { id: 1, data: { $type: "A", lo: "a1", hi: "A1" }, meta: { cost: 1 }, fin: true },
+    ]);
+    expect(calls).toEqual([{ parents: ["a1"], upper: false }, { parents: ["a1"], upper: true }]);
+  });
+
+  it("serve an entity that appears twice at one level from one load of it", async () => {
+    const calls: Call[] = [];
+    expect(await labels(calls).collect({ ops: [{ id: 1, op: "same", shape: "{ id label(upper: true) }" }] })).toEqual([
+      { id: 1, data: [{ $type: "A", id: "a1", label: "A1" }, { $type: "A", id: "a1", label: "A1" }], meta: { cost: 1 }, fin: true },
+    ]);
+    expect(calls).toEqual([{ parents: ["a1"], upper: true }]);
+  });
+
+  it("guard: objects have no identity, so two with the same id are loaded as two", async () => {
+    expect(await labels([]).collect({ ops: [{ id: 1, op: "rows", shape: "{ id v }" }] })).toEqual([{ id: 1, data: [{ id: "1", v: "first" }, { id: "1", v: "second" }], meta: { cost: 1 }, fin: true }]);
+  });
+
+  it("forget a load that failed, so a later op of the same batch loads it again", async () => {
+    const calls: Call[] = [];
+    const frames = await labels(calls, 1).collect({
+      ops: [
+        { id: 1, op: "a", args: { id: "a1" }, shape: "{ id label(upper: true) @partial }" },
+        { id: 2, op: "a", args: { id: { $ref: "1.id" } }, shape: "{ label(upper: true) }" },
+      ],
+    });
+    expect(frames).toEqual([
+      { id: 1, data: { $type: "A", id: "a1", label: null }, meta: { cost: 1 }, errors: [{ code: "internal", message: "Internal error", path: "label" }], fin: true },
+      { id: 2, data: { $type: "A", label: "A1" }, meta: { cost: 1 }, fin: true },
+    ]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("refuse a loader that answers for fewer parents than it was given, rather than waiting for the rest", async () => {
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID name: String } query all: [A]`,
+      resolvers: { Query: { all: () => [{ id: "a1" }, { id: "a2" }] }, A: { name: () => ["only one"] } } as never,
+    });
+    expect(await bounded(s.collect({ ops: [{ id: 1, op: "all", shape: "{ name }" }] }), "the short loader refused")).toEqual([
+      { id: 1, error: { code: "internal", message: "Loader for A.name returned 1 for 2 parents", path: "0.name" }, fin: true },
+    ]);
+  });
+
+  it("refuse a loader that answers for more parents than it was given, rather than dropping the extra answers", async () => {
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID name: String } query all: [A]`,
+      resolvers: { Query: { all: () => [{ id: "a1" }, { id: "a2" }] }, A: { name: () => ["one", "two", "three"] } } as never,
+    });
+    expect(await bounded(s.collect({ ops: [{ id: 1, op: "all", shape: "{ name }" }] }), "the long loader refused")).toEqual([
+      { id: 1, error: { code: "internal", message: "Loader for A.name returned 3 for 2 parents", path: "0.name" }, fin: true },
+    ]);
+  });
+
+  it("one alias asked twice with different arguments is refused; asked twice alike it merges, @partial included", async () => {
+    const calls: Call[] = [];
+    expect(await labels(calls).collect({ ops: [{ id: 1, op: "a", args: { id: "a1" }, shape: "{ label(upper: true) label(upper: false) }" }] })).toEqual([
+      { id: 1, error: { code: "invalid_argument", message: "Conflicting selections for label on A" }, fin: true },
+    ]);
+    expect(calls).toEqual([]);
+    // the second mention's @partial applies to the merged selection, so the failed load is an errors entry, not a failed op
+    expect(await labels(calls, 1).collect({ ops: [{ id: 1, op: "a", args: { id: "a1" }, shape: "{ id label(upper: true) label(upper: true) @partial }" }] })).toEqual([
+      { id: 1, data: { $type: "A", id: "a1", label: null }, meta: { cost: 1 }, errors: [{ code: "internal", message: "Internal error", path: "label" }], fin: true },
+    ]);
+  });
+});
+
+describe("scalars and patches on the way out", () => {
+  it("each scalar is written in its wire form, in lists too", async () => {
+    const s = createRayfoldServer({
+      schema: `entity S { id: ID big: Long small: Long huge: Long bigs: [Long] when: Instant day: Date price: Decimal raw: Bytes } query s: S`,
+      resolvers: {
+        Query: {
+          s: () => ({
+            id: "s",
+            big: 2n ** 60n,
+            small: 7,
+            huge: 2 ** 60,
+            bigs: [2n ** 60n, 3],
+            when: new Date("2026-09-13T10:20:30.000Z"),
+            day: new Date("2026-09-13T23:00:00.000Z"),
+            price: 12.5,
+            raw: Uint8Array.of(251, 255),
+          }),
+        },
+      } as never,
+    });
+    expect(await s.collect({ ops: [{ id: 1, op: "s", shape: "{ big small huge bigs when day price raw }" }] })).toEqual([
+      {
+        id: 1,
+        data: { $type: "S", big: "1152921504606846976", small: 7, huge: "1152921504606847000", bigs: ["1152921504606846976", 3], when: "2026-09-13T10:20:30.000Z", day: "2026-09-13", price: "12.5", raw: "-_8" },
+        meta: { cost: 1 },
+        fin: true,
+      },
+    ]);
+  });
+
+  it("an entity met at two places in a command's result is one set patch holding both selections", async () => {
+    const author = { id: "a1", name: "Ann", born: 1929 };
+    const s = createRayfoldServer({
+      schema: `entity Author { id: ID name: String born: Int } entity Book { id: ID author: Author translator: Author } command touch: Book @idempotent(false)`,
+      resolvers: { Command: { touch: () => ({ id: "b1", author, translator: author }) } },
+    });
+    const [f] = await s.collect({ ops: [{ id: 1, op: "touch", shape: "{ id author { id name } translator { id born } }" }] });
+    expect((f as { patch: unknown }).patch).toEqual([
+      { set: "Book:b1", value: { $type: "Book", id: "b1", author: { $ref: "Author:a1" }, translator: { $ref: "Author:a1" } } },
+      { set: "Author:a1", value: { $type: "Author", id: "a1", name: "Ann", born: 1929 } },
+    ]);
+  });
+
+  it("a union or interface value whose $type is not one of its members is refused, not projected as that type", async () => {
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID } entity B { id: ID } entity R { id: ID } union H = A | B object N @interface { id: ID } entity P implements N { id: ID } query h: H query i: N`,
+      resolvers: { Query: { h: () => ({ $type: "R", id: "r" }), i: () => ({ $type: "R", id: "r" }) } },
+    });
+    expect(await s.collect({ ops: [{ id: 1, op: "h" }, { id: 2, op: "i" }] })).toEqual([
+      { id: 1, error: { code: "internal", message: "Union H value at  lacks a valid $type", path: "" }, fin: true },
+      { id: 2, error: { code: "internal", message: "Interface N value at  lacks a valid $type", path: "" }, fin: true },
+    ]);
+  });
+});
+
+describe("a batch counts as in flight until its reader is done with it", () => {
+  /** A server whose batch hook says when the batch has finished running. */
+  const settledServer = () => {
+    const ran = new Signal<true>();
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID bio: String @lazy } query a: A`,
+      resolvers: { Query: { a: () => ({ id: "a", bio: "b" }) } },
+      instrumentation: { batch: async (_info, run) => { const o = await run(); ran.push(true); return o; } },
+    });
+    return { s, ran };
+  };
+
+  it("a reader still reading holds it, however long ago the batch finished running", async () => {
+    const { s, ran } = settledServer();
+    const it = s.execute({ ops: [{ id: 1, op: "a", shape: "{ id bio }" }] })[Symbol.asyncIterator]();
+    expect((await it.next()).value).toEqual({ id: 1, data: { $type: "A", id: "a" }, meta: { cost: 1 } });
+    await ran.atLeast(1, "the batch finished running");
+    await new Promise((r) => setImmediate(r)); // past the settle callback that follows the hook
+    expect(s.inflight).toBe(1); // two frames are still unread
+    while (!(await it.next()).done);
+    expect(s.inflight).toBe(0);
+  });
+
+  it("a reader that stops early lets it go, and a drain waiting on it wakes", async () => {
+    const { s } = settledServer();
+    for await (const f of s.execute({ ops: [{ id: 1, op: "a", shape: "{ id bio }" }] })) {
+      expect(f).toEqual({ id: 1, data: { $type: "A", id: "a" }, meta: { cost: 1 } });
+      break;
+    }
+    await bounded(s.drain({ timeoutMs: 60_000 }), "drain waking once the reader stopped");
+    expect(s.inflight).toBe(0);
+  });
+});

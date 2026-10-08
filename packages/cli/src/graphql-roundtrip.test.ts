@@ -20,29 +20,29 @@ function throughGraphql(t: TypeRef, root = false): string {
 }
 
 describe("a Rayfold schema through GraphQL and back", () => {
-  it("returns every operation with its kind and arguments, and every type with its fields, nullability included", async () => {
-    for (const [name, text] of SCHEMAS) {
-      const { ir } = loadSchema(text);
-      const back = (await irFromGraphql(generateGraphql(ir).sdl)).ir;
-      for (const op of Object.values(ir.ops)) {
-        const returned = back.ops[op.name];
-        expect(returned, `${name}: ${op.name}`).toBeDefined();
-        expect([returned!.kind, typeRefToString(returned!.returns), returned!.args.map((a) => `${a.name}: ${typeRefToString(a.type)}`)], `${name}: ${op.name}`).toEqual([
-          op.kind,
-          throughGraphql(op.returns, true),
-          op.args.map((a) => `${a.name}: ${throughGraphql(a.type)}`),
-        ]);
-      }
-      for (const t of Object.values(ir.types)) {
-        if (t.builtin) continue;
-        const returned = back.types[t.name];
-        expect(returned, `${name}: ${t.name}`).toBeDefined();
-        if (t.kind === "enum") expect(returned, `${name}: ${t.name}`).toMatchObject({ kind: "enum", values: t.values.map((v) => expect.objectContaining({ name: v.name })) });
-        if (t.kind === "union") expect(returned, `${name}: ${t.name}`).toMatchObject({ kind: "union", members: t.members });
-        if ("fields" in t) {
-          const fields = (returned as { fields: FieldDef[] }).fields;
-          expect(fields.map((f) => `${f.name}: ${typeRefToString(f.type)}`), `${name}: ${t.name}`).toEqual(t.fields.map((f) => `${f.name}: ${throughGraphql(f.type)}`));
-        }
+  // one test per schema: together they took longer than one test's bound on a busy runner
+  it.each(SCHEMAS)("%s: returns every operation with its kind and arguments, and every type with its fields, nullability included", async (name, text) => {
+    const { ir } = loadSchema(text);
+    const back = (await irFromGraphql(generateGraphql(ir).sdl)).ir;
+    expect(Object.keys(back.ops).sort(), `${name}: no operation is lost or invented`).toEqual(Object.keys(ir.ops).sort());
+    for (const op of Object.values(ir.ops)) {
+      const returned = back.ops[op.name];
+      expect(returned, `${name}: ${op.name}`).toBeDefined();
+      expect([returned!.kind, typeRefToString(returned!.returns), returned!.args.map((a) => `${a.name}: ${typeRefToString(a.type)}`)], `${name}: ${op.name}`).toEqual([
+        op.kind,
+        throughGraphql(op.returns, true),
+        op.args.map((a) => `${a.name}: ${throughGraphql(a.type)}`),
+      ]);
+    }
+    for (const t of Object.values(ir.types)) {
+      if (t.builtin) continue;
+      const returned = back.types[t.name];
+      expect(returned, `${name}: ${t.name}`).toBeDefined();
+      if (t.kind === "enum") expect(returned, `${name}: ${t.name}`).toMatchObject({ kind: "enum", values: t.values.map((v) => expect.objectContaining({ name: v.name })) });
+      if (t.kind === "union") expect(returned, `${name}: ${t.name}`).toMatchObject({ kind: "union", members: t.members });
+      if ("fields" in t) {
+        const fields = (returned as { fields: FieldDef[] }).fields;
+        expect(fields.map((f) => `${f.name}: ${typeRefToString(f.type)}`), `${name}: ${t.name}`).toEqual(t.fields.map((f) => `${f.name}: ${throughGraphql(f.type)}`));
       }
     }
   });

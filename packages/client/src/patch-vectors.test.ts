@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PatchOp } from "@rayfold/server/protocol";
 import { parseShapeText } from "@rayfold/schema";
-import { RayfoldCache } from "./cache.ts";
+import { RayfoldCache, type MergePolicy, type OptimisticOp } from "./cache.ts";
 
 /**
  * The published `patch/` vectors, run against this cache.
@@ -25,9 +25,15 @@ const doc = JSON.parse(readFileSync(PATH, "utf8")) as {
     patch: PatchOp[];
     expect: unknown;
     stale?: { result: boolean; entities: string[] };
+    merge?: Record<string, MergePolicy>;
+    predict?: OptimisticOp[];
+    refetch?: unknown;
     why?: string;
   }>;
 };
+
+/** Every field a case may carry; one this runner does not know is an expectation it would silently skip. */
+const FIELDS = new Set(["name", "why", "shape", "unheld", "result", "patch", "expect", "stale", "merge", "predict", "refetch"]);
 
 /** Every `Type:id` the initial result mentions, at any depth. */
 function entityKeys(v: unknown, out = new Set<string>()): Set<string> {
@@ -43,14 +49,19 @@ function entityKeys(v: unknown, out = new Set<string>()): Set<string> {
 describe("conformance vectors: applying a patch", () => {
   for (const c of doc.cases) {
     it(c.name, () => {
-      const cache = new RayfoldCache();
+      for (const k of Object.keys(c)) expect(FIELDS.has(k), `${c.name}: no runner for case field "${k}"`).toBe(true);
+      const cache = new RayfoldCache(undefined, (type, field) => c.merge?.[`${type}.${field}`]);
       const key = RayfoldCache.resultKey(doc.op, {}, undefined, undefined);
       // the shape the result was asked with, where it matters to how the result is stored
       const shape = c.shape === undefined ? undefined : parseShapeText(c.shape);
       cache.putResult(key, doc.op, c.result, shape);
+      // a prediction shown over the server's values, as an optimistic command shows one until it settles
+      if (c.predict) cache.addLayer("0123456789abcdef", c.predict);
       // same operation, other arguments: a result the client never stored, so nothing may be found by the op name
       const target = c.unheld ? RayfoldCache.resultKey(doc.op, { page: 2 }, undefined, undefined) : key;
       cache.applyPatch(c.patch, target, shape);
+      // the result's data arriving again: a server value that comes without a set patch
+      if (c.refetch !== undefined) cache.putResult(key, doc.op, c.refetch, shape);
       const why = c.why ?? c.name;
       expect(cache.denormalize(cache.getResult(key)!.data), why).toEqual(c.expect);
       if (c.unheld) expect(cache.getResult(target), `${why}: a result the client did not hold was created`).toBeUndefined();

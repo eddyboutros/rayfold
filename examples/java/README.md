@@ -11,6 +11,7 @@ serves it. Built with Maven.
 | `src/main/java/com/example/bookshop/Auth.java` | Who the caller is, from a signed token (JWT); `devToken` for local runs |
 | `src/main/java/com/example/bookshop/Store.java` | The shelves, in memory |
 | `src/test/java/com/example/bookshop/BookshopTest.java` | Tests over HTTP against a server on a free port |
+| `src/test/java/com/example/bookshop/BookshopUnitTest.java` | Unit tests with `rayfold-test`: the server called in the test's process, with no network |
 
 ## Prerequisites
 

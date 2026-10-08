@@ -196,6 +196,9 @@ class SecurityTest {
         }
         problem(send(s, "POST", "/rayfold", buy, "Authorization", "Bearer u1"), 415, "invalid_argument",
             "Content-Type (none) is not accepted; send application/rayfold+json", type = "unsupported_media_type")
+        // an empty header names nothing either, as the TypeScript handler words it
+        problem(send(s, "POST", "/rayfold", buy, "Content-Type", "", "Authorization", "Bearer u1"), 415, "invalid_argument",
+            "Content-Type (none) is not accepted; send application/rayfold+json", type = "unsupported_media_type")
         problem(send(s, "QUERY", "/rayfold", bookQuery, "Content-Type", "text/plain"), 415, "invalid_argument",
             "Content-Type text/plain is not accepted; send application/rayfold+json", type = "unsupported_media_type")
         assertEquals(emptyMap(), s.store.calls.toMap(), "neither the command nor the query ran")

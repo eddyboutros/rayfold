@@ -35,7 +35,7 @@ data class ServerIdentity(
     val version: String? = null,
     /** Small and free-form: region, zone, tenant. */
     val labels: Map<String, String> = emptyMap(),
-    /** When this process started, epoch milliseconds. */
+    /** When this process started, epoch milliseconds. A server given a clock reads it from that clock instead. */
     val startedAt: Long = System.currentTimeMillis(),
 )
 
@@ -52,7 +52,8 @@ class RayfoldServer(
     val ir: RayfoldSchemaIR,
     resolvers: Resolvers,
     val options: BatchOptions = BatchOptions(),
-    idempotency: IdempotencyStore = MemoryIdempotencyStore(),
+    /** Where command results are kept for idempotent retries. Without one they are kept in memory, expiring by [now]. */
+    idempotency: IdempotencyStore? = null,
     /** Hooks around batches, ops and loaders, for tracing (module rayfold-opentelemetry makes them spans). */
     instrumentation: Instrumentation = Instrumentation.NONE,
     /** Where to record which members each client asks for (spec 11). Without one, nothing is recorded. */
@@ -65,8 +66,18 @@ class RayfoldServer(
     identity: ServerIdentity = ServerIdentity(),
     /** Where to count what this server does. Without one, nothing is counted. */
     val counters: Counters? = null,
+    /**
+     * The server's clock, epoch milliseconds, for a test to set: what policies read as `now()` and resolvers as
+     * [RayfoldContext.now], when the records of the default idempotency store expire, the time on usage records, and
+     * [ServerIdentity.startedAt] with [uptimeMs]. Without one it is the system clock. A store the server is given
+     * keeps the clock it was built with.
+     */
+    now: (() -> Long)? = null,
 ) {
     init { ir.checkFormats() }
+
+    /** The clock this server reads, epoch milliseconds. */
+    val now: () -> Long = now ?: System::currentTimeMillis
 
     /** The last message the relay refused to carry, if any: the other servers missed it. */
     @Volatile
@@ -113,18 +124,21 @@ class RayfoldServer(
     /** Everyone waiting in [drain] for the last batch in flight to end. */
     private val idle = ConcurrentLinkedQueue<CompletableDeferred<Unit>>()
 
-    /** Who this server is. Before this, two servers in one fleet were indistinguishable. */
-    val identity: ServerIdentity = identity
+    /**
+     * Who this server is. Before this, two servers in one fleet were indistinguishable. A server given a clock started
+     * by that clock, so that [uptimeMs] is never the gap between two clocks.
+     */
+    val identity: ServerIdentity = if (now == null) identity else identity.copy(startedAt = now())
 
     /** Milliseconds since this process started. */
-    val uptimeMs: Long get() = System.currentTimeMillis() - identity.startedAt
+    val uptimeMs: Long get() = now() - identity.startedAt
 
     /** Extensions served by endpoints mounted beside this server, such as `mcp` by [RayfoldMcp]; the manifest lists them. */
     val mounted: MutableSet<String> = ConcurrentHashMap.newKeySet()
     val views = Views(ir, options.maxInlineShapes)
     private val executor = Executor(ir, resolvers, views, instrumentation, usage)
     private val cost = Cost(ir, views)
-    private val runner = BatchRunner(ir, executor, views, cost, idempotency, events, options, changes, instrumentation, usage, drainer, counters)
+    private val runner = BatchRunner(ir, executor, views, cost, idempotency ?: MemoryIdempotencyStore(now = this.now), events, options, changes, instrumentation, usage, drainer, counters, this.now)
 
     /** sha256 of the canonical IR: the hash `@rayfold/schema` computes for the same schema ([SchemaText.hash]). */
     val hash: String by lazy { SchemaText.hash(ir) }

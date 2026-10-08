@@ -169,9 +169,10 @@ interface Entry {
 const SEP = String.fromCharCode(0);
 
 /**
- * In-memory idempotency records, for one server. Records expire after `ttlMs`; expired ones are dropped on read and
- * swept on every write, and past `maxEntries` the oldest go first, so memory stays bounded however many commands
- * arrive. A key claimed by a running command is never swept; a claim whose lease ran out with nothing recorded is.
+ * In-memory idempotency records, for one server. A record is kept while it is younger than `ttlMs` and has expired
+ * at that age exactly, as in every other store (spec 03 section 4). Expired ones are dropped on read and swept on
+ * every write, and past `maxEntries` the oldest go first, so memory stays bounded however many commands arrive. A
+ * key claimed by a running command is never swept; a claim whose lease ran out with nothing recorded is.
  */
 export class MemoryIdempotencyStore implements IdempotencyStore {
   private readonly map = new Map<string, Entry>();
@@ -184,7 +185,7 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
 
   private live(k: string): Entry | undefined {
     const e = this.map.get(k);
-    if (e?.record && this.now() - e.at > this.ttlMs) {
+    if (e?.record && this.now() - e.at >= this.ttlMs) {
       this.map.delete(k);
       return undefined;
     }
@@ -235,7 +236,7 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
         e.wake?.();
         continue;
       }
-      if (this.map.size > this.maxEntries || t - e.at > this.ttlMs) this.map.delete(old);
+      if (this.map.size > this.maxEntries || t - e.at >= this.ttlMs) this.map.delete(old);
       else break;
     }
   }

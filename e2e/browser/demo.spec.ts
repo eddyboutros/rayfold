@@ -43,8 +43,16 @@ async function openBookInStock(page: Page, q: string): Promise<string> {
 test("sign in, search the real catalogue, and open a book with its live stock", async ({ page }, info) => {
   await signIn(page, `reader-${info.project.name}`);
   const id = await openBookInStock(page, "frankenstein");
+  const titles = await page.locator("#results li button").allInnerTexts();
+  expect(titles.filter((t) => !t.toLowerCase().includes("frankenstein")), "every result matches the whole query").toEqual([]);
   await expect(page.locator("#author")).not.toBeEmpty();
   await expect(page.locator("#stock")).toHaveText(((await state(page, id)).stock ?? 0).toLocaleString("en-US"));
+
+  // a query nothing matches finds nothing, so the search sends the query as typed
+  await page.fill("#q", "xfrankenstein");
+  await page.click("#search button");
+  await expect(page.locator("#count")).toHaveText("0 books match");
+  await expect(page.locator("#results li")).toHaveCount(0);
 });
 
 test("a purchase in one tab reaches the other tab over WebSocket, and paying moves the order on", async ({ browser }, info) => {

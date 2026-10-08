@@ -36,5 +36,13 @@ describe("verdicts", () => {
     report.addMethod({ method: "GET", title: "t", operation: "o", exchanges: { REST: [], GraphQL: [], Rayfold: [] }, facts: [fact("a", { REST: 100, GraphQL: 100, Rayfold: 99.5 }), fact("b", { REST: 3, GraphQL: 1, Rayfold: 1 })] });
     expect(report.methods[0]!.facts.map((f) => f.verdict)).toEqual(["tie", "tie"]);
     expect(report.methods[0]!.verdict).toBe("tie");
+    // one fact behind outweighs any lead; a lead with the rest level is a lead
+    report.addMethod({ method: "PUT", title: "t", operation: "o", exchanges: { REST: [], GraphQL: [], Rayfold: [] }, facts: [fact("a", { REST: 2, GraphQL: 2, Rayfold: 1 }), fact("b", { REST: 1, GraphQL: 1, Rayfold: 2 })] });
+    report.addMethod({ method: "POST", title: "t", operation: "o", exchanges: { REST: [], GraphQL: [], Rayfold: [] }, facts: [fact("a", { REST: 2, GraphQL: 2, Rayfold: 1 }), fact("b", { REST: 1, GraphQL: 1, Rayfold: 1 })] });
+    expect(report.methods.map((m) => [m.facts.map((f) => f.verdict), m.verdict])).toEqual([
+      [["tie", "tie"], "tie"],
+      [["lead", "behind"], "behind"],
+      [["lead", "tie"], "lead"],
+    ]);
   });
 });

@@ -108,4 +108,42 @@ class RayfoldCacheTest {
         assertEquals(4000, c.size)
         assertEquals(o("""{"#type":"Book","id":"t7-499","n":500}"""), c.get("Book:t7-499"))
     }
+    @Test
+    fun `a list patch removes its old positions from the end first, then inserts, and the result then holds the new rows`() {
+        val c = RayfoldCache(now = { 0 })
+        c.putResult("k", "books", j("""[{"#type":"Book","id":"a"},{"#type":"Book","id":"b"},{"#type":"Book","id":"c"}]"""))
+        c.applyPatch(listOf(o("""{"list":"","del":[0,2],"ins":[{"at":1,"value":{"#type":"Book","id":"d","stock":1}}]}""")), "k")
+        assertEquals(j("""[{"#type":"Book","id":"b"},{"#type":"Book","id":"d","stock":1}]"""), c.getResult("k")?.let { c.denormalize(it.data) })
+        // the inserted row is the result's now: a later change to it is a change to the result
+        assertTrue("Book:d" in (c.getResult("k")?.keys ?: emptySet<String>()))
+        val events = mutableListOf<Set<String>>()
+        c.subscribe { events.add(it.ops) }
+        c.applyPatch(listOf(o("""{"set":"Book:d","value":{"stock":2}}""")))
+        assertEquals(listOf(setOf("books")), events)
+    }
+
+    @Test
+    fun `an entity a patch at a path brings into a result is the result's from then on`() {
+        val c = RayfoldCache(now = { 0 })
+        c.putResult("k", "shelf", j("""{"name":"front"}"""))
+        c.applyPatch(listOf(o("""{"at":"","value":{"pick":{"#type":"Book","id":"z","stock":1}}}""")), "k")
+        assertEquals(setOf("Book:z"), c.getResult("k")?.keys?.toSet())
+        val events = mutableListOf<Set<String>>()
+        c.subscribe { events.add(it.ops) }
+        c.applyPatch(listOf(o("""{"set":"Book:z","value":{"stock":2}}""")))
+        assertEquals(listOf(setOf("shelf")), events, "a change to it is a change to the result")
+    }
+
+    @Test
+    fun `a transaction inside another reports once, when the outer one ends`() {
+        val c = RayfoldCache(now = { 0 })
+        val events = mutableListOf<Set<String>>()
+        c.subscribe { events.add(it.keys) }
+        c.transaction {
+            c.applyPatch(listOf(o("""{"set":"Book:b1","value":{"stock":1}}""")))
+            c.transaction { c.applyPatch(listOf(o("""{"set":"Book:b2","value":{"stock":2}}"""))) }
+            assertEquals(emptyList(), events, "nothing reported before the outer transaction ends")
+        }
+        assertEquals(listOf(setOf("Book:b1", "Book:b2")), events)
+    }
 }

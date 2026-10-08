@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const srcDir = fileURLToPath(new URL(".", import.meta.url));
 const ENTRY_NAME = "entry.ts";
@@ -76,8 +76,15 @@ export async function main() {
 `;
 
 describe("the server core in a browser", () => {
+  // Bundled once, with room for esbuild to start on a loaded machine: that start-up is setup, not what is tested, and
+  // inside the 5 s test timeout it failed the first test whenever the machine was busy.
+  let core: { code: string; inputs: string[] };
+  beforeAll(async () => {
+    core = await bundle(ENTRY);
+  }, 60_000);
+
   it("bundles for the browser from sources that use nothing Node-only", async () => {
-    const { inputs } = await bundle(ENTRY);
+    const { inputs } = core;
     // esbuild names the stdin entry after its directory, and it is not a file on disk
     const ours = inputs.filter((p) => !p.endsWith(ENTRY_NAME) && !p.includes("node_modules"));
     expect(ours).toEqual(expect.arrayContaining([expect.stringMatching(/server\/src\/batch\.ts$/), expect.stringMatching(/schema\/src\/canonical\.ts$/)]));
@@ -86,7 +93,7 @@ describe("the server core in a browser", () => {
   });
 
   it("answers a query, applies a command and enforces a capability with only browser globals", async () => {
-    const { code } = await bundle(ENTRY);
+    const { code } = core;
     const result = (await runInPage(code)) as { read: unknown[]; renamed: unknown[]; narrowed: unknown[] };
     expect(result.read).toMatchObject([{ id: 1, data: { id: "f1", name: "a.txt", data: "aGVsbG8" } }]);
     expect(result.renamed).toMatchObject([{ id: 1, ok: { id: "f1", name: "b.txt" } }]);

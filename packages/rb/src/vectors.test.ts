@@ -27,16 +27,31 @@ const hex = (b: Uint8Array): string => [...b].map((n) => n.toString(16).padStart
 const files = readdirSync(ROOT)
   .filter((f) => f.endsWith(".json"))
   .sort()
-  .map((f) => ({ file: f, doc: JSON.parse(readFileSync(join(ROOT, f), "utf8")) as { dictionary: string[]; values: ValueCase[]; refused?: Array<{ name: string; bytes: string; why: string }> } }));
+  .map((f) => ({
+    file: f,
+    doc: JSON.parse(readFileSync(join(ROOT, f), "utf8")) as {
+      dictionary: string[];
+      values: ValueCase[];
+      nonFinite?: Array<{ name: string; double: string; bytes: string; why?: string }>;
+      refused?: Array<{ name: string; bytes: string; why: string }>;
+    },
+  }));
+/** Every member a binary file may have; one this runner does not know is an expectation it would silently skip. */
+const MEMBERS = new Set(["name", "about", "source", "rule", "dictionary", "values", "nonFinite", "refused"]);
 const bytesOf = (h: string): Uint8Array => Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
 
 describe("conformance vectors: binary", () => {
   it("there are vectors to run", () => {
-    expect(files.length).toBeGreaterThan(0);
+    // by name, so a file renamed or dropped is noticed rather than leaving this runner with less to check
+    expect(files.map((f) => [f.file, f.doc.values.length > 0])).toEqual([["values-and-dictionary.json", true]]);
   });
 
   for (const { file, doc } of files) {
     describe(file, () => {
+      it("has no member this runner does not check", () => {
+        for (const k of Object.keys(doc)) expect(MEMBERS.has(k), `no runner for "${k}"`).toBe(true);
+      });
+
       // no schema, so the dictionary is exactly the protocol keys the vector lists
       const codec = new RbCodec();
 
@@ -55,6 +70,16 @@ describe("conformance vectors: binary", () => {
           expect(hex(codec.encode(value)), c.why ?? c.name).toBe(c.bytes);
           expect(codec.decode(codec.encode(value)), "reads back as what went in").toEqual(value);
           expect(codec.decode(bytesOf(c.bytes)), "and the bytes as written read as the value").toEqual(value);
+        });
+      }
+
+      for (const c of doc.nonFinite ?? []) {
+        it(c.name, () => {
+          // JSON cannot hold these, so the case names the double instead of giving JSON text
+          expect(["NaN", "Infinity", "-Infinity"], `${c.name}: no double called ${c.double}`).toContain(c.double);
+          expect(hex(codec.encode(Number(c.double))), c.why ?? c.name).toBe(c.bytes);
+          expect(hex(codec.encode([Number(c.double)])), `${c.name}, inside a list`).toBe(`0701${c.bytes}`);
+          expect(codec.decode(bytesOf(c.bytes)), "and reads back as null").toBeNull();
         });
       }
 

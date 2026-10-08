@@ -13,10 +13,15 @@ builds the same server with annotated beans.
 
 ## 1. Create the project
 
-A Maven project with the Rayfold dependency, Nimbus to verify tokens, JUnit for the tests, and the exec plugin that runs
-the server. `pom.xml`:
+A Maven project with the Rayfold dependency, Nimbus to verify tokens, JUnit and `rayfold-test` for the tests, and the
+exec plugin that runs the server. `pom.xml`:
 
 <<< @/../examples/java/pom.xml{xml}
+
+::: info Next release
+`rayfold-test` and the server's `.clock(...)` arrive in the next release. On 0.2.1, leave out the `rayfold-test`
+dependency, and in `Bookshop.java` the `server(store, now)` overload with its `.clock(now)` line.
+:::
 
 ## 2. Describe the API
 

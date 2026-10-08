@@ -47,7 +47,9 @@ Example:
 * `alias: name` renames the field in the output. Two selections of the same field with different args MUST use
   aliases.
 * Spreads are flattened. A named-view spread copies the view's items. A type-condition spread contributes
-  only when the concrete `$type` matches.
+  only when the concrete `$type` matches: is that type, or implements that interface, at a union position as at an
+  interface one. At a union position, items outside a type condition (fields, spreads, `@defer` blocks) are asked of
+  every member.
 * `@defer` blocks are resolved after the enclosing frame is sent and delivered as `patch`-free `data`
   frames addressed by `at` ([04 §3](04-frames-and-transport.md)). Fields annotated `@lazy` in the schema
   behave as if wrapped in `@defer` unless the shape marks them `@eager`.

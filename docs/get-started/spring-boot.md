@@ -13,9 +13,13 @@ calling. The finished project is [examples/spring-boot](../../examples/spring-bo
 ## 1. Add the starter
 
 Start from a Spring Boot 4 project, for example from start.spring.io, and add the Rayfold starter, with Spring's
-OAuth2 resource server for the tokens in step 4:
+OAuth2 resource server for the tokens in step 4, and `rayfold-test` for the unit tests:
 
 <<< @/../examples/spring-boot/pom.xml{xml}
+
+::: info Next release
+`rayfold-test` arrives in the next release. On 0.2.1, leave out its dependency.
+:::
 
 ## 2. Describe the API
 

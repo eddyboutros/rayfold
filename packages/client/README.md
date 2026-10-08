@@ -52,4 +52,31 @@ the queue for the life of the tab and `localStorageQueue()` across reloads.
 
 For React, use `@rayfold/react`.
 
+## Testing
+
+`createLocalTransport(server, viewer)` runs the client against a server in the same process, so a unit test needs no
+network. `collect` from `@rayfold/client/testing` waits for what a watch, a live query or a stream reports next,
+without sleeping:
+
+> **Next release.** `@rayfold/client/testing` is not in 0.2.1; it arrives in the next release. `createLocalTransport` is
+> in 0.2.1.
+
+```ts
+import { RayfoldClient, createLocalTransport } from "@rayfold/client";
+import { collect } from "@rayfold/client/testing";
+
+const client = new RayfoldClient({ transport: createLocalTransport(server, () => ({ id: "u1" })) });
+
+const stock = collect<Book>((next, fail) => client.live("book", { id: "b1" }, {}, next, fail));
+expect(await stock.next("the stock when the query opened")).toMatchObject({ stock: 3 });
+await client.command("restock", { id: "b1", qty: 5 });
+expect(await stock.next("the restock")).toMatchObject({ stock: 8 });
+stock.stop();
+```
+
+Each `next()` hands out one value, in the order they were reported. A value that does not come within 4 seconds fails
+the call with the label it was given and what was seen until then; `next(label, ms)` sets another bound. For a stream,
+return it from the function, with the signal `collect` passes as its third argument:
+`collect((_next, _fail, signal) => client.stream("ticks", {}, { signal }))`.
+
 Apache-2.0.

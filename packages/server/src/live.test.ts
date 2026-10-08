@@ -5,6 +5,7 @@ import { createRayfoldServer, type Resolvers } from "./index.ts";
 import { RayfoldError, type Frame } from "./protocol.ts";
 import { MemoryCounters } from "./counters.ts";
 import { diffResults } from "./live.ts";
+import { ok } from "./executor.ts";
 import { parseShapeText } from "@rayfold/schema";
 
 type Bookstore = ReturnType<typeof createBookstore>;
@@ -162,6 +163,31 @@ describe("live queries", () => {
     await live.stop();
     expect(live.frames.slice(2)).toEqual([{ id: 1, error: { code: "canceled", message: "Canceled" }, fin: true }]);
     expect(bs.server.changes.size).toBe(0);
+  });
+
+  it("a live query's deferred part comes after its first result, as it does for any query, and once", async () => {
+    // bio is @lazy, so deferred: the first frame must not already carry it, or it was never deferred at all
+    const live = startLive([{ id: 1, op: "author", args: { id: "a1" }, shape: "{ id name bio }", live: true }]);
+    await live.until(2);
+    expect(live.frames.slice(0, 2)).toEqual([
+      { id: 1, data: { $type: "Author", id: "a1", name: "Ursula K. Le Guin" }, meta: { cost: 1 } },
+      { id: 1, at: "", data: { bio: "American author of speculative fiction." } },
+    ]);
+    // the folded result still counts the deferred part, so a change to it reaches the query
+    bs.store.authors.set("a1", { ...bs.store.authors.get("a1")!, bio: "Wrote Earthsea." });
+    bs.server.changes.publish({ keys: new Set(["Author:a1"]), ops: new Set() });
+    await live.until(3);
+    expect(live.frames[2]).toEqual({ id: 1, patch: [{ set: "Author:a1", value: { bio: "Wrote Earthsea." } }] });
+    await live.stop();
+  });
+
+  it("guard: a one-shot query delivers its deferred part the same way, then ends", async () => {
+    const frames = await bs.server.collect({ ops: [{ id: 1, op: "author", args: { id: "a1" }, shape: "{ id name bio }" }] });
+    expect(frames).toEqual([
+      { id: 1, data: { $type: "Author", id: "a1", name: "Ursula K. Le Guin" }, meta: { cost: 1 } },
+      { id: 1, at: "", data: { bio: "American author of speculative fiction." } },
+      { id: 1, fin: true },
+    ]);
   });
 
   it("a re-run loads a field again rather than answering it from the batch's memo", async () => {
@@ -402,6 +428,84 @@ describe("a live query's re-runs", () => {
   });
 });
 
+describe("which changes wake a live query", () => {
+  /** A live query over `server`; `next()` waits for the next frame, `stop()` ends it and checks it unsubscribed. */
+  function open(server: ReturnType<typeof createRayfoldServer>, op: Record<string, unknown>) {
+    const ac = new AbortController();
+    const frames = new Signal<Frame>();
+    const done = (async () => {
+      for await (const f of server.execute({ ops: [{ id: 1, live: true, ...op } as never] }, { signal: ac.signal })) frames.push(f);
+    })();
+    return {
+      frames,
+      stop: async () => {
+        ac.abort();
+        await bounded(done, "the live query ending on abort");
+        expect(server.changes.size).toBe(0);
+      },
+    };
+  }
+  const change = (server: ReturnType<typeof createRayfoldServer>, ...keys: string[]) => server.changes.publish({ keys: new Set(keys), ops: new Set() });
+
+  it("a new entity of a type the result holds below its root may join it, so it re-runs", async () => {
+    const books = [{ id: "b1" }];
+    const s = createRayfoldServer({
+      schema: `entity Shelf { id: ID books: [Book] } entity Book { id: ID } query shelf: Shelf`,
+      resolvers: { Query: { shelf: () => ({ id: "s1", books: [...books] }) } },
+    });
+    const live = open(s, { op: "shelf", shape: "{ id books { id } }" });
+    await live.frames.atLeast(1, "the first answer");
+    books.push({ id: "b9" });
+    change(s, "Book:b9"); // in no read set: only its type says it may belong
+    await live.frames.atLeast(2, "the re-run the new book asked for");
+    expect(live.frames.items).toEqual([
+      { id: 1, data: { $type: "Shelf", id: "s1", books: [{ $type: "Book", id: "b1" }] }, meta: { cost: 2 } },
+      { id: 1, patch: [{ set: "Book:b9", value: { $type: "Book", id: "b9" } }, { set: "Shelf:s1", value: { books: [{ $ref: "Book:b1" }, { $ref: "Book:b9" }] } }] },
+    ]);
+    await live.stop();
+  });
+
+  it("an interface position wakes for a new entity of a type that implements it", async () => {
+    const people = [{ $type: "Person", id: "p1", name: "Ada" }];
+    const s = createRayfoldServer({
+      schema: `object Named @interface { id: ID name: String } entity Person implements Named { id: ID name: String } entity Robot { id: ID } query people: [Named]`,
+      resolvers: { Query: { people: () => [...people] } },
+    });
+    const live = open(s, { op: "people", shape: "{ id name }" });
+    await live.frames.atLeast(1, "the first answer");
+    change(s, "Robot:r1"); // guard: a type that cannot appear here wakes nothing; the next frame shows it
+    people.push({ $type: "Person", id: "p2", name: "Bo" });
+    change(s, "Person:p2");
+    await live.frames.atLeast(2, "the re-run the new person asked for");
+    expect(live.frames.items[1]).toEqual({ id: 1, patch: [{ list: "", ins: [{ at: 1, value: { $type: "Person", id: "p2", name: "Bo" } }] }] });
+    await live.stop();
+  });
+
+  it("listens for what the result holds after each re-run, not what it held first", async () => {
+    // an entity this deep is past what the query watches by type, so only its key, in the read set, hears it
+    let person = { id: "p1", name: "Ada" };
+    const s = createRayfoldServer({
+      schema: `object L0 { n: L1 } object L1 { n: L2 } object L2 { n: L3 } object L3 { n: L4 } object L4 { p: Person } entity Person { id: ID name: String } query deep: L0`,
+      resolvers: { Query: { deep: () => ({ n: { n: { n: { n: { p: { ...person } } } } } }) } },
+    });
+    const at = (p: unknown) => ({ n: { n: { n: { n: { p } } } } });
+    const live = open(s, { op: "deep", shape: "{ n { n { n { n { p { id name } } } } } }" });
+    await live.frames.atLeast(1, "the first answer");
+    person = { id: "p2", name: "Bo" };
+    change(s, "Person:p1");
+    await live.frames.atLeast(2, "the re-run that found p2");
+    person = { id: "p2", name: "Bea" };
+    change(s, "Person:p2");
+    await live.frames.atLeast(3, "the change to p2, heard because p2 is now in the result");
+    expect(live.frames.items).toEqual([
+      { id: 1, data: at({ $type: "Person", id: "p1", name: "Ada" }), meta: { cost: 6 } },
+      { id: 1, data: at({ $type: "Person", id: "p2", name: "Bo" }), meta: { cost: 6 } },
+      { id: 1, patch: [{ set: "Person:p2", value: { name: "Bea" } }] },
+    ]);
+    await live.stop();
+  });
+});
+
 describe("@live(false)", () => {
   const SCHEMA = `
 entity Hit { id: ID  title: String }
@@ -431,5 +535,60 @@ query hits: [Hit]
     await bounded(done, "the live hits query ending on abort");
     // guard: nor is it a refusal of the query itself, which still answers once
     expect(await server().collect({ ops: [{ id: 1, op: "search", args: { q: "x" }, shape: "{ id }" }] }, {})).toEqual([{ id: 1, data: [{ $type: "Hit", id: "h1" }], meta: { cost: 1 }, fin: true }]);
+  });
+});
+
+describe("diffResults, in its corners", () => {
+  const book = (id: string, extra: Record<string, unknown> = {}) => ({ $type: "Book", id, ...extra });
+
+  it("an entity met at two places is one entity: a change seen at either place is a patch", () => {
+    const prev = { a: book("b1", { title: "T" }), b: book("b1", { stock: 1 }) };
+    expect(diffResults(prev, { a: book("b1", { title: "U" }), b: book("b1", { stock: 1 }) })).toEqual({ patch: [{ set: "Book:b1", value: { title: "U" } }] });
+  });
+
+  it("a plain object that lost a field is resent whole; one whose field changed is patched in place (guard)", () => {
+    const pad = "x".repeat(200); // large enough that describing a change costs less than resending it
+    expect(diffResults({ o: { a: pad, b: 2 } }, { o: { a: pad } })).toEqual({ data: { o: { a: pad } } });
+    expect(diffResults({ o: { a: pad, b: 2 } }, { o: { a: pad, b: 3 } })).toEqual({ patch: [{ at: "o", value: { b: 3 } }] });
+  });
+
+  it("rows removed from the end of a list are each a deletion", () => {
+    expect(diffResults({ items: [book("1"), book("2"), book("3")] }, { items: [book("1")] })).toEqual({ patch: [{ list: "items", del: [1, 2] }] });
+  });
+
+  it("plain values in a list are told apart by their content", () => {
+    const tags = ["a", "b", "c", "d"].map((t) => t.repeat(40));
+    expect(diffResults({ tags }, { tags: tags.slice(1) })).toEqual({ patch: [{ list: "tags", del: [0] }] });
+  });
+
+  it("an aliased field of a plain object is the object's own, and changes as an `at` patch", () => {
+    const shape = parseShapeText("{ o { n al: n pad } }");
+    const pad = "x".repeat(200);
+    expect(diffResults({ o: { n: 1, al: 1, pad } }, { o: { n: 2, al: 2, pad } }, shape)).toEqual({ patch: [{ at: "o", value: { n: 2, al: 2 } }] });
+  });
+
+  it("with a shape, a structure that cannot be patched resends the whole result, its selection's own fields included", () => {
+    const shape = parseShapeText("{ b { id left: stock } o { a } }");
+    const b = { $type: "Book", id: "b1", left: 3 };
+    const next = { b, o: { a: 1, z: 2 } }; // a plain object that gained a field
+    expect(diffResults({ b, o: { a: 1 } }, next, shape)).toEqual({ data: next });
+  });
+});
+
+describe("what a command's patch tells live queries", () => {
+  it("a del names the entity, an invOp names the operation, and both are heard", async () => {
+    const s = createRayfoldServer({
+      schema: `entity Book { id: ID } command drop(id: ID): Book? @idempotent(false) command touch: Book? @idempotent(false)`,
+      resolvers: {
+        Command: {
+          drop: (a: { id: string }) => ok(null, { patch: [{ del: `Book:${a.id}` }] }),
+          touch: () => ok(null, { patch: [{ invOp: ["books"] }, { inv: ["Book:b2"] }] }),
+        },
+      } as never,
+    });
+    const heard: Array<{ keys: string[]; ops: string[] }> = [];
+    s.changes.subscribe((c) => heard.push({ keys: [...c.keys], ops: [...c.ops] }));
+    await s.collect({ ops: [{ id: 1, op: "drop", args: { id: "b1" } }, { id: 2, op: "touch" }] });
+    expect(heard).toEqual([{ keys: ["Book:b1"], ops: [] }, { keys: ["Book:b2"], ops: ["books"] }]);
   });
 });

@@ -30,7 +30,17 @@ export interface Case {
   calls?: Record<string, number>;
   /** Run this many times in sequence against the same store (idempotency cases). */
   repeat?: number;
+  /**
+   * Read only the first this many frames, then stop reading, which cancels the batch: for a batch that does not end
+   * on its own, such as one holding a live query.
+   */
+  take?: number;
 }
+
+/** Every member a fixture, its options and its cases may carry. A runner fails on any other rather than ignoring it. */
+export const FIXTURE_KEYS = ["name", "schema", "ir", "data", "resolvers", "options", "cases"];
+export const OPTION_KEYS = ["budget", "maxDepth", "trustedShapes", "registerShapes"];
+export const CASE_KEYS = ["name", "viewer", "request", "frames", "calls", "repeat", "take"];
 
 /** Value templates: "$args.x.y", "$viewer.id", "$parent.field", "$row.field", literals. */
 type Tmpl = unknown;
@@ -40,7 +50,8 @@ export interface QuerySpec {
   where?: Record<string, Tmpl>;
   /** "one" returns the first match or null; "page" returns a Page from $args.page; "list" returns all matches */
   mode: "one" | "page" | "list";
-  pageArg?: string; // default "page"
+  /** default "page"; "" reads `first` and `after` from the arguments themselves, for a page that takes them directly */
+  pageArg?: string;
 }
 
 export interface FieldSpec {
@@ -75,8 +86,29 @@ export interface FixtureStore {
   nextId: number;
 }
 
+/**
+ * A data row may hold `{ "$number": "NaN" | "Infinity" | "-Infinity" }`: a value a resolver can produce and JSON
+ * cannot hold. Seeding turns each into that number.
+ */
 export function seedStore(f: Fixture): FixtureStore {
-  return { tables: structuredClone(f.data), calls: {}, nextId: 1 };
+  return { tables: numbers(structuredClone(f.data)) as FixtureStore["tables"], calls: {}, nextId: 1 };
+}
+
+function numbers(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(numbers);
+  if (!v || typeof v !== "object") return v;
+  const o = v as Record<string, unknown>;
+  if ("$number" in o) {
+    const n = ({ NaN: NaN, Infinity: Infinity, "-Infinity": -Infinity } as Record<string, number>)[String(o["$number"])];
+    if (n === undefined || Object.keys(o).length !== 1) throw new Error(`fixture: no such number ${JSON.stringify(o)}`);
+    return n;
+  }
+  return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, numbers(x)]));
+}
+
+/** What a page reads its size and cursor from: the argument `pageArg` names (default "page"), or the arguments themselves for "". */
+function pageArgs(args: Record<string, unknown>, pageArg: string | undefined): never {
+  return (pageArg === "" ? args : args[pageArg ?? "page"]) as never;
 }
 
 function tmpl(v: Tmpl, env: { args?: unknown; viewer?: unknown; parent?: unknown; row?: unknown }): unknown {
@@ -129,7 +161,7 @@ export function fixtureResolvers(f: Fixture, store: FixtureStore): Resolvers {
       const rows = table(spec.from).filter((row) => matches(row, spec.where, env));
       if (spec.mode === "one") return rows[0] ?? null;
       if (spec.mode === "list") return rows;
-      return page(rows, args[spec.pageArg ?? "page"] as never);
+      return page(rows, pageArgs(args, spec.pageArg));
     };
   }
   for (const [type, fields] of Object.entries(f.resolvers.fields ?? {})) {
@@ -142,7 +174,7 @@ export function fixtureResolvers(f: Fixture, store: FixtureStore): Resolvers {
           const hits = rows.filter((row) => String(row[spec.match]) === String(p[spec.key]));
           if (spec.mode === "one") return hits[0] ?? null;
           if (spec.mode === "list") return hits;
-          return page(hits, args[spec.pageArg ?? "page"] as never);
+          return page(hits, pageArgs(args, spec.pageArg));
         });
       }) as never;
     }

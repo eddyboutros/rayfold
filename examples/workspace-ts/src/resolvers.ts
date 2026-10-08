@@ -74,7 +74,8 @@ export function workspaceResolvers(store: Store): Resolvers {
       board: (args: { projectId: string }) => {
         count(store, "Query.board");
         const project = store.projects.get(args.projectId);
-        if (!project) return null;
+        // the schema promises a board, so an unknown project is said to be one rather than answered with null
+        if (!project) throw new RayfoldError("not_found", `Project ${args.projectId} not found`);
         return { project, columns: boardColumns(store, project.id, BOARD_STATES) };
       },
       issue: (args: { id: string }) => {

@@ -10,7 +10,8 @@ stacks line by line.
 - `src/bookshop.ts`: builds the server from those and puts the explorer beside it
 - `src/server.ts`: starts it on port 4000
 - `src/client.ts`: reads a book, buys a copy, handles a sold-out book
-- `src/bookshop.test.ts`: the same flows as tests
+- `src/bookshop.test.ts`: the same flows as tests, over HTTP
+- `src/bookshop.unit.test.ts`: the shop tested with no network, on a server in the test's own process
 - `src/copies.test.ts`: proves every stack's copy of the schema is byte for byte the same
 
 ## Run it

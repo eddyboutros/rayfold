@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { Capabilities, capabilityAllows } from "./capability.ts";
 
@@ -10,8 +11,10 @@ describe("capability tokens (spec 06 section 6)", () => {
   it("speaks for a viewer and names what its holder may call", () => {
     const caps = new Capabilities({ secret: SECRET, now: at(T0) });
     const token = caps.mint({ id: "u1", role: "customer" }, { ops: ["book", "books"], ttlMs: 60_000, iss: "checkout" });
-    expect(caps.verify(token)).toMatchObject({ viewer: { id: "u1", role: "customer" }, ops: ["book", "books"], exp: T0 + 60_000, iss: "checkout" });
-    expect(caps.viewerOf(token)).toMatchObject({ id: "u1", role: "customer", caps: { ops: ["book", "books"], exp: T0 + 60_000 } });
+    const jti = caps.verify(token).jti;
+    expect(jti).toMatch(/^[0-9a-f]{32}$/);
+    expect(caps.verify(token)).toEqual({ viewer: { id: "u1", role: "customer" }, ops: ["book", "books"], exp: T0 + 60_000, iss: "checkout", jti });
+    expect(caps.viewerOf(token)).toEqual({ id: "u1", role: "customer", caps: { ops: ["book", "books"], exp: T0 + 60_000, jti, iss: "checkout" } });
   });
 
   it("refuses one that was edited, one signed by someone else, one that expired, and anything else", () => {
@@ -73,10 +76,10 @@ describe("capability tokens (spec 06 section 6)", () => {
     const viewer = caps.viewerOf(caps.mint({ id: "u1", role: "customer" }, { ops: ["book"], ttlMs: 60_000 }));
 
     const allowed = await bs.server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id title }" }] }, { viewer });
-    expect(allowed[0]).toMatchObject({ id: 1, data: { id: "b1" } });
+    expect(allowed).toEqual([{ id: 1, data: { $type: "Book", id: "b1", title: "The Dispossessed" }, meta: { cost: 1 }, fin: true }]);
 
     const refused = await bs.server.collect({ ops: [{ id: 1, op: "author", args: { id: "a1" }, shape: "{ id }" }] }, { viewer });
-    expect(refused[0]).toMatchObject({ id: 1, error: { code: "permission_denied" } });
+    expect(refused).toEqual([{ id: 1, error: { code: "permission_denied", message: "This capability does not allow author()" }, fin: true }]);
 
     // guard: the same op for a viewer holding no capability still runs, so this narrows agents and not everyone
     const plain = await bs.server.collect({ ops: [{ id: 1, op: "author", args: { id: "a1" }, shape: "{ id }" }] }, { viewer: { id: "u1", role: "customer" } });
@@ -88,5 +91,60 @@ describe("capability tokens (spec 06 section 6)", () => {
     expect(capabilityAllows({ id: "u1" }, "book")).toBe(true);
     expect(capabilityAllows({ id: "u1", caps: { ops: ["books"] } }, "book")).toBe(false);
     expect(capabilityAllows({ id: "u1", caps: { ops: ["book"] } }, "book")).toBe(true);
+  });
+});
+
+describe("what a token must be, at each edge", () => {
+  const caps = new Capabilities({ secret: SECRET, now: at(T0) });
+
+  it("a secret shorter than 16 bytes is refused; one of exactly 16 is taken (guard)", () => {
+    expect(() => new Capabilities({ secret: "x".repeat(15) })).toThrow("capability secret must be at least 16 bytes");
+    expect(new Capabilities({ secret: "x".repeat(16), now: at(T0) }).verify(new Capabilities({ secret: "x".repeat(16), now: at(T0) }).mint(null, { ops: [], ttlMs: 1 })).exp).toBe(T0 + 1);
+  });
+
+  it("a life of nothing, or longer than the most allowed, is refused; the most allowed is taken (guard)", () => {
+    expect(() => caps.mint(null, { ops: [], ttlMs: 0 })).toThrow("capability ttl must be between 1 and 3600000 ms");
+    expect(() => caps.mint(null, { ops: [], ttlMs: 3_600_001 })).toThrow("capability ttl must be between 1 and 3600000 ms");
+    expect(caps.verify(caps.mint(null, { ops: [], ttlMs: 3_600_000 })).exp).toBe(T0 + 3_600_000);
+  });
+
+  it("expires at exp exactly, not a millisecond later", () => {
+    const token = caps.mint({ id: "u1" }, { ops: ["book"], ttlMs: 1_000 });
+    expect(new Capabilities({ secret: SECRET, now: at(T0 + 999) }).verify(token).exp).toBe(T0 + 1_000);
+    expect(() => new Capabilities({ secret: SECRET, now: at(T0 + 1_000) }).verify(token)).toThrow("Capability has expired");
+  });
+
+  it("its operations are kept sorted and once each", () => {
+    expect(caps.verify(caps.mint(null, { ops: ["books", "book", "books"], ttlMs: 1_000 })).ops).toEqual(["book", "books"]);
+  });
+
+  it("a genuine payload and signature under another prefix is not a token", () => {
+    const [, payload, signature] = caps.mint({ id: "u1" }, { ops: ["book"], ttlMs: 1_000 }).split(".");
+    expect(() => caps.verify(`rfcap2.${payload}.${signature}`)).toThrow("Not a capability token");
+  });
+
+  it("a payload signed with the secret but shaped like no capability is refused", () => {
+    const sign = (body: unknown) => {
+      const payload = Buffer.from(JSON.stringify(body)).toString("base64url");
+      return `rfcap1.${payload}.${createHmac("sha256", SECRET).update(`rfcap1.${payload}`).digest("base64url")}`;
+    };
+    expect(() => caps.verify(sign({ viewer: null, exp: T0 + 1_000 }))).toThrow("Capability payload is not a capability");
+    expect(() => caps.verify(sign({ viewer: null, ops: [], exp: "later" }))).toThrow("Capability payload is not a capability");
+    expect(caps.verify(sign({ viewer: null, ops: [], exp: T0 + 1_000, jti: "j" })).ops).toEqual([]); // guard
+  });
+
+  it("cannot derive one that is already over", () => {
+    const token = caps.mint(null, { ops: [], ttlMs: 1_000 });
+    expect(() => caps.attenuate(token, { ttlMs: 0 })).toThrow("Cannot derive a capability that has expired");
+  });
+
+  it("a viewer that is no object is kept beside the facts rather than spread into them", () => {
+    const token = caps.mint("service-7", { ops: ["book"], ttlMs: 1_000 });
+    expect(caps.viewerOf(token)).toEqual({ viewer: "service-7", caps: { ops: ["book"], exp: T0 + 1_000, jti: caps.verify(token).jti } });
+  });
+
+  it("a viewer whose caps carry no list of operations holds no capability, and is left to the schema", () => {
+    expect(capabilityAllows({ id: "u1", caps: { tier: "gold" } }, "book")).toBe(true);
+    expect(capabilityAllows({ id: "u1", caps: { ops: "book" } }, "book")).toBe(true);
   });
 });

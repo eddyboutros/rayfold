@@ -632,3 +632,201 @@ describe("stale-while-revalidate over several @cache declarations (spec 07 §2)"
     expect(await cacheControl(server(""))).toBe("public, max-age=30, stale-while-revalidate=300");
   });
 });
+
+describe("rules each request meets on its way in", () => {
+  const BOOK = Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url");
+  const read = (h: ReturnType<typeof createFetchHandler>, url: string, headers: Record<string, string> = {}) => h(new Request(url, { headers }));
+
+  it("a server limited to some host names refuses any other, and a loopback-bound one answers loopback names only", async () => {
+    const limited = createFetchHandler(bs.server, { allowedHosts: ["api.example"] });
+    const refused = await read(limited, `http://evil.example/rayfold/book?a=${BOOK}`);
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/permission_denied", title: "permission denied", status: 403, detail: "Host evil.example is not allowed", code: "permission_denied" });
+    const loopback = createFetchHandler(bs.server, { loopback: true });
+    expect((await read(loopback, `http://rebound.example/rayfold/book?a=${BOOK}`)).status).toBe(403);
+    expect(bs.store.calls).toEqual({});
+    // guards: the named host, and a loopback name, are answered
+    expect((await read(limited, `http://api.example/rayfold/book?a=${BOOK}`)).status).toBe(200);
+    expect((await read(loopback, `http://localhost/rayfold/book?a=${BOOK}`)).status).toBe(200);
+  });
+
+  it("a body exactly at maxBody is read, and one byte more is refused", async () => {
+    const body = JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] });
+    const at = (maxBody: number) =>
+      createFetchHandler(bs.server, { maxBody })(new Request("http://api.example/rayfold", { method: "POST", headers: { "content-type": "application/rayfold+json" }, body }));
+    expect((await at(body.length)).status).toBe(200);
+    const over = await at(body.length - 1);
+    expect(over.status).toBe(413);
+    expect(await over.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/payload_too_large", title: "payload too large", status: 413, detail: `Body exceeds ${body.length - 1} bytes`, code: "resource_exhausted" });
+  });
+
+  it("Rayfold-Safe means safe only when it says true: anything else is an ordinary write", async () => {
+    const restock = (safe: string) => post({ ops: [{ id: 1, op: "restock", args: { bookId: "b1", qty: 1 }, key: KEY + safe }] }, { authorization: "Bearer admin", accept: "application/json", "rayfold-safe": safe });
+    const notSafe = await restock("false");
+    expect(notSafe.status).toBe(200);
+    expect(notSafe.headers.get("cache-control")).toBe("no-store");
+    // guard: "true" makes it a safe request, which may not hold a command
+    expect(await (await restock("true")).json()).toMatchObject({ code: "invalid_argument", detail: "Safe requests (GET/QUERY) may only contain queries" });
+    expect(bs.store.calls["Command.restock"]).toBe(1);
+  });
+
+  it("GET reads shape variables from v", async () => {
+    const shape = encodeURIComponent("{ reviews(page: { first: $n }) { items { id } } }");
+    const vars = Buffer.from(JSON.stringify({ n: 1 })).toString("base64url");
+    const res = await get(`/rayfold/book?a=${BOOK}&s=${shape}&v=${vars}`, { accept: "application/json" });
+    expect(await res.json()).toEqual({ id: 1, data: { $type: "Book", reviews: { items: [{ $type: "Review", id: "r1" }] } }, meta: { cost: 4 }, fin: true });
+  });
+
+  it("carries W3C trace context to the batch, tracestate only beside a traceparent", async () => {
+    const metas: unknown[] = [];
+    const traced = createRayfoldServer({
+      schema: `entity A { id: ID } query a: A`,
+      resolvers: { Query: { a: () => ({ id: "a" }) } },
+      instrumentation: { batch: (info, run) => (metas.push(info.meta), run()) },
+    });
+    const h = createFetchHandler(traced);
+    const ask = (headers: Record<string, string>) => h(new Request("http://api.example/rayfold/a", { headers }));
+    const parent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+    await ask({ traceparent: parent, tracestate: "vendor=1", "rayfold-client": "web", "rayfold-deadline": "500" });
+    await ask({ tracestate: "vendor=1" });
+    await ask({ "rayfold-deadline": "soon" });
+    expect(metas).toEqual([{ client: "web", deadline: 500, traceparent: parent, tracestate: "vendor=1" }, {}, {}]);
+  });
+
+  it("an Accept naming RB beside JSON gets JSON", async () => {
+    const res = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, { accept: "application/rayfold, application/json" });
+    expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(await res.json()).toEqual({ id: 1, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true });
+  });
+
+  it("an unsafe batch is never answered 304, whatever If-None-Match says", async () => {
+    const res = await post({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] }, { accept: "application/json", "if-none-match": "*" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 1, data: { $type: "Book", id: "b1" }, meta: { cost: 1 }, fin: true });
+    // guard: the same read made safe is
+    expect((await get(`/rayfold/book?a=${BOOK}`, { "if-none-match": "*" })).status).toBe(304);
+  });
+
+  it("the ETag of a safe answer leaves out the timing, so the same answer revalidates however long it took", async () => {
+    let t = 0;
+    let calls = 0; // each answer takes longer than the one before
+    const timed = createRayfoldServer({ schema: `entity A { id: ID } query a: A`, resolvers: { Query: { a: () => ((t += ++calls * 5), { id: "a" }) } }, timing: true, now: () => t });
+    const h = createFetchHandler(timed);
+    const first = await read(h, "http://api.example/rayfold/a", { accept: "application/json" });
+    expect(await first.json()).toEqual({ id: 1, data: { $type: "A", id: "a" }, meta: { cost: 1, ms: 5 }, fin: true });
+    expect((await read(h, "http://api.example/rayfold/a", { "if-none-match": first.headers.get("etag")! })).status).toBe(304);
+  });
+
+  it("a request already aborted when it arrives ends its live query at once", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const res = await handler(new Request("http://api.example/rayfold", { method: "POST", signal: ac.signal, headers: { "content-type": "application/rayfold+json" }, body: JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }", live: true }] }) }));
+    expect(await bounded(frames(res), "the body ending")).toEqual([{ id: 1, error: { code: "canceled", message: "Canceled" }, fin: true }]);
+    expect(bs.server.changes.size).toBe(0);
+  });
+});
+
+describe("what a refusal says", () => {
+  const book = "http://api.example/rayfold/book?a=" + Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url");
+
+  it("a declared error from the viewer hook names itself as the problem type, with its data", async () => {
+    const h = createFetchHandler(bs.server, {
+      viewer: () => {
+        throw RayfoldError.domain("Suspended", { until: "2026-10-01" }, "Account suspended");
+      },
+    });
+    const res = await h(new Request(book));
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/Suspended", title: "Suspended", status: 422, detail: "Account suspended", code: "domain", data: { until: "2026-10-01" } });
+  });
+
+  it("anything else a hook throws is internal, and what it said stays on the server", async () => {
+    const h = createFetchHandler(bs.server, {
+      viewer: () => {
+        throw new Error("password authentication failed for user app");
+      },
+    });
+    const res = await h(new Request(book));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/internal", title: "internal", status: 500, detail: "Internal error", code: "internal" });
+  });
+});
+
+describe("cache scope (spec 07 section 2)", () => {
+  const scoped = (schema: string, resolvers: Record<string, unknown>) => createFetchHandler(createRayfoldServer({ schema, resolvers: resolvers as never }));
+  const cacheOf = async (h: ReturnType<typeof createFetchHandler>, path: string) => (await h(new Request(`http://api.example/rayfold/${path}`))).headers.get("cache-control");
+  const shape = (s: string) => `s=${encodeURIComponent(s)}`;
+
+  it("@cache(scope: private) keeps an answer out of shared caches", async () => {
+    const h = scoped(`entity A @cache(maxAge: 60s, scope: private) { id: ID } entity B @cache(maxAge: 60s) { id: ID } query a: A query b: B`, { Query: { a: () => ({ id: "a" }), b: () => ({ id: "b" }) } });
+    expect(await cacheOf(h, "a")).toBe("private, max-age=60");
+    expect(await cacheOf(h, "b")).toBe("public, max-age=60"); // guard
+  });
+
+  it("a deny that reads the viewer makes an answer private, as an allow does", async () => {
+    const h = scoped(`entity A @cache(maxAge: 60s) @deny(read: viewer.banned == true) { id: ID } entity B @cache(maxAge: 60s) @deny(read: id == "x") { id: ID } query a: A query b: B`, {
+      Query: { a: () => ({ id: "a" }), b: () => ({ id: "b" }) },
+    });
+    expect(await cacheOf(h, "a")).toBe("private, max-age=60");
+    expect(await cacheOf(h, "b")).toBe("public, max-age=60"); // guard: a policy that does not read the viewer leaves it shared
+  });
+
+  it("a field guarded by the viewer makes the answer private only when the answer holds it, deferred parts included", async () => {
+    const schema = `entity A @cache(maxAge: 60s) { id: ID note: String? @deny(read: viewer.banned == true) } query a: A query all: [A]`;
+    const h = scoped(schema, { Query: { a: () => ({ id: "a", note: "n" }), all: () => [{ id: "a", note: "n" }] } });
+    expect(await cacheOf(h, `a?${shape("{ id note }")}`)).toBe("private, max-age=60");
+    expect(await cacheOf(h, `all?${shape("{ id @defer { note } }")}`)).toBe("private, max-age=60");
+    expect(await cacheOf(h, `a?${shape("{ id }")}`)).toBe("public, max-age=60"); // guard
+  });
+});
+
+describe("GET /rayfold/stats reports what is running", () => {
+  it("counts the live queries open right now, and what the counters had to drop", async () => {
+    const counters = new MemoryCounters(1);
+    const s = createRayfoldServer({ schema: `entity A { id: ID } query a: A`, resolvers: { Query: { a: () => ({ id: "a" }) } }, counters });
+    const h = createFetchHandler(s, { stats: { authorize: () => true } });
+    const stats = async () => (await (await h(new Request("http://api.example/rayfold/stats"))).json()) as Record<string, unknown>;
+    const ac = new AbortController();
+    const first = new Signal<true>();
+    const live = (async () => {
+      for await (const _ of s.execute({ ops: [{ id: 1, op: "a", live: true }] }, { signal: ac.signal })) first.push(true);
+    })();
+    await first.atLeast(1, "the live query answering");
+    // the one series the sink holds is the live query opening; the stats request itself is what it had to drop
+    expect(await stats()).toMatchObject({ live: 1, counters: [{ name: "rayfold.live.opened", labels: { op: "a" }, count: 1 }], countersDropped: 1 });
+    ac.abort();
+    await bounded(live, "the live query ending");
+    expect(await stats()).toMatchObject({ live: 0 });
+  });
+
+  it("an authorize function that answers asynchronously is awaited: a false promise refuses", async () => {
+    const s = createRayfoldServer({ schema: `entity A { id: ID } query a: A`, resolvers: { Query: { a: () => ({ id: "a" }) } } });
+    const h = (allow: boolean) => createFetchHandler(s, { stats: { authorize: async () => allow } });
+    expect((await h(false)(new Request("http://api.example/rayfold/stats"))).status).toBe(403);
+    expect((await h(true)(new Request("http://api.example/rayfold/stats"))).status).toBe(200); // guard
+  });
+});
+
+describe("CORS with allowedOrigins [\"*\"]", () => {
+  it("lets any origin read the answer, naming that origin", async () => {
+    const h = createFetchHandler(bs.server, { allowedOrigins: ["*"] });
+    const res = await h(new Request("http://api.example/rayfold/book?a=" + Buffer.from(JSON.stringify({ id: "b1" })).toString("base64url"), { headers: { origin: "https://any.example" } }));
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://any.example");
+    expect(res.headers.get("vary")).toBe("Rayfold-Client, Accept, Authorization, Origin");
+  });
+});
+
+describe("the manifest leaves out how access is decided", () => {
+  it("both allow and deny rules lose their expressions, and keep their names", async () => {
+    const s = createRayfoldServer({
+      schema: `entity Doc @allow(read: viewer.id == ownerId) @deny(read: archived == true) { id: ID ownerId: ID archived: Boolean } query doc: Doc?`,
+      resolvers: { Query: { doc: () => null } },
+    });
+    type Manifest = { schema: { types: Record<string, { annotations: Array<{ name: string; args: object }> }> } };
+    const manifest = (await (await createFetchHandler(s)(new Request("http://api.example/rayfold/manifest"))).json()) as Manifest;
+    expect(manifest.schema.types["Doc"]!.annotations.map((a) => [a.name, a.args])).toEqual([["allow", {}], ["deny", {}]]);
+    // guard: the full manifest, when asked for, keeps them
+    const full = (await (await createFetchHandler(s, { manifest: "full" })(new Request("http://api.example/rayfold/manifest"))).json()) as Manifest;
+    expect(full.schema.types["Doc"]!.annotations.map((a) => [a.name, Object.keys(a.args)])).toEqual([["allow", ["read"]], ["deny", ["read"]]]);
+  });
+});

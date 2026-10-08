@@ -9,7 +9,6 @@ import dev.rayfold.core.CommandResult
 import dev.rayfold.core.HttpOptions
 import dev.rayfold.core.IdempotencyStore
 import dev.rayfold.core.ManifestMode
-import dev.rayfold.core.MemoryIdempotencyStore
 import dev.rayfold.core.RayfoldContext
 import dev.rayfold.core.RayfoldException
 import dev.rayfold.core.RayfoldHttp
@@ -32,10 +31,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.IOException
+import java.time.Clock
 import java.util.concurrent.Callable
 import java.util.concurrent.CompletionStage
 import java.util.function.Consumer
 import java.util.function.Function
+import java.util.function.LongSupplier
 import dev.rayfold.core.FieldLoader as CoreFieldLoader
 import dev.rayfold.core.StreamResolver as CoreStreamResolver
 
@@ -158,7 +159,8 @@ class ServerBuilder internal constructor(private val ir: RayfoldSchemaIR) {
     private val streams = linkedMapOf<String, CoreStreamResolver>()
     private val fields = linkedMapOf<String, MutableMap<String, CoreFieldLoader>>()
     private var options = BatchOptions()
-    private var idempotency: IdempotencyStore = MemoryIdempotencyStore()
+    private var idempotency: IdempotencyStore? = null
+    private var now: (() -> Long)? = null
     private var instrumentation: Instrumentation = Instrumentation.NONE
     private var relay: Relay? = null
     private var onRelayError: Consumer<Throwable> = Consumer {}
@@ -220,6 +222,16 @@ class ServerBuilder internal constructor(private val ir: RayfoldSchemaIR) {
     /** Where command results are kept for idempotent retries. The default keeps them in memory. */
     fun idempotencyStore(store: IdempotencyStore): ServerBuilder = apply { idempotency = store }
 
+    /**
+     * The clock the server reads, which a test sets to decide what time it is: for `now()` in the schema's policies,
+     * for [Context.now], for when the default idempotency store's records expire, and for the start time and uptime
+     * the server reports. The default is the system clock. A store given to [idempotencyStore] keeps its own.
+     */
+    fun clock(clock: Clock): ServerBuilder = apply { now = clock::millis }
+
+    /** [clock] from epoch milliseconds, for a test that keeps the time in a variable: `clock(now::get)` on an `AtomicLong`. */
+    fun clock(epochMillis: LongSupplier): ServerBuilder = apply { now = epochMillis::getAsLong }
+
     /** Hooks around batches, ops and loaders, for tracing: `RayfoldOpenTelemetry` from module rayfold-opentelemetry. */
     fun instrumentation(instrumentation: Instrumentation): ServerBuilder = apply { this.instrumentation = instrumentation }
 
@@ -231,7 +243,7 @@ class ServerBuilder internal constructor(private val ir: RayfoldSchemaIR) {
 
     fun build(): RayfoldServer = RayfoldServer(
         ir, Resolvers(queries, commands, streams, fields), options, idempotency, instrumentation,
-        relay = relay, onRelayError = { onRelayError.accept(it) },
+        relay = relay, onRelayError = { onRelayError.accept(it) }, now = now,
     )
 }
 

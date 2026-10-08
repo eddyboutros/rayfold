@@ -62,6 +62,13 @@ describe("a server that answers from the schema alone", () => {
     expect(book).toEqual({ $type: "Book", id: "book-728", format: "EBOOK", ttl: 300_000, note: "5m" });
   });
 
+  it("gives every built-in scalar a value of its own form, and the same answer whatever order the arguments came in", async () => {
+    const ir = loadSchema(`scalar Email entity S { id: ID i: Int l: Long f: Float d: Decimal b: Boolean t: Instant day: Date dur: Duration by: Bytes j: JSON e: Email s: String } query s(a: Int, b: Int): S`).ir;
+    const frames = await mock(ir)([{ id: 1, op: "s", args: { a: 1, b: 2 } }, { id: 2, op: "s", args: { b: 2, a: 1 } }]);
+    const expected = { $type: "S", id: "s-219", i: 9, l: 228056, f: 76.23, d: "71.08", b: false, t: "2026-01-20T09:30:00.000Z", day: "2026-01-18", dur: 40000, by: "cXVhcnR6", j: {}, e: "quartz meadow", s: "lantern thistle" };
+    expect(frames.map(resultOf)).toEqual([expected, expected]);
+  });
+
   it("gives the same answer to the same call, from a server it has never met", async () => {
     const call: RequestEnvelope["ops"] = [{ id: 1, op: "book", args: { id: "b1" } }];
     const first = resultOf((await mock(bookstore)(call))[0]!);
@@ -109,9 +116,7 @@ describe("a server that answers from the schema alone", () => {
   it("a command gives back what it was told", async () => {
     const ir = loadSchema(INLINE).ir;
     const frame = (await mock(ir)([{ id: 1, op: "rename", args: { id: "b7", title: "Neuromancer" }, key: "rename-0000000001" }]))[0]!;
-    const book = resultOf(frame);
-    expect(book["title"]).toBe("Neuromancer");
-    expect(book["id"]).toBe("b7");
+    expect(resultOf(frame)).toEqual({ $type: "Book", id: "b7", title: "Neuromancer", stock: 50, format: "HARDCOVER" });
   });
 
   it("answers every operation the schema declares: queries, commands with a key, and streams to the end", async () => {

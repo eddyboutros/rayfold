@@ -82,6 +82,8 @@ class SyncTest {
         override fun send(envelope: JsonObject, safe: Boolean): Flow<JsonObject> = flow {
             gate?.await()
             if (mode == "down") throw ConnectException("Connection refused")
+            // a server answering, but busy: retryable, as a draining server says it
+            if (mode == "busy") return@flow emit(buildJsonObject { put("error", buildJsonObject { put("code", "unavailable"); put("message", "The server is shutting down") }); put("fin", true) })
             sent.add(envelope)
             if (mode == "lossy") {
                 server.execute(envelope, viewer).collect { } // the server answered, and the answer never arrives
@@ -94,8 +96,8 @@ class SyncTest {
     }
 
     private val keyN = AtomicInteger()
-    private fun client(net: Network, offline: OfflineOptions? = null) =
-        RayfoldClient(net, ClientOptions(keyGen = { "sync-key-" + keyN.incrementAndGet().toString().padStart(8, '0') }, offline = offline))
+    private fun client(net: Network, offline: OfflineOptions? = null, now: () -> Long = System::currentTimeMillis) =
+        RayfoldClient(net, ClientOptions(keyGen = { "sync-key-" + keyN.incrementAndGet().toString().padStart(8, '0') }, offline = offline, now = now))
 
     private fun bounded(block: suspend CoroutineScope.() -> Unit) = runBlocking { withTimeout(5_000) { block() } }
     private fun predict(id: String, stock: Int) = listOf(OptimisticOp("Book:$id", buildJsonObject { put("stock", stock) }))
@@ -235,7 +237,7 @@ class SyncTest {
         net.mode = "down"
         launch { before.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }", optimistic = predict("b1", 4)) }
         events.receive()
-        assertTrue(file.readText().contains("sync-key-00000001"))
+        assertEquals(listOf("sync-key-00000001"), FileQueueStorage(file).load().map { it.key })
 
         val after = client(net, OfflineOptions(FileQueueStorage(file)))
         assertEquals(1, after.drain(), "still offline: the restored command waits")
@@ -285,9 +287,18 @@ class SyncTest {
     }
 
     @Test
-    fun `a damaged queue file is dropped instead of blocking the client`(@TempDir dir: File) {
+    fun `a damaged queue file is dropped instead of blocking the client`(@TempDir dir: File) = bounded {
         val file = File(dir, "queue.json").apply { writeText("{ not json") }
         assertEquals(emptyList(), FileQueueStorage(file).load())
+        // through the client that reads it at start: nothing restored, nothing sent, and the next command runs
+        val net = Network()
+        val c = client(net, OfflineOptions(FileQueueStorage(file)))
+        assertEquals(emptyList(), c.queued)
+        assertEquals(0, c.drain())
+        assertEquals(emptyList(), net.sent)
+        assertEquals(4, c.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }").stock())
+        assertEquals(listOf("sync-key-00000001"), net.keys())
+        assertEquals(1, restocks.get())
     }
 
     @Test
@@ -299,6 +310,82 @@ class SyncTest {
         assertEquals(emptyList(), c.queued)
         assertNull(c.cache.get("Book:b1"))
         assertEquals(0, c.drain())
+    }
+
+    @Test
+    fun `a server that answers unavailable is waited out like one that cannot be reached, and the command goes out once it is back`() = bounded {
+        val net = Network()
+        val c = client(net, OfflineOptions())
+        val events = events(c)
+        net.mode = "busy"
+        val sent = async { c.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }") }
+        assertEquals(QueueEvent.Type.QUEUED, events.receive().type)
+        assertEquals(0, restocks.get())
+        net.mode = "up"
+        assertEquals(0, c.drain())
+        assertEquals(4, sent.await().stock())
+        assertEquals(1, restocks.get())
+    }
+
+    @Test
+    fun `guard - with offline on, a command the server refuses outright is not queued, and its prediction is rolled back`() = bounded {
+        val net = Network()
+        val c = client(net, OfflineOptions())
+        val e = assertFailsWith<RayfoldClientException> { c.command("buy", args("id" to "b2", "qty" to 5), optimistic = predict("b2", 0)) }
+        assertEquals("OutOfStock", e.type)
+        assertEquals(emptyList(), c.queued)
+        assertNull(c.cache.get("Book:b2"))
+    }
+
+    @Test
+    fun `a command cancelled while it is on its way takes its prediction back`() = bounded {
+        val net = Network()
+        val c = client(net)
+        net.gate = CompletableDeferred()
+        val job = launch { c.command("restock", args("id" to "b1", "qty" to 1), optimistic = predict("b1", 4)) }
+        while (c.stock() != 4) kotlinx.coroutines.yield()
+        job.cancel()
+        job.join()
+        assertNull(c.cache.get("Book:b1"), "no prediction left for a command that will not answer")
+        assertEquals(emptyList(), c.cache.predictions)
+    }
+
+    private fun queued(key: String, seq: Long) = QueuedCommand(key, "restock", args("id" to "b1", "qty" to 1), "{ id stock }", queuedAt = seq, seq = seq)
+
+    @Test
+    fun `restored commands and a new one go out in the order they were made, whatever order they were stored in`(@TempDir dir: File) = bounded {
+        val file = File(dir, "queue.json")
+        FileQueueStorage(file).save(listOf(queued("restored-0000000010", 10), queued("restored-0000000005", 5)))
+        val net = Network()
+        net.mode = "down"
+        val c = client(net, OfflineOptions(FileQueueStorage(file)), now = { 7 })
+        assertEquals(listOf("restored-0000000005", "restored-0000000010"), c.queued.map { it.key })
+        val events = events(c)
+        val made = async { c.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }") }
+        assertEquals(QueueEvent.Type.QUEUED, events.receive().type)
+        assertEquals(listOf("restored-0000000005", "sync-key-00000001", "restored-0000000010"), c.queued.map { it.key })
+        net.mode = "up"
+        c.drain()
+        made.await()
+        assertEquals(listOf("restored-0000000005", "sync-key-00000001", "restored-0000000010"), net.keys())
+    }
+
+    @Test
+    fun `two drains at once send each waiting command once`() = bounded {
+        val net = Network()
+        val c = client(net, OfflineOptions())
+        val events = events(c)
+        net.mode = "down"
+        launch { c.command("restock", args("id" to "b1", "qty" to 1), "{ id stock }") }
+        assertEquals(QueueEvent.Type.QUEUED, events.receive().type)
+        net.mode = "up"
+        net.gate = CompletableDeferred()
+        val first = async { c.drain() }
+        val second = async { c.drain() }
+        kotlinx.coroutines.yield()
+        net.gate?.complete(Unit)
+        assertEquals(0 to 0, first.await() to second.await())
+        assertEquals(listOf("sync-key-00000001"), net.keys())
     }
 
     private fun kotlin.coroutines.CoroutineContext.cancelChildren() = this[kotlinx.coroutines.Job]?.children?.forEach { it.cancel() }

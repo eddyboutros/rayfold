@@ -28,6 +28,7 @@ import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.logging.Handler
 import java.util.logging.Level
 import java.util.logging.LogRecord
@@ -103,6 +104,9 @@ class HttpTest {
     private fun header(res: HttpResponse<String>, name: String): String? = res.headers().firstValue(name).orElse(null)
     private fun b64(json: String) = Base64.getUrlEncoder().withoutPadding().encodeToString(json.toByteArray())
     private fun url(s: String) = URLEncoder.encode(s, Charsets.UTF_8)
+    /** The next line of a streaming body, waited for at most 5 s, so a frame that never comes fails instead of hanging. */
+    private fun Iterator<String>.nextWithin(): String = java.util.concurrent.CompletableFuture.supplyAsync { next() }.get(5, TimeUnit.SECONDS)
+
     private fun problem(res: HttpResponse<String>, status: Int, code: String, detail: String) {
         assertEquals(status, res.statusCode(), res.body())
         assertEquals("application/problem+json", header(res, "Content-Type"))
@@ -195,11 +199,11 @@ class HttpTest {
             assertEquals("application/rayfold-frames+json", res.headers().firstValue("Content-Type").orElse(null), "$method $name")
             assertEquals("no-store", res.headers().firstValue("Cache-Control").orElse(null), "never stored, though the request was safe")
             val lines = res.body().filter { it.isNotEmpty() }.iterator()
-            assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":$stock},"meta":{"cost":1}}"""), obj(lines.next()))
+            assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","stock":$stock},"meta":{"cost":1}}"""), obj(lines.nextWithin()))
             val restock = post("""{"ops":[{"id":1,"op":"restock","args":{"bookId":"b1","qty":1},"key":"${"k$stock".padEnd(16, 'k')}"}]}""", "Authorization", "Bearer u1")
             assertEquals(200, restock.statusCode(), restock.body())
             stock++
-            assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":$stock}}]}"""), obj(lines.next()), "$method $name")
+            assertEquals(obj("""{"id":1,"patch":[{"set":"Book:b1","value":{"stock":$stock}}]}"""), obj(lines.nextWithin()), "$method $name")
             res.body().close()
         }
     }
@@ -523,6 +527,16 @@ class HttpTest {
         assertEquals(JsonPrimitive(0), body["live"])
     }
 
+    @Test
+    fun `stats tells the start time and the uptime by the server's own clock`() {
+        val clock = AtomicLong(1_000)
+        val server = RayfoldServer(ir, FixtureResolvers.build(fixture, store), identity = ServerIdentity(name = "bookshop"), now = clock::get)
+        clock.set(3_500)
+        val body = obj(statsAt(serveWithStats({ true }, server)).body())
+        assertEquals(JsonPrimitive(1_000), (body["identity"] as JsonObject)["startedAt"])
+        assertEquals(JsonPrimitive(2_500), body["uptimeMs"])
+    }
+
     /** The idle case above reads the same zeros from a server that counts nothing; this one has work to count. */
     @Test
     fun `stats counts a running command and an open live query, and says when it is draining`() {
@@ -552,7 +566,7 @@ class HttpTest {
             val live = client.sendAsync(rayfold("""{"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id }","live":true}]}"""), HttpResponse.BodyHandlers.ofLines())
                 .get(5, TimeUnit.SECONDS).body().iterator()
             // a live query subscribes before its first frame is written, so the count is settled once the frame is here
-            assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1}}"""), obj(live.next()))
+            assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1"},"meta":{"cost":1}}"""), obj(live.nextWithin()))
             assertEquals(
                 mapOf("inflight" to JsonPrimitive(2), "live" to JsonPrimitive(1), "draining" to JsonPrimitive(false), "ready" to JsonPrimitive(true), "reasons" to JsonArray(emptyList())),
                 stats(),
@@ -573,7 +587,7 @@ class HttpTest {
     @Test
     fun `stats does not exist unless it was configured`() {
         // an unconfigured server must look from outside like one that never had the route at all
-        assertEquals(404, statsAt(serveWithStats(null)).statusCode())
+        problem(statsAt(serveWithStats(null)), 404, "not_found", "No route for /rayfold/stats")
     }
 
     @Test

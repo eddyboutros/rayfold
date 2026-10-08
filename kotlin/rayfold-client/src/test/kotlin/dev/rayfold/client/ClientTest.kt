@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -283,10 +284,11 @@ class ClientTest {
         b.run()
         assertEquals(stocked(103), dry.await(), "what the restock would leave")
         assertEquals(stocked(3), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE), "the cache still holds the real stock")
-        assertTrue(stock.tryReceive().isFailure, "and the watcher saw nothing: written to the cache, the dry run showed 103")
-        // guard: the same command for real reaches the cache
-        client.command("restock", args("id" to "b1", "qty" to 100), "{ id stock }")
-        assertEquals(stocked(103), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE))
+        // guard: the command for real reaches the cache and the watcher, and the watcher's next value is that run's, so
+        // the dry run's 103 was never shown in between
+        client.command("restock", args("id" to "b1", "qty" to 5), "{ id stock }")
+        assertEquals(stocked(8), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE))
+        assertEquals(8, stock.receive())
         watching.cancel()
     }
 
@@ -382,7 +384,10 @@ class ClientTest {
         val predicted = listOf(OptimisticOp("Book:b2", buildJsonObject { put("stock", 99) }))
         assertEquals(4, client.command("buy", args("id" to "b2", "qty" to 1), "{ id stock }", optimistic = predicted).stock(), "settled: the server's value, not the prediction")
         client.query("book", args("id" to "b1"), "{ id stock }")
-        assertNotNull(client.cache.getResult(RayfoldCache.resultKey("book", args("id" to "b1"), "{ id stock }", null)))
+        val kept = client.cache.getResult(RayfoldCache.resultKey("book", args("id" to "b1"), "{ id stock }", null))
+        assertEquals("book", kept?.op)
+        assertEquals(setOf("Book:b1"), kept?.keys?.toSet())
+        assertEquals(Json.parseToJsonElement("""{"${'$'}type":"Book","id":"b1","stock":0}"""), kept?.let { client.cache.denormalize(it.data) })
     }
 
     @Test
@@ -429,6 +434,59 @@ class ClientTest {
         assertEquals(BookCard("Book", "b1", "The Dispossessed", 3), client.queryAs<BookCard>("book", args("id" to "b1"), "{ id title stock }"))
         val all: List<BookCard> = client.queryAs("books", shape = "{ id title stock }")
         assertEquals(listOf("b1", "b2"), all.map { it.id })
+    }
+
+    @Test
+    fun `commands, watches and live queries decode into serializable classes too`() = runBlocking {
+        val buyer = RayfoldClient(http("alice"))
+        val reader = RayfoldClient(http("alice")) // its own cache, so the live query hears the change from the server
+        val watched = Channel<BookCard>(Channel.UNLIMITED)
+        val lived = Channel<BookCard>(Channel.UNLIMITED)
+        val scope = CoroutineScope(Dispatchers.IO)
+        try {
+            withTimeout(5_000) {
+                assertEquals(BookCard("Book", "b1", "The Dispossessed", 2), buyer.commandAs<BookCard>("buy", args("id" to "b1", "qty" to 1), "{ id title stock }"))
+                scope.launch { buyer.watchAs<BookCard>("book", args("id" to "b1"), "{ id title stock }").collect { watched.send(it) } }
+                scope.launch { reader.liveAs<BookCard>("book", args("id" to "b1"), "{ id title stock }").collect { lived.send(it) } }
+                assertEquals(BookCard("Book", "b1", "The Dispossessed", 2), watched.receive())
+                assertEquals(BookCard("Book", "b1", "The Dispossessed", 2), lived.receive())
+                buyer.command("buy", args("id" to "b1", "qty" to 1), "{ id stock }")
+                assertEquals(BookCard("Book", "b1", "The Dispossessed", 1), watched.receive())
+                assertEquals(BookCard("Book", "b1", "The Dispossessed", 1), lived.receive())
+            }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `Policy CACHE asks again once an entity the result holds is invalidated, and answers from the cache before (guard)`() = bounded {
+        val t = http("alice")
+        val client = RayfoldClient(t)
+        client.query("book", args("id" to "b1"), "{ id stock }")
+        assertEquals(stocked(3), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE))
+        assertEquals(1, t.sent.size, "guard: a fresh result is answered from the cache")
+        client.cache.applyPatch(listOf(Json.parseToJsonElement("""{"inv":["Book:b1"]}""").jsonObject))
+        assertEquals(stocked(3), client.query("book", args("id" to "b1"), "{ id stock }", Policy.CACHE))
+        assertEquals(2, t.sent.size, "an invalidated entity is fetched again")
+    }
+
+    @Test
+    fun `a batch whose response ends without a frame for an op fails that op as unavailable`() = bounded {
+        val silent = Transport { _, _ -> flow { } }
+        val e = assertFailsWith<RayfoldClientException> { RayfoldClient(silent).query("book", args("id" to "b1"), "{ id }") }
+        assertEquals("unavailable" to "Batch ended without a result for this op", e.code to e.message)
+    }
+
+    @Test
+    fun `a watch with Policy CACHE starts from a fresh cached result without a request, and one with NETWORK asks (guard)`() = bounded {
+        val t = http("alice")
+        val client = RayfoldClient(t)
+        client.query("book", args("id" to "b1"), "{ id stock }")
+        assertEquals(stocked(3), client.watch("book", args("id" to "b1"), "{ id stock }", Policy.CACHE).first())
+        assertEquals(1, t.sent.size)
+        assertEquals(stocked(3), client.watch("book", args("id" to "b1"), "{ id stock }").first())
+        assertEquals(2, t.sent.size)
     }
 
     @Test

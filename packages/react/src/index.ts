@@ -24,7 +24,10 @@ export function useRayfoldClient(): RayfoldClient {
 }
 
 export interface QueryState<T> {
-  /** The latest result. On mount it is the cached result when this query ran before, while the fresh one loads. */
+  /**
+   * The latest result. On mount it is the cached result when this query ran before, while the fresh one loads. A later
+   * failure keeps it, beside `error`, so a screen can say what went wrong without going blank.
+   */
   data: T | undefined;
   /** The last failure (a RayfoldClientError for errors the server reported); cleared by the next result. */
   error: unknown;
@@ -48,7 +51,7 @@ export interface UseLiveOptions extends OpOptions {
 }
 
 export interface CommandState<T> {
-  /** The last successful result. */
+  /** The result of the latest run, or undefined when that run failed: an older success never shows beside a new error. */
   data: T | undefined;
   /** The last failure; `error.is("OutOfStock")` narrows on a declared error type. */
   error: unknown;

@@ -92,7 +92,24 @@ class LiveReconnectTest {
     }
 
     @Test
-    fun `a response that ends without an error is a dropped connection, opened again`() = runTest(timeout = 5.seconds) {
+    fun `data on a reopened query starts the wait over, so the next drop waits half a second again`() = runTest(timeout = 5.seconds) {
+        val t = Scripted(listOf(held(refused("unavailable")), held(book(3), ended("unavailable")), held(book(4))))
+        val seen = Seen()
+        val job = watch(RayfoldClient(t), seen)
+        runCurrent()
+        advanceTimeBy(500); runCurrent()
+        assertEquals(2, t.opened, "the first failure waits half a second")
+        // the second open answered before it failed, so the wait is half a second again, not the doubled second
+        advanceTimeBy(499); runCurrent()
+        assertEquals(2, t.opened)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(3, t.opened)
+        assertEquals(listOf(3, 4), seen.stock)
+        job.cancel()
+    }
+
+    @Test
+    fun `a response that ends without an error is a dropped connection, opened again`()= runTest(timeout = 5.seconds) {
         val t = Scripted(listOf(dropped(book(3)), held(book(4))))
         val seen = Seen()
         val job = watch(RayfoldClient(t), seen)

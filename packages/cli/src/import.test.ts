@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -280,6 +280,9 @@ describe("an OpenAPI document the importer used to misread", () => {
 });
 
 describe("a schema from a GraphQL SDL", () => {
+  // the importer loads graphql when it is first used, which on a busy machine takes longer than a test is allowed
+  beforeAll(async () => void (await import("graphql")), 30_000);
+
   it("maps the roots, and inverts nullability", async () => {
     const { ir, notes } = await irFromGraphql(SDL);
 
@@ -365,6 +368,95 @@ describe("a schema from a GraphQL SDL", () => {
     expect((ir.types["E"] as { values: Array<{ annotations: unknown[] }> }).values[0]!.annotations).toEqual([{ name: "deprecated", args: { reason: "use B" } }]);
     expect(printSchemaText(ir)).toContain('query plain: E? @deprecated(reason: "gone")');
     expect(loadSchema(printSchemaText(ir)).ir).toEqual(ir);
+  });
+});
+
+describe("what an importer keeps that a schema file would say", () => {
+  it("GraphQL: argument defaults, object defaults, and a built-in input left as the built-in", async () => {
+    const { ir, notes } = await irFromGraphql(`input PageArgs { first: Int } input Opts { size: Int = 3 } union U = A | B type A { id: ID! } type B { id: ID! } scalar Money type Query { a(n: Int = 5, o: Opts = { size: 4 }, p: PageArgs): A u: U m: Money }`);
+    expect(printSchemaText(ir)).toBe(
+      [
+        "input Opts {",
+        "  size: Int? = 3",
+        "}",
+        "",
+        "union U = A | B",
+        "",
+        "entity A {",
+        "  id: ID",
+        "}",
+        "",
+        "entity B {",
+        "  id: ID",
+        "}",
+        "",
+        "scalar Money",
+        "",
+        "query a(n: Int? = 5, o: Opts? = { size: 4 }, p: PageArgs?): A?",
+        "",
+        "query u: U?",
+        "",
+        "query m: Money?",
+        "",
+      ].join("\n"),
+    );
+    expect(ir.types["PageArgs"]).toMatchObject({ builtin: true, fields: [{ name: "first" }, { name: "after" }, { name: "offset" }] });
+    expect(notes).toEqual(["PageArgs: the protocol defines it, so the document's version was left out and references point at the built-in."]);
+  });
+
+  it("OpenAPI 3.0: nullable: true, int64 as Long, the description of a copied input, and a oneOf of inline schemas", () => {
+    const { ir, notes } = irFromOpenApi({
+      openapi: "3.0.3",
+      info: { title: "x", version: "1" },
+      components: {
+        schemas: {
+          Thing: { type: "object", description: "A thing.", required: ["id", "note"], properties: { id: { type: "string" }, n: { type: "integer", format: "int64" }, note: { type: "string", nullable: true }, "first-name": { type: "string" } } },
+          Pick: { oneOf: [{ type: "object", properties: { a: { type: "string" } } }, { type: "object", properties: { b: { type: "string" } } }] },
+        },
+      },
+      paths: {
+        "/things": {
+          post: {
+            operationId: "putThing",
+            requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/Thing" } } } },
+            responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/Thing" } } } } },
+          },
+        },
+        "/pick": { get: { operationId: "pick", responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/Pick" } } } } } } },
+      },
+    } as never);
+    expect(printSchemaText(ir)).toBe(
+      [
+        '"""A thing."""',
+        "entity Thing {",
+        "  id: ID",
+        "  n: Long?",
+        "  note: String?",
+        "  firstName: String?",
+        "}",
+        "",
+        "scalar Pick",
+        "",
+        '"""A thing."""',
+        "input ThingInput {",
+        "  id: ID",
+        "  n: Long?",
+        "  note: String?",
+        '  firstName: String? @http(name: "first-name")',
+        "}",
+        "",
+        'command putThing(input: ThingInput): Thing @http(method: POST, path: "/things", body: input)',
+        "",
+        'query pick: Pick @http(method: GET, path: "/pick")',
+        "",
+      ].join("\n"),
+    );
+    expect(notes).toEqual([
+      "Thing.first-name: not a name a schema can hold, so the field is firstName.",
+      "Pick: a oneOf/anyOf of inline schemas became an object with the fields they share.",
+      "Pick: a schema with no properties became a scalar; give it a format if it needs one.",
+      "Thing: it is both sent and returned, so ThingInput carries the sending side.",
+    ]);
   });
 });
 

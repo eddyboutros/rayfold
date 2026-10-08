@@ -37,13 +37,14 @@ interface Member {
 class Cluster {
   readonly members: Member[] = [];
 
-  async start(name: string, port: number, runtime: "ts" | "jvm" = "ts"): Promise<Member> {
+  /** `now` stops the member's clock at that millisecond; without it the member tells the time by the machine's. */
+  async start(name: string, port: number, runtime: "ts" | "jvm" = "ts", now?: number): Promise<Member> {
     const [command, args] =
       runtime === "ts"
         ? [process.execPath, [createRequire(import.meta.url).resolve("tsx/cli"), fileURLToPath(new URL("./fleet/server.ts", import.meta.url))]]
         : ["java", ["-cp", join(JVM_LIB, "*"), "dev.rayfold.fleet.ServerKt"]];
     const child = spawn(command!, args as string[], {
-      env: { ...process.env, DATABASE_URL: url, PORT: String(port), NAME: name },
+      env: { ...process.env, DATABASE_URL: url, PORT: String(port), NAME: name, ...(now === undefined ? {} : { NOW: String(now) }) },
       stdio: ["ignore", "pipe", "inherit"],
     });
     const lines = new Signal<string>();
@@ -160,7 +161,8 @@ async function freshDatabase(pool: pg.Pool): Promise<void> {
   await pool.query("DROP TABLE IF EXISTS fleet_books, fleet_runs, rayfold_idempotency, rayfold_relay");
   await pool.query("CREATE TABLE fleet_books (id text PRIMARY KEY, stock int NOT NULL)");
   await pool.query("CREATE TABLE fleet_runs (id bigserial PRIMARY KEY, server text NOT NULL, book text NOT NULL)");
-  await pool.query("INSERT INTO fleet_books (id, stock) VALUES ('b1', 3)");
+  // b2 is a book nobody's stream asked for, so a stream that hears every book shows up
+  await pool.query("INSERT INTO fleet_books (id, stock) VALUES ('b1', 3), ('b2', 7)");
 }
 
 const liveBook = { op: "book", args: { id: "b1" }, shape: "{ id stock }", live: true };
@@ -204,11 +206,13 @@ describe.skipIf(!url)("two servers, two processes, one Postgres", () => {
     const before = (live.items[0] as { data: { stock: number } }).data.stock;
     expect(live.items[0]).toMatchObject({ id: 1, data: { id: "b1", stock: await stockOf(pool) } });
 
-    expect((await frames(await restock(a!.base, KEY + "2")))[0]).toMatchObject({ ok: { stock: before + 1 } });
+    // another book first: the stream asked for b1 only, and its event travels the same way as b1's
+    expect((await frames(await post(a!.base, { ops: [{ id: 1, op: "restock", args: { id: "b2", qty: 1 }, key: KEY + "b2" }] })))[0]).toMatchObject({ ok: { id: "b2", stock: 8 } });
+    expect((await frames(await restock(a!.base, KEY + "2", 2)))[0]).toMatchObject({ ok: { stock: before + 2 } });
     await live.atLeast(2, "b's live query hearing a's change");
     await updates.atLeast(1, "b's stream hearing a's event");
-    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: before + 1 } }] });
-    expect(updates.items[0]).toEqual({ id: 1, item: { bookId: "b1", stock: before + 1 } });
+    expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: before + 2 } }] });
+    expect(updates.items).toEqual([{ id: 1, item: { bookId: "b1", stock: before + 2 } }]);
   }, 20_000);
 
   // SIGTERM on Windows is a plain kill, so the graceful path can only be shown where the signal is delivered
@@ -298,5 +302,71 @@ describe.skipIf(!url || !jvmBuilt)("a TypeScript server and a JVM server in one 
     expect((await frames(await restock(jvm.base, KEY + "4")))[0]).toMatchObject({ ok: { stock: before + 1 } });
     await live.atLeast(2, "the TypeScript server hearing the JVM server's change");
     expect(live.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: before + 1 } }] });
+  }, 30_000);
+});
+
+/**
+ * Both stores keep a record for 24 hours and both have to mean the same instant by it (spec 03 section 4): while they
+ * did not, a retry arriving then was replayed by one runtime and run again by the other. Every member here tells the
+ * time by a clock that stands still, so a record one of them wrote is exactly as old as its name says when another
+ * reads it, whatever the machine's clock does meanwhile.
+ */
+describe.skipIf(!url || !jvmBuilt)("the age at which a record has expired, in a fleet of both runtimes", () => {
+  const THEN = Date.UTC(2026, 2, 1, 9);
+  const DAY = 24 * 3_600_000;
+  const cluster = new Cluster();
+  let pool: pg.Pool;
+  const at: Record<string, Member> = {};
+
+  beforeAll(async () => {
+    pool = new pg.Pool({ connectionString: url });
+    await freshDatabase(pool);
+    const clocks = { then: THEN, short: THEN + DAY - 1, day: THEN + DAY };
+    let port = 4705;
+    const starting: Array<Promise<void>> = [];
+    for (const runtime of ["ts", "jvm"] as const)
+      for (const [when, now] of Object.entries(clocks)) {
+        const name = `${runtime}-${when}`;
+        starting.push(cluster.start(name, port++, runtime, now).then((m) => void (at[name] = m)));
+      }
+    await Promise.all(starting);
+    for (const m of cluster.members) expect((await fetch(`${m.base}/rayfold/ready`)).status).toBe(200);
+  }, 180_000);
+
+  afterAll(async () => {
+    await cluster.stopAll();
+    await pool.end();
+  }, 40_000);
+
+  const replayed = (frame: Record<string, unknown> | undefined) => (frame as { meta?: { replay?: boolean } } | undefined)?.meta?.replay === true;
+
+  it("what the TypeScript server wrote answers the JVM server a millisecond short of a day, and at a day it runs the command", async () => {
+    expect((await frames(await restock(at["ts-then"]!.base, KEY + "n")))[0]).toMatchObject({ ok: { stock: 4 } });
+
+    const short = (await frames(await restock(at["jvm-short"]!.base, KEY + "n")))[0];
+    expect(short).toMatchObject({ ok: { stock: 4 } });
+    expect(replayed(short)).toBe(true);
+    expect(await runsOf(pool)).toEqual(["ts-then"]);
+
+    const day = (await frames(await restock(at["jvm-day"]!.base, KEY + "n")))[0];
+    expect(day).toMatchObject({ ok: { stock: 5 } });
+    expect(replayed(day)).toBe(false);
+    expect(await runsOf(pool)).toEqual(["ts-then", "jvm-day"]);
+  }, 30_000);
+
+  it("and the other way: what the JVM server wrote answers the TypeScript server a millisecond short of a day, and not at a day", async () => {
+    const before = await runsOf(pool);
+    const stock = await stockOf(pool);
+    expect((await frames(await restock(at["jvm-then"]!.base, KEY + "j")))[0]).toMatchObject({ ok: { stock: stock + 1 } });
+
+    const short = (await frames(await restock(at["ts-short"]!.base, KEY + "j")))[0];
+    expect(short).toMatchObject({ ok: { stock: stock + 1 } });
+    expect(replayed(short)).toBe(true);
+    expect(await runsOf(pool)).toEqual([...before, "jvm-then"]);
+
+    const day = (await frames(await restock(at["ts-day"]!.base, KEY + "j")))[0];
+    expect(day).toMatchObject({ ok: { stock: stock + 2 } });
+    expect(replayed(day)).toBe(false);
+    expect(await runsOf(pool)).toEqual([...before, "jvm-then", "ts-day"]);
   }, 30_000);
 });

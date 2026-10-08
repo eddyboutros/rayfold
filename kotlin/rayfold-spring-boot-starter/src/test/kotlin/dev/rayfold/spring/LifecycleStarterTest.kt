@@ -4,6 +4,7 @@ import dev.rayfold.core.RayfoldServer
 import dev.rayfold.spring.properties.PropertiesApplication
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -87,7 +88,9 @@ class LifecycleStarterTest {
         shop.release.countDown()
         val answered = command.get(5, TimeUnit.SECONDS)
         assertThat(answered.statusCode()).isEqualTo(200)
-        assertThat(answered.body()).contains(""""ok":{"${'$'}type":"Book","id":"b1","stock":1,"title":"The Dispossessed"}""")
+        val book = """{"${'$'}type":"Book","id":"b1","stock":1,"title":"The Dispossessed"}"""
+        assertThat(answered.body().lines().filter { it.isNotBlank() }.map { Json.parseToJsonElement(it) })
+            .containsExactly(Json.parseToJsonElement("""{"id":1,"ok":$book,"patch":[{"set":"Book:b1","value":$book}],"meta":{"cost":1},"fin":true}"""))
         closing.join(5_000)
         assertThat(closing.isAlive).describedAs("closed once the command answered").isFalse()
         assertThat(server.inflight).isZero()

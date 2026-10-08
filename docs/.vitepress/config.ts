@@ -125,6 +125,7 @@ export default defineConfig({
             { text: "Live updates", link: "/learn/live" },
             { text: "Streams and events", link: "/learn/streams" },
             { text: "Caching", link: "/learn/caching" },
+            { text: "Testing", link: "/guide/testing" },
           ],
         },
         {

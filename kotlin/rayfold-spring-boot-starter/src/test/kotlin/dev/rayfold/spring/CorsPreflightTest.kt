@@ -36,5 +36,7 @@ class CorsPreflightTest : RunningApplication() {
     fun `guard - a preflight from another origin gets no Access-Control-Allow-Origin, so the browser stops there`() {
         val res = preflight("https://evil.example")
         assertThat(res.headers().firstValue("Access-Control-Allow-Origin")).isEmpty()
+        assertThat(res.headers().firstValue("Access-Control-Allow-Methods")).isEmpty()
+        assertThat(res.headers().firstValue("Access-Control-Allow-Headers")).isEmpty()
     }
 }

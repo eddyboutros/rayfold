@@ -13,15 +13,18 @@ npx rayfold check schema.rayfold
 | `check <schema> [--against <old schema or lock file>] [--strict]` | Validates the schema. With `--against`, lists every change and fails on breaking ones (a removed field before its sunset date, a narrowed type, ...). |
 | `check <schema> --resolvers <module>` | Do the resolvers cover the schema? Every operation wired, a loader for every field that takes arguments, and a warning for a resolver the schema no longer has. |
 | `check <schema> --unused <usage.json> [--since 30d]` | Reads a usage snapshot from a running server and lists the operations and fields no client asked for in the window. "Unused" means no traffic was seen, never that nothing can reach it. |
-| `lock <schema> [--out rayfold.lock.json]` | Records field ordinals and the schema hash. Commit it and check later versions against it. |
+| `lock <schema> [--out rayfold.lock.json]` | Records field ordinals and the schema hash. Commit it and check later versions against it. Run again, it keeps every ordinal already locked, by name, and records each type's highest one in `highestOrdinals`, so a removed member's number is never reused. |
 | `hash <schema>` | Prints the schema hash. |
 | `explain <schema> <op> [--shape "{...}"] [--args '{...}']` | Shows the plan: cost, depth, one loader call per level, and which policies push down to the data source. |
 | `gen ts\|kotlin\|java\|graphql <schema> [--out file] [--package pkg] [--class Name]` | Generates TypeScript types, Kotlin data classes, Java records (one file, one class), or a GraphQL schema. For GraphQL, what it cannot express is listed on stderr. |
 | `shapes <schema> <file>` | Prints the shape id of each shape in the file, for registering trusted shapes. |
-| `import openapi\|graphql <file> [--out schema.rayfold]` | Reads a first draft of a schema from an OpenAPI document or a GraphQL SDL. What the source cannot say is listed on stderr. |
+| `import openapi\|graphql <file> [--out schema.rayfold]` | Reads a first draft of a schema from an OpenAPI document or a GraphQL SDL. A renamed OpenAPI parameter or body property keeps its original name with `@http(name:)`, and an optional schema (`anyOf: [X, { type: "null" }]`, or OpenAPI 3.0's `allOf: [X]` beside `nullable: true`) imports as `X?`. What the source cannot say is listed on stderr. |
 | `mock <schema.rayfold> [--port 4500]` | Serves the schema with data the schema itself describes, and the explorer beside it, before any resolver exists. The same call always gives the same answer. |
 | `lsp` | Runs the language server for `.rayfold` over stdin and stdout: errors as you type, completion, hover, go to definition and an outline, for any editor that speaks LSP. |
 | `dev <dir> [--port 4400]` | Runs an example from a Rayfold repository checkout (a folder whose `src/index.ts` exports `createBookstore()`) with the explorer, WebSocket and MCP. |
+
+> **Next release.** `lock` keeping ordinals by name, `check --against` a lock comparing them by name, and the
+> `import openapi` wire names and `X?` for optional schemas are not in 0.2.1; they arrive in the next release.
 
 In CI, `rayfold check schema.rayfold --against rayfold.lock.json` exits non-zero on a breaking change.
 

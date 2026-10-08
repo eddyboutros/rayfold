@@ -45,6 +45,7 @@ import tools.jackson.databind.json.JsonMapper
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
+import java.time.Clock
 
 /** `rayfold.*` settings. */
 @ConfigurationProperties("rayfold")
@@ -129,6 +130,7 @@ class RayfoldAutoConfiguration {
         instrumentation: ObjectProvider<Instrumentation>,
         idempotency: ObjectProvider<IdempotencyStore>,
         relay: ObjectProvider<Relay>,
+        clock: ObjectProvider<Clock>,
     ): RayfoldServer {
         val builder = Rayfold.server(schema).options(BatchOptions(trustedShapes = properties.trustedShapes, budget = properties.budget, maxDepth = properties.maxDepth))
         // an Instrumentation bean, such as RayfoldOpenTelemetry(openTelemetry), traces every batch
@@ -137,6 +139,9 @@ class RayfoldAutoConfiguration {
         idempotency.ifAvailable { builder.idempotencyStore(it) }
         // a Relay bean, such as PgRelay, lets live queries and streams on every instance hear the others' commands
         relay.ifAvailable { builder.relay(it) }
+        // a Clock bean, the one the application tells its own time by, is the server's clock too, so a test sets both at
+        // once. Clock is the JDK's type, not Rayfold's: an application with several and no primary one keeps starting
+        clock.ifUnique { builder.clock(it) }
         val bound = AnnotatedResolvers(context, mapper.getIfAvailable { JsonMapper.builder().build() }, schema).bindTo(builder)
         log.info("Rayfold at ${properties.path}: ${bound.size} resolvers bound" + bound.joinToString("") { "\n  $it" })
         return builder.build()

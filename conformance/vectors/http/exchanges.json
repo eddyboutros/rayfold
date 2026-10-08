@@ -1,0 +1,1001 @@
+{
+  "name": "http/exchanges",
+  "about": "What the HTTP endpoint and the REST bindings answer to requests a browser, a proxy or a curl script really sends: a refused media type that says what to send instead, a query string that is not percent-encoding, a path that only begins with the mount, revalidation with the ETag a compressing proxy turned weak, a Long too large for a JSON number, the Origin rule behind a TLS-terminating proxy, a CORS preflight, a Host that is no authority, a live query sent as a safe request, and the wire names of `@http(name:)`. Each of these was answered differently by the two runtimes at some point, and a client, a gateway or a CDN in front of a mixed fleet sees whichever server it happened to reach. The runners serve `schema` with fixed resolvers: `book` answers `{ id: <its id>, title: \"T\" }`; `find`, `hit`, `search` and `tag` answer `{ id: \"h1\", got: <the arguments the resolver received> }`, so `got` shows what reached the resolver and under which names; `find` sets `n` to its argument `n`, and `hit` to its argument `hitId`, so a Long goes back out as a Long. Each case runs on a fresh server listening on 127.0.0.1, with the endpoint at `/rayfold`, no viewer, and the REST bindings mounted beside it only when `server.bindings` is true.",
+  "source": "spec 04 §4 (the endpoint, its media types and refusals), §4a (the manifest's `extensions`), §4b (preflight), §8 (bindings: Long path and query values, wire names, the OpenAPI document); spec 07 §2 (effective freshness, conditional requests); spec 12 §2 (Origin and Host). Written from those sections, not from either runtime.",
+  "rule": [
+    "`request.headers` values may hold `{host}`, which the runner replaces with the Host header it sends (the address it connected to, or the host of the URL it built), so an origin can be the server's own; and `{etag}`, which the runner replaces with the `ETag` of the same request sent first without that header.",
+    "`route` is `endpoint` for a request to the Rayfold endpoint and `binding` for a REST binding (spec 04 §8). Endpoint cases run on every HTTP entry point a runtime has for the endpoint; binding cases where the bindings are served. A case marked `badRequestTarget` sends a request target that is no valid URI (RFC 3986). An HTTP server that is not the runtime's own, such as the JDK's, may refuse such a request line with a 400 of its own before the endpoint sees it; there only the status is required, and the problem document is checked where the runtime reads the request line itself or is handed it unparsed.",
+    "`expect.status` is the status. `expect.headers` maps a header name to the value it must have, to null when it must be absent, or to `{ contains }` (a substring) or `{ listIncludes }` (one element of a comma-separated list, compared without case). `expect.problem` is the `code` of an `application/problem+json` body. `expect.json` checks the JSON body and `expect.frame` the first frame of an NDJSON body, each by dotted path, `\"\"` being the whole value. `expect.emptyBody` means no body at all. `expect.streams` means the first frame arrives while the response is still open: the runner reads one line within 5 seconds and hangs up, which a server that waits for the batch to end can never answer.",
+    "Path matchers: `equals` (deep), `contains` (a substring of a string), `includes` / `excludes` (an array holds, or does not hold, this element), `includesMatch` (an array holds an object with these members), `hasKey` / `lacksKey` (an object's own member), `hasKeyDeep` (a member of this name anywhere below)."
+  ],
+  "schema": "entity Book @cache(maxAge: 60s, swr: 300s) { id: ID title: String }\nentity Hit { id: ID got: JSON n: Long? }\ninput Near { maxKm: Int @http(name: \"max-km\") }\ninput Where { zipCode: String? @http(name: \"zip-code\") near: Near? @http(name: \"near-by\") }\nquery book(id: ID): Book? @cache(maxAge: 30s, swr: 10s)\nquery find(firstName: String? @http(name: \"first-name\"), maxCount: Int? @http(name: \"max-count\"), n: Long?): Hit @http(method: GET, path: \"/find\")\nquery hit(hitId: Long @http(name: \"hit-id\")): Hit @http(method: GET, path: \"/hits/{hitId}\")\nquery search(firstName: String? @http(name: \"first-name\"), where: Where?): Hit @http(method: QUERY, path: \"/search\", body: \"*\")\ncommand tag(hitId: ID @http(name: \"hit-id\"), where: Where @http(name: \"the-where\")): Hit @http(method: PUT, path: \"/hits/{hitId}\", body: where)",
+  "cases": [
+    {
+      "name": "a media type the endpoint does not read names the ones it does",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "text/plain"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 415,
+        "problem": "invalid_argument",
+        "headers": {
+          "Accept-Post": {
+            "listIncludes": "application/rayfold+json"
+          }
+        }
+      },
+      "why": "spec 04 §4: a 415 carries Accept-Post, which is how a client that sent the wrong type learns the right one without reading a manual"
+    },
+    {
+      "name": "a query string that is not percent-encoding is refused on the endpoint",
+      "route": "endpoint",
+      "badRequestTarget": true,
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0&s=%zz"
+      },
+      "expect": {
+        "status": 400,
+        "problem": "invalid_argument"
+      },
+      "why": "handing the op the literal text instead ran it with a value the client never sent, and failed it inside a 200"
+    },
+    {
+      "name": "guard: the same request, well encoded, answers",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0&s=%7B%20id%20%7D"
+      },
+      "expect": {
+        "status": 200,
+        "frame": {
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      }
+    },
+    {
+      "name": "a path that only begins with the mount is not the endpoint's",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfoldbook?a=eyJpZCI6ImIxIn0"
+      },
+      "expect": {
+        "status": 404
+      },
+      "why": "matched by string prefix, /rayfoldbook ran the op book. Nothing else is served in this harness, so the request is answered 404 whoever answers it"
+    },
+    {
+      "name": "a sibling path that shares the mount's text is not the endpoint's",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold-admin/book?a=eyJpZCI6ImIxIn0"
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "name": "If-None-Match with the ETag made weak answers 304",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0",
+        "headers": {
+          "If-None-Match": "W/{etag}"
+        }
+      },
+      "expect": {
+        "status": 304,
+        "emptyBody": true
+      },
+      "why": "a compressing proxy turns the ETag weak and the client sends it back that way; an exact string comparison never revalidated through one"
+    },
+    {
+      "name": "If-None-Match with a list holding the ETag answers 304",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0",
+        "headers": {
+          "If-None-Match": "\"sha256-0000000000000000000000000000000000000000000000000000000000000000\", {etag}"
+        }
+      },
+      "expect": {
+        "status": 304,
+        "emptyBody": true
+      }
+    },
+    {
+      "name": "If-None-Match: * answers 304",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0",
+        "headers": {
+          "If-None-Match": "*"
+        }
+      },
+      "expect": {
+        "status": 304,
+        "emptyBody": true
+      }
+    },
+    {
+      "name": "guard: If-None-Match naming only other tags gets the answer",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0",
+        "headers": {
+          "If-None-Match": "W/\"sha256-0000000000000000000000000000000000000000000000000000000000000000\", W/\"x\""
+        }
+      },
+      "expect": {
+        "status": 200,
+        "frame": {
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      }
+    },
+    {
+      "name": "stale-while-revalidate is the smallest swr",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0"
+      },
+      "expect": {
+        "status": 200,
+        "headers": {
+          "Cache-Control": "public, max-age=30, stale-while-revalidate=10"
+        }
+      },
+      "why": "spec 07 §2: Book says 60s and 300s, the query 30s and 10s. A response is fresh, and may be served stale, only as long as everything in it may; taking the largest swr served the query's result stale for 300s"
+    },
+    {
+      "name": "a write from the server's own host over http is refused when the request came over TLS",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json",
+          "Origin": "http://{host}",
+          "X-Forwarded-Proto": "https"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 403,
+        "problem": "permission_denied"
+      },
+      "why": "spec 12 §2: a page served over plain http can be written by anyone on the network, so behind TLS it is not the server's own origin"
+    },
+    {
+      "name": "guard: the same write without a TLS hop is the server's own",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json",
+          "Origin": "http://{host}"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "frame": {
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      }
+    },
+    {
+      "name": "the scheme is not compared the other way: an https page of the server's own host may write over plain http",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json",
+          "Origin": "https://{host}",
+          "X-Forwarded-Proto": "http"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "frame": {
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      },
+      "why": "behind a TLS-terminating proxy the server sees plain http for its own https pages; X-Forwarded-Proto is believed only when it says https, so saying http changes nothing"
+    },
+    {
+      "name": "a write from another origin is refused",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json",
+          "Origin": "https://elsewhere.example"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 403,
+        "problem": "permission_denied"
+      }
+    },
+    {
+      "name": "* in the allowed origins allows any origin",
+      "route": "endpoint",
+      "server": {
+        "allowedOrigins": [
+          "*"
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json",
+          "Origin": "https://elsewhere.example"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "frame": {
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      }
+    },
+    {
+      "name": "a preflight from an allowed origin gets 204 and the CORS headers",
+      "route": "endpoint",
+      "server": {
+        "allowedOrigins": [
+          "https://app.example"
+        ]
+      },
+      "request": {
+        "method": "OPTIONS",
+        "path": "/rayfold",
+        "headers": {
+          "Origin": "https://app.example",
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "content-type"
+        }
+      },
+      "expect": {
+        "status": 204,
+        "headers": {
+          "Access-Control-Allow-Origin": "https://app.example",
+          "Access-Control-Allow-Methods": {
+            "listIncludes": "POST"
+          },
+          "Access-Control-Allow-Headers": {
+            "listIncludes": "Content-Type"
+          },
+          "Vary": {
+            "listIncludes": "Origin"
+          }
+        }
+      },
+      "why": "spec 04 §4b: the allowed origins alone decide it. Without this a browser on an allowed origin could not send the write the Origin rule lets through"
+    },
+    {
+      "name": "the write that follows the preflight carries the same headers",
+      "route": "endpoint",
+      "server": {
+        "allowedOrigins": [
+          "https://app.example"
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json",
+          "Origin": "https://app.example"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "headers": {
+          "Access-Control-Allow-Origin": "https://app.example",
+          "Vary": {
+            "listIncludes": "Origin"
+          }
+        },
+        "frame": {
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      }
+    },
+    {
+      "name": "a cacheable read from an allowed origin varies on Origin as well",
+      "route": "endpoint",
+      "server": {
+        "allowedOrigins": [
+          "https://app.example"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/book?a=eyJpZCI6ImIxIn0",
+        "headers": {
+          "Origin": "https://app.example"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "headers": {
+          "Access-Control-Allow-Origin": "https://app.example",
+          "Vary": {
+            "listIncludes": "Origin"
+          }
+        }
+      },
+      "why": "the answer names the asking origin, so a shared cache must keep one copy per origin; the Vary a cacheable answer carries for spec 07 must not replace it"
+    },
+    {
+      "name": "a preflight from any other origin gets 204 without them",
+      "route": "endpoint",
+      "server": {
+        "allowedOrigins": [
+          "https://app.example"
+        ]
+      },
+      "request": {
+        "method": "OPTIONS",
+        "path": "/rayfold",
+        "headers": {
+          "Origin": "https://elsewhere.example",
+          "Access-Control-Request-Method": "POST"
+        }
+      },
+      "expect": {
+        "status": 204,
+        "headers": {
+          "Access-Control-Allow-Origin": null
+        }
+      },
+      "why": "its browser stops there"
+    },
+    {
+      "name": "a live query sent as QUERY streams",
+      "route": "endpoint",
+      "request": {
+        "method": "QUERY",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              },
+              "live": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "streams": true,
+        "frame": {
+          "id": {
+            "equals": 1
+          },
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      },
+      "why": "a safe request was answered whole, so its result could be hashed for an ETag, and a live query is never whole: the request never answered"
+    },
+    {
+      "name": "a live query sent as a safe POST streams",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json",
+          "Rayfold-Safe": "true"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              },
+              "live": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "streams": true,
+        "frame": {
+          "id": {
+            "equals": 1
+          },
+          "data.id": {
+            "equals": "b1"
+          }
+        }
+      }
+    },
+    {
+      "name": "the manifest does not list http where no route is served",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/manifest"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "extensions": {
+            "excludes": "http"
+          }
+        }
+      },
+      "why": "spec 04 §4a: the schema declares @http routes, but nothing serves them, and a client must not use an extension that is listed and absent"
+    },
+    {
+      "name": "the manifest lists http where the routes are served",
+      "route": "endpoint",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/manifest"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "extensions": {
+            "includes": "http"
+          }
+        }
+      }
+    },
+    {
+      "name": "the OpenAPI document publishes wire names",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/openapi.json"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "paths": {
+            "hasKey": "/hits/{hit-id}"
+          },
+          "paths./find.get.parameters": {
+            "includesMatch": {
+              "name": "first-name",
+              "in": "query"
+            }
+          },
+          "paths./hits/{hit-id}.get.parameters": {
+            "includesMatch": {
+              "name": "hit-id",
+              "in": "path"
+            }
+          },
+          "paths./search.query.requestBody": {
+            "hasKeyDeep": "first-name"
+          },
+          "components.schemas.Where.properties": {
+            "hasKey": "zip-code"
+          },
+          "components.schemas.Hit.properties": {
+            "hasKey": "got"
+          }
+        }
+      },
+      "why": "spec 04 §8: parameters, path templates and request-body properties carry the names a client sends; a document with schema names describes requests the binding refuses"
+    },
+    {
+      "name": "guard: the OpenAPI document does not publish the schema names it replaced",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/openapi.json"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "paths": {
+            "lacksKey": "/hits/{hitId}"
+          },
+          "components.schemas.Where.properties": {
+            "lacksKey": "zipCode"
+          }
+        }
+      }
+    },
+    {
+      "name": "the endpoint keeps schema names",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "find",
+              "args": {
+                "firstName": "Ada"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "frame": {
+          "data.got.firstName": {
+            "equals": "Ada"
+          }
+        }
+      },
+      "why": "wire names apply to the bindings only: /rayfold, WebSocket and MCP always use schema names"
+    },
+    {
+      "name": "guard: the endpoint does not read a wire name",
+      "route": "endpoint",
+      "request": {
+        "method": "POST",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "application/rayfold+json"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "find",
+              "args": {
+                "first-name": "Ada"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "frame": {
+          "error.code": {
+            "equals": "invalid_argument"
+          }
+        }
+      }
+    },
+    {
+      "name": "a binding reads a query-string argument under its wire name",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?first-name=Ada&max-count=2"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "got": {
+            "equals": {
+              "firstName": "Ada",
+              "maxCount": 2
+            }
+          }
+        }
+      },
+      "why": "the resolver receives schema names whatever the client sent"
+    },
+    {
+      "name": "a binding refuses the schema name of an argument that has a wire name",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?firstName=Ada"
+      },
+      "expect": {
+        "status": 400,
+        "problem": "invalid_argument",
+        "json": {
+          "detail": {
+            "contains": "firstName"
+          }
+        }
+      }
+    },
+    {
+      "name": "a binding names a bad value as the client sent it",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?max-count=many"
+      },
+      "expect": {
+        "status": 400,
+        "problem": "invalid_argument",
+        "json": {
+          "detail": {
+            "equals": "find().max-count: expected Int"
+          }
+        }
+      }
+    },
+    {
+      "name": "a spread body is read under wire names at any depth",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "QUERY",
+        "path": "/search",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "first-name": "Ada",
+          "where": {
+            "zip-code": "02139",
+            "near-by": {
+              "max-km": 5
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "got": {
+            "equals": {
+              "firstName": "Ada",
+              "where": {
+                "zipCode": "02139",
+                "near": {
+                  "maxKm": 5
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a body bound to one argument is read under its input type's wire names",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "PUT",
+        "path": "/hits/h7",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "zip-code": "02139",
+          "near-by": {
+            "max-km": 5
+          }
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "got": {
+            "equals": {
+              "hitId": "h7",
+              "where": {
+                "zipCode": "02139",
+                "near": {
+                  "maxKm": 5
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a bad value deep in a body is named as the client sent it",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "QUERY",
+        "path": "/search",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "where": {
+            "near-by": {
+              "max-km": "far"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 400,
+        "problem": "invalid_argument",
+        "json": {
+          "detail": {
+            "equals": "search().where.near-by.max-km: expected Int"
+          }
+        }
+      }
+    },
+    {
+      "name": "a Long past 2^53 in a path arrives digit for digit",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/hits/9007199254740993"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "n": {
+            "equals": "9007199254740993"
+          }
+        }
+      },
+      "why": "read as a JSON number it became 9007199254740992, and was refused as no longer the text it came from. It stays text on the way in, as a client sends it in a body (spec 04 §8), and goes out as text, as every Long past 2^53 does (spec 01 §2.4)"
+    },
+    {
+      "name": "a Long past 2^53 in a query string arrives digit for digit",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?n=-9223372036854775808"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "n": {
+            "equals": "-9223372036854775808"
+          }
+        }
+      }
+    },
+    {
+      "name": "guard: a Long past the 64-bit range is still refused",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/hits/9223372036854775808"
+      },
+      "expect": {
+        "status": 400,
+        "problem": "invalid_argument"
+      }
+    },
+    {
+      "name": "a query string that is not percent-encoding is refused on a binding",
+      "route": "binding",
+      "badRequestTarget": true,
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?first-name=%zz"
+      },
+      "expect": {
+        "status": 400,
+        "problem": "invalid_argument"
+      }
+    },
+    {
+      "name": "a binding answers a weak If-None-Match with 304",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?first-name=Ada",
+        "headers": {
+          "If-None-Match": "W/{etag}"
+        }
+      },
+      "expect": {
+        "status": 304,
+        "emptyBody": true
+      }
+    },
+    {
+      "name": "a binding answers a listed If-None-Match with 304",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?first-name=Ada",
+        "headers": {
+          "If-None-Match": "W/\"x\", {etag}"
+        }
+      },
+      "expect": {
+        "status": 304,
+        "emptyBody": true
+      }
+    },
+    {
+      "name": "a binding answers If-None-Match: * with 304",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?first-name=Ada",
+        "headers": {
+          "If-None-Match": "*"
+        }
+      },
+      "expect": {
+        "status": 304,
+        "emptyBody": true
+      }
+    },
+    {
+      "name": "guard: a binding answers an If-None-Match naming other tags in full",
+      "route": "binding",
+      "server": {
+        "bindings": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/find?first-name=Ada",
+        "headers": {
+          "If-None-Match": "W/\"x\""
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "got.firstName": {
+            "equals": "Ada"
+          }
+        }
+      }
+    }
+  ]
+}

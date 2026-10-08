@@ -659,6 +659,10 @@ function reachableEntityTypes(ir: RayfoldSchemaIR, root: TypeRef, maxDepth = 4):
     }
     if ("fields" in def) for (const f of def.fields) visit(f.type, depth + 1);
     if (def.kind === "union") for (const m of def.members) visit({ kind: "named", name: m, nullable: false }, depth + 1);
+    // an interface position holds any entity that implements it, so a new one of those may join the result as well
+    if (def.kind === "object" && def.interface) {
+      for (const e of Object.values(ir.types)) if (e.kind === "entity" && e.implements.includes(name)) visit({ kind: "named", name: e.name, nullable: false }, depth + 1);
+    }
     if (t.kind === "named" && t.args) for (const a of t.args) visit(a, depth);
   };
   visit(root, 0);

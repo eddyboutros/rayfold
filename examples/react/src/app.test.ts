@@ -116,7 +116,7 @@ const purchases = (answers: Answer[]) => answers.filter((a) => a.ops.includes("b
 it("lists the books, and buying one updates its stock on the page", async () => {
   const { answers } = renderApp(PAGE_ORIGIN);
   await until(() => stockOf("b1") === "3 in stock", "the first book's stock");
-  expect(row("A Wizard of Earthsea")?.textContent).toContain("Ursula K. Le Guin");
+  expect(row("A Wizard of Earthsea")?.textContent).toBe("A Wizard of Earthsea by Ursula K. Le Guin 3 in stock Buy");
 
   click(row("A Wizard of Earthsea")?.querySelector("button"));
   await until(() => stockOf("b1") === "2 in stock", "the stock after buying");
@@ -139,6 +139,7 @@ it("shows a restock made by someone else, as it happens", async () => {
   const staff = new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: `Bearer ${staffToken}` }) }) });
   await staff.command("restock", { bookId: "b3", qty: 5 });
   await until(() => stockOf("b3") === "12 in stock", "the restocked count");
+  expect([stockOf("b1"), store.books.get("b3")?.stock]).toEqual(["3 in stock", 12]);
 });
 
 it("a copy of the page on another site is refused: it shows the error, and a purchase sent from there sells nothing", async () => {
@@ -151,4 +152,9 @@ it("a copy of the page on another site is refused: it shows the error, and a pur
   const client = new RayfoldClient({ transport: createFetchTransport({ url: `${base}/rayfold`, headers: () => ({ authorization: `Bearer ${customer}`, origin: elsewhere }) }) });
   await expect(client.command("buy", { bookId: "b1", qty: 1 })).rejects.toMatchObject({ code: "permission_denied", message: `Origin ${elsewhere} is not allowed` });
   expect(store.books.get("b1")?.stock).toBe(3);
+});
+
+it("serves the endpoint and nothing else", async () => {
+  const elsewhere = await fetch(`${base}/elsewhere`);
+  expect([elsewhere.status, elsewhere.headers.get("content-type"), await elsewhere.text()]).toEqual([404, null, ""]);
 });

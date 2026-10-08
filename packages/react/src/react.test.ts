@@ -51,6 +51,8 @@ interface Book {
 }
 
 let books: Map<string, Book>;
+/** While set, the book query fails with it: a query that answered once can then fail. */
+let refusal: RayfoldError | undefined;
 /** While set, commands wait for it: lets a test see the in-flight state without racing the network. */
 let gate: Promise<void> | undefined;
 /** The quantity of every restock, as the server starts it (and reads the gate). */
@@ -65,6 +67,7 @@ beforeEach(async () => {
     ["b2", { id: "b2", title: "Emma", stock: 7 }],
   ]);
   gate = undefined;
+  refusal = undefined;
   arrived = new Signal<number>();
   const find = (id: string): Book => {
     const b = books.get(id);
@@ -74,7 +77,12 @@ beforeEach(async () => {
   const server = createRayfoldServer({
     schema: SCHEMA,
     resolvers: {
-      Query: { book: ({ id }: { id: string }) => books.get(id) ?? null },
+      Query: {
+        book: ({ id }: { id: string }) => {
+          if (refusal) throw refusal;
+          return books.get(id) ?? null;
+        },
+      },
       Command: {
         restock: async ({ id, qty }: { id: string; qty: number }) => {
           arrived.push(qty);
@@ -184,7 +192,7 @@ function waitForText(container: HTMLElement, cond: (text: string) => boolean, la
 // ------------------------------------------------------------------ components under test
 
 const queries: Record<string, QueryResult<Book>> = {};
-const commands: Record<string, { run: (args: Record<string, unknown>) => Promise<Book>; state: CommandState<Book> }> = {};
+const commands: Record<string, { run: (args: Record<string, unknown>, options?: CommandOptions) => Promise<Book>; state: CommandState<Book> }> = {};
 
 function Stock(props: { id: string | undefined; label: string; log?: string[]; opts?: UseQueryOptions }) {
   const q = useQuery<Book>("book", { id: props.id }, props.opts);
@@ -200,9 +208,10 @@ function Stock(props: { id: string | undefined; label: string; log?: string[]; o
   return h("p", null, text);
 }
 
-function LiveStock(props: { id: string; label: string }) {
-  const l = useLive<Book>("book", { id: props.id }, { shape: "{ id title stock }" });
-  return h("p", null, l.data ? `${props.label}: ${l.data.stock}` : l.error ? `${props.label}: error` : `${props.label}: loading`);
+function LiveStock(props: { id: string; label: string; enabled?: boolean }) {
+  const l = useLive<Book>("book", { id: props.id }, { shape: "{ id title stock }", ...(props.enabled === undefined ? {} : { enabled: props.enabled }) });
+  const text = l.error ? `error ${(l.error as RayfoldClientError).code}` : l.data ? `${l.data.stock}` : l.loading ? "loading" : "idle";
+  return h("p", null, `${props.label}: ${text}`);
 }
 
 function Command(props: { op: string; label: string; options?: CommandOptions }) {
@@ -286,6 +295,26 @@ describe("useQuery", () => {
     expect(requests().length).toBe(before + 1);
   });
 
+  it("a query that fails after it answered keeps its data beside the error, and the next result clears the error", async () => {
+    const { client } = makeClient();
+    const view = mount(client, h(Stock, { id: "b1", label: "A" }));
+    await waitForText(view.container, (t) => t === "A: Dune 3", "loaded");
+    refusal = new RayfoldError("unavailable", "The shop is closed");
+    await queries["A"]!.refetch();
+    await drainReact();
+    expect([queries["A"]!.data, (queries["A"]!.error as RayfoldClientError).code, queries["A"]!.loading]).toEqual([
+      { $type: "Book", id: "b1", title: "Dune", stock: 3 },
+      "unavailable",
+      false,
+    ]);
+    // guard: the error is not kept for good either. The next answer clears it, even one that changes nothing, so
+    // nothing in the cache moves to clear it on the refetch's behalf
+    refusal = undefined;
+    await queries["A"]!.refetch();
+    await drainReact();
+    expect([queries["A"]!.data?.stock, queries["A"]!.error]).toEqual([3, undefined]);
+  });
+
   it("mounting a query that ran before shows the cached result at once while it refreshes", async () => {
     const { client } = makeClient();
     const first: string[] = [];
@@ -297,6 +326,52 @@ describe("useQuery", () => {
     await waitForText(b.container, (t) => t === "A: Dune 3", "second mount refreshed");
     expect(first[0]).toBe("A: loading");
     expect(second[0]).toBe("A: Dune 3 (refreshing)");
+  });
+
+  it("mounting a query that ran before, which the server now refuses, keeps the cached result beside the error", async () => {
+    const { client } = makeClient();
+    const a = mount(client, h(Stock, { id: "b1", label: "A" }));
+    await waitForText(a.container, (t) => t === "A: Dune 3", "first mount loaded");
+    a.unmount();
+    refusal = new RayfoldError("unavailable", "The shop is closed");
+    const b = mount(client, h(Stock, { id: "b1", label: "A" }));
+    await waitForText(b.container, (t) => t === "A: error unavailable", "the refusal");
+    expect([queries["A"]!.data, queries["A"]!.loading]).toEqual([{ $type: "Book", id: "b1", title: "Dune", stock: 3 }, false]);
+    // guard: a query the cache holds nothing for has no data to keep beside the same refusal
+    const c = mount(client, h(Stock, { id: "b2", label: "C" }));
+    await waitForText(c.container, (t) => t === "C: error unavailable", "the other refusal");
+    expect(queries["C"]!.data).toBeUndefined();
+  });
+
+  it("after a failed refetch, the next change the cache hears about clears the error", async () => {
+    const { client, requests } = makeClient();
+    const view = mount(client, h(Stock, { id: "b1", label: "A" }));
+    await waitForText(view.container, (t) => t === "A: Dune 3", "loaded");
+    refusal = new RayfoldError("unavailable", "The shop is closed");
+    await queries["A"]!.refetch();
+    await waitForText(view.container, (t) => t === "A: error unavailable", "the failed refetch");
+    refusal = undefined;
+    await client.command("restock", { id: "b1", qty: 1 });
+    await waitForText(view.container, (t) => t === "A: Dune 4", "the command's patch, with the error gone");
+    expect(queries["A"]!.error).toBeUndefined();
+    expect(requests()).toEqual([["book"], ["book"], ["restock"]]); // the patch, not a refetch, brought it
+  });
+
+  it("refetch asks the server even when the query is not enabled, or reads from the cache, and its answer clears an error", async () => {
+    const { client, requests } = makeClient();
+    const view = mount(client, h("div", null, h(Stock, { id: "b1", label: "A", opts: { enabled: false } }), h(Stock, { id: "b1", label: "K", opts: { policy: "cache" } })));
+    await waitForText(view.container, (t) => t === "A: idleK: Dune 3", "the cache-first query loaded; the disabled one idle");
+    books.get("b1")!.stock = 42; // behind the cache's back
+    await queries["K"]!.refetch();
+    await waitForText(view.container, (t) => t.includes("K: Dune 42"), "the cache-first query refetched from the server");
+    refusal = new RayfoldError("unavailable", "The shop is closed");
+    await queries["A"]!.refetch();
+    await waitForText(view.container, (t) => t.includes("A: error unavailable"), "the disabled query's failed refetch");
+    refusal = undefined;
+    await queries["A"]!.refetch();
+    await waitForText(view.container, (t) => t.includes("A: Dune 42"), "the disabled query's refetch, error cleared");
+    expect(queries["A"]!.error).toBeUndefined();
+    expect(requests()).toEqual([["book"], ["book"], ["book"], ["book"]]);
   });
 });
 
@@ -334,6 +409,22 @@ describe("useCommand", () => {
     await waitForText(view.container, (t) => t.includes("X: done 1") && t.includes("A: Dune 1"), "bought");
   });
 
+  it("a run that fails clears what the run before it returned, so an old success never shows beside a new error", async () => {
+    const { client } = makeClient();
+    const view = mount(client, h(Command, { op: "buy", label: "X" }));
+    await waitForText(view.container, (t) => t === "X: ready", "the command rendered");
+    await commands["X"]!.run({ id: "b1", qty: 1 });
+    await waitForText(view.container, (t) => t === "X: done 2", "the first purchase");
+    await commands["X"]!.run({ id: "b1", qty: 10 }).catch(() => undefined);
+    await waitForText(view.container, (t) => t === "X: failed OutOfStock", "the refused purchase");
+    expect([commands["X"]!.state.data, (commands["X"]!.state.error as RayfoldClientError).type]).toEqual([undefined, "OutOfStock"]);
+    // guard: a run that starts keeps the last result on screen until its own answer, and clears only the error
+    gate = new Promise<void>(() => {});
+    void commands["X"]!.run({ id: "b1", qty: 1 }).catch(() => undefined);
+    await waitForText(view.container, (t) => t === "X: running", "the next run in flight");
+    expect(commands["X"]!.state.error).toBeUndefined();
+  });
+
   it("runs that share an idempotency key are one purchase: the retry answers with the first result and sells nothing more", async () => {
     const { client, requests } = makeClient();
     const view = mount(client, h("div", null, h(Stock, { id: "b1", label: "A" }), h(Command, { op: "buy", label: "X", options: { key: "buy-b1-0123456789" } })));
@@ -362,6 +453,18 @@ describe("useCommand", () => {
     release();
     expect((await done).stock).toBe(4);
     await waitForText(view.container, (t) => t.includes("A: Dune 4") && t.includes("R: done 4"), "the server's value");
+  });
+
+  it("options given to one run override the hook's: another key is another purchase, and the hook's key still replays", async () => {
+    const { client } = makeClient();
+    const view = mount(client, h(Command, { op: "buy", label: "X", options: { key: "buy-b1-0123456789" } }));
+    await waitForText(view.container, (t) => t === "X: ready", "ready");
+    expect((await commands["X"]!.run({ id: "b1", qty: 1 })).stock).toBe(2);
+    expect((await commands["X"]!.run({ id: "b1", qty: 1 }, { key: "buy-b1-9876543210" })).stock).toBe(1);
+    expect(books.get("b1")!.stock).toBe(1);
+    // guard: without per-run options the hook's key is used, so this is the first purchase again
+    expect((await commands["X"]!.run({ id: "b1", qty: 1 })).stock).toBe(2);
+    expect(books.get("b1")!.stock).toBe(1);
   });
 
   it("guard: runs without a key are separate purchases", async () => {
@@ -435,6 +538,26 @@ describe("useLive", () => {
   });
 });
 
+describe("useLive, not enabled or refused", () => {
+  it("enabled: false opens nothing until it becomes true", async () => {
+    const { client, requests, open } = makeClient();
+    const view = mount(client, h(LiveStock, { id: "b1", label: "L", enabled: false }));
+    await waitForText(view.container, (t) => t === "L: idle", "idle");
+    await client.query("book", { id: "b2" }, { shape: "{ id }" }); // the barrier: a request made after the mount
+    expect([requests(), open()]).toEqual([[["book"]], 0]);
+    view.rerender(h(LiveStock, { id: "b1", label: "L", enabled: true }));
+    await waitForText(view.container, (t) => t === "L: 3", "subscribed once enabled");
+    expect(open()).toBe(1);
+  });
+
+  it("a live query the server refuses shows the error", async () => {
+    const { client } = makeClient();
+    refusal = new RayfoldError("permission_denied", "Not for you");
+    const view = mount(client, h(LiveStock, { id: "b1", label: "L" }));
+    await waitForText(view.container, (t) => t === "L: error permission_denied", "the refusal");
+  });
+});
+
 describe("lifecycle", () => {
   it("unmounting closes every subscription and aborts the live stream, also under StrictMode", async () => {
     const { client, open, sent } = makeClient();
@@ -452,7 +575,7 @@ describe("lifecycle", () => {
   it("server rendering renders the loading state and sends no request; the browser then fetches", async () => {
     const { client, requests } = makeClient();
     const html = renderToString(h(RayfoldProvider, { client }, h(Stock, { id: "b1", label: "A" })));
-    expect(html).toContain("A: loading");
+    expect(html).toBe("<p>A: loading</p>");
     expect(requests()).toEqual([]);
     const view = mount(client, h(Stock, { id: "b1", label: "A" }));
     await waitForText(view.container, (t) => t === "A: Dune 3", "fetched in the browser");
@@ -460,6 +583,6 @@ describe("lifecycle", () => {
   });
 
   it("a hook outside a provider says how to fix it", () => {
-    expect(() => renderToString(h(Stock, { id: "b1", label: "A" }))).toThrow(/RayfoldProvider/);
+    expect(() => renderToString(h(Stock, { id: "b1", label: "A" }))).toThrow(new Error("Rayfold hooks need a <RayfoldProvider client={...}> above them in the tree"));
   });
 });

@@ -20,10 +20,11 @@ afterEach(() => vi.unstubAllGlobals());
 
 /** A network that is up, down (nothing reaches the server), lossy (the server runs the batch but the answer is lost), or held at a gate. */
 function network(inner: Transport) {
-  const net = { mode: "up" as "up" | "down" | "lossy", sent: [] as RequestEnvelope[], gate: null as Promise<void> | null };
+  const net = { mode: "up" as "up" | "down" | "lossy", sent: [] as RequestEnvelope[], gate: null as Promise<void> | null, attempts: 0 };
   const transport: Transport = {
     send(env, opts) {
       return (async function* () {
+        net.attempts++;
         if (net.gate) await net.gate;
         if (net.mode === "down") throw new TypeError("fetch failed");
         net.sent.push(env);
@@ -61,6 +62,22 @@ describe("predictions in the cache", () => {
     // guard: an entity no prediction covers takes server writes directly
     cache.applyPatch([{ set: "Book:b2", value: { stock: 2 } }]);
     expect(cache.get("Book:b2")?.["stock"]).toBe(2);
+  });
+
+  it("removing stacked predictions in the order they were made, with no server write between, leaves the server's value", () => {
+    const cache = new RayfoldCache();
+    cache.applyPatch([{ set: "Book:b1", value: { stock: 5 } }]);
+    cache.addLayer("a", [{ set: "Book:b1", value: { stock: 6 } }]);
+    cache.addLayer("b", [{ set: "Book:b1", value: { stock: 8 } }]);
+    cache.removeLayer("a");
+    expect(cache.get("Book:b1")).toEqual({ $type: "Book", id: "b1", stock: 8 });
+    cache.removeLayer("b");
+    expect(cache.get("Book:b1")).toEqual({ $type: "Book", id: "b1", stock: 5 });
+    // an entity known only from a prediction goes when the prediction does
+    cache.addLayer("c", [{ set: "Book:b7", value: { stock: 1 } }]);
+    expect(cache.get("Book:b7")).toEqual({ $type: "Book", id: "b7", stock: 1 });
+    cache.removeLayer("c");
+    expect(cache.has("Book:b7")).toBe(false);
   });
 });
 
@@ -122,7 +139,7 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     expect(net.sent.map((e) => e.ops[0]!.key)).toEqual(["sync-key-00000001", "sync-key-00000002"]);
     expect(bs.store.books.get("b1")!.stock).toBe(8);
     expect(stockOf(c)).toBe(8);
-    expect(events.items.map((e) => e.type)).toEqual(["queued", "queued", "sent", "sent"]);
+    expect(events.items.map((e) => [e.type, e.pending])).toEqual([["queued", 1], ["queued", 2], ["sent", 1], ["sent", 0]]);
   });
 
   it("a drain while the server is still unreachable sends nothing and keeps every command", async () => {
@@ -170,7 +187,8 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     await expect(tooMany).rejects.toSatisfy((e: unknown) => e instanceof RayfoldClientError && e.is("OutOfStock"));
     await expect(one).resolves.toMatchObject({ status: "PLACED" });
     expect(c.cache.predictions).toEqual([]);
-    expect(events.items.map((e) => e.type)).toEqual(["queued", "queued", "failed", "sent"]);
+    expect(events.items.map((e) => [e.type, e.pending])).toEqual([["queued", 1], ["queued", 2], ["failed", 1], ["sent", 0]]);
+    expect(events.items[2]!.error).toBeInstanceOf(RayfoldClientError);
     expect(bs.store.books.get("b1")!.stock).toBe(4);
   });
 
@@ -194,6 +212,20 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     expect(net.sent.map((e) => e.ops[0]!.key)).toEqual(["sync-key-00000001"]);
     expect(bs.store.books.get("b1")!.stock).toBe(6);
     expect(saved.has("orders")).toBe(false);
+  });
+
+  it("a damaged saved queue is dropped, and the client starts empty and still sends; guard: a sound one is restored", async () => {
+    const { net, transport } = network(createLocalTransport(bs.server, () => admin));
+    for (const raw of ["not json", '{"key":"x"}', "null"]) {
+      const storage = { getItem: () => raw, setItem: () => {}, removeItem: () => {} };
+      const c = clientOn(transport, { offline: { storage: localStorageQueue("q", storage) } });
+      expect(await bounded(c.drain(), `drain with ${raw}`)).toBe(0);
+      expect(c.queued).toEqual([]);
+    }
+    const sound = JSON.stringify([{ key: "sync-key-saved", op: "restock", args: { bookId: "b2", qty: 1 }, options: {}, queuedAt: 0, seq: 1 }]);
+    const c = clientOn(transport, { offline: { storage: localStorageQueue("q", { getItem: () => sound, setItem: () => {}, removeItem: () => {} }), drainOnReconnect: false } });
+    expect(await c.drain()).toBe(0);
+    expect(net.sent.map((e) => e.ops[0]!.key)).toEqual(["sync-key-saved"]);
   });
 
   it("the browser coming back online sends the waiting commands; guard: drainOnReconnect false listens for nothing", async () => {
@@ -267,6 +299,61 @@ describe("the offline queue (sub-profile sync, spec 08 section 5)", () => {
     expect(await manual.drain()).toBe(0);
     expect(net.sent.map((e) => e.ops[0]!.key)).toEqual(["sync-key-restored", "sync-key-restored"]);
     expect(bs.store.calls["Command.restock"]).toBe(1); // the same key: the manual client's send was a replay
+  });
+
+  it("a command whose attempt failed after a later one's is still queued, and sent, ahead of it", async () => {
+    const local = createLocalTransport(bs.server, () => admin);
+    let up = false;
+    const sent: string[] = [];
+    let failFirst!: () => void;
+    const firstHeld = new Promise<void>((r) => (failFirst = r));
+    let attempt = 0;
+    const transport: Transport = {
+      send: (env, o) =>
+        (async function* () {
+          const n = ++attempt;
+          if (!up) {
+            if (n === 1) await firstHeld; // the first command's request hangs, then fails after the second's
+            throw new TypeError("fetch failed");
+          }
+          sent.push(env.ops[0]!.key!);
+          yield* local.send(env, o);
+        })(),
+    };
+    const events = new Signal<QueueEvent>();
+    const c = clientOn(transport, { offline: { drainOnReconnect: false } });
+    c.onQueue((e) => events.push(e));
+    const first = c.command("restock", { bookId: "b1", qty: 1 }, { shape: "{ id stock }" });
+    const second = c.command("restock", { bookId: "b1", qty: 2 }, { shape: "{ id stock }" });
+    await events.atLeast(1, "the second command queued");
+    failFirst();
+    await events.atLeast(2, "the first command queued after it");
+    expect(events.items.map((e) => e.command.key)).toEqual(["sync-key-00000002", "sync-key-00000001"]);
+    expect(c.queued.map((q) => q.key)).toEqual(["sync-key-00000001", "sync-key-00000002"]);
+    up = true;
+    expect(await c.drain()).toBe(0);
+    expect(sent).toEqual(["sync-key-00000001", "sync-key-00000002"]);
+    expect([await first, await second]).toEqual([{ $type: "Book", id: "b1", stock: 6 }, { $type: "Book", id: "b1", stock: 8 }]);
+  });
+
+  it("drains asked for while one runs share one more run, which answers about now; guard: a drain after that runs again", async () => {
+    const { net, transport } = network(createLocalTransport(bs.server, () => admin));
+    const events = new Signal<QueueEvent>();
+    const c = clientOn(transport, { offline: { drainOnReconnect: false } });
+    c.onQueue((e) => events.push(e));
+    net.mode = "down";
+    void c.command("restock", { bookId: "b1", qty: 1 });
+    await events.atLeast(1, "queued");
+    expect(net.attempts).toBe(1);
+    const running = c.drain();
+    const asked = [c.drain(), c.drain(), c.drain()]; // the run above is still going: it has not reached the network yet
+    expect(await bounded(running, "the running drain")).toBe(1);
+    expect(await bounded(Promise.all(asked), "the drains asked for meanwhile")).toEqual([1, 1, 1]);
+    expect(net.attempts).toBe(3); // the command's own, the running drain's, and one shared follow-up
+    net.mode = "up";
+    expect(await c.drain()).toBe(0);
+    expect(net.attempts).toBe(4);
+    expect(bs.store.calls["Command.restock"]).toBe(1);
   });
 
   it("guard: without `offline`, a failed network rejects as before, rolls the prediction back, and queues nothing", async () => {

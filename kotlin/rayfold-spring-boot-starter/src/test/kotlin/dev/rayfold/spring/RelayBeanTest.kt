@@ -43,13 +43,15 @@ class RelayBeanTest {
     }
 
     @Test
-    fun `guard - without the bean the server joins nothing, and is ready at once`() {
-        val relay = MemoryRelay()
+    fun `guard - without the bean the server joins nothing, is ready at once, and its commands still answer`() {
         runner.withBean(IdempotencyStoreBeanTest.Shop::class.java, { IdempotencyStoreBeanTest.Shop() }).run { ctx ->
+            assertThat(ctx).doesNotHaveBean(Relay::class.java)
             val server = ctx.getBean(RayfoldServer::class.java)
             runBlocking { withTimeout(5_000) { server.ready() } }
-            assertThat(relay.size).isZero()
+            assertThat(server.readiness().reasons).isEmpty()
             assertThat(server.relayFailure).isNull()
+            val frame = runBlocking { withTimeout(5_000) { server.collect(buy, viewer) } }.single()
+            assertThat(frame).isEqualTo(Json.parseToJsonElement("""{"id":1,"ok":{"${'$'}type":"Book","id":"b1","stock":1},"patch":[{"set":"Book:b1","value":{"${'$'}type":"Book","id":"b1","stock":1}}],"meta":{"cost":1},"fin":true}"""))
         }
     }
 }

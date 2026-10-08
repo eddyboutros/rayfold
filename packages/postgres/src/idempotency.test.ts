@@ -2,9 +2,13 @@ import { PGlite } from "@electric-sql/pglite";
 import { hashJson } from "@rayfold/schema";
 import { createRayfoldServer, type RayfoldServer } from "@rayfold/server";
 import type { IdempotencyClaim } from "@rayfold/server/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Signal } from "../../../e2e/wait.ts";
 import { PgIdempotencyStore, type Queryable } from "./index.ts";
+
+// every test boots its own PGlite, a Postgres compiled to WASM, which on a busy runner takes seconds by itself, the
+// first one in a worker longest; the waits for a signal inside each test keep their own 5 s bound
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 /**
  * The idempotency store in Postgres, with two servers behind it: what a second instance behind a load balancer looks
@@ -126,16 +130,108 @@ describe("idempotency records in Postgres", () => {
     expect(replayed((await book(f.servers[0]!)) as never)).toBe(true);
   });
 
-  it("stops replaying once a record is past its lifetime, and sweeps it away", async () => {
+  it("replays while a record is younger than its lifetime, and runs the command again at that age", async () => {
     const f = await fleet(1, { ttlMs: 60_000 });
     await book(f.servers[0]!);
-    now += 60_000;
+    now += 59_999;
     expect(replayed((await book(f.servers[0]!)) as never)).toBe(true);
 
     now += 1;
     expect(replayed((await book(f.servers[0]!)) as never)).toBe(false);
     expect(f.runs()).toBe(2);
-    expect(await f.store.size()).toBe(1); // the expired record was swept, the fresh one is there
+    expect(await f.store.size()).toBe(1); // the key holds the second run's record, in place of the expired one
+  });
+
+  // spec 03 section 4: a record has expired once it is as old as its time to live. Reading, claiming and sweeping are
+  // three statements, so each is held to that line from both sides: JdbcIdempotencyStore draws it in the same place,
+  // and a fleet of both runtimes reads one table.
+  describe("at the age a record expires", () => {
+    const record = (at: number) => ({ argsHash: "h", frame: { id: 1, ok: { id: "t1" }, fin: true }, at });
+    const store = async () => {
+      const s = new PgIdempotencyStore(sql, { now: () => now, ttlMs: 1_000 });
+      await s.migrate();
+      return s;
+    };
+    /** A finished key, as a command leaves it: claimed, then recorded under that claim's token. */
+    const finish = async (s: PgIdempotencyStore, key: string) => {
+      const claim = await s.claim("s", key, 100);
+      if (claim.state !== "owned") throw new Error(`${key} was not free: ${claim.state}`);
+      await s.put("s", key, record(now), claim.token);
+    };
+    const keys = async () => (await sql.query<{ key: string }>("SELECT key FROM rayfold_idempotency ORDER BY key")).rows.map((r) => r.key);
+
+    it("a read answers a millisecond short of it, and nothing at it", async () => {
+      const s = await store();
+      now = 5_000;
+      await finish(s, "a");
+      now = 5_999;
+      expect(await s.get("s", "a")).toEqual(record(5_000));
+      now = 6_000;
+      expect(await s.get("s", "a")).toBeUndefined();
+    });
+
+    it("a claim finds the record a millisecond short of it, and takes the key at it", async () => {
+      const s = await store();
+      now = 5_000;
+      await finish(s, "a");
+      now = 5_999;
+      expect(await s.claim("s", "a", 100)).toEqual({ state: "done", record: record(5_000) });
+      now = 6_000;
+      expect(await s.claim("s", "a", 100)).toEqual({ state: "owned", token: expect.any(String) });
+    });
+
+    it("a write sweeps nothing a millisecond short of it, and the record at it", async () => {
+      const s = await store();
+      now = 5_000;
+      await finish(s, "old");
+      now = 5_999;
+      await finish(s, "young");
+      expect(await keys()).toEqual(["old", "young"]);
+      now = 6_000;
+      await finish(s, "new");
+      expect(await keys()).toEqual(["new", "young"]);
+    });
+
+    it("a record is as old as the time it carries, whenever it was written", async () => {
+      const s = await store();
+      now = 5_500;
+      const claim = await s.claim("s", "a", 100);
+      if (claim.state !== "owned") throw new Error(`a was not free: ${claim.state}`);
+      await s.put("s", "a", record(5_200), claim.token); // answered at 5_200, written at 5_500
+      now = 6_199;
+      expect(await s.get("s", "a")).toEqual(record(5_200));
+      now = 6_200;
+      expect(await s.get("s", "a")).toBeUndefined();
+    });
+
+    it("a command still running past the time to live keeps its key through a write's sweep", async () => {
+      const s = await store();
+      now = 5_000;
+      const running = await s.claim("s", "running", 500);
+      if (running.state !== "owned") throw new Error(`running was not free: ${running.state}`);
+      now = 5_400;
+      expect(await s.renew("s", "running", running.token, 1_600)).toBe(true); // held until 7_000
+      now = 6_000; // the claim is as old as the time to live
+      await finish(s, "other");
+      expect(await keys()).toEqual(["other", "running"]);
+      expect(await s.claim("s", "running", 100)).toEqual({ state: "inflight", heldUntil: 7_000 });
+    });
+
+    it("a record the JVM store finished, which zeroes the lease and keeps the token, expires at the same age", async () => {
+      const s = await store();
+      const written = JSON.stringify(record(5_000).frame);
+      for (const key of ["read", "claimed"])
+        await sql.query(
+          "INSERT INTO rayfold_idempotency (scope, key, args_hash, frame, compact_frame, token, held_until, at) VALUES ('s', $1, 'h', $2, $2, 'jvm-token', 0, 5000)",
+          [key, written],
+        );
+      now = 5_999;
+      expect(await s.get("s", "read")).toEqual({ ...record(5_000), compactFrame: record(5_000).frame });
+      expect(await s.claim("s", "claimed", 100)).toEqual({ state: "done", record: { ...record(5_000), compactFrame: record(5_000).frame } });
+      now = 6_000;
+      expect(await s.get("s", "read")).toBeUndefined();
+      expect(await s.claim("s", "claimed", 100)).toEqual({ state: "owned", token: expect.any(String) });
+    });
   });
 
   it("keeps one viewer's record away from another's on the same key", async () => {
@@ -334,5 +430,55 @@ describe("idempotency records in Postgres", () => {
     const { rows } = await db.query<{ indexname: string }>(`SELECT indexname FROM pg_indexes WHERE schemaname = 'Shop' AND tablename = 'Idempotency'`);
     expect(rows.map((r) => r.indexname).sort()).toEqual(["Idempotency_pkey", "Shop_Idempotency_at"]);
     expect((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "Shop"."Idempotency"`)).rows[0]?.n).toBe(1);
+  });
+});
+
+describe("a statement the store sends that fails", () => {
+  const record = { argsHash: "h", frame: { id: 1, ok: { id: "t1" }, fin: true }, at: 1_000 };
+  const sweepFails = (): Queryable => ({
+    query: async (text, params) => {
+      if (/^DELETE FROM .* WHERE frame IS NOT NULL AND at <= \$1$/.test(text)) throw new Error("the disk is full");
+      return (await db.query(text, params)) as never;
+    },
+  });
+
+  it("fails the put that sent it, rather than going unseen", async () => {
+    const store = new PgIdempotencyStore(sweepFails(), { now: () => now });
+    await store.migrate();
+    const claim = await store.claim("s", KEY, 1_000);
+    if (claim.state !== "owned") throw new Error(`expected to own the key, got ${claim.state}`);
+    await expect(store.put("s", KEY, record, claim.token)).rejects.toThrow("the disk is full");
+  });
+
+  it("fails the hundredth put when trimming to the bound fails", async () => {
+    let trims = 0;
+    const trimFails: Queryable = {
+      query: async (text, params) => {
+        if (/row_number\(\) OVER/.test(text)) {
+          trims++;
+          throw new Error("the trim failed");
+        }
+        return (await db.query(text, params)) as never;
+      },
+    };
+    const store = new PgIdempotencyStore(trimFails, { now: () => now, maxRecords: 3 });
+    await store.migrate();
+    for (let i = 1; i <= 100; i++) {
+      const key = `key-${String(i).padStart(12, "0")}`;
+      const claim = await store.claim("s", key, 1_000);
+      if (claim.state !== "owned") throw new Error(`expected to own ${key}, got ${claim.state}`);
+      if (i < 100) await store.put("s", key, record, claim.token);
+      else await expect(store.put("s", key, record, claim.token)).rejects.toThrow("the trim failed");
+    }
+    expect(trims).toBe(1);
+  }, 30_000);
+
+  it("guard: the same put over a working connection resolves, and the record reads back", async () => {
+    const store = new PgIdempotencyStore(sql, { now: () => now });
+    await store.migrate();
+    const claim = await store.claim("s", KEY, 1_000);
+    if (claim.state !== "owned") throw new Error(`expected to own the key, got ${claim.state}`);
+    await store.put("s", KEY, record, claim.token);
+    expect(await store.get("s", KEY)).toEqual(record);
   });
 });

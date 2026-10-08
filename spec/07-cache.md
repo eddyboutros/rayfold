@@ -20,7 +20,8 @@ never leak through a shared cache by misconfiguration.
 ## 2. Effective freshness of a response
 
 For a `GET` or `QUERY` batch, the effective `maxAge` is the minimum over every query and every entity type
-present in the results; the scope is `public` only if all are public. The server emits:
+present in the results, and the effective `swr` the minimum over those of them that declare one; the scope is
+`public` only if all are public. The server emits:
 
 ```
 Cache-Control: public, max-age=60, stale-while-revalidate=300

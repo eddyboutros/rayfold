@@ -49,6 +49,11 @@ Between two `.rayfold` files there is no record of what was assigned, so both nu
 is a warning (`ordinal-shifted`, fatal under `--strict`), and a changed `@ordinal(n)` is still breaking. Lock the schema
 to make a mid-type insertion pass cleanly.
 
+::: info Next release
+Comparing ordinals by name, and `lock` keeping them by name with `highestOrdinals`, arrive in the next release. In
+0.2.1 both number every type's fields by position.
+:::
+
 `--resolvers` loads a module and reports fields the schema declares that nothing resolves, and resolvers with no
 field to attach to. It answers "are the resolvers complete?" before a request does. It runs beside the compatibility
 check, not instead of it, and either one failing fails the command.

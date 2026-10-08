@@ -100,6 +100,23 @@ class ServerTest {
     }
 
     @Test
+    fun `a page may start at an offset instead of after a cursor`() {
+        val page = query("books", """{"page":{"first":1,"offset":1}}""", shape = "{ items { id } cursor hasMore total }")
+        assertEquals(json($$"""{"items":[{"$type":"Book","id":"b2"}],"cursor":"b2","hasMore":true,"total":3}"""), page["data"])
+    }
+
+    @Test
+    fun `an Authorization header that is not a bearer token is refused, not read as anonymous`() {
+        val restock = op("restock", """{"bookId":"b2","qty":4}""", "{ id stock }", key = UUID.randomUUID().toString())
+        val basic = HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(5)).header("Content-Type", "application/rayfold+json")
+            .header("Authorization", "Basic dTE6cGFzc3dvcmQ=")
+            .POST(HttpRequest.BodyPublishers.ofString(buildJsonObject { put("ops", JsonArray(listOf(restock))) }.toString())).build()
+        val res = client.send(basic, HttpResponse.BodyHandlers.ofString())
+        assertEquals(401 to "Expected Authorization: Bearer <token>", res.statusCode() to json(res.body()).text("detail"))
+        assertEquals(0, store.book("b2")?.stock)
+    }
+
+    @Test
     fun `buy takes copies off the shelf`() {
         val frame = command("buy", """{"bookId":"b3","qty":2}""", shape = "{ id stock }", token = "customer")
         assertEquals(json($$"""{"$type":"Book","id":"b3","stock":5}"""), frame["ok"])

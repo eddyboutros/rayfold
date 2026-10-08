@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { canonicalJson, hashJson } from "./canonical.ts";
 import { canonicalShape, parseShapeText, shapeIdOf } from "./shape.ts";
 import { loadSchema, schemaHash } from "./load.ts";
+import { RayfoldSyntaxError } from "./lexer.ts";
 import type { JsonValue } from "./ir.ts";
 
 /**
@@ -164,7 +165,8 @@ describe("conformance vectors: shapes", () => {
       for (const c of cases) {
         it(c.name, () => {
           if (c.rejected) {
-            expect(() => canonicalShape(parseShapeText(c.shape), noViews), c.why ?? c.name).toThrow();
+            // the shape's own syntax error, not any crash on the way
+            expect(() => canonicalShape(parseShapeText(c.shape), noViews), c.why ?? c.name).toThrow(RayfoldSyntaxError);
             return;
           }
           const canonical = canonicalShape(parseShapeText(c.shape), noViews);

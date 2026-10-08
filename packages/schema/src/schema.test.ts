@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadSchema, schemaHash } from "./load.ts";
 import { parseSchemaText } from "./parser.ts";
-import { validateIR } from "./validate.ts";
+import { RayfoldSchemaError, validateIR } from "./validate.ts";
 import { RayfoldSyntaxError, tokenize } from "./lexer.ts";
-import { evalExpr, parseExprText, isPushable, referencesViewer, type ExprEnv } from "./expr.ts";
-import { canonicalShape, parseShapeText, shapeIdOf, shapeToString } from "./shape.ts";
-import { typeRefToString } from "./ir.ts";
+import { evalExpr, exprPaths, parseExprText, isPushable, referencesViewer, type ExprEnv } from "./expr.ts";
+import { canonicalShape, parseShapeText, shapeIdOf, shapeLevel, shapeToString } from "./shape.ts";
+import { baseName, typeRefToString } from "./ir.ts";
 
 const bookstore = readFileSync(fileURLToPath(new URL("../../../examples/bookstore-ts/bookstore.rayfold", import.meta.url)), "utf8");
 
@@ -30,6 +30,21 @@ describe("lexer", () => {
     expect(() => loadSchema(`entity A { id: ID } query a: A @cost(base: -1e999)`)).toThrow(RayfoldSyntaxError);
     expect(() => loadSchema(`entity A @cache(maxAge: ${"9".repeat(310)}d) { id: ID }`)).toThrow(/Number out of range/);
     expect(tokenize(`1e308 -1e308 ${"9".repeat(300)}`).map((t) => t.num)).toEqual([1e308, -1e308, Number("9".repeat(300)), undefined]);
+  });
+
+  it("refuses a block string or a block comment that never closes, where it opens", () => {
+    expect(() => tokenize(`entity A\n  """never closed`)).toThrow(/^Unterminated block string \(2:3\)$/);
+    expect(() => tokenize(`entity A\n  /* never closed`)).toThrow(/^Unterminated block comment \(2:3\)$/);
+    expect(() => tokenize(`"never closed`)).toThrow(/^Unterminated string \(1:1\)$/);
+  });
+
+  it("reads every escape a string has, each to its own character", () => {
+    const bs = "\\";
+    const text = `"${["n", "t", "r", '"', bs, "/", "b", "f", "u00e9", "u0041"].map((e) => `<${bs}${e}>`).join("")}"`;
+    expect(tokenize(text)[0]).toEqual({ kind: "string", value: '<\n><\t><\r><"><\\></><\b><\f><\u00e9><A>', line: 1, col: 1, offset: 0 });
+    // guard: an escape it does not know, and a short unicode escape, are the reader's own errors, where they are
+    expect(() => tokenize(`"a${bs}qb"`)).toThrow(/^Bad escape \\q \(1:5\)$/);
+    expect(() => tokenize(`"a${bs}u12"`)).toThrow(/^Bad unicode escape \(1:5\)$/);
   });
 });
 
@@ -67,6 +82,45 @@ describe("parser", () => {
     const t = ir.types["A"] as { description?: string; fields: { description?: string }[] };
     expect(t.description).toBe("An author");
     expect(t.fields[1]!.description).toBe("their name");
+  });
+
+  it("names the keyword it expected when a definition starts with something else", () => {
+    expect(() => parseSchemaText(`entity A { id: ID }\nthing B { id: ID }`)).toThrow(/^Expected a definition keyword \(entity, query, \.\.\.\) but found "thing" \(2:1\)$/);
+  });
+
+  it("implements needs at least one name", () => {
+    expect(() => parseSchemaText(`entity E implements { id: ID }`)).toThrow(/^Expected name but found "\{" \(1:21\)$/);
+  });
+
+  it("keeps every interface an entity implements, in order", () => {
+    const ir = parseSchemaText(`object Node @interface { id: ID } object Timed @interface { at: Instant } entity E implements Node Timed @cache(maxAge: 5s) { id: ID at: Instant }`);
+    expect(ir.types["E"]).toMatchObject({ kind: "entity", implements: ["Node", "Timed"], annotations: [{ name: "cache", args: { maxAge: { $duration: 5000 } } }] });
+  });
+
+  it("reads a bare name in a field policy as this, on an input field as args", () => {
+    const ir = parseSchemaText(`entity E { id: ID n: Int @allow(read: owner == viewer.id) } input I { n: Int @allow(write: limit > 1) }`);
+    const policy = (type: string) => ((ir.types[type] as { fields: Array<{ name: string; annotations: Array<{ args: Record<string, unknown> }> }> }).fields.find((f) => f.name === "n")!.annotations[0]!.args);
+    expect(policy("E")).toEqual({ read: { $expr: { k: "bin", op: "==", l: { k: "path", root: "this", path: ["owner"] }, r: { k: "path", root: "viewer", path: ["id"] } } } });
+    expect(policy("I")).toEqual({ write: { $expr: { k: "bin", op: ">", l: { k: "path", root: "args", path: ["limit"] }, r: { k: "lit", v: 1 } } } });
+  });
+
+  it("keeps an enum's description and its values' descriptions", () => {
+    const ir = parseSchemaText(`"""How it feels.""" enum Tone { """Like a fire.""" WARM COOL }`);
+    expect(ir.types["Tone"]).toEqual({
+      kind: "enum",
+      name: "Tone",
+      description: "How it feels.",
+      annotations: [],
+      values: [
+        { name: "WARM", description: "Like a fire.", annotations: [], ordinal: 1 },
+        { name: "COOL", annotations: [], ordinal: 2 },
+      ],
+    });
+  });
+
+  it("refuses a view defined twice (guard - two views of one type are fine)", () => {
+    expect(() => parseSchemaText(`entity A { id: ID }\nview A.card = { id }\nview A.card = { id }`)).toThrow(/^View A\.card is already defined \(3:1\)$/);
+    expect(Object.keys(parseSchemaText(`entity A { id: ID } view A.card = { id } view A.row = { id }`).views)).toEqual(["A.card", "A.row"]);
   });
 
   it("rejects duplicates and redefinition of built-ins", () => {
@@ -126,6 +180,56 @@ describe("validation", () => {
     expect(errorsOf(`entity A { id: ID p: Int @deprecated(sunset: "2027-06-30") }`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID p: Int @deprecated(reason: "old") }`)).toEqual([]);
     expect(errorsOf(`entity A { id: ID } query q: A @cache(maxAge: 5s, scope: public)`)).toEqual([]);
+  });
+
+  it("an invalid schema throws a RayfoldSchemaError that lists each error with where it is", () => {
+    let error: unknown;
+    try {
+      loadSchema(`entity A { name: String b: Nope } query a: A`);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(RayfoldSchemaError);
+    const e = error as RayfoldSchemaError;
+    expect([e.name, e.message]).toEqual(["RayfoldSchemaError", "Invalid schema:\n  A: entity A must declare id: ID [entity-id]\n  A.b: Unknown type Nope [unknown-type]"]);
+    expect(e.diagnostics.map((d) => d.code)).toEqual(["entity-id", "unknown-type"]);
+  });
+
+  it("a generic in a position it cannot take is reported once, not again for its type argument", () => {
+    expect(validateIR(parseSchemaText(`entity A { id: ID } input I { p: Page<A> } query q(i: I): A`)).filter((d) => d.severity === "error").map((d) => `${d.code}@${d.at}`)).toEqual([
+      "bad-type-position@I.p",
+      "page-args@I.p",
+    ]);
+  });
+
+  it("only entity and object fields take arguments (guard - an object field may)", () => {
+    expect(errorsOf(`input I { a(x: Int): Int } query q(i: I): Int`)).toEqual(["args-not-allowed"]);
+    expect(errorsOf(`error E { a(x: Int): Int } command c: Int throws E`)).toEqual(["args-not-allowed"]);
+    expect(errorsOf(`object O { a(x: Int): Int } query q: O`)).toEqual([]);
+  });
+
+  it("@cache scope is public or private, written as a name", () => {
+    expect(errorsOf(`entity A @cache(maxAge: 5s, scope: shared) { id: ID } query a: A`)).toEqual(["bad-cache-scope"]);
+    expect(errorsOf(`entity A @cache(maxAge: 5s, scope: "public") { id: ID } query a: A`)).toEqual(["bad-cache-scope"]);
+    expect(errorsOf(`entity A @cache(maxAge: 5s, scope: private) { id: ID } query a: A`)).toEqual([]);
+  });
+
+  it("an entity implements only @interface objects, and every field of each", () => {
+    const at = (src: string) => validateIR(parseSchemaText(src)).filter((d) => d.severity === "error").map((d) => `${d.code}@${d.at}: ${d.message}`);
+    expect(at(`object Plain { id: ID } entity E implements Plain { id: ID } query e: E`)).toEqual(["bad-interface@E: Plain is not an @interface object"]);
+    expect(at(`entity E implements Nope { id: ID } query e: E`)).toEqual(["bad-interface@E: Nope is not an @interface object"]);
+    expect(at(`object Named @interface { id: ID name: String } entity E implements Named { id: ID } query e: E`)).toEqual(["missing-interface-field@E: E must implement Named.name"]);
+    // guard: an entity with every field of its interface is fine
+    expect(at(`object Named @interface { id: ID name: String } entity E implements Named { id: ID name: String } query e: E`)).toEqual([]);
+  });
+
+  it("'this' on either side of an operation policy is refused (guard - viewer and args on both sides are fine)", () => {
+    expect(errorsOf(`entity A { id: ID } query q(id: ID): A @allow(read: viewer.id == this.owner)`)).toEqual(["policy-this-on-op"]);
+    expect(errorsOf(`entity A { id: ID } query q(id: ID): A @allow(read: !(this.locked == true))`)).toEqual(["policy-this-on-op"]);
+    expect(errorsOf(`entity A { id: ID } query q(id: ID): A @allow(read: has(viewer.ids, this.id))`)).toEqual(["policy-this-on-op"]);
+    expect(errorsOf(`entity A { id: ID } query q(id: ID): A @allow(read: this.id in [1])`)).toEqual(["policy-this-on-op"]);
+    expect(errorsOf(`entity A { id: ID } query q(id: ID): A @allow(read: 1 in [this.id])`)).toEqual(["policy-this-on-op"]);
+    expect(errorsOf(`entity A { id: ID } query q(id: ID): A @allow(read: viewer.id == args.id)`)).toEqual([]);
   });
 
   it("@version needs a non-null Int, Long, String or Instant field", () => {
@@ -339,8 +443,59 @@ describe("policy expressions", () => {
     expect(evalExpr(parseExprText(`!(id == 1) && len(tags) >= 2`, "args"), { viewer: null, args: { id: 2, tags: ["x", "y"] }, this: null })).toBe(true);
   });
 
+  it("orders with each comparison operator, equal values included", () => {
+    const ev = (src: string) => evalExpr(parseExprText(src, "args"), { viewer: null, args: {}, this: null });
+    expect(["1 < 1", "1 <= 1", "1 > 1", "1 >= 1", "1 < 2", "2 <= 1", "2 > 1", "1 >= 2"].map(ev)).toEqual([false, true, false, true, true, false, true, false]);
+  });
+
+  it("values of different scalar types are equal by their text (guard - same-typed values compare as themselves)", () => {
+    const ev = (src: string, args: Record<string, unknown>) => evalExpr(parseExprText(src, "args"), { viewer: null, args, this: null });
+    expect(ev(`args.a == "true"`, { a: true })).toBe(true);
+    expect(ev(`args.a == args.b`, { a: "x", b: "x" })).toBe(true);
+    expect(ev(`args.a == args.b`, { a: "x", b: "y" })).toBe(false);
+    expect(ev(`args.a == false`, { a: true })).toBe(false);
+    expect(ev(`args.a == args.b`, { a: { x: 1 }, b: { x: 1 } })).toBe(false);
+  });
+
+  it("collects the paths on both sides of every operator", () => {
+    expect(exprPaths(parseExprText(`a == viewer.id && !(this.b != args.c) || has(viewer.d, e) || f in [g]`, "this")).map((p) => [p.root, ...p.path].join("."))).toEqual([
+      "this.a",
+      "viewer.id",
+      "this.b",
+      "args.c",
+      "viewer.d",
+      "this.e",
+      "this.f",
+      "this.g",
+    ]);
+    expect(referencesViewer(parseExprText(`owner == viewer.id`, "this"))).toBe(true);
+    expect(referencesViewer(parseExprText(`owner == args.id`, "this"))).toBe(false);
+  });
+
+  it("is pushable only when every part is: a path deeper than one level on either side is not", () => {
+    const pushable = (src: string) => isPushable(parseExprText(src, "this"));
+    expect(pushable(`owner == viewer.id && status == "open"`)).toBe(true);
+    expect(pushable(`owner.id == viewer.id`)).toBe(false);
+    expect(pushable(`viewer.id == owner.id`)).toBe(false);
+    expect(pushable(`a == 1 && owner.id == "x"`)).toBe(false);
+    expect(pushable(`owner.id == "x" || a == 1`)).toBe(false);
+    expect(pushable(`!(owner.id == "x")`)).toBe(false);
+    expect(pushable(`has(viewer.roles, "x")`)).toBe(true);
+    expect(pushable(`has(tags, "x")`)).toBe(false);
+    expect(pushable(`now() > 1`)).toBe(false);
+    expect(pushable(`a in [1, owner.id]`)).toBe(false);
+  });
+
+  it("the innermost named type reads through lists and Page", () => {
+    const ref = parseSchemaText(`entity B { id: ID } query q(page: PageArgs): [Page<B>?]`).ops["q"]!.returns;
+    expect(baseName(ref)).toBe("B");
+    expect(baseName(parseSchemaText(`query q: [Int]`).ops["q"]!.returns)).toBe("Int");
+  });
+
   it("rejects unknown functions", () => {
     expect(() => parseExprText(`magic(1)`, "args")).toThrow(/Unknown function/);
+    // and anything after a whole expression
+    expect(() => parseExprText(`a == 1 b`, "args")).toThrow(/^Unexpected token after expression \(1:8\)$/);
   });
 });
 
@@ -380,6 +535,30 @@ describe("shapes", () => {
     expect(shapeToString(real)).toBe(`{ i(n: 1) }`);
   });
 
+  it("an argument value is a literal, a list, an object or a variable, and nothing else", () => {
+    expect(() => parseShapeText(`{ a(x: ) }`)).toThrow(/^Unexpected "\)" in literal \(1:8\)$/);
+    expect(() => parseShapeText(`{ a(x: @ y: 1 }) }`)).toThrow(/^Unexpected "@" in literal \(1:8\)$/);
+  });
+
+  it("prints argument objects with their keys sorted, so one selection has one text", () => {
+    const s = parseShapeText(`{ a(z: 1 o: { y: $v x: [{ q: 1 p: 2 }] }) }`);
+    expect(shapeToString(s)).toBe(`{ a(o: {x: [{p: 2 q: 1}] y: $v} z: 1) }`);
+    expect(parseShapeText(shapeToString(s))).toEqual(s);
+  });
+
+  it("orders deferred parts by label, unlabelled first", () => {
+    expect(canonicalShape(parseShapeText(`{ @defer(label: "b") { x } @defer(label: "a") { y } @defer { z } id }`), views)).toBe(
+      `{ id @defer { z } @defer(label: "a") { y } @defer(label: "b") { x } }`,
+    );
+  });
+
+  it("one level as a cache sees it takes fields from ...on and @defer, and from a named view", () => {
+    const level = shapeLevel(parseShapeText(`{ id t: title ...on Book { stock(at: 1) } @defer { author { name } } ...Book.card }`), (t, v) => (t === "Book" && v === "card" ? { type: "Book", name: "card", shape: parseShapeText(`{ price }`) } : undefined));
+    expect([...level.bySelection].sort()).toEqual(["stock", "t"]);
+    expect([...level.child.keys()].sort()).toEqual(["author", "id", "price", "stock", "t"]);
+    expect(level.child.get("author")).toEqual({ items: [{ kind: "field", name: "name" }] });
+  });
+
   it("rejects unknown views and bad directives", () => {
     expect(() => canonicalShape(parseShapeText(`{ ...Book.nope }`), views)).toThrow(/Unknown view/);
     expect(() => parseShapeText(`{ id @weird }`)).toThrow(/Unknown field modifier/);
@@ -398,6 +577,9 @@ describe("security: parsing and comparing hostile input", () => {
     expect(secParseShape(nest(30)).items).toHaveLength(1); // guard
     expect(() => secParseShape(nest(5_000))).toThrow(/nested deeper/); // the counter resets after a failure
     expect(secParseShape(nest(62)).items).toHaveLength(1);
+    // the bound exactly: 64 levels of braces read, a 65th does not
+    expect(secParseShape(nest(63)).items).toHaveLength(1);
+    expect(() => secParseShape(nest(64))).toThrow(/^Shape nested deeper than 64 levels \(1:257\)$/);
   });
 
   it("numbers and numeric text compare exactly by value; text that is not numeric compares as text", () => {
@@ -412,5 +594,8 @@ describe("security: parsing and comparing hostile input", () => {
     expect(ev("args.a == args.b", { a: "01", b: "1" })).toBe(false); // ids stay distinct text
     expect(ev("args.a > 1", { a: null })).toBe(false); // null comparisons stay false
     expect(() => ev("args.a > 1", { a: true })).toThrow(ExprError);
+    // a host's NaN or Infinity is not a number that orders: the policy errors, and so fails closed
+    expect(() => ev("args.a > 1", { a: Number.NaN })).toThrow(ExprError);
+    expect(() => ev("args.a < 1", { a: Number.POSITIVE_INFINITY })).toThrow(ExprError);
   });
 });

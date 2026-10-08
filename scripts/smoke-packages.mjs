@@ -48,6 +48,7 @@ import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { createRayfoldServer, listen } from "@rayfold/server";
 import { RayfoldClient, RayfoldClientError, createFetchTransport } from "@rayfold/client";
+import { collect } from "@rayfold/client/testing";
 import { loadSchema } from "@rayfold/schema";
 import { RbCodec } from "@rayfold/rb";
 import { defineSchema, entity, query, t, typedClient, type Infer, type Select } from "@rayfold/builder";
@@ -125,6 +126,13 @@ try {
   const anonymous = new RayfoldClient({ transport: createFetchTransport({ url }) });
   await assert.rejects(anonymous.command("restock", { id: "b1", qty: 100 }), (e: unknown) => e instanceof RayfoldClientError && e.code === "unauthenticated");
   assert.equal(books.get("b1")?.stock, 9, "the refused command changed nothing");
+
+  // the testing entry point, as an application's tests import it
+  const watched = collect<Book>((next, fail) => client.watch("book", { id: "b1" }, {}, next, fail));
+  assert.equal((await watched.next("the watched book")).stock, 9);
+  await client.command("restock", { id: "b1", qty: 1 });
+  assert.equal((await watched.next("the restock")).stock, 10);
+  watched.stop();
 
   // the other packages, from their published entry points
   const { ir } = loadSchema(${JSON.stringify(SCHEMA)});

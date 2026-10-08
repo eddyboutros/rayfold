@@ -31,6 +31,13 @@
       <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
     </dependency>
 
+    <!-- calls the server from a unit test, with no network between them -->
+    <dependency>
+      <groupId>dev.rayfold</groupId>
+      <artifactId>rayfold-test</artifactId>
+      <version>0.2.1</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>

@@ -88,6 +88,9 @@ class JavaApiTest {
         public Optional<String> getNickname() { return Optional.empty(); }
         public Duration getSession() { return Duration.ofSeconds(90); }
         public int[] getScores() { return new int[] {3, 5}; }
+        // neither is a property: an is-method that answers no boolean, and a static getter
+        public String isPremium() { return "maybe"; }
+        public static String getVersion() { return "2"; }
     }
 
     final Map<String, Book> books = new ConcurrentHashMap<>();
@@ -275,8 +278,8 @@ class JavaApiTest {
         var frames = post(null, """
             {"rayfold":"0.1","ops":[{"id":1,"op":"book","args":{"id":"crash"}},{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ title }"}]}""");
         Map<String, Object> crashed = frames.stream().filter(f -> Long.valueOf(1).equals(f.get("id"))).findFirst().orElseThrow();
-        assertEquals("internal", at(crashed, "error", "code"));
-        assertTrue(!String.valueOf(crashed).contains("secret detail"), String.valueOf(crashed));
+        assertEquals(Rayfold.parseJson("""
+            {"id":1,"error":{"code":"internal","message":"Internal error"},"fin":true}"""), crashed, "the code and nothing of what was thrown");
         // guard: the other op in the batch still answers
         Map<String, Object> fine = frames.stream().filter(f -> Long.valueOf(2).equals(f.get("id"))).findFirst().orElseThrow();
         assertEquals("The Dispossessed", at(fine, "data", "title"));
@@ -286,9 +289,9 @@ class JavaApiTest {
     void aJavaStreamBecomesOneFramePerElement() throws Exception {
         var frames = post(null, """
             {"rayfold":"0.1","ops":[{"id":1,"op":"countdown","args":{"from":3}}]}""");
-        List<Object> items = frames.stream().filter(f -> f.containsKey("item")).map(f -> f.get("item")).toList();
-        assertEquals(List.of(3L, 2L, 1L, 0L), items);
-        assertEquals(Boolean.TRUE, frames.get(frames.size() - 1).get("fin"));
+        assertEquals(List.of(
+            Map.of("id", 1L, "item", 3L), Map.of("id", 1L, "item", 2L), Map.of("id", 1L, "item", 1L), Map.of("id", 1L, "item", 0L),
+            Map.of("id", 1L, "fin", true)), frames);
     }
 
     @Test
@@ -525,6 +528,177 @@ class JavaApiTest {
         List<Object> loop = new ArrayList<>();
         loop.add(loop);
         var e = assertThrows(IllegalArgumentException.class, () -> Rayfold.toJson(loop));
-        assertTrue(e.getMessage().contains("nested deeper than 64"), e.getMessage());
+        assertEquals("Value nested deeper than 64 levels (does it refer to itself?)", e.getMessage());
+    }
+
+    HttpResponse<String> send(String to, String body, String... headers) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(to)).timeout(Duration.ofSeconds(5))
+            .header("Content-Type", "application/rayfold+json").POST(HttpRequest.BodyPublishers.ofString(body));
+        for (int i = 0; i < headers.length; i += 2) request.header(headers[i], headers[i + 1]);
+        return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    String started(HttpBuilder builder) throws IOException {
+        HttpServer h = builder.start(0);
+        extra.add(h);
+        return "http://127.0.0.1:" + h.getAddress().getPort() + "/rayfold";
+    }
+
+    static final String ONE_BOOK = """
+        {"ops":[{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ title }"}]}""";
+
+    @Test
+    void theHttpBuilderReadinessChecksNameWhatIsNotReady() throws Exception {
+        String failing = started(Rayfold.http(server)
+            .readiness("db", () -> "answered")
+            .readiness("cache", () -> { throw new IllegalStateException("cache down"); }));
+        var res = get(failing + "/ready");
+        assertEquals(503, res.statusCode(), res.body());
+        assertEquals("{\"ready\":false,\"reasons\":[\"cache: cache down\"]}", res.body());
+        // guard: the passing check alone leaves the server ready
+        String passing = started(Rayfold.http(server).readiness("db", () -> "answered"));
+        assertEquals("{\"ready\":true,\"reasons\":[]}", get(passing + "/ready").body());
+    }
+
+    @Test
+    void theHttpBuilderLimitsTheBodyAndTheOriginsThatMayWrite() throws Exception {
+        String limited = started(Rayfold.http(server).maxBodyBytes(200).allowedOrigins("https://app.example"));
+        assertEquals(413, send(limited, ONE_BOOK + " ".repeat(200)).statusCode());
+        assertEquals(403, send(limited, ONE_BOOK, "Origin", "https://evil.example").statusCode());
+        // guard: a body within the limit, from the allowed origin, is answered
+        var ok = send(limited, ONE_BOOK, "Origin", "https://app.example");
+        assertEquals(200, ok.statusCode(), ok.body());
+        assertEquals(Rayfold.parseJson("""
+            {"id":1,"data":{"$type":"Book","title":"The Dispossessed"},"meta":{"cost":1},"fin":true}"""), Rayfold.parseJson(ok.body().strip()));
+        assertEquals(200, send(url, ONE_BOOK + " ".repeat(200)).statusCode(), "guard: the default limit is larger");
+    }
+
+    @Test
+    void theHttpBuilderHidesTheManifestWhenToldTo() throws Exception {
+        String off = started(Rayfold.http(server).manifest(dev.rayfold.core.ManifestMode.OFF));
+        assertEquals(404, get(off + "/manifest").statusCode());
+        assertEquals(200, get(url + "/manifest").statusCode(), "guard: served by default");
+    }
+
+    @Test
+    void theHttpBuilderAnswersOnlyTheHostsItIsGiven() throws Exception {
+        HttpServer h = Rayfold.http(server).allowedHosts("bookshop.example").start(0);
+        extra.add(h);
+        int port = h.getAddress().getPort();
+        assertEquals("HTTP/1.1 200 OK", rawStatus(port, "bookshop.example"));
+        assertEquals("HTTP/1.1 403 Forbidden", rawStatus(port, "localhost"), "a listed host replaces the loopback names");
+    }
+
+    static String rawStatus(int port, String host) throws IOException {
+        try (var socket = new java.net.Socket(java.net.InetAddress.getLoopbackAddress(), port)) {
+            socket.setSoTimeout(5_000);
+            socket.getOutputStream().write(("GET /rayfold/health HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            return new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(), java.nio.charset.StandardCharsets.US_ASCII)).readLine();
+        }
+    }
+
+    @Test
+    void theHttpBuilderServesUploadsOnlyWithAStore() throws Exception {
+        var store = new dev.rayfold.core.MemoryUploadStore(3_600_000L, 1024L, System::currentTimeMillis, () -> "upload-1");
+        String with = started(Rayfold.http(server).viewer(exchange -> Map.of("id", "alice")).uploads(store));
+        HttpRequest.Builder upload = HttpRequest.newBuilder(URI.create(with + "/uploads")).timeout(Duration.ofSeconds(5))
+            .header("Content-Type", "application/octet-stream").POST(HttpRequest.BodyPublishers.ofByteArray(new byte[] {1, 2, 3}));
+        var res = client.send(upload.build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, res.statusCode(), res.body());
+        assertEquals("upload-1", at(Rayfold.parseJson(res.body()), "id"));
+        assertEquals(3L, (Long) at(Rayfold.parseJson(res.body()), "size"));
+        assertEquals(1, store.getSize());
+        // guard: the server built without uploads() has no such route
+        var none = client.send(HttpRequest.newBuilder(URI.create(url + "/uploads")).timeout(Duration.ofSeconds(5))
+            .header("Content-Type", "application/octet-stream").POST(HttpRequest.BodyPublishers.ofByteArray(new byte[] {1})).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(404, none.statusCode());
+    }
+
+    static final String SIMULATED = """
+        entity Book { id: ID stock: Int }
+        command restock(id: ID, qty: Int): Book @simulate
+        """;
+
+    @Test
+    void theContextTellsAResolverWhetherItIsADryRunAndWhichOpItServes() throws Exception {
+        List<String> seen = Collections.synchronizedList(new ArrayList<>());
+        String to = serve(Rayfold.server(SIMULATED)
+            .command("restock", (args, ctx) -> {
+                seen.add(ctx.opName() + " simulate=" + ctx.isSimulate() + " cancelled=" + ctx.isCancelled());
+                return Map.of("id", "b1", "stock", 3 + args.getInt("qty"));
+            })
+            .build());
+        post(to, null, """
+            {"ops":[{"id":1,"op":"restock","args":{"id":"b1","qty":1},"key":"key-0000000000020","simulate":true}]}""");
+        post(to, null, RESTOCK.formatted(2, 21));
+        assertEquals(List.of("restock simulate=true cancelled=false", "restock simulate=false cancelled=false"), seen);
+    }
+
+    /** Records each op the runtime runs, through the hook a tracing library would use. */
+    static final class RecordingOps implements dev.rayfold.core.Instrumentation {
+        final List<String> ops = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public Object op(dev.rayfold.core.OpInfo info, kotlin.jvm.functions.Function1<? super kotlin.coroutines.Continuation<? super dev.rayfold.core.Outcome>, ?> run, kotlin.coroutines.Continuation<? super dev.rayfold.core.Outcome> continuation) {
+            ops.add(info.getKind() + " " + info.getName());
+            return run.invoke(continuation);
+        }
+    }
+
+    @Test
+    void theServerBuilderUsesTheOptionsStoreAndHooksItIsGiven() throws Exception {
+        var store = new dev.rayfold.core.MemoryIdempotencyStore();
+        var hooks = new RecordingOps();
+        var oneOp = new dev.rayfold.core.BatchOptions(false, 1000, 1, 8, 500, 10_000, 100_000, 10_000, 30_000L);
+        String to = serve(Rayfold.server(SHOP)
+            .command("restock", (args, ctx) -> Map.of("id", "b1", "stock", 3 + args.getInt("qty")))
+            .options(oneOp).idempotencyStore(store).instrumentation(hooks)
+            .build());
+        assertEquals(List.of(Rayfold.parseJson("""
+            {"id":1,"ok":{"$type":"Book","id":"b1","stock":4},"patch":[{"set":"Book:b1","value":{"$type":"Book","id":"b1","stock":4}}],"meta":{"cost":1},"fin":true}""")),
+            post(to, null, RESTOCK.formatted(1, 31)));
+        assertEquals(1, store.getSize(), "the command's answer is kept in the store given");
+        assertEquals(List.of("command restock"), hooks.ops);
+        var two = send(to, """
+            {"ops":[{"id":1,"op":"restock","args":{"id":"b1","qty":1},"key":"key-0000000000032"},{"id":2,"op":"restock","args":{"id":"b1","qty":1},"key":"key-0000000000033"}]}""");
+        assertEquals(Rayfold.parseJson("""
+            {"error":{"code":"resource_exhausted","message":"At most 1 ops per batch"},"fin":true}"""), Rayfold.parseJson(two.body().strip()), "maxOps from the options given");
+        assertEquals(List.of("command restock"), hooks.ops, "and nothing ran");
+    }
+
+    @Test
+    void theServerBuilderHandsTheRelaysRefusalToItsHandler() throws Exception {
+        CompletableFuture<Throwable> refused = new CompletableFuture<>();
+        dev.rayfold.core.Relay down = new dev.rayfold.core.Relay() {
+            @Override
+            public Object publish(dev.rayfold.core.RelayMessage message, kotlin.coroutines.Continuation<? super kotlin.Unit> continuation) {
+                throw new IllegalStateException("relay down");
+            }
+
+            @Override
+            public Object subscribe(kotlin.jvm.functions.Function1<? super dev.rayfold.core.RelayMessage, kotlin.Unit> onMessage, kotlin.coroutines.Continuation<? super kotlin.jvm.functions.Function1<? super kotlin.coroutines.Continuation<? super kotlin.Unit>, ?>> continuation) {
+                kotlin.jvm.functions.Function1<kotlin.coroutines.Continuation<? super kotlin.Unit>, Object> stop = c -> kotlin.Unit.INSTANCE;
+                return stop;
+            }
+        };
+        String to = serve(Rayfold.server(SHOP)
+            .command("restock", (args, ctx) -> Map.of("id", "b1", "stock", 4))
+            .relay(down).onRelayError(refused::complete)
+            .build());
+        assertEquals(Rayfold.parseJson("""
+            {"$type":"Book","id":"b1","stock":4}"""), at(post(to, null, RESTOCK.formatted(1, 41)).get(0), "ok"), "the change happened here regardless");
+        Throwable e = refused.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertInstanceOf(IllegalStateException.class, e);
+        assertEquals("relay down", e.getMessage());
+    }
+
+    @Test
+    void anArgumentSentAsNullIsPresentAndOneLeftOutIsNot() throws Exception {
+        String to = serve(Rayfold.server("query has(note: String?): String")
+            .query("has", (args, ctx) -> args.has("note") + " " + args.getString("note"))
+            .build());
+        assertEquals("true null", at(post(to, null, "{\"ops\":[{\"id\":1,\"op\":\"has\",\"args\":{\"note\":null}}]}").get(0), "data"));
+        assertEquals("false null", at(post(to, null, "{\"ops\":[{\"id\":1,\"op\":\"has\",\"args\":{}}]}").get(0), "data"));
+        assertEquals("true hi", at(post(to, null, "{\"ops\":[{\"id\":1,\"op\":\"has\",\"args\":{\"note\":\"hi\"}}]}").get(0), "data"));
     }
 }

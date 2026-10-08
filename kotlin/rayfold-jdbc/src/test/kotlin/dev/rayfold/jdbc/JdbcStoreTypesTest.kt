@@ -32,6 +32,10 @@ class JdbcStoreTypesTest {
         entity NotOpenAsList @allow(read: !(["open"] in status)) { id: ID status: String? }
         entity NotMine @allow(read: !(ownerId == viewer.id)) { id: ID ownerId: ID? rank: Int }
         entity Open @allow(read: status in ["open"]) { id: ID status: String? }
+        entity SameOwner @allow(read: ownerId == status) { id: ID ownerId: ID? status: String? }
+        entity FiveText @allow(read: status == 5) { id: ID status: String? }
+        enum State { OPEN CLOSED }
+        entity ByState @allow(read: status == "open") { id: ID status: State? }
         """.trimIndent(),
     ).ir
 
@@ -48,7 +52,7 @@ class JdbcStoreTypesTest {
         keepAlive = DriverManager.getConnection(url)
         keepAlive.createStatement().use { s ->
             s.execute("""CREATE TABLE "tickets" ("id" varchar primary key, "owner_id" varchar, "status" varchar, "rank" int not null)""")
-            s.execute("""INSERT INTO "tickets" VALUES ('t1','u1','open',3), ('t2','u2','closed',1), ('t3','u1',null,5), ('t4',null,'open',2)""")
+            s.execute("""INSERT INTO "tickets" VALUES ('t1','u1','open',3), ('t2','u2','closed',1), ('t3','u1',null,5), ('t4',null,'open',2), ('t5','u5','u5',1), ('t6','5.0','5.0',1)""")
         }
     }
 
@@ -59,7 +63,7 @@ class JdbcStoreTypesTest {
 
     private fun store() = JdbcStore(
         { DriverManager.getConnection(url) },
-        JdbcStoreOptions(schema, listOf("Mine", "OpenOrUnset", "NotOpenAsList", "NotMine", "Open").associateWith { JdbcTable("tickets") }, Naming.SNAKE),
+        JdbcStoreOptions(schema, listOf("Mine", "OpenOrUnset", "NotOpenAsList", "NotMine", "Open", "SameOwner", "FiveText", "ByState").associateWith { JdbcTable("tickets") }, Naming.SNAKE),
     )
 
     private fun ctx(type: String, viewer: JsonElement = JsonObject(mapOf("id" to JsonPrimitive("u1")))) =
@@ -71,16 +75,16 @@ class JdbcStoreTypesTest {
     fun `a negation it cannot translate keeps every row and binds nothing it does not use`() {
         // `rank > 2` is left to the runtime, so the && under the ! is not exact: its bound viewer id used to stay behind
         // with no ? to fill, and every read of the type failed
-        assertEquals(listOf("t1", "t2", "t3", "t4"), ids("Mine"))
+        assertEquals(listOf("t1", "t2", "t3", "t4", "t5", "t6"), ids("Mine"))
         // guard: a negation it can translate still filters, and a null owner is kept as the policy keeps it
-        assertEquals(listOf("t2", "t4"), ids("NotMine"))
+        assertEquals(listOf("t2", "t4", "t5", "t6"), ids("NotMine"))
     }
 
     @Test
     fun `a list holding null is left to the runtime rather than dropping the rows whose column is null`() {
         // the policy lets t3 (status null) through, and IN never matches a null: the store now selects every row and
         // the runtime keeps t1, t3 and t4, where `status IN (?, ?)` selected only t1 and t4
-        assertEquals(listOf("t1", "t2", "t3", "t4"), ids("OpenOrUnset"))
+        assertEquals(listOf("t1", "t2", "t3", "t4", "t5", "t6"), ids("OpenOrUnset"))
         // guard: a list of values only is still pushed down, exactly
         assertEquals(listOf("t1", "t4"), ids("Open"))
     }
@@ -89,7 +93,23 @@ class JdbcStoreTypesTest {
     fun `a field on the right of in is left to the runtime, which reads it as a list being an element of the field`() {
         // `["open"] in status` is false for every row, so its negation allows them all; as `status IN (...)` the
         // negation dropped the open ones
-        assertEquals(listOf("t1", "t2", "t3", "t4"), ids("NotOpenAsList"))
+        assertEquals(listOf("t1", "t2", "t3", "t4", "t5", "t6"), ids("NotOpenAsList"))
+    }
+
+    @Test
+    fun `a column compared with another column is left to the runtime, not read as a comparison with null`() {
+        // `ownerId == status` holds for t5; a store that evaluated the other column without the row read it as null
+        assertEquals(listOf("t1", "t2", "t3", "t4", "t5", "t6"), ids("SameOwner"))
+    }
+
+    @Test
+    fun `a text column compared with a number is left to the runtime, which reads 5-point-0 text as the number 5`() {
+        assertEquals(listOf("t1", "t2", "t3", "t4", "t5", "t6"), ids("FiveText"))
+    }
+
+    @Test
+    fun `an enum column compares as its name, so the comparison is pushed down exactly`() {
+        assertEquals(listOf("t1", "t4"), ids("ByState"))
     }
 }
 
@@ -140,9 +160,10 @@ class JdbcStorePostgresTest {
     @Test
     fun `a resolver's own equality on a uuid column runs`() {
         val rows = store().find("Anyone", where = mapOf("ownerId" to JsonPrimitive(alice), "rank" to JsonPrimitive(3)))
-        assertEquals(2, rows.size)
+        assertEquals(listOf("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"), rows.map { it.getValue("id").jsonPrimitive.content }.sorted())
         val page = store().page("Anyone", first = 10, where = mapOf("published" to JsonPrimitive(true)))
         assertEquals(3, page.total)
+        assertEquals(listOf("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000004"), page.items.map { it.getValue("id").jsonPrimitive.content }.sorted())
     }
 
     @Test

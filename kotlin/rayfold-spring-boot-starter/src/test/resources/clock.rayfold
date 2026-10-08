@@ -1,0 +1,4 @@
+entity Post @allow(read: this.publishedAt <= now()) { id: ID title: String publishedAt: Long }
+
+query post(id: ID): Post
+command publish(id: ID): Post

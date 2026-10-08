@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RayfoldContext } from "./context.ts";
 import { ok } from "./executor.ts";
 import type { Frame, RequestEnvelope } from "./protocol.ts";
-import { MemoryRelay, type Relay } from "./relay.ts";
+import { MemoryRelay, type Relay, type RelayMessage } from "./relay.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
 import { bounded, Signal } from "../../../e2e/wait.ts";
 
@@ -219,5 +219,105 @@ describe("changes and events cross a relay between servers", () => {
     await onB.frames.atLeast(3, "b hearing its own change");
     expect(onB.frames.items.slice(1)).toEqual([{ id: 1, patch: [{ set: "Book:b1", value: { stock: 4 } }] }, { id: 1, patch: [{ set: "Book:b1", value: { stock: 6 } }] }]);
     await onB.stop();
+  });
+});
+
+describe("what a relay carries, and losing it", () => {
+  it("a change naming an operation reaches a live query on another server by that name", async () => {
+    const relay = new MemoryRelay();
+    const books = shelf();
+    const a = instance(books, { relay: relay.join() });
+    const b = instance(books, { relay: relay.join() });
+    await Promise.all([a.server.ready(), b.server.ready()]);
+    const watching = live(b.server);
+    await watching.frames.atLeast(1, "the live query on b answering");
+    books.get("b1")!.stock = 9; // changed behind the runtime's back, as a migration or another process would
+    a.server.changes.publish({ keys: new Set(), ops: new Set(["book"]) });
+    await watching.frames.atLeast(2, "b re-running on the operation a named");
+    expect(watching.frames.items[1]).toEqual({ id: 1, patch: [{ set: "Book:b1", value: { stock: 9 } }] });
+    await watching.stop();
+    await Promise.all([a.server.close(), b.server.close()]);
+  });
+
+  it("a relay that stops listening after it started makes the server not ready, and says why", async () => {
+    let lose: (e: unknown) => void = () => {};
+    const relay: Relay = {
+      publish: async () => {},
+      subscribe: async (_onMessage, onLost) => {
+        lose = (e) => onLost?.(e);
+        return async () => {};
+      },
+    };
+    const failures: unknown[] = [];
+    const { server } = instance(shelf(), { relay, onRelayError: (e) => failures.push(e) });
+    await server.ready();
+    expect(server.readiness()).toEqual({ ready: true, reasons: [] });
+    const dropped = new Error("connection dropped");
+    lose(dropped);
+    expect(server.readiness()).toEqual({ ready: false, reasons: ["relay: connection dropped"] });
+    expect(failures).toEqual([dropped]);
+    expect(server.relayFailure).toBe(dropped);
+  });
+});
+
+describe("a relay end", () => {
+  /** Opens a stream on `server` and waits until it has subscribed, so an event sent after this reaches it. */
+  async function subscribedStream(server: RayfoldServer) {
+    const subscribed = new Signal<string>();
+    const on = server.events.on.bind(server.events);
+    server.events.on = (name, fn) => {
+      subscribed.push(name);
+      return on(name, fn);
+    };
+    const stream = open(server, { op: "stockUpdates", args: { bookIds: ["b1"] } });
+    await subscribed.until((names) => names.includes("StockChanged"), "the stream subscribing");
+    return stream;
+  }
+
+  it("never hands a server back an event it raised itself", async () => {
+    const relay = new MemoryRelay();
+    const books = shelf();
+    const a = instance(books, { relay: relay.join() });
+    const b = instance(books, { relay: relay.join() });
+    await Promise.all([a.server.ready(), b.server.ready()]);
+    const onA = await subscribedStream(a.server);
+    await restock(a.server, KEY + "1");
+    await restock(b.server, KEY + "2"); // the barrier: once a has heard this, anything a echoed to itself is in too
+    await onA.frames.atLeast(2, "a hearing its own event and then b's");
+    expect(onA.frames.items).toEqual([{ id: 1, item: { bookId: "b1", stock: 4 } }, { id: 1, item: { bookId: "b1", stock: 5 } }]);
+    await Promise.all([onA.stop(), a.server.close(), b.server.close()]);
+  });
+
+  it("subscribed twice is one listener, the later one", async () => {
+    const relay = new MemoryRelay();
+    const end = relay.join();
+    const heard: string[] = [];
+    await end.subscribe(() => heard.push("first"));
+    await end.subscribe(() => heard.push("second"));
+    expect(relay.size).toBe(1);
+    await relay.join().publish({ kind: "change", keys: ["Book:b1"], ops: [] });
+    expect(heard).toEqual(["second"]);
+  });
+});
+
+describe("what goes over the relay", () => {
+  it("a change that names nothing is not sent at all", async () => {
+    const sent: unknown[] = [];
+    const relay: Relay = { publish: async (m) => void sent.push(m), subscribe: async () => async () => {} };
+    const { server } = instance(shelf(), { relay });
+    await server.ready();
+    server.changes.publish({ keys: new Set(), ops: new Set() });
+    server.changes.publish({ keys: new Set(["Book:b1"]), ops: new Set() }); // guard
+    expect(sent).toEqual([{ kind: "change", keys: ["Book:b1"], ops: [] }]);
+  });
+
+  it("each receiver gets its own copy, so a sender editing its message afterwards changes nothing it already sent", async () => {
+    const relay = new MemoryRelay();
+    const got: RelayMessage[] = [];
+    await relay.join().subscribe((m) => got.push(m));
+    const message: RelayMessage = { kind: "change", keys: ["Book:b1"], ops: [] };
+    await relay.join().publish(message);
+    message.keys.push("Book:b2");
+    expect(got).toEqual([{ kind: "change", keys: ["Book:b1"], ops: [] }]);
   });
 });

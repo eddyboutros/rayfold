@@ -249,17 +249,19 @@ class BookshopApplicationTests {
     void aRoleIsBelievedOnlyFromATokenThatVerifies() throws Exception {
         String devKey = "bookshop development key, not a secret";
         var restock = new LinkedHashMap<String, Object>(Map.of("id", 1, "op", "restock", "args", Map.of("bookId", "b2", "qty", 4), "key", UUID.randomUUID().toString()));
-        var refused = new ArrayList<Integer>();
+        var refused = new ArrayList<String>();
         for (String bearer : List.of(
             "staff", // the role's name is not a credential
             signed("a key this server does not hold, at least 32 bytes", DevTokens.ISSUER, "bookshop", 3_600_000),
             signed(devKey, DevTokens.ISSUER, "bookshop", -3_600_000), // expired an hour ago
             signed(devKey, "https://someone-else.example", "bookshop", 3_600_000),
             signed(devKey, DevTokens.ISSUER, "another-app", 3_600_000))) {
-            refused.add(client.send(request(restock, bearer), HttpResponse.BodyHandlers.ofString()).statusCode());
+            var response = client.send(request(restock, bearer), HttpResponse.BodyHandlers.ofString());
+            // the token is what was refused, not the caller for some other reason
+            refused.add(response.statusCode() + " " + response.headers().firstValue("WWW-Authenticate").orElse("").startsWith("Bearer error=\"invalid_token\""));
         }
         // Spring Security refuses them before Rayfold is reached
-        assertThat(refused).containsExactly(401, 401, 401, 401, 401);
+        assertThat(refused).containsExactly("401 true", "401 true", "401 true", "401 true", "401 true");
         assertThat(store.book("b2").orElseThrow().stock()).isZero();
         // guard: the same claims, signed with the key and for this issuer and audience, are believed
         var ok = client.send(request(restock, signed(devKey, DevTokens.ISSUER, "bookshop", 3_600_000)), HttpResponse.BodyHandlers.ofString());

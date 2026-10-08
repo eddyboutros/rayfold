@@ -15,7 +15,25 @@ import kotlinx.serialization.json.jsonPrimitive
 /** Declarative resolver interpreter for conformance fixtures (mirrors conformance/src/fixture.ts). */
 class FixtureStore(data: JsonObject) {
     val tables: MutableMap<String, MutableList<MutableMap<String, JsonElement>>> =
-        data.mapValues { (_, rows) -> rows.jsonArray.map { it.jsonObject.toMutableMap() }.toMutableList() }.toMutableMap()
+        data.mapValues { (_, rows) -> rows.jsonArray.map { numbers(it).jsonObject.toMutableMap() }.toMutableList() }.toMutableMap()
+
+    private companion object {
+        /** `{ "$number": "NaN" | "Infinity" | "-Infinity" }`: a value a resolver can produce and JSON cannot hold. */
+        fun numbers(e: JsonElement): JsonElement = when (e) {
+            is JsonArray -> JsonArray(e.map(::numbers))
+            is JsonObject -> if ("\$number" in e) {
+                val n = when ((e["\$number"] as? JsonPrimitive)?.content) {
+                    "NaN" -> Double.NaN
+                    "Infinity" -> Double.POSITIVE_INFINITY
+                    "-Infinity" -> Double.NEGATIVE_INFINITY
+                    else -> null
+                }
+                check(n != null && e.size == 1) { "fixture: no such number $e" }
+                JsonPrimitive(n)
+            } else JsonObject(e.mapValues { numbers(it.value) })
+            is JsonPrimitive -> e
+        }
+    }
     val calls = linkedMapOf<String, Int>()
     var nextId = 1
     fun table(name: String) = tables.getOrPut(name) { mutableListOf() }
@@ -51,6 +69,12 @@ object FixtureResolvers {
         }
     }
 
+    /** What a page reads its size and cursor from: the argument `pageArg` names (default "page"), or the arguments themselves for "". */
+    private fun pageArgs(args: JsonObject, spec: JsonObject): JsonObject? {
+        val name = (spec["pageArg"] as? JsonPrimitive)?.content ?: "page"
+        return if (name.isEmpty()) args else args[name] as? JsonObject
+    }
+
     private fun page(rows: List<Map<String, JsonElement>>, p: JsonObject?): JsonObject {
         val first = (p?.get("first") as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: 20
         val after = (p?.get("after") as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -76,7 +100,7 @@ object FixtureResolvers {
                 when (spec.str("mode")) {
                     "one" -> rows.firstOrNull()?.let { JsonObject(it) } ?: JsonNull
                     "list" -> JsonArray(rows.map { JsonObject(it) })
-                    else -> page(rows, args[(spec["pageArg"] as? JsonPrimitive)?.content ?: "page"] as? JsonObject)
+                    else -> page(rows, pageArgs(args, spec))
                 }
             }
             fn
@@ -94,7 +118,7 @@ object FixtureResolvers {
                         when (spec.str("mode")) {
                             "one" -> hits.firstOrNull()?.let { JsonObject(it) }
                             "list" -> JsonArray(hits.map { JsonObject(it) })
-                            else -> page(hits, args[(spec["pageArg"] as? JsonPrimitive)?.content ?: "page"] as? JsonObject)
+                            else -> page(hits, pageArgs(args, spec))
                         }
                     }
                 }

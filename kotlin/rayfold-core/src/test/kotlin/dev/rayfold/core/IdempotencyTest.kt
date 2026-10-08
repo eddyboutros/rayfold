@@ -57,7 +57,7 @@ class IdempotencyTest {
 
     /** The scope the runtime files a viewer's keys under, as [BatchRunner] derives it. */
     private fun scopeOf(viewer: JsonElement): String =
-        MessageDigest.getInstance("SHA-256").digest(Canonical.json(viewer).toByteArray()).joinToString("") { "%02x".format(it) }
+        MessageDigest.getInstance("SHA-256").digest(Canonical.hashed(viewer).toByteArray()).joinToString("") { "%02x".format(it) }
 
     /** A command answering with the number of its run, so two servers' answers can be told apart. */
     private fun numbered(runs: AtomicInteger, delayMs: Long = 0) = command { _, _ ->
@@ -481,6 +481,39 @@ class IdempotencyTest {
         assertTrue(store.claim(scopeOf(u1), key, 1_000) is IdempotencyClaim.Done)
         assertTrue(server.collect(env, u1).first { it.opId() == 1 }.replayed())
         assertEquals(1, runs.get())
+    }
+
+    @Test
+    fun `a waiter on a lease that runs out is woken by the claim that takes the key over, not by its own timeout`() = runTest(timeout = 5.seconds) {
+        var now = 0L
+        val store = MemoryIdempotencyStore(now = { now })
+        assertTrue(store.claim("s", key, 100) is IdempotencyClaim.Owned)
+        var woke = -1L
+        val waiter = async { store.awaitSettled("s", key, 4_000); woke = currentTime }
+        runCurrent()
+        now = 200 // the holder died without renewing
+        assertTrue(store.claim("s", key, 100) is IdempotencyClaim.Owned)
+        waiter.await()
+        assertEquals(0L, woke, "woken at once, to claim again behind the new holder")
+        // guard: a waiter on a claim nobody settles waits out its timeout
+        val second = async { store.awaitSettled("s", key, 4_000); woke = currentTime }
+        second.await()
+        assertEquals(4_000L, woke)
+    }
+
+    @Test
+    fun `a claim whose lease ran out is swept as the next key is stored, while one still held stays`() = runTest(timeout = 5.seconds) {
+        var now = 0L
+        val store = MemoryIdempotencyStore(maxSize = 100, now = { now })
+        store.claim("s", "held-past-its-lease", 100)
+        now = 200
+        store.claim("s", "next-000000000001", 1_000)
+        assertEquals(1, store.size, "the dead claim went at the head of the map")
+        // guard: a claim whose lease has not run out is kept
+        now = 300
+        store.claim("s", "next-000000000002", 1_000)
+        assertEquals(2, store.size)
+        assertTrue(store.claim("s", "next-000000000001", 1_000) is IdempotencyClaim.InFlight)
     }
 
     private fun countOf(c: MemoryCounters, name: String, labels: Map<String, String>): Long =

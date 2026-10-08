@@ -1,0 +1,7 @@
+entity Author { id: ID name: String books(first: Int): [Book] }
+entity Book { id: ID title: String authorId: ID author: Author }
+
+query book(id: ID): Book?
+query whoami(tag: String): String
+query pending: String
+stream ticks: Int

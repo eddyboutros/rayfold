@@ -148,7 +148,7 @@ class McpTest {
         assertEquals(JsonPrimitive("complete"), sim.at("result", "resultType"))
         assertEquals(JsonPrimitive("PLACED"), sim.at("result", "structuredContent", "result", "status"))
         assertEquals(JsonPrimitive("12.99"), sim.at("result", "structuredContent", "result", "total"))
-        assertTrue(obj("""{"set":"Book:b1","value":{"stock":4}}""") in (sim.at("result", "structuredContent", "effects") as JsonArray))
+        assertEquals(Json.parseToJsonElement("""[{"set":"Order:o1","value":{"${'$'}type":"Order","id":"o1","status":"PLACED","total":"12.99","items":[{"qty":1,"unitPrice":"12.99","book":{"${'$'}ref":"Book:b1"}}]}},{"set":"Book:b1","value":{"${'$'}type":"Book","id":"b1","title":"The Dispossessed"}},{"set":"Book:b1","value":{"stock":4}}]"""), sim.at("result", "structuredContent", "effects"))
         assertEquals(0, bs.store.orders.size)
         assertEquals(5, bs.store.stock("b1"))
     }
@@ -158,7 +158,7 @@ class McpTest {
         val bs = Bookstore()
         val r = call(bs.server, "placeOrder", order("b4", 1), u1)
         assertEquals(JsonPrimitive(true), r.at("result", "isError"))
-        assertTrue((r.at("result", "content", "0", "text") as JsonPrimitive).content.startsWith("domain OutOfStock: "))
+        assertEquals(JsonPrimitive("domain OutOfStock: Only 0 of A Wizard of Earthsea left"), r.at("result", "content", "0", "text"))
         assertEquals(obj("""{"code":"domain","type":"OutOfStock","message":"Only 0 of A Wizard of Earthsea left","data":{"bookId":"b4","available":0}}"""), r.at("result", "structuredContent", "error"))
     }
 
@@ -196,7 +196,7 @@ class McpTest {
         val first = call(bs.server, "placeOrder", order("b3", 2), u1)
         val again = call(bs.server, "placeOrder", order("b3", 2), u1, id = 2)
         assertEquals(JsonPrimitive("o1"), first.at("result", "structuredContent", "result", "id"))
-        assertTrue(obj("""{"set":"Book:b3","value":{"stock":98}}""") in (first.at("result", "structuredContent", "effects") as JsonArray))
+        assertEquals(Json.parseToJsonElement("""[{"set":"Order:o1","value":{"${'$'}type":"Order","id":"o1","status":"PLACED","total":"16.00","items":[{"qty":2,"unitPrice":"8.00","book":{"${'$'}ref":"Book:b3"}}]}},{"set":"Book:b3","value":{"${'$'}type":"Book","id":"b3","title":"Kindred"}},{"set":"Book:b3","value":{"stock":98}}]"""), first.at("result", "structuredContent", "effects"))
         assertEquals(first["result"], again["result"])
         assertEquals(1, bs.store.orders.size)
         assertEquals(1, bs.store.calls["Command.placeOrder"])
@@ -300,6 +300,8 @@ class McpTest {
         val batch = rpc(port, """[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/initialized"},{"jsonrpc":"2.0","id":2,"method":"tools/list"}]""")
         assertEquals(200, batch.statusCode())
         assertEquals(listOf(JsonPrimitive(1), JsonPrimitive(2)), (batch.json() as JsonArray).map { (it as JsonObject)["id"] })
+        assertEquals(obj("""{"jsonrpc":"2.0","id":1,"result":{}}"""), (batch.json() as JsonArray)[0])
+        assertEquals(obj("""{"jsonrpc":"2.0","id":2,"result":{"tools":${Mcp.tools(bs.server.ir)},"ttlMs":300000,"cacheScope":"public"}}"""), (batch.json() as JsonArray)[1])
     }
 
     @Test
@@ -391,7 +393,8 @@ class McpTest {
         val over = serveMcp(bs, McpOptions(maxBodyBytes = body.length - 1))
         val refused = rpc(over, body)
         assertEquals(413, refused.statusCode())
-        assertEquals(JsonPrimitive("payload_too_large"), (refused.json() as JsonObject)["title"]?.let { JsonPrimitive((it as JsonPrimitive).content.replace(' ', '_')) })
+        assertEquals(obj("""{"type":"https://eddyboutros.github.io/rayfold/errors/payload_too_large","title":"payload too large","status":413,"detail":"Body exceeds ${body.length - 1} bytes","code":"resource_exhausted"}"""), refused.json())
+        assertEquals("application/problem+json", refused.h("content-type"))
         val at = serveMcp(bs, McpOptions(maxBodyBytes = body.length))
         assertEquals(obj("""{"jsonrpc":"2.0","id":1,"result":{}}"""), rpc(at, body).json())
     }
@@ -477,7 +480,7 @@ class McpTest {
         val res = readResource("rayfold://query/notes?limit=two")
         assertNull(res?.get("result"))
         assertEquals(JsonPrimitive(-32000), res?.at("error", "code"))
-        assertTrue((res?.at("error", "message") as JsonPrimitive).content.startsWith("invalid_argument"), "$res")
+        assertEquals(JsonPrimitive("invalid_argument: notes().limit: expected Int"), res?.at("error", "message"))
     }
 
     @Test

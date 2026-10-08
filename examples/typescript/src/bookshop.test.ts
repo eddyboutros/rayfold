@@ -5,7 +5,7 @@ import { RayfoldClient, RayfoldClientError, createFetchTransport } from "@rayfol
 import { createRayfoldServer, type RayfoldServer } from "@rayfold/server";
 import { SignJWT } from "jose";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { bookshopHttp, createBookshop, devToken, resolvers, seed, type Book, type Store } from "./bookshop.ts";
+import { bookshopHttp, createBookshop, devToken, resolvers, seed, viewerFrom, type Book, type Store } from "./bookshop.ts";
 
 let http: Server;
 let store: Store;
@@ -85,16 +85,16 @@ function watched<T>(client: RayfoldClient, op: string, args: Record<string, unkn
 describe("the bookshop over HTTP", () => {
   it("reads a book with the fields and the author it was asked for", async () => {
     const book = await clientFor().query("book", { id: "b1" }, { shape: "{ title stock author { name } }" });
-    expect(book).toMatchObject({ title: "A Wizard of Earthsea", stock: 3, author: { name: "Ursula K. Le Guin" } });
+    expect(book).toEqual({ $type: "Book", title: "A Wizard of Earthsea", stock: 3, author: { $type: "Author", name: "Ursula K. Le Guin" } });
   });
 
   it("pages through the books with a cursor", async () => {
     const client = clientFor();
     type Page = { items: Array<{ id: string }>; cursor: string | null; hasMore: boolean; total: number };
     const first = await client.query<Page>("books", { page: { first: 2 } }, { shape: "{ items { id } cursor hasMore total }" });
-    expect(first).toMatchObject({ items: [{ id: "b1" }, { id: "b2" }], hasMore: true, total: 3 });
-    const second = await client.query<Page>("books", { page: { first: 2, after: first.cursor } }, { shape: "{ items { id } hasMore }" });
-    expect(second).toMatchObject({ items: [{ id: "b3" }], hasMore: false });
+    expect(first).toEqual({ items: [{ $type: "Book", id: "b1" }, { $type: "Book", id: "b2" }], cursor: "b2", hasMore: true, total: 3 });
+    const second = await client.query<Page>("books", { page: { first: 2, after: first.cursor } }, { shape: "{ items { id } cursor hasMore total }" });
+    expect(second).toEqual({ items: [{ $type: "Book", id: "b3" }], cursor: "b3", hasMore: false, total: 3 });
   });
 
   it("a page of three books asks for their authors in one loader call, and a page without authors makes none", async () => {
@@ -159,19 +159,19 @@ describe("the bookshop over HTTP", () => {
 
   it("lets staff restock and refuses a customer", async () => {
     const refused = await rejection(clientFor("customer").command("restock", { bookId: "b2", qty: 4 }));
-    expect(refused.code).toBe("permission_denied");
+    expect([refused.code, refused.message]).toEqual(["permission_denied", "Not allowed to access restock()"]);
     expect(store.books.get("b2")?.stock).toBe(0);
 
-    await expect(clientFor("staff").command("restock", { bookId: "b2", qty: 4 })).resolves.toMatchObject({ stock: 4 });
+    await expect(clientFor("staff").command("restock", { bookId: "b2", qty: 4 })).resolves.toEqual({ $type: "Book", id: "b2", title: "The Left Hand of Darkness", stock: 4, costPrice: "5.10" });
     expect(store.books.get("b2")?.stock).toBe(4);
   });
 
   it("shows the cost price to staff and not to a customer", async () => {
     const staff = await clientFor("staff").query("book", { id: "b3" }, { shape: "{ id costPrice }" });
-    expect(staff).toMatchObject({ costPrice: "6.00" });
+    expect(staff).toEqual({ $type: "Book", id: "b3", costPrice: "6.00" });
 
     const e = await rejection(clientFor("customer").query("book", { id: "b3" }, { shape: "{ id costPrice }" }));
-    expect(e.code).toBe("permission_denied");
+    expect([e.code, e.path]).toEqual(["permission_denied", "costPrice"]);
   });
 
   it("a live query hears about a restock someone else makes", async () => {
@@ -213,13 +213,30 @@ describe("the bookshop over HTTP", () => {
     expect(refused.map((e) => [e.code, e.message])).toEqual(Array(5).fill(["unauthenticated", "Invalid or expired token"]));
     expect(store.books.get("b2")?.stock).toBe(0);
     // guard: the same claims, signed with the key and for this issuer and audience, are believed
-    await expect(recordingClient(undefined, await signed("bookshop development key, not a secret")).client.command("restock", { bookId: "b2", qty: 4 })).resolves.toMatchObject({ stock: 4 });
+    await expect(recordingClient(undefined, await signed("bookshop development key, not a secret")).client.command("restock", { bookId: "b2", qty: 4 })).resolves.toMatchObject({ id: "b2", stock: 4 });
+    expect(store.books.get("b2")?.stock).toBe(4);
   });
 
   it("serves the explorer beside the endpoint and nothing else", async () => {
     const page = await fetch(`${base}/rayfold/explorer`);
     expect(page.status).toBe(200);
     expect(page.headers.get("content-type")).toMatch(/text\/html/);
-    expect((await fetch(`${base}/elsewhere`)).status).toBe(404);
+    const elsewhere = await fetch(`${base}/elsewhere`);
+    expect([elsewhere.status, elsewhere.headers.get("content-type"), await elsewhere.text()]).toEqual([404, null, ""]);
+  });
+
+  it("reads who is calling from a bearer token only: its subject, and a role it knows or customer", async () => {
+    expect(await viewerFrom(`Bearer ${await devToken("s7", "staff")}`)).toEqual({ id: "s7", role: "staff" });
+    const admin = await new SignJWT({ role: "admin" }).setProtectedHeader({ alg: "HS256" }).setSubject("u7").setIssuer("http://localhost:4000/dev").setAudience("bookshop").setExpirationTime("1h").sign(new TextEncoder().encode("bookshop development key, not a secret"));
+    expect(await viewerFrom(`Bearer ${admin}`)).toEqual({ id: "u7", role: "customer" });
+    expect(await viewerFrom(undefined)).toBeNull();
+    // any other scheme, even one that ends in a bearer token, is not one
+    for (const header of [`Token ${tokens.staff}`, `NotBearer ${tokens.staff}`, `Bearer ${tokens.staff} extra`]) {
+      const e = (await viewerFrom(header).catch((err: unknown) => err)) as { code: string; message: string };
+      expect([e.code, e.message], header).toEqual(["unauthenticated", "Expected Authorization: Bearer <token>"]);
+      const res = await fetch(`${base}/rayfold`, { method: "POST", headers: { "content-type": "application/rayfold+json", authorization: header }, body: JSON.stringify({ ops: [] }) });
+      expect([res.status, ((await res.json()) as { detail: string }).detail], header).toEqual([401, "Expected Authorization: Bearer <token>"]);
+    }
+    expect(store.books.get("b2")?.stock).toBe(0);
   });
 });

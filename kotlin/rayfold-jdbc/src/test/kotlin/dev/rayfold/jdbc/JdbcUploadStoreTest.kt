@@ -13,10 +13,7 @@ import dev.rayfold.core.Resolvers
 import dev.rayfold.core.SchemaText
 import dev.rayfold.core.UploadOptions
 import dev.rayfold.core.UploadStore
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -43,7 +40,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Uploads in a shared database, with two servers over one H2: the point of the store is that a file sent to one
@@ -189,7 +185,7 @@ class JdbcUploadStoreTest {
         val s = store(ttlMs = 60_000)
         val kept = s.put(ByteArrayInputStream(bytes(32)), null, null, u1)
         clock += 59_999
-        assertTrue(s.open(kept.id) != null, "one millisecond inside its lifetime it is still there")
+        assertEquals(32L, s.open(kept.id)?.first?.size, "one millisecond inside its lifetime it is still there")
         clock += 1
         assertNull(s.open(kept.id), "at exactly its lifetime it is gone")
         assertEquals(0, s.count(), "reading it away is what dropped it")
@@ -203,9 +199,12 @@ class JdbcUploadStoreTest {
         clock += 59_999
         s.put(ByteArrayInputStream(bytes(8)), null, null, u1)
         assertEquals(2 to 40L, s.count() to s.bytes(), "guard: inside its lifetime the first stays")
-        clock += 2 // the first is now past its lifetime, the second is not
+        clock += 1 // the first is exactly its lifetime old: a write keeps it, as PgUploadStore does (`at < t - ttl`)
+        s.put(ByteArrayInputStream(bytes(2)), null, null, u1)
+        assertEquals(3 to 42L, s.count() to s.bytes())
+        clock += 1 // the first is now past its lifetime, the others are not
         s.put(ByteArrayInputStream(bytes(4)), null, null, u1)
-        assertEquals(2 to 12L, s.count() to s.bytes())
+        assertEquals(3 to 14L, s.count() to s.bytes())
     }
 
     @Test
@@ -219,8 +218,8 @@ class JdbcUploadStoreTest {
         val third = s.put(ByteArrayInputStream(bytes(1_024)), null, null, u1)
 
         assertNull(s.open(first.id), "the oldest made room")
-        assertTrue(s.open(second.id) != null)
-        assertTrue(s.open(third.id) != null)
+        assertEquals(second, s.open(second.id)?.first)
+        assertEquals(third, s.open(third.id)?.first)
         assertEquals(2, s.count())
         assertEquals(2_048L, s.bytes())
     }
@@ -238,20 +237,42 @@ class JdbcUploadStoreTest {
 
     @Test
     fun `two servers may each create the table as they start`() = runBlocking {
-        val stores = withTimeout(10_000) {
-            (0 until 4).map { async { JdbcUploadStore({ DriverManager.getConnection(url) }, JdbcUploadOptions(now = { clock })).also { s -> s.migrate() } } }.awaitAll()
-        }
+        // one after the other: H2's IF NOT EXISTS is not safe between sessions at the same instant; the refusal Postgres
+        // gives then is what ensure() retries (MigrateTest, and JdbcPostgresMigrateTest against a real one)
+        val stores = (0 until 4).map { JdbcUploadStore({ DriverManager.getConnection(url) }, JdbcUploadOptions(now = { clock })).also { s -> s.migrate() } }
         val kept = stores[0].put(ByteArrayInputStream(bytes(8)), "x", null, u1)
         for (s in stores.drop(1)) {
-            assertTrue(s.open(kept.id) != null, "one table, whichever of them made it")
+            assertEquals(kept, s.open(kept.id)?.first, "one table, whichever of them made it")
             assertEquals(1, s.count())
         }
     }
 
     @Test
+    fun `a body that fails halfway leaves no row, and the next upload is stored whole`() = runBlocking {
+        val s = store()
+        val failing = object : java.io.InputStream() {
+            var left = 4
+            override fun read(): Int = if (left-- > 0) 65 else throw java.io.IOException("the client went away")
+        }
+        val e = runCatching { s.put(failing, "half.bin", null, u1) }.exceptionOrNull()
+        assertEquals("the client went away", generateSequence(e) { it.cause }.last().message)
+        assertEquals(0 to 0L, s.count() to s.bytes(), "the insert was rolled back")
+        // guard: the store still takes a body that arrives whole
+        val kept = s.put(ByteArrayInputStream(bytes(5)), "whole.bin", null, u1)
+        assertEquals(1 to 5L, s.count() to s.bytes())
+        assertEquals(bytes(5).toList(), s.open(kept.id)?.second?.readBytes()?.toList())
+    }
+
+    @Test
     fun `names bytea on Postgres and varbinary elsewhere, with the columns both runtimes create`() {
         val h2 = store().schema()
-        assertTrue(h2.contains("bytes varbinary NOT NULL"), "H2 has no bytea: $h2")
+        assertEquals(
+            "CREATE TABLE IF NOT EXISTS rayfold_uploads (\n" +
+                "  id text NOT NULL,\n  name text,\n  type text,\n  viewer text,\n  size bigint NOT NULL,\n  at bigint NOT NULL,\n  bytes varbinary NOT NULL,\n  PRIMARY KEY (id)\n);\n" +
+                "CREATE INDEX IF NOT EXISTS rayfold_uploads_at ON rayfold_uploads (at);",
+            h2,
+            "H2 has no bytea",
+        )
 
         // a connection that reports itself as Postgres, since H2 cannot
         val asPostgres = JdbcUploadStore({ pretending(DriverManager.getConnection(url), "PostgreSQL") }, JdbcUploadOptions(table = "app.rayfold_uploads"))

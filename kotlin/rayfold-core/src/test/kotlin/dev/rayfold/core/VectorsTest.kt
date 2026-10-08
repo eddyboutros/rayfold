@@ -81,7 +81,7 @@ class VectorsTest {
         try {
             val port = http.address.port
             val res = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build().send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI("http://127.0.0.1:$port/rayfold/manifest")).GET().build(),
+                java.net.http.HttpRequest.newBuilder(java.net.URI("http://127.0.0.1:$port/rayfold/manifest")).timeout(java.time.Duration.ofSeconds(5)).GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString(),
             )
             val body = Json.parseToJsonElement(res.body()).jsonObject
@@ -369,6 +369,7 @@ class VectorsTest {
                         val body = """{"ops":[{"id":1,"op":"$op","args":{"id":"$id"}}]}"""
                         val res = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build().send(
                             java.net.http.HttpRequest.newBuilder(java.net.URI("http://127.0.0.1:${http.address.port}/rayfold"))
+                                .timeout(java.time.Duration.ofSeconds(5))
                                 .header("Content-Type", request["contentType"]?.jsonPrimitive?.content ?: "application/rayfold+json")
                                 .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
                                 .build(),
@@ -415,6 +416,10 @@ class VectorsTest {
         val doc = Json.parseToJsonElement(File(File(root, "idempotency"), "keys-and-replays.json").readText()).jsonObject
         val ir = SchemaText.load(doc.str("schema")).ir
         val defaultViewer = buildJsonObject { put("id", "u1") }
+        val caseFields = setOf("name", "ops", "store", "expect", "code", "runs", "why")
+        val opFields = setOf("op", "args", "key", "viewer", "at", "with")
+        // the server clock when a case starts; an op's `at` is counted from here
+        val t0 = 1_700_000_000_000L
 
         val out = mutableListOf<DynamicTest>()
         for (case in doc.req("cases").jsonArray) {
@@ -423,6 +428,20 @@ class VectorsTest {
             val why = c["why"]?.jsonPrimitive?.content ?: name
             out.add(
                 DynamicTest.dynamicTest("idempotency/$name") {
+                    // a field this runner does not read is an expectation it would silently skip
+                    for (k in c.keys) assertTrue(k in caseFields, "$name: no runner for case field \"$k\"")
+                    for (o in c.req("ops").jsonArray) for (k in o.jsonObject.keys) assertTrue(k in opFields, "$name: no runner for op field \"$k\"")
+                    var clock = t0
+                    val now = { clock }
+                    val store = when (val kind = c["store"]?.jsonPrimitive?.content) {
+                        null -> null
+                        // a store whose write of a record fails, as a database that drops the connection then would
+                        "failsToRecord" -> object : IdempotencyStore by MemoryIdempotencyStore(now = now) {
+                            override fun put(scope: String, key: String, record: IdempotencyRecord, token: String) =
+                                throw IllegalStateException("the store is unavailable")
+                        }
+                        else -> error("$name: no store called $kind")
+                    }
                     var runs = 0
                     val stock = java.util.concurrent.atomic.AtomicInteger(3)
                     val bump = command { args: JsonObject, _: RayfoldContext ->
@@ -430,33 +449,46 @@ class VectorsTest {
                         val qty = args["qty"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1
                         CommandResult(buildJsonObject { put("id", "b1"); put("stock", stock.addAndGet(qty)) })
                     }
-                    val server = RayfoldServer(ir, Resolvers(commands = mapOf("restock" to bump, "other" to bump, "free" to bump)))
+                    val server = RayfoldServer(
+                        ir,
+                        Resolvers(
+                            queries = mapOf("book" to { args: JsonObject, _: RayfoldContext -> buildJsonObject { put("id", args.str("id")); put("stock", stock.get()) } }),
+                            commands = mapOf("restock" to bump, "other" to bump, "free" to bump),
+                        ),
+                        idempotency = store,
+                        now = now,
+                    )
 
                     val answers = mutableListOf<List<JsonObject>>()
                     for (o in c.req("ops").jsonArray) {
                         val op = o.jsonObject
                         val viewer = if (op.containsKey("viewer")) op.req("viewer") else defaultViewer
+                        clock = t0 + (op["at"]?.jsonPrimitive?.content?.toLong() ?: 0L)
                         val env = buildJsonObject {
                             put(
                                 "ops",
-                                JsonArray(listOf(buildJsonObject {
-                                    put("id", 1); put("op", op.str("op")); put("args", op.req("args"))
-                                    op["key"]?.let { put("key", it.jsonPrimitive.content) }
-                                })),
+                                JsonArray(listOfNotNull(
+                                    buildJsonObject {
+                                        put("id", 1); put("op", op.str("op")); put("args", op.req("args"))
+                                        op["key"]?.let { put("key", it.jsonPrimitive.content) }
+                                    },
+                                    (op["with"] as? JsonObject)?.let { w -> JsonObject(w + ("id" to JsonPrimitive(2))) },
+                                )),
                             )
                         }
                         answers.add(runBlocking { server.collect(env, viewer) })
                     }
                     val last = answers.last()
-                    val error = last.firstOrNull { it.containsKey("error") }?.get("error") as? JsonObject
-                    val okFrame = last.firstOrNull { it.containsKey("ok") }
+                    fun JsonObject.isOp(n: Int) = (this["id"] as? JsonPrimitive)?.content == n.toString()
+                    val error = last.firstOrNull { it.containsKey("error") && it.isOp(1) }?.get("error") as? JsonObject
+                    val okFrame = last.firstOrNull { it.containsKey("ok") && it.isOp(1) }
                     val replayed = ((okFrame?.get("meta") as? JsonObject)?.get("replay") as? JsonPrimitive)?.content == "true"
 
                     when (c.str("expect")) {
                         "error" -> assertEquals(c.str("code"), error?.get("code")?.jsonPrimitive?.content, why)
                         "replay" -> {
                             assertTrue(error == null, "$why: $error")
-                            assertEquals(answers.first().firstOrNull { it.containsKey("ok") }?.get("ok"), okFrame?.get("ok"), why)
+                            assertEquals(answers.first().firstOrNull { it.containsKey("ok") && it.isOp(1) }?.get("ok"), okFrame?.get("ok"), why)
                             assertEquals(stocked(4), okFrame?.get("ok"), why)
                         }
                         "replayMeta" -> {
@@ -478,6 +510,18 @@ class VectorsTest {
                         else -> error("$name: no assertion for expect=${c.str("expect")}")
                     }
                     c["runs"]?.let { assertEquals(it.jsonPrimitive.content.toInt(), runs, "$why: the resolver ran $runs times") }
+                    // an op is answered once: a second frame after the answer, such as an error, contradicts what the caller was told
+                    answers.forEachIndexed { i, a ->
+                        assertEquals(1, a.count { it.isOp(1) }, "$why: $a")
+                        if (c.req("ops").jsonArray[i].jsonObject.containsKey("with")) {
+                            // the op sent with it reads the command's result through a reference, so it runs only if the command succeeded
+                            val dependent = a.filter { it.isOp(2) }
+                            assertEquals(1, dependent.size, "$why: the op that depends on it: $a")
+                            assertTrue("data" in dependent[0] && "error" !in dependent[0], "$why: the op that depends on it: $a")
+                        } else {
+                            assertEquals(1, a.size, "$why: $a")
+                        }
+                    }
                 },
             )
         }
@@ -522,8 +566,9 @@ class VectorsTest {
                 out.add(
                     DynamicTest.dynamicTest("shapes/$file: $name") {
                         if (rejected) {
-                            val failed = runCatching { Shapes.canonical(Shapes.parse(text), empty) }.isFailure
-                            assertTrue(failed, "the shape was accepted but the grammar does not admit it: $why")
+                            // refused as the client's error, not by whatever else a bad shape could throw
+                            val refused = runCatching { Shapes.canonical(Shapes.parse(text), empty) }.exceptionOrNull()
+                            assertTrue(refused is RayfoldException && refused.code == Code.INVALID_ARGUMENT, "the shape was accepted but the grammar does not admit it: $why (${refused})")
                             return@dynamicTest
                         }
                         val canonical = Shapes.canonical(Shapes.parse(text), empty)
@@ -571,6 +616,31 @@ class VectorsTest {
                         assertEquals(expected, hex(codec.encode(value)), why)
                         assertEquals(value, codec.decode(codec.encode(value)), "reads back as what went in")
                         assertEquals(value, codec.decode(unhex(expected)), "and the bytes as written read as the value")
+                    },
+                )
+            }
+            val members = setOf("name", "about", "source", "rule", "dictionary", "values", "nonFinite", "refused")
+            out.add(
+                DynamicTest.dynamicTest("binary/$file: has no member this runner does not check") {
+                    for (k in doc.keys) assertTrue(k in members, "no runner for \"$k\"")
+                },
+            )
+            for (case in doc["nonFinite"]?.jsonArray ?: JsonArray(emptyList())) {
+                val c = case.jsonObject
+                val name = c.str("name")
+                out.add(
+                    DynamicTest.dynamicTest("binary/$file: $name") {
+                        // JSON cannot hold these, so the case names the double instead of giving JSON text
+                        val d = when (val text = c.str("double")) {
+                            "NaN" -> Double.NaN
+                            "Infinity" -> Double.POSITIVE_INFINITY
+                            "-Infinity" -> Double.NEGATIVE_INFINITY
+                            else -> error("$name: no double called $text")
+                        }
+                        val why = c["why"]?.jsonPrimitive?.content ?: name
+                        assertEquals(c.str("bytes"), hex(codec.encode(JsonPrimitive(d))), why)
+                        assertEquals("0701" + c.str("bytes"), hex(codec.encode(JsonArray(listOf(JsonPrimitive(d))))), "$name, inside a list")
+                        assertEquals(JsonNull, codec.decode(unhex(c.str("bytes"))), "and reads back as null")
                     },
                 )
             }

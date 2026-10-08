@@ -45,6 +45,13 @@ class UsageTest {
     }
 
     @Test
+    fun `a member asked for under an alias is recorded by its own name, which is what a schema change removes`() = runTest(timeout = 5.seconds) {
+        val usage = MemoryUsage()
+        server(usage).execute(request("web", "{ id name: title }")).toList()
+        assertEquals(listOf("", "Book.id", "Book.title"), usage.snapshot().map { it.path })
+    }
+
+    @Test
     fun `counts repeats, and a caller that does not name itself is recorded without a name`() = runTest(timeout = 5.seconds) {
         val usage = MemoryUsage()
         val s = server(usage)

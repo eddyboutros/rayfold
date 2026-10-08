@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -194,11 +195,14 @@ class PgNotifications(
         }
         return {
             withContext(Dispatchers.IO) {
-                turn.withLock {
+                val stopped = turn.withLock {
                     listeners.remove(l)
                     if (listeners.none { it.channel == channel }) listener.createStatement().use { it.execute("UNLISTEN ${quote(channel)}") }
-                    if (listeners.isEmpty()) { poller?.cancel(); poller = null }
+                    if (listeners.isEmpty()) poller.also { poller = null } else null
                 }
+                // waited for outside the turn, which the poll loop needs to finish its last poll: once the last listener
+                // has stopped, nothing uses the connection any more, so a caller may close it
+                stopped?.cancelAndJoin()
             }
         }
     }

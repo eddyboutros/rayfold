@@ -10,7 +10,7 @@
  * ordering text or comparing across types, are left to the runtime.
  */
 import { coerceArgs } from "@rayfold/server/core";
-import { evalExpr, type Expr, type ExprEnv, type FieldDef, type RayfoldSchemaIR, type Shape } from "@rayfold/schema";
+import { evalExpr, exprPaths, type Expr, type ExprEnv, type FieldDef, type RayfoldSchemaIR, type Shape } from "@rayfold/schema";
 
 /** Anything with pg's `query(text, params)`: `pg.Pool`, `pg.Client`, `PGlite`. */
 export interface Queryable {
@@ -196,7 +196,9 @@ export class PgStore {
    * `WHERE`, so a nested list never carries rows its viewer may not see.
    *
    * Nested pages are first pages (`first`), which is what a screen shows; the root page takes a cursor as usual.
-   * Every selected field must be a mapped column or a declared relation.
+   * Every selected field must be a mapped column or a declared relation. Each row also carries the columns its type's
+   * read rules, and its selected fields' rules, read: the runtime checks those rules again on every row, and leaves
+   * the extra fields out of the answer.
    */
   async screen(type: string, shape: Shape, page: PageRequest, where: Record<string, unknown> = {}, ctx: PolicyContext = {}, args: Record<string, unknown> = {}): Promise<Page> {
     const t = this.table(type);
@@ -287,6 +289,17 @@ export class PgStore {
           `'cursor', max("__p"."__key")` +
           `) FROM (${rows}) AS "__p")`,
       );
+    }
+    // The runtime checks the read rules of this type, and of each field selected, on every row the store returns, and a
+    // field the shape did not ask for would read as null there: the columns those rules read go along. The runtime
+    // projects its answer to the shape, so they never reach the caller.
+    for (const name of ruleFields(this.opts.ir.types[t.def.name], selections)) {
+      if (selections.has(name) || relations[name]) continue;
+      const col = t.column(name);
+      const def = t.def.fields.find((f) => f.name === name);
+      if (!col || !def) continue;
+      selections.set(name, "rule");
+      parts.push(`'${name}', ${scalarJson(`${alias}.${col}`, def.type.kind === "named" ? this.scalarOf(def.type.name) : "")}`);
     }
     // Postgres takes at most 100 arguments to a function, two per field
     const objects: string[] = [];
@@ -400,6 +413,23 @@ function firstOf(a: Record<string, unknown> | undefined): number | undefined {
   const page = a?.["page"];
   const n = page && typeof page === "object" && !Array.isArray(page) ? (page as Record<string, unknown>)["first"] : a?.["first"];
   return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/** The fields of the row that the read rules of `def`, and of the selected fields, look at (`this.<field>...`). */
+function ruleFields(def: RayfoldSchemaIR["types"][string] | undefined, selected: Map<string, string>): Set<string> {
+  const out = new Set<string>();
+  if (!def || !("fields" in def)) return out;
+  const read = (annotations: Array<{ name: string; args: Record<string, unknown> }>) => {
+    for (const a of annotations) {
+      if (a.name !== "allow" && a.name !== "deny") continue;
+      const rule = a.args["read"];
+      if (!rule || typeof rule !== "object" || !("$expr" in rule)) continue;
+      for (const p of exprPaths((rule as { $expr: Expr }).$expr)) if (p.root === "this" && p.path[0]) out.add(p.path[0]);
+    }
+  };
+  read(def.annotations);
+  for (const f of def.fields) if (selected.has(f.name)) read(f.annotations);
+  return out;
 }
 
 /** The pushable part of a type's `@allow(read:)`, for the levels of a screen the runtime gave no hint for. */

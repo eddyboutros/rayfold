@@ -1,0 +1,1292 @@
+{
+  "name": "argument ranges, patterns and page caps",
+  "schema": "entity Item { id: ID }\nquery int(n: Int): Item?\nquery long(n: Long): Item?\nquery code(c: String @format(\"sku\", pattern: \"[a-z]+\")): Item?\nquery items(first: Int = 10): Page<Item>\nquery listed(range: PageArgs = { first: 10 }): Page<Item>\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Item": {
+        "kind": "entity",
+        "name": "Item",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ],
+        "implements": []
+      }
+    },
+    "ops": {
+      "int": {
+        "kind": "query",
+        "name": "int",
+        "args": [
+          {
+            "name": "n",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Item",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "long": {
+        "kind": "query",
+        "name": "long",
+        "args": [
+          {
+            "name": "n",
+            "type": {
+              "kind": "named",
+              "name": "Long",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Item",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "code": {
+        "kind": "query",
+        "name": "code",
+        "args": [
+          {
+            "name": "c",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "annotations": [
+              {
+                "name": "format",
+                "args": {
+                  "value": "sku",
+                  "pattern": "[a-z]+"
+                }
+              }
+            ]
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Item",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "items": {
+        "kind": "query",
+        "name": "items",
+        "args": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "annotations": [],
+            "default": 10
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Page",
+          "nullable": false,
+          "args": [
+            {
+              "kind": "named",
+              "name": "Item",
+              "nullable": false
+            }
+          ]
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "listed": {
+        "kind": "query",
+        "name": "listed",
+        "args": [
+          {
+            "name": "range",
+            "type": {
+              "kind": "named",
+              "name": "PageArgs",
+              "nullable": false
+            },
+            "annotations": [],
+            "default": {
+              "first": 10
+            }
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Page",
+          "nullable": false,
+          "args": [
+            {
+              "kind": "named",
+              "name": "Item",
+              "nullable": false
+            }
+          ]
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {}
+  },
+  "data": {
+    "Item": [
+      {
+        "id": "i0"
+      },
+      {
+        "id": "i1"
+      },
+      {
+        "id": "i2"
+      },
+      {
+        "id": "i3"
+      },
+      {
+        "id": "i4"
+      },
+      {
+        "id": "i5"
+      },
+      {
+        "id": "i6"
+      },
+      {
+        "id": "i7"
+      },
+      {
+        "id": "i8"
+      },
+      {
+        "id": "i9"
+      },
+      {
+        "id": "i10"
+      },
+      {
+        "id": "i11"
+      },
+      {
+        "id": "i12"
+      },
+      {
+        "id": "i13"
+      },
+      {
+        "id": "i14"
+      },
+      {
+        "id": "i15"
+      },
+      {
+        "id": "i16"
+      },
+      {
+        "id": "i17"
+      },
+      {
+        "id": "i18"
+      },
+      {
+        "id": "i19"
+      },
+      {
+        "id": "i20"
+      },
+      {
+        "id": "i21"
+      },
+      {
+        "id": "i22"
+      },
+      {
+        "id": "i23"
+      },
+      {
+        "id": "i24"
+      },
+      {
+        "id": "i25"
+      },
+      {
+        "id": "i26"
+      },
+      {
+        "id": "i27"
+      },
+      {
+        "id": "i28"
+      },
+      {
+        "id": "i29"
+      },
+      {
+        "id": "i30"
+      },
+      {
+        "id": "i31"
+      },
+      {
+        "id": "i32"
+      },
+      {
+        "id": "i33"
+      },
+      {
+        "id": "i34"
+      },
+      {
+        "id": "i35"
+      },
+      {
+        "id": "i36"
+      },
+      {
+        "id": "i37"
+      },
+      {
+        "id": "i38"
+      },
+      {
+        "id": "i39"
+      },
+      {
+        "id": "i40"
+      },
+      {
+        "id": "i41"
+      },
+      {
+        "id": "i42"
+      },
+      {
+        "id": "i43"
+      },
+      {
+        "id": "i44"
+      },
+      {
+        "id": "i45"
+      },
+      {
+        "id": "i46"
+      },
+      {
+        "id": "i47"
+      },
+      {
+        "id": "i48"
+      },
+      {
+        "id": "i49"
+      },
+      {
+        "id": "i50"
+      },
+      {
+        "id": "i51"
+      },
+      {
+        "id": "i52"
+      },
+      {
+        "id": "i53"
+      },
+      {
+        "id": "i54"
+      },
+      {
+        "id": "i55"
+      },
+      {
+        "id": "i56"
+      },
+      {
+        "id": "i57"
+      },
+      {
+        "id": "i58"
+      },
+      {
+        "id": "i59"
+      },
+      {
+        "id": "i60"
+      },
+      {
+        "id": "i61"
+      },
+      {
+        "id": "i62"
+      },
+      {
+        "id": "i63"
+      },
+      {
+        "id": "i64"
+      },
+      {
+        "id": "i65"
+      },
+      {
+        "id": "i66"
+      },
+      {
+        "id": "i67"
+      },
+      {
+        "id": "i68"
+      },
+      {
+        "id": "i69"
+      },
+      {
+        "id": "i70"
+      },
+      {
+        "id": "i71"
+      },
+      {
+        "id": "i72"
+      },
+      {
+        "id": "i73"
+      },
+      {
+        "id": "i74"
+      },
+      {
+        "id": "i75"
+      },
+      {
+        "id": "i76"
+      },
+      {
+        "id": "i77"
+      },
+      {
+        "id": "i78"
+      },
+      {
+        "id": "i79"
+      },
+      {
+        "id": "i80"
+      },
+      {
+        "id": "i81"
+      },
+      {
+        "id": "i82"
+      },
+      {
+        "id": "i83"
+      },
+      {
+        "id": "i84"
+      },
+      {
+        "id": "i85"
+      },
+      {
+        "id": "i86"
+      },
+      {
+        "id": "i87"
+      },
+      {
+        "id": "i88"
+      },
+      {
+        "id": "i89"
+      },
+      {
+        "id": "i90"
+      },
+      {
+        "id": "i91"
+      },
+      {
+        "id": "i92"
+      },
+      {
+        "id": "i93"
+      },
+      {
+        "id": "i94"
+      },
+      {
+        "id": "i95"
+      },
+      {
+        "id": "i96"
+      },
+      {
+        "id": "i97"
+      },
+      {
+        "id": "i98"
+      },
+      {
+        "id": "i99"
+      },
+      {
+        "id": "i100"
+      },
+      {
+        "id": "i101"
+      },
+      {
+        "id": "i102"
+      },
+      {
+        "id": "i103"
+      },
+      {
+        "id": "i104"
+      },
+      {
+        "id": "i105"
+      },
+      {
+        "id": "i106"
+      },
+      {
+        "id": "i107"
+      },
+      {
+        "id": "i108"
+      },
+      {
+        "id": "i109"
+      },
+      {
+        "id": "i110"
+      },
+      {
+        "id": "i111"
+      },
+      {
+        "id": "i112"
+      },
+      {
+        "id": "i113"
+      },
+      {
+        "id": "i114"
+      },
+      {
+        "id": "i115"
+      },
+      {
+        "id": "i116"
+      },
+      {
+        "id": "i117"
+      },
+      {
+        "id": "i118"
+      },
+      {
+        "id": "i119"
+      },
+      {
+        "id": "i120"
+      },
+      {
+        "id": "i121"
+      },
+      {
+        "id": "i122"
+      },
+      {
+        "id": "i123"
+      },
+      {
+        "id": "i124"
+      },
+      {
+        "id": "i125"
+      },
+      {
+        "id": "i126"
+      },
+      {
+        "id": "i127"
+      },
+      {
+        "id": "i128"
+      },
+      {
+        "id": "i129"
+      },
+      {
+        "id": "i130"
+      },
+      {
+        "id": "i131"
+      },
+      {
+        "id": "i132"
+      },
+      {
+        "id": "i133"
+      },
+      {
+        "id": "i134"
+      },
+      {
+        "id": "i135"
+      },
+      {
+        "id": "i136"
+      },
+      {
+        "id": "i137"
+      },
+      {
+        "id": "i138"
+      },
+      {
+        "id": "i139"
+      },
+      {
+        "id": "i140"
+      },
+      {
+        "id": "i141"
+      },
+      {
+        "id": "i142"
+      },
+      {
+        "id": "i143"
+      },
+      {
+        "id": "i144"
+      },
+      {
+        "id": "i145"
+      },
+      {
+        "id": "i146"
+      },
+      {
+        "id": "i147"
+      },
+      {
+        "id": "i148"
+      },
+      {
+        "id": "i149"
+      },
+      {
+        "id": "i150"
+      },
+      {
+        "id": "i151"
+      },
+      {
+        "id": "i152"
+      },
+      {
+        "id": "i153"
+      },
+      {
+        "id": "i154"
+      },
+      {
+        "id": "i155"
+      },
+      {
+        "id": "i156"
+      },
+      {
+        "id": "i157"
+      },
+      {
+        "id": "i158"
+      },
+      {
+        "id": "i159"
+      },
+      {
+        "id": "i160"
+      },
+      {
+        "id": "i161"
+      },
+      {
+        "id": "i162"
+      },
+      {
+        "id": "i163"
+      },
+      {
+        "id": "i164"
+      },
+      {
+        "id": "i165"
+      },
+      {
+        "id": "i166"
+      },
+      {
+        "id": "i167"
+      },
+      {
+        "id": "i168"
+      },
+      {
+        "id": "i169"
+      },
+      {
+        "id": "i170"
+      },
+      {
+        "id": "i171"
+      },
+      {
+        "id": "i172"
+      },
+      {
+        "id": "i173"
+      },
+      {
+        "id": "i174"
+      },
+      {
+        "id": "i175"
+      },
+      {
+        "id": "i176"
+      },
+      {
+        "id": "i177"
+      },
+      {
+        "id": "i178"
+      },
+      {
+        "id": "i179"
+      },
+      {
+        "id": "i180"
+      },
+      {
+        "id": "i181"
+      },
+      {
+        "id": "i182"
+      },
+      {
+        "id": "i183"
+      },
+      {
+        "id": "i184"
+      },
+      {
+        "id": "i185"
+      },
+      {
+        "id": "i186"
+      },
+      {
+        "id": "i187"
+      },
+      {
+        "id": "i188"
+      },
+      {
+        "id": "i189"
+      },
+      {
+        "id": "i190"
+      },
+      {
+        "id": "i191"
+      },
+      {
+        "id": "i192"
+      },
+      {
+        "id": "i193"
+      },
+      {
+        "id": "i194"
+      },
+      {
+        "id": "i195"
+      },
+      {
+        "id": "i196"
+      },
+      {
+        "id": "i197"
+      },
+      {
+        "id": "i198"
+      },
+      {
+        "id": "i199"
+      },
+      {
+        "id": "i200"
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "int": {
+        "from": "Item",
+        "where": {
+          "id": "i0"
+        },
+        "mode": "one"
+      },
+      "long": {
+        "from": "Item",
+        "where": {
+          "id": "i0"
+        },
+        "mode": "one"
+      },
+      "code": {
+        "from": "Item",
+        "where": {
+          "id": "i0"
+        },
+        "mode": "one"
+      },
+      "items": {
+        "from": "Item",
+        "mode": "page",
+        "pageArg": ""
+      },
+      "listed": {
+        "from": "Item",
+        "mode": "page",
+        "pageArg": "range"
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "Int takes its minimum",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "int",
+            "args": {
+              "n": -2147483648
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Item",
+            "id": "i0"
+          },
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "Int takes its maximum",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "int",
+            "args": {
+              "n": 2147483647
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Item",
+            "id": "i0"
+          },
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "Int refuses one past its maximum",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "int",
+            "args": {
+              "n": 2147483648
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "error": {
+            "code": "invalid_argument",
+            "message": "int().n: expected Int"
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "Int refuses one past its minimum",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "int",
+            "args": {
+              "n": -2147483649
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "error": {
+            "code": "invalid_argument",
+            "message": "int().n: expected Int"
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "Long text takes the 64-bit extremes",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "long",
+            "args": {
+              "n": "9223372036854775807"
+            }
+          },
+          {
+            "id": 2,
+            "op": "long",
+            "args": {
+              "n": "-9223372036854775808"
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Item",
+            "id": "i0"
+          },
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        },
+        {
+          "id": 2,
+          "data": {
+            "$type": "Item",
+            "id": "i0"
+          },
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "Long text refuses one past its maximum",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "long",
+            "args": {
+              "n": "9223372036854775808"
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "error": {
+            "code": "invalid_argument",
+            "message": "long().n: expected Long"
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "Long text refuses one past its minimum",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "long",
+            "args": {
+              "n": "-9223372036854775809"
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "error": {
+            "code": "invalid_argument",
+            "message": "long().n: expected Long"
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a pattern matching the whole value is accepted",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "code",
+            "args": {
+              "c": "abc"
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Item",
+            "id": "i0"
+          },
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a pattern that matches only part of the value refuses it",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "code",
+            "args": {
+              "c": "abc1"
+            }
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "error": {
+            "code": "invalid_argument",
+            "message": "code().c: must match [a-z]+"
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a page first argument of its own is capped at 200 before the resolver sees it",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "items",
+            "args": {
+              "first": 500
+            },
+            "shape": "{ hasMore total }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "hasMore": true,
+            "total": 201
+          },
+          "meta": {
+            "cost": 201
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a PageArgs argument not called page is charged by its first",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "listed",
+            "args": {
+              "range": {
+                "first": 3
+              }
+            },
+            "shape": "{ total }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "total": 201
+          },
+          "meta": {
+            "cost": 4
+          },
+          "fin": true
+        }
+      ]
+    }
+  ]
+}

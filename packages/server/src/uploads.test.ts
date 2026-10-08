@@ -170,6 +170,29 @@ describe("an upload arrives on its own route", () => {
     expect(store.size).toBe(1);
   });
 
+  it("the bound is exact: one byte past it is refused while reading, with nothing kept", async () => {
+    const { handler, store } = build({ maxBytes: 1_024 });
+    const res = await send(handler, bytes(1_025));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ type: "https://eddyboutros.github.io/rayfold/errors/payload_too_large", title: "payload too large", status: 413, detail: "Upload exceeds 1024 bytes", code: "resource_exhausted" });
+    expect(store.size).toBe(0);
+  });
+
+  it("a declared length over the bound is refused before a byte is read, whatever the body turns out to be", async () => {
+    const { handler, store } = build({ maxBytes: 1_024 });
+    const res = await send(handler, bytes(8), { "content-length": "1025" });
+    expect(res.status).toBe(413);
+    expect(store.size).toBe(0);
+    // guard: a declared length at the bound is read as usual
+    expect((await send(handler, bytes(8), { "content-length": "1024" })).status).toBe(201);
+  });
+
+  it("a viewer hook that answers undefined is no sender either", async () => {
+    const { handler, store } = build({ who: undefined });
+    expect((await send(handler, bytes(8))).status).toBe(401);
+    expect(store.size).toBe(0);
+  });
+
   it("is not there at all unless a store was given", async () => {
     const server = createRayfoldServer({ schema: SCHEMA, resolvers: { Command: { setAvatar: () => ok({ id: "u1", bytes: 0 }) } } });
     const bare = createFetchHandler(server);
@@ -255,7 +278,7 @@ describe("the store in memory", () => {
     const store = new MemoryUploadStore({ ttlMs: 60_000, now: () => now });
     const kept = await store.put(bodyOf(bytes(16)), { name: "a.bin" });
     now += 59_999;
-    expect(await store.open(kept.id)).toBeDefined();
+    expect((await store.open(kept.id))?.upload).toEqual({ id: kept.id, size: 16, at: 1_000, name: "a.bin" });
     now += 2;
     expect(await store.open(kept.id)).toBeUndefined();
     expect(store.size).toBe(0);
@@ -272,8 +295,8 @@ describe("the store in memory", () => {
     const third = await store.put(bodyOf(bytes(1_024)), {});
 
     expect(await store.open(first.id)).toBeUndefined(); // the oldest made room
-    expect(await store.open(second.id)).toBeDefined();
-    expect(await store.open(third.id)).toBeDefined();
+    expect((await store.open(second.id))?.upload.id).toBe(second.id);
+    expect((await store.open(third.id))?.upload.id).toBe(third.id);
     expect(store.bytes).toBe(2_048);
   });
 
@@ -305,3 +328,34 @@ function bodyOf(data: Uint8Array): ReadableStream<Uint8Array> {
     },
   });
 }
+
+describe("the store in memory, at its edges", () => {
+  const body = (n: number) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(bytes(n));
+        c.close();
+      },
+    });
+
+  it("an upload has expired at its lifetime exactly, and is there a millisecond before (guard)", async () => {
+    let now = 0;
+    const store = new MemoryUploadStore({ ttlMs: 1_000, now: () => now });
+    const kept = await store.put(body(4), {});
+    now = 999;
+    expect((await store.open(kept.id))?.upload.size).toBe(4);
+    now = 1_000;
+    expect(await store.open(kept.id)).toBeUndefined();
+    expect(store.bytes).toBe(0);
+  });
+
+  it("a put sweeps the uploads whose lifetime has passed, without anyone opening them", async () => {
+    let now = 0;
+    const store = new MemoryUploadStore({ ttlMs: 1_000, now: () => now });
+    await store.put(body(4), {});
+    await store.put(body(5), {});
+    now = 1_000;
+    await store.put(body(6), {});
+    expect([store.size, store.bytes]).toEqual([1, 6]);
+  });
+});

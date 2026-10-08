@@ -74,6 +74,29 @@ class PolicyPushdownTest {
         assertNull(policyHandedTo("note"))
     }
 
+    /** The policy a root query over a type with these policy annotations is handed, through the server. */
+    private fun rootHandedFor(policies: String): JsonObject? {
+        var seen: JsonObject? = null
+        val ir = SchemaText.load("entity Shelf { id: ID label: String } entity T $policies { id: ID a: String n: Int tags: [String] deep: Shelf } query ts: [T]").ir
+        frames(RayfoldServer(ir, Resolvers(queries = mapOf("ts" to { _, ctx -> seen = ctx.policy; JsonArray(emptyList()) }))), """{"id":1,"op":"ts","shape":"{ id }"}""")
+        return seen
+    }
+
+    @Test
+    fun `only what a data source can evaluate from the row's own columns is pushed, whatever wraps it`() {
+        val own = """@allow(read: viewer.id == this.a && !(this.n == 1) && this.a in [viewer.id, "x"])"""
+        val declared = SchemaText.load("entity T $own { id: ID a: String n: Int } query ts: [T]").ir.types.getValue("T").annotations.find("allow")?.args?.get("read").exprOrNull()
+        assertEquals(declared, rootHandedFor(own), "guard: own columns under &&, ! and in [...] are pushed whole")
+        val kept = mapOf(
+            "a deny needs the runtime's own check" to """@allow(read: viewer.id == this.a) @deny(read: viewer.banned == true)""",
+            "now() is the runtime's clock" to """@allow(read: this.n < now())""",
+            "a function of a column" to """@allow(read: len(this.tags) > 0)""",
+            "a path through a relation, under !" to """@allow(read: !(this.deep.label == "x"))""",
+            "a path through a relation, in a list" to """@allow(read: viewer.id in [this.deep.label])""",
+        )
+        for ((why, policies) in kept) assertNull(rootHandedFor(policies), why)
+    }
+
     @Test
     fun `a type with no policy hands the loader nothing`() {
         assertNull(policyHandedTo("shelf"))
@@ -85,14 +108,15 @@ class PolicyPushdownTest {
         val stranger = buildJsonObject { put("id", "o2"); put("customerId", "u2") }
         val resolvers = Resolvers(
             queries = mapOf("orders" to { _, ctx -> seen["orders"] = ctx.policy; JsonArray(listOf(order, stranger)) }),
-            streams = mapOf("orderFeed" to { _, ctx -> seen["orderFeed"] = ctx.policy; flowOf(order) }),
+            streams = mapOf("orderFeed" to { _, ctx -> seen["orderFeed"] = ctx.policy; flowOf(order, stranger) }),
         )
         val server = RayfoldServer(ir, resolvers)
         val listed = frames(server, """{"id":1,"op":"orders"}""")
-        frames(server, """{"id":1,"op":"orderFeed"}""")
+        val streamed = frames(server, """{"id":1,"op":"orderFeed"}""")
         assertEquals<Map<String, JsonObject?>>(mapOf("orders" to allowOf("Order"), "orderFeed" to allowOf("Order")), seen)
         // a resolver that ignores the hint still serves only what the policy allows: the default view reads a denied row as null
         assertEquals(listOf(obj("""{"id":1,"data":[{"${'$'}type":"Order","id":"o1","customerId":"u1"},null],"meta":{"cost":1},"fin":true}""")), listed)
+        assertEquals(listOf(obj("""{"id":1,"item":{"${'$'}type":"Order","id":"o1","customerId":"u1"}}"""), obj("""{"id":1,"item":null}"""), obj("""{"id":1,"fin":true}""")), streamed)
     }
 
     @Test

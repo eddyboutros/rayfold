@@ -78,8 +78,14 @@ export function bookstoreResolvers(store: Store): Resolvers {
         const v = ctx.viewer as Viewer;
         if (!store.books.has(args.input.bookId)) throw new RayfoldError("not_found", `Book ${args.input.bookId} not found`);
         if (args.input.rating < 1 || args.input.rating > 5) throw new RayfoldError("invalid_argument", "rating must be 1..5");
-        const r: ReviewRow = { id: `r${ctx.simulate ? store.nextId : store.nextId++}`, rating: args.input.rating, body: args.input.body, bookId: args.input.bookId, reviewerId: v.id, version: 1 };
-        if (!ctx.simulate) store.reviews.set(r.id, r);
+        // the seed's reviews already hold r1-r4: a new one takes the next id no review has, rather than replacing one
+        let n = store.nextId;
+        while (store.reviews.has(`r${n}`)) n++;
+        const r: ReviewRow = { id: `r${n}`, rating: args.input.rating, body: args.input.body, bookId: args.input.bookId, reviewerId: v.id, version: 1 };
+        if (!ctx.simulate) {
+          store.nextId = n + 1;
+          store.reviews.set(r.id, r);
+        }
         return ok(r, { patch: [{ invOp: ["books"] }] });
       },
       payOrder: (args: { id: string }, ctx) => {

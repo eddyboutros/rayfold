@@ -160,7 +160,10 @@ class CostTest {
         val deep = "{ ${reviews(20, reviews(20, reviews(20, reviews(20, "id"))))} }"
         assertEquals("Shape depth 13 exceeds 8", server.collect(batch("""{"id":1,"op":"hit","shape":"$deep"}""")).single().errorMessage())
         // guard: a shallow one under the same limit runs
-        assertNull(server.collect(batch("""{"id":1,"op":"hit","shape":"{ ${reviews(2, "id")} }"}""")).first().errorCode())
+        assertEquals(
+            listOf(obj("""{"id":1,"data":{"${'$'}type":"Book","reviews":{"items":[]}},"meta":{"cost":7},"fin":true}""")),
+            server.collect(batch("""{"id":1,"op":"hit","shape":"{ ${reviews(2, "id")} }"}""")),
+        )
     }
 
     @Test
@@ -241,7 +244,7 @@ class CostTest {
             """{"id":1,"op":"book","args":{"id":"b1"},"shape":"{ id title stock }"}""",
             """{"id":2,"op":"book","args":{"id":"b1"},"shape":"{ id title stock version }"}""",
         )).associateBy { it.opId() }
-        assertNull(frames[1]?.errorCode(), "${frames[1]}")
+        assertEquals(obj("""{"id":1,"data":{"${'$'}type":"Book","id":"b1","title":"T1","stock":2},"meta":{"cost":1},"fin":true}"""), frames[1])
         assertEquals("Shape selects 4 fields, max 3", frames[2]?.errorMessage())
         assertEquals(1, fx.store.calls["Query.book"], "the op over the limit never ran")
     }

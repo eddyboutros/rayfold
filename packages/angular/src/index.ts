@@ -11,7 +11,7 @@
  * Arguments are a function so they can read signals: when `this.id()` changes the query re-runs and the old
  * subscription ends. Pass a plain object when nothing about the call changes.
  */
-import { DestroyRef, InjectionToken, computed, effect, inject, signal, untracked, type Provider, type Signal } from "@angular/core";
+import { DestroyRef, InjectionToken, PendingTasks, computed, effect, inject, signal, untracked, type Provider, type Signal } from "@angular/core";
 import { RayfoldCache, type CommandOptions, type OpOptions, type QueryOptions, type RayfoldClient } from "@rayfold/client";
 
 /** The client the injects below read. Provide it with {@link provideRayfold}. */
@@ -30,7 +30,10 @@ export function injectRayfoldClient(): RayfoldClient {
 }
 
 export interface QuerySignals<T> {
-  /** The latest result. Starts as the cached result when this query ran before, while the fresh one loads. */
+  /**
+   * The latest result. Starts as the cached result when this query ran before, while the fresh one loads. A later
+   * failure keeps it, beside `error`, so a screen can say what went wrong without going blank.
+   */
   readonly data: Signal<T | undefined>;
   /** The last failure (a RayfoldClientError for errors the server reported); cleared by the next result. */
   readonly error: Signal<unknown>;
@@ -46,7 +49,7 @@ export interface QueryHandle<T> extends QuerySignals<T> {
 export interface CommandHandle<T, A extends Record<string, unknown>> {
   /** Runs the command. Returns its result and rejects on failure; the outcome also lands in the signals below. */
   run(args: A, options?: CommandOptions): Promise<T>;
-  /** The last successful result. */
+  /** The result of the latest run, or undefined when that run failed: an older success never shows beside a new error. */
   readonly data: Signal<T | undefined>;
   /** The last failure; `error.is("OutOfStock")` narrows on a declared error type. */
   readonly error: Signal<unknown>;
@@ -87,12 +90,14 @@ export function injectQuery<T = unknown>(op: string, args: Args = {}, options: I
   const { enabled = true, ...query } = options;
   const call = reading(args, enabled);
   const state = signal<{ data: T | undefined; error: unknown; loading: boolean }>({ data: undefined, error: undefined, loading: false });
+  const answer = awaited();
   let stop: (() => void) | undefined;
   let current: Record<string, unknown> = {};
 
   const subscribe = (next: Call): void => {
     stop?.();
     stop = undefined;
+    answer.settled();
     current = next.args;
     if (!next.on) {
       state.set({ data: undefined, error: undefined, loading: false });
@@ -100,12 +105,13 @@ export function injectQuery<T = unknown>(op: string, args: Args = {}, options: I
     }
     // what the cache already holds shows immediately, so a screen that has been here before does not blank
     state.set({ data: cached<T>(client, op, current, query), error: undefined, loading: true });
+    answer.pending();
     stop = client.watch<T>(
       op,
       current,
       query,
-      (data) => state.set({ data, error: undefined, loading: false }),
-      (error) => state.update((s) => ({ ...s, error, loading: false })),
+      (data) => (state.set({ data, error: undefined, loading: false }), answer.settled()),
+      (error) => (state.update((s) => ({ ...s, error, loading: false })), answer.settled()),
     );
   };
 
@@ -114,7 +120,7 @@ export function injectQuery<T = unknown>(op: string, args: Args = {}, options: I
   const first = call();
   subscribe(first);
   watchCall(args, enabled, call, first, subscribe);
-  inject(DestroyRef).onDestroy(() => stop?.());
+  inject(DestroyRef).onDestroy(() => (stop?.(), answer.settled()));
 
   return {
     data: computed(() => state().data),
@@ -140,29 +146,33 @@ export function injectLive<T = unknown>(op: string, args: Args = {}, options: In
   const { enabled = true, ...live } = options;
   const call = reading(args, enabled);
   const state = signal<{ data: T | undefined; error: unknown; loading: boolean }>({ data: undefined, error: undefined, loading: false });
+  const answer = awaited();
   let stop: (() => void) | undefined;
 
   const subscribe = (next: Call): void => {
     stop?.();
     stop = undefined;
+    answer.settled();
     if (!next.on) {
       state.set({ data: undefined, error: undefined, loading: false });
       return;
     }
     state.set({ data: cached<T>(client, op, next.args, live), error: undefined, loading: true });
+    // until the first result only: a live query stays open for as long as the component lives
+    answer.pending();
     stop = client.live<T>(
       op,
       next.args,
       live,
-      (data) => state.set({ data, error: undefined, loading: false }),
-      (error) => state.update((s) => ({ ...s, error, loading: false })),
+      (data) => (state.set({ data, error: undefined, loading: false }), answer.settled()),
+      (error) => (state.update((s) => ({ ...s, error, loading: false })), answer.settled()),
     );
   };
 
   const first = call();
   subscribe(first);
   watchCall(args, enabled, call, first, subscribe);
-  inject(DestroyRef).onDestroy(() => stop?.());
+  inject(DestroyRef).onDestroy(() => (stop?.(), answer.settled()));
 
   return {
     data: computed(() => state().data),
@@ -181,6 +191,7 @@ export function injectCommand<T = unknown, A extends Record<string, unknown> = R
 ): CommandHandle<T, A> {
   const client = injectRayfoldClient();
   const state = signal<{ data: T | undefined; error: unknown; running: boolean }>({ data: undefined, error: undefined, running: false });
+  const tasks = inject(PendingTasks, { optional: true });
   let latest = 0;
   let alive = true;
   inject(DestroyRef).onDestroy(() => (alive = false));
@@ -190,13 +201,16 @@ export function injectCommand<T = unknown, A extends Record<string, unknown> = R
       const n = ++latest;
       state.update((s) => ({ ...s, error: undefined, running: true }));
       const result = client.command<T>(op, args, { ...options, ...perCall });
+      const done = tasks?.add();
       // only the newest run speaks for the state; attaching handlers also keeps an ignored rejection handled
       result.then(
         (data) => {
           if (alive && n === latest) state.set({ data, error: undefined, running: false });
+          done?.();
         },
         (error: unknown) => {
           if (alive && n === latest) state.set({ data: undefined, error, running: false });
+          done?.();
         },
       );
       return result;
@@ -223,6 +237,26 @@ function watchCall(args: Args, enabled: Enabled, call: () => Call, initial: Call
     seen = key;
     untracked(() => onChange(next));
   });
+}
+
+/**
+ * Keeps the application from counting as stable while an answer is awaited, so `ApplicationRef.whenStable()`, a
+ * test's `fixture.whenStable()` and server rendering wait for it. An injector outside an application has no
+ * `PendingTasks`, and then this does nothing.
+ */
+function awaited(): { pending(): void; settled(): void } {
+  const tasks = inject(PendingTasks, { optional: true });
+  let done: (() => void) | undefined;
+  return {
+    pending: () => {
+      done?.();
+      done = tasks?.add();
+    },
+    settled: () => {
+      done?.();
+      done = undefined;
+    },
+  };
 }
 
 function cached<T>(client: RayfoldClient, op: string, args: Record<string, unknown>, o: OpOptions): T | undefined {

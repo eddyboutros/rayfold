@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createServer, type IncomingMessage, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
+import { connect as connectTcp, type AddressInfo } from "node:net";
+import { bounded } from "../../../e2e/wait.ts";
 import { createBookstore } from "../../../examples/bookstore-ts/src/index.ts";
 import { bindingsOf, createBindingHandler, type BindingOptions } from "./bindings.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
@@ -859,5 +860,123 @@ command tag(hitId: ID @http(name: "hit-id"), where: Where @http(name: "the-where
     const defs = tool.inputSchema["$defs"] as Record<string, { properties: object }>;
     expect(Object.keys(defs["Where"]!.properties)).toEqual(["zipCode", "near"]);
     expect(Object.keys(defs["Near"]!.properties)).toEqual(["maxKm"]);
+  });
+});
+
+describe("binding rules, each at its edge", () => {
+  const SCHEMA = `
+entity T { id: ID note: String? @allow(read: viewer != null) }
+input Patch { note: String? }
+query price(p: Decimal, n: Int, flag: Boolean): T @http(method: GET, path: "/price")
+query t(id: ID): T? @http(method: GET, path: "/t/{id}")
+command put(id: ID, patch: Patch): T @http(method: PUT, path: "/t/{id}", body: patch)
+command spread(note: String?): T @idempotent(false) @http(method: POST, path: "/spread", body: "*")
+`;
+  const make = () => {
+    const seen: Array<[string, unknown]> = [];
+    const server = createRayfoldServer({
+      schema: SCHEMA,
+      resolvers: {
+        Query: { price: (a: unknown) => (seen.push(["price", a]), { id: "p" }), t: (a: { id: string }) => (seen.push(["t", a]), { id: a.id, note: "n" }) },
+        Command: { put: (a: unknown) => (seen.push(["put", a]), { id: "t1" }), spread: (a: unknown) => (seen.push(["spread", { ...(a as object) }]), { id: "s" }) },
+      } as never,
+    });
+    return { server, seen };
+  };
+
+  it("a Decimal query parameter stays the text that was sent, trailing zeros and all; an Int takes no exponent", async () => {
+    const { server, seen } = make();
+    const base = await serve(server);
+    expect((await send(`${base}/price?p=10.50&n=3&flag=true`, "GET")).status).toBe(200);
+    expect(seen).toEqual([["price", { p: "10.50", n: 3, flag: true }]]);
+    const exp = await send(`${base}/price?p=1&n=1e3&flag=true`, "GET");
+    expect(exp.status).toBe(400);
+    expect(await exp.json()).toMatchObject({ code: "invalid_argument", detail: "price().n: expected Int" });
+    const yes = await send(`${base}/price?p=1&n=1&flag=yes`, "GET");
+    expect(await yes.json()).toMatchObject({ code: "invalid_argument", detail: "price().flag: expected Boolean" });
+    expect(seen).toHaveLength(1);
+  });
+
+  it("a PUT is a write, so the Origin rule applies to it as to a POST", async () => {
+    const { server, seen } = make();
+    const base = await serve(server);
+    const put = (origin: string) =>
+      new Promise<number>((resolve, reject) => {
+        const u = new URL(`${base}/t/t1`);
+        const req = httpRequest({ host: u.hostname, port: u.port, method: "PUT", path: u.pathname, headers: { "content-type": "application/json", origin, ...U1 } }, (r) => (r.resume(), resolve(r.statusCode ?? 0)));
+        req.on("error", reject);
+        req.end(JSON.stringify({ note: "x" }));
+      });
+    expect(await put("https://evil.example")).toBe(403);
+    expect(seen).toEqual([]);
+    expect(await put(`http://${new URL(base).host}`)).toBe(200); // guard: its own origin writes
+  });
+
+  it("a server limited to some host names refuses a binding reached by another", async () => {
+    const { server, seen } = make();
+    const base = await serve(server, { allowedHosts: ["api.example"] });
+    expect((await send(`${base}/t/t1`, "GET")).status).toBe(403);
+    expect(seen).toEqual([]);
+  });
+
+  it("a body in another media type is refused 415 and runs nothing", async () => {
+    const { server, seen } = make();
+    const base = await serve(server);
+    const res = await send(`${base}/t/t1`, "PUT", JSON.stringify({ note: "x" }), { "content-type": "text/plain", ...U1 });
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({ ...problemOf("unsupported_media_type", 415, "Content-Type text/plain is not accepted; send application/json"), code: "invalid_argument" });
+    expect(seen).toEqual([]);
+  });
+
+  it("a spread body's __proto__ is an argument like any other, refused as unknown, never a prototype", async () => {
+    const { server, seen } = make();
+    const base = await serve(server);
+    const res = await send(`${base}/spread`, "POST", '{"__proto__":{"note":"smuggled"}}', U1);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: "invalid_argument", detail: "spread().__proto__: unknown argument" });
+    expect(seen).toEqual([]);
+  });
+
+  it("a refusal at a field carries the path it happened at", async () => {
+    const { server } = make();
+    const base = await serve(server);
+    const res = await send(`${base}/t/t1?shape=${encodeURIComponent("{ id note }")}`, "GET");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ ...problemOf("unauthenticated", 401, "Sign in to access T.note"), path: "note" });
+  });
+
+  it("only a path under the prefix is a binding's: one whose tail happens to match is not", async () => {
+    const { server, seen } = make();
+    const base = await serve(server, { prefix: "/api" });
+    expect(await (await send(`${base}/xyz/t/t1`, "GET")).text()).toBe(FALLTHROUGH); // "/xyz" is as long as "/api"
+    expect(seen).toEqual([]);
+    expect((await send(`${base}/api/t/t1`, "GET")).status).toBe(200); // guard
+  });
+});
+
+describe("a binding's body past its limit", () => {
+  it("cuts a client off that keeps sending long after the refusal", async () => {
+    const base = await serve(createBookstore().server, { maxBody: 1_024 });
+    const sent = await bounded(
+      new Promise<number>((resolve) => {
+        const socket = connectTcp({ host: "127.0.0.1", port: Number(new URL(base).port) });
+        let n = 0;
+        socket.resume();
+        socket.on("error", () => undefined);
+        socket.on("close", () => resolve(n));
+        const total = 64 * 1024 * 1024;
+        socket.write(`POST /orders HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nIdempotency-Key: ${KEY}\r\nContent-Length: ${total}\r\n\r\n`);
+        const chunk = "x".repeat(64 * 1024);
+        const pump = () => {
+          while (n < total && !socket.destroyed) {
+            n += chunk.length;
+            if (!socket.write(chunk)) return void socket.once("drain", pump);
+          }
+        };
+        pump();
+      }),
+      "the binding cutting the flood off",
+    );
+    expect(sent).toBeLessThan(16 * 1024 * 1024);
   });
 });

@@ -9,7 +9,7 @@ place; this page explains how they fit together.
 - `npm ci`, then `npm test` (TypeScript: every package, the conformance suite, the end-to-end comparisons) and
   `npm run typecheck`.
 - `cd kotlin && ./gradlew test` runs every JVM module: the Kotlin runtime, the Java API, the Spring Boot starter, the
-  Kotlin client and its OkHttp transport, OpenTelemetry, and the JDBC stores.
+  Kotlin client and its OkHttp transport, OpenTelemetry, the JDBC stores, and the test support.
 - `npm run e2e:html` renders the comparison report from the last test run; `npm run docs:dev` serves the docs site
   with the playground, and `npm run docs:build` builds it (a broken link fails the build).
 - The code on the site comes from `examples/`. Change an example, and its tests and the pages that show it change
@@ -32,11 +32,27 @@ case. Changes to the specification follow [spec/process.md](spec/process.md).
 Tests are deep and functional: they drive the real entry point (the HTTP handler, the WebSocket connection, the batch
 runner) rather than only a helper.
 
-- **No sleeping and no wall-clock assertions.** Inject a clock or use fake timers, assert on counters and frames, and
-  bound every wait (the helpers in `e2e/wait.ts`, 5 s) so a missed signal fails instead of hanging.
+- **No sleeping and no wall-clock assertions.** Inject a clock (`now` on either server, `clock` on the Java builder) or
+  use fake timers, assert on counters and frames, and bound every wait (the helpers in `e2e/wait.ts`, 5 s; `collect`
+  from `@rayfold/client/testing`, 4 s; `RayfoldTest` and its `LiveQuery`, 5 s) so a missed signal fails instead of
+  hanging.
 - **Every "must not" has a guard.** A test that proves something is refused sits next to one proving the honest
   request still works, so an exemption cannot quietly become a blanket one.
 - **Clean up.** Every server, socket and subscription a test opens is closed when it ends.
+
+## What "supported" means for a language
+
+Rayfold supports a language or a framework when all three of these hold, and a new one is added with all three in
+the same release:
+
+1. **It passes the conformance vectors** in `conformance/vectors/`, every case and rule, run in CI.
+2. **An application written in it can be unit tested without a network**: a client, or a caller, runs against a real
+   server in the test's own process, and every wait it offers is bounded.
+3. **It has its tab in the [testing guide](docs/guide/testing.md)**, embedded from a test in `examples/` that CI
+   runs, covering a resolver, a policy, a declared error, a retried command, a live query and the clock.
+
+A client-only language (no server runtime) meets 2 with a transport a test can script or point at a server in
+another runtime, and says so in its guide.
 
 ## Pull requests
 

@@ -40,6 +40,7 @@ that runs Rayfold in your browser.
 | A Kotlin or Android client | `dev.rayfold:rayfold-client` (and `rayfold-client-okhttp` on Android) | [Kotlin client](docs/guide/kotlin.md#a-client) |
 | A Java server | `dev.rayfold:rayfold-java` | [Java](docs/guide/java-spring.md) |
 | A Spring Boot app | `dev.rayfold:rayfold-spring-boot-starter` | [Spring Boot](docs/guide/java-spring.md#spring-boot) |
+| Unit tests without a network, on the JVM | `dev.rayfold:rayfold-test`, in test scope (next release; not in 0.2.1) | [Testing](docs/guide/testing.md) |
 
 Version 0.2.1 is on npm and Maven Central; the [changelog](CHANGELOG.md) lists what it holds, and
 [versioning](docs/versioning.md) says which feature came with which version.
@@ -123,13 +124,13 @@ npm run smoke:maven                        # publish the JVM modules locally and
 | [`packages/schema`](packages/schema) | `.rayfold` parser, validator, shapes, policy expressions, breaking-change diff, TypeScript/Kotlin/Java/GraphQL generators |
 | [`packages/builder`](packages/builder) | code-first TypeScript schemas with inferred types |
 | [`packages/server`](packages/server) | the server runtime: executor, batches, idempotency, policies, cost, cache headers, live queries, uploads, `@http` bindings, OpenAPI, WebSocket, MCP; a fetch handler with a Node adapter over it, a relay to join a fleet, and drain and readiness for a rolling deploy |
-| [`packages/client`](packages/client) | normalized cache with patches, batches with `$ref`, watch/live, uploads, an offline queue, fetch and WebSocket transports, RB |
+| [`packages/client`](packages/client) | normalized cache with patches, batches with `$ref`, watch/live, uploads, an offline queue, fetch and WebSocket transports, RB; an in-process transport and `@rayfold/client/testing` for unit tests |
 | [`packages/react`](packages/react) | `useQuery`, `useLive`, `useCommand` |
 | [`packages/angular`](packages/angular) | `injectQuery`, `injectLive`, `injectCommand`, as signals |
 | [`packages/rb`](packages/rb) | Rayfold Binary codec |
 | [`packages/cli`](packages/cli) | `rayfold check \| lock \| hash \| explain \| gen ts\|kotlin\|java\|graphql \| shapes \| import openapi\|graphql \| mock \| lsp \| dev` |
-| [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass, and the vectors: a pure function and the answer the specification says it has |
-| [`kotlin/`](kotlin) | JVM modules: `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`, `rayfold-jdbc` |
+| [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass, and the vectors: an input and the answer the specification says it has, from pure functions to HTTP, WebSocket and MCP requests |
+| [`kotlin/`](kotlin) | JVM modules: `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`, `rayfold-jdbc`, `rayfold-test` |
 | [`examples/`](examples) | the bookstore used by tests, explorer and bench; the same bookshop per stack (`typescript`, `react`, `kotlin`, `java`, `spring-boot`) that the get-started guides are written from; the web demo; `workspace-ts`, a multi-tenant issue tracker that exercises every part of the protocol at once |
 | [`e2e/`](e2e/report.md) | the same flows over REST, GraphQL and Rayfold, every report cell asserted |
 | [`scripts/`](scripts) | build, publish, set-version, smoke tests, docs site, oracles for the Kotlin tests |

@@ -248,6 +248,8 @@ class BatchRunner(
     private val draining: Job = Job(),
     /** Counts what the server did, for an operator. */
     private val counters: Counters? = null,
+    /** The server's clock, epoch milliseconds. */
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     private class Planned(val req: RequestOp, val op: OpDef, val explicit: Boolean, val deps: List<Int>) {
         var shape: Shape = Shape()
@@ -373,7 +375,7 @@ class BatchRunner(
                         }
                         val body: suspend () -> Unit = {
                             if (!untilCancelled(opts.opCancel[p.req.id], run)) {
-                                if (!sink.ended(p.req.id)) sink.send(Frames.error(p.req.id, RayfoldException(Code.CANCELED, "Canceled")))
+                                if (!sink.ended(p.req.id)) sink.send(Frames.error(p.req.id, stopReason(opts.opCancel[p.req.id])))
                                 status[p.req.id] = "failed"
                                 gate?.await() // a later command still waits for the earlier one, even when this one was cancelled first
                             }
@@ -433,6 +435,16 @@ class BatchRunner(
     }
 
     private fun shuttingDown() = RayfoldException(Code.UNAVAILABLE, "The server is shutting down")
+
+    /**
+     * Why [job] stopped its op: the [RayfoldException] it was completed with, such as `unauthenticated` when a WebSocket
+     * viewer's capability expires (spec 04 section 5), or `canceled` for a plain `{ "cancel": id }`.
+     */
+    private fun stopReason(job: Job?): RayfoldException {
+        var cause: Throwable? = null
+        job?.invokeOnCompletion { cause = it }?.dispose() // a completed job runs the handler at once
+        return cause as? RayfoldException ?: RayfoldException(Code.CANCELED, "Canceled")
+    }
 
     /** Runs [block]; false when [cancel] completed first and cancelled it. */
     private suspend fun untilCancelled(cancel: Job?, block: suspend () -> Unit): Boolean {
@@ -545,11 +557,11 @@ class BatchRunner(
             // a viewer carrying one (a token verified by a TypeScript server sharing the secret, or by the app itself),
             // so the rule is kept here too; any other viewer is left to the schema's own policies.
             if (!capabilityAllows(viewer, p.op.name)) throw RayfoldException(Code.PERMISSION_DENIED, "This capability does not allow ${p.op.name}()")
-            usage?.record(UsageEvent(p.op.name, "", opts.client), System.currentTimeMillis())
+            usage?.record(UsageEvent(p.op.name, "", opts.client), now())
             // the op's own job, so a resolver (and Values.isCancelled() for Java) can see a deadline or a caller
             // hanging up. Left at its default here, isCancelled answered false for every resolver ever written.
             val job = currentCoroutineContext()[Job]
-            val ctx = RayfoldContext(viewer, p.req.simulate, id, p.op.name, p.req.vars, events, isCancelled = { job?.isActive == false }, compact = p.req.compact, ifVersion = p.req.ifVersion, batch = opts.batchState ?: ConcurrentHashMap(), shape = p.shape, client = opts.client, meta = opts.meta)
+            val ctx = RayfoldContext(viewer, p.req.simulate, id, p.op.name, p.req.vars, events, isCancelled = { job?.isActive == false }, compact = p.req.compact, ifVersion = p.req.ifVersion, batch = opts.batchState ?: ConcurrentHashMap(), shape = p.shape, client = opts.client, meta = opts.meta, now = now)
             when (p.op.kind) {
                 "query" -> {
                     if (p.req.live) {
@@ -734,7 +746,7 @@ class BatchRunner(
     private suspend fun runLive(p: Planned, args: JsonObject, ctx: RayfoldContext, sink: Sink, results: MutableMap<Int, JsonElement>) {
         val id = p.req.id
         // read sets and diffs need `$type`, so the query always runs in full form; compaction happens on the way out
-        val runCtx = if (!ctx.compact) ctx else RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, ctx.isCancelled, compact = false, ifVersion = ctx.ifVersion, batch = ctx.batch, shape = ctx.shape, client = ctx.client, meta = ctx.meta)
+        val runCtx = if (!ctx.compact) ctx else RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, ctx.isCancelled, compact = false, ifVersion = ctx.ifVersion, batch = ctx.batch, shape = ctx.shape, client = ctx.client, meta = ctx.meta, now = ctx.now)
         class Run(val frames: List<JsonObject>, val data: JsonElement, val unions: Set<String>)
         // the first run shares the batch's loader memo like any op; a re-run gets a fresh one. The memo remembers a
         // field's load per entity, and a re-run exists to read what changed: with the memo kept, a loaded field would
@@ -809,6 +821,10 @@ class BatchRunner(
             if (def.kind == "entity" && !out.add(name)) return
             for (f in def.fields) visit(f.type, depth + 1)
             if (def.kind == "union") for (m in def.members) visit(TypeRef("named", m), depth + 1)
+            // an interface position holds any entity that implements it, so a new one of those may join the result as well
+            if (def.kind == "object" && def.isInterface) {
+                for (e in ir.types.values) if (e.kind == "entity" && name in e.implements) visit(TypeRef("named", e.name), depth + 1)
+            }
             if (t.kind == "named") t.args?.forEach { visit(it, depth) }
         }
         visit(root, 0)

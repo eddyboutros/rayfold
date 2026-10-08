@@ -1,0 +1,341 @@
+{
+  "name": "validation/schemas",
+  "about": "Which schemas a runtime accepts, and what the text it accepts means. A schema one runtime loads and another refuses splits a fleet at deploy time; one both load but read differently gives the two servers different hashes for the same file, so neither recognises the other's clients. Every rejection sits beside a guard that differs from it only in the rule under test and must load, so a runtime that refuses too much fails as surely as one that refuses too little.",
+  "source": "spec 01 §1 (lexical structure), §3 (types), §4 (@input, @http(name:)), §7 (reserved names) and §8 (validation rules). The diagnostic codes runtimes print are not in the specification, so a case pins only whether the schema is valid; the guard beside it is what makes the rejection about the rule it names.",
+  "rule": [
+    "A case is `expect: \"rejected\"` (loading fails: the text does not parse, or the IR breaks a rule of §8) or `expect: \"accepted\"` (it parses and validates, warnings allowed).",
+    "`schema` is `.rayfold` text. `irEdit` then edits the IR document that text parses to (unvalidated) before validating it: `path` is a list of member names and array indexes into the document of §9, and `value` replaces what is there. That is how a case states an IR no text can produce - an importer, a builder or a lock file can write a name the lexer cannot read, and §1 applies to it all the same.",
+    "An accepted case may carry `irHas`: members of its IR document (path as above) and the value each must hold. An accepted case may carry `sameAs`: the name of another accepted case whose schema must have the same schema hash, so two spellings of one schema are one identity.",
+    "A type parameter is in scope only in the fields of the generic that declares it (§3, §6); `Page<T>` is an object, so it is a result type and never an argument or input field (§8.3).",
+    "`@input(Type)` takes a type a client can send: an input, scalar or enum (§4, §8.3).",
+    "Within one owner no member is named twice: fields of a type, arguments of an operation or field, values of an enum, members of a union (§8.1). The text parser refuses the first three on its own, so each also has a case in IR form, which reaches validation without a parser.",
+    "A name is `[A-Za-z_][A-Za-z0-9_]*`, and one starting with `__` or `$` is reserved, for types, fields, arguments, operations and enum values alike, whatever produced the IR (§1, §7, §8.12).",
+    "`@http(name:)` is written only on operation arguments and input fields, with `name` as its one argument and a non-empty string; within one operation's arguments or one input type's fields, no wire name equals another member's name or wire name (§4, §8.11).",
+    "A block string's one escape is `\\\"\"\"`, standing for `\"\"\"`; the text is dedented and trimmed, and `\\r\\n` is a line break (§1). An object key that is not a name is quoted, and a quoted key that is a name is the same key (§1)."
+  ],
+  "cases": [
+    {
+      "name": "a type parameter outside a generic",
+      "schema": "entity Book { id: ID x: T }\nquery book(id: ID): Book?",
+      "expect": "rejected",
+      "why": "T names nothing here; a runtime that let type parameters resolve anywhere accepted it"
+    },
+    {
+      "name": "guard: the built-in generic uses its own parameter",
+      "schema": "entity Book { id: ID }\nquery books(page: PageArgs): Page<Book>",
+      "expect": "accepted"
+    },
+    {
+      "name": "Page<T> as an operation argument",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, p: Page<String>): Book?",
+      "expect": "rejected",
+      "why": "an argument is something a client sends, and Page is an object; the generic branch used to return before the position was checked. A page of strings, so the type argument is one an argument may hold and only the position of Page itself is wrong"
+    },
+    {
+      "name": "guard: PageArgs as an operation argument",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, p: PageArgs): Book?",
+      "expect": "accepted"
+    },
+    {
+      "name": "Page<T> as an input field",
+      "schema": "entity Book { id: ID }\ninput Filter { p: [Page<String>] }\nquery book(id: ID, f: Filter): Book?",
+      "expect": "rejected",
+      "why": "a page of strings, in a list: the element type is one an input may hold and the rule that a page field takes page arguments does not apply, so only the position of Page itself is wrong"
+    },
+    {
+      "name": "guard: PageArgs as an input field",
+      "schema": "entity Book { id: ID }\ninput Filter { p: [PageArgs] }\nquery book(id: ID, f: Filter): Book?",
+      "expect": "accepted"
+    },
+    {
+      "name": "@input with a value that is not a type, in an IR",
+      "schema": "object Msg { text: String }\ninput MsgIn { text: String }\nstream chat: Msg @input(MsgIn)",
+      "irEdit": {
+        "path": ["ops", "chat", "annotations", 0, "args", "value"],
+        "value": "MsgIn"
+      },
+      "expect": "rejected",
+      "why": "text cannot write this (the parser reads a type there), but a builder or importer can write the name as a string; the value must be a type reference"
+    },
+    {
+      "name": "@input naming a type a client cannot send",
+      "schema": "object Msg { text: String }\ninput MsgIn { text: String }\nstream chat: Msg @input(Msg)",
+      "expect": "rejected"
+    },
+    {
+      "name": "guard: @input naming an input type",
+      "schema": "object Msg { text: String }\ninput MsgIn { text: String }\nstream chat: Msg @input(MsgIn)",
+      "expect": "accepted"
+    },
+    {
+      "name": "a field named twice",
+      "schema": "entity Book { id: ID title: String title: String }\nquery book(id: ID): Book?",
+      "expect": "rejected",
+      "why": "the IR keeps both, and which one a result carries would be whichever an implementation happened to read last"
+    },
+    {
+      "name": "an input field named twice",
+      "schema": "entity Book { id: ID }\ninput Filter { q: String q: Int }\nquery book(id: ID, f: Filter): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "an argument named twice",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, id: ID): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "an enum value named twice",
+      "schema": "enum Kind { A B A }\nentity Book { id: ID kind: Kind }\nquery book(id: ID): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "a union member named twice",
+      "schema": "entity Book { id: ID }\nentity Author { id: ID }\nunion Hit = Book | Author | Book\nquery search: [Hit]",
+      "expect": "rejected"
+    },
+    {
+      "name": "a field named twice, in an IR",
+      "schema": "entity Book { id: ID title: String subtitle: String }\nquery book(id: ID): Book?",
+      "irEdit": {
+        "path": ["types", "Book", "fields", 2, "name"],
+        "value": "title"
+      },
+      "expect": "rejected",
+      "why": "the parser refuses the text form above; an IR from an importer, the builder or a lock file reaches validation without it"
+    },
+    {
+      "name": "an input field named twice, in an IR",
+      "schema": "entity Book { id: ID }\ninput Filter { q: String r: Int }\nquery book(id: ID, f: Filter): Book?",
+      "irEdit": {
+        "path": ["types", "Filter", "fields", 1, "name"],
+        "value": "q"
+      },
+      "expect": "rejected"
+    },
+    {
+      "name": "an argument named twice, in an IR",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, q: ID): Book?",
+      "irEdit": {
+        "path": ["ops", "book", "args", 1, "name"],
+        "value": "id"
+      },
+      "expect": "rejected"
+    },
+    {
+      "name": "an enum value named twice, in an IR",
+      "schema": "enum Kind { A B }\nentity Book { id: ID kind: Kind }\nquery book(id: ID): Book?",
+      "irEdit": {
+        "path": ["types", "Kind", "values", 1, "name"],
+        "value": "A"
+      },
+      "expect": "rejected"
+    },
+    {
+      "name": "guard: every member named once",
+      "schema": "enum Kind { A B }\nentity Book { id: ID title: String kind: Kind }\nentity Author { id: ID }\ninput Filter { q: String r: Int }\nunion Hit = Book | Author\nquery book(id: ID, f: Filter): Book?\nquery search: [Hit]",
+      "expect": "accepted"
+    },
+    {
+      "name": "guard: the same edits with names the owner does not have",
+      "schema": "enum Kind { A B }\nentity Book { id: ID title: String subtitle: String kind: Kind }\ninput Filter { q: String r: Int }\nquery book(id: ID, q: ID, f: Filter): Book?",
+      "irEdit": {
+        "path": ["types", "Book", "fields", 2, "name"],
+        "value": "subtitle2"
+      },
+      "expect": "accepted"
+    },
+    {
+      "name": "an argument name starting with __",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, __x: Int): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "an enum value starting with __",
+      "schema": "enum Kind { __A B }\nentity Book { id: ID kind: Kind }\nquery book(id: ID): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "a field name starting with __",
+      "schema": "entity Book { id: ID __x: Int }\nquery book(id: ID): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "guard: one leading underscore is an ordinary name",
+      "schema": "enum Kind { _A B }\nentity Book { id: ID _x: Int kind: Kind }\nquery book(id: ID, _x: Int): Book?",
+      "expect": "accepted"
+    },
+    {
+      "name": "a field named $type in an IR",
+      "schema": "entity Book { id: ID title: String }\nquery book(id: ID): Book?",
+      "irEdit": {
+        "path": ["types", "Book", "fields", 1, "name"],
+        "value": "$type"
+      },
+      "expect": "rejected",
+      "why": "$type is the member every result uses to say what an object is; a field of that name would overwrite it"
+    },
+    {
+      "name": "a field name no schema file could hold, in an IR",
+      "schema": "entity Book { id: ID title: String }\nquery book(id: ID): Book?",
+      "irEdit": {
+        "path": ["types", "Book", "fields", 1, "name"],
+        "value": "first-name"
+      },
+      "expect": "rejected",
+      "why": "an importer or a builder writes IR directly; a name the lexer cannot read back makes a schema no file can print"
+    },
+    {
+      "name": "an argument name no schema file could hold, in an IR",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, q: String): Book?",
+      "irEdit": {
+        "path": ["ops", "book", "args", 1, "name"],
+        "value": "first name"
+      },
+      "expect": "rejected"
+    },
+    {
+      "name": "an enum value no schema file could hold, in an IR",
+      "schema": "enum Kind { A B }\nentity Book { id: ID kind: Kind }\nquery book(id: ID): Book?",
+      "irEdit": {
+        "path": ["types", "Kind", "values", 0, "name"],
+        "value": "a-b"
+      },
+      "expect": "rejected"
+    },
+    {
+      "name": "guard: the same edit with a name the lexer reads",
+      "schema": "enum Kind { A B }\nentity Book { id: ID title: String kind: Kind }\nquery book(id: ID): Book?",
+      "irEdit": {
+        "path": ["types", "Book", "fields", 1, "name"],
+        "value": "firstName"
+      },
+      "expect": "accepted",
+      "why": "the edit itself leaves a valid IR, so the rejections above are about the names they write"
+    },
+    {
+      "name": "@http(name:) with an empty name",
+      "schema": "entity Book { id: ID }\nquery book(id: ID @http(name: \"\")): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "@http(name:) with a name that is not a string",
+      "schema": "entity Book { id: ID }\nquery book(id: ID @http(name: 5)): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "@http(name:) with a second argument",
+      "schema": "entity Book { id: ID }\nquery book(id: ID @http(name: \"book-id\", method: GET)): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "@http(name:) on an entity field",
+      "schema": "entity Book { id: ID title: String @http(name: \"book-title\") }\nquery book(id: ID): Book?",
+      "expect": "rejected",
+      "why": "a wire name renames something a client sends; a result field keeps its schema name"
+    },
+    {
+      "name": "@http(name:) on a field's argument",
+      "schema": "entity Review { id: ID }\nentity Book { id: ID reviews(page: PageArgs @http(name: \"p\")): Page<Review> }\nquery book(id: ID): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "guard: @http(name:) on an operation argument and an input field",
+      "schema": "entity Book { id: ID }\ninput Filter { firstName: String @http(name: \"first-name\") }\nquery book(id: ID @http(name: \"book-id\"), f: Filter): Book?",
+      "expect": "accepted"
+    },
+    {
+      "name": "a wire name that is another argument's name",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, q: String @http(name: \"id\")): Book?",
+      "expect": "rejected",
+      "why": "a binding reading `id` could not tell which argument the client meant"
+    },
+    {
+      "name": "two arguments with one wire name",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, a: String @http(name: \"x\"), b: String @http(name: \"x\")): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "a wire name that is another input field's name",
+      "schema": "entity Book { id: ID }\ninput Filter { a: String b: String @http(name: \"a\") }\nquery book(id: ID, f: Filter): Book?",
+      "expect": "rejected"
+    },
+    {
+      "name": "guard: a wire name equal to its own member's name, and one wire name in two operations",
+      "schema": "entity Book { id: ID }\nquery book(id: ID @http(name: \"id\"), a: String @http(name: \"x\")): Book?\nquery other(id: ID, b: String @http(name: \"x\")): Book?",
+      "expect": "accepted",
+      "why": "the rule is about another member of the same owner; a member may be bound under its own name, and two operations are two scopes"
+    },
+    {
+      "name": "a block string holding its own fence",
+      "schema": "\"\"\"a \\\"\"\" b\"\"\"\nentity Book { id: ID }\nquery book(id: ID): Book?",
+      "expect": "accepted",
+      "irHas": [
+        {
+          "path": ["types", "Book", "description"],
+          "value": "a \"\"\" b"
+        }
+      ],
+      "why": "\\\"\"\" is the one escape; a lexer without it ends the description at the escaped fence and fails on what follows"
+    },
+    {
+      "name": "a description ending in a quote",
+      "schema": "\"\"\"\nsay \"hi\"\n\"\"\"\nentity Book { id: ID }\nquery book(id: ID): Book?",
+      "expect": "accepted",
+      "irHas": [
+        {
+          "path": ["types", "Book", "description"],
+          "value": "say \"hi\""
+        }
+      ],
+      "why": "written on its own lines, the closing quote of the text is not read as part of the fence"
+    },
+    {
+      "name": "a description with LF line breaks",
+      "schema": "entity Book {\n  id: ID\n  \"\"\"\n  line one\n  line two\n  \"\"\"\n  title: String\n}\nquery book(id: ID): Book?",
+      "expect": "accepted",
+      "irHas": [
+        {
+          "path": ["types", "Book", "fields", 1, "description"],
+          "value": "line one\nline two"
+        }
+      ]
+    },
+    {
+      "name": "the same description with CRLF line breaks",
+      "schema": "entity Book {\r\n  id: ID\r\n  \"\"\"\r\n  line one\r\n  line two\r\n  \"\"\"\r\n  title: String\r\n}\r\nquery book(id: ID): Book?",
+      "expect": "accepted",
+      "sameAs": "a description with LF line breaks",
+      "irHas": [
+        {
+          "path": ["types", "Book", "fields", 1, "description"],
+          "value": "line one\nline two"
+        }
+      ],
+      "why": "a file saved on Windows is the same schema; a carriage return left in the text gives it another hash"
+    },
+    {
+      "name": "an object literal with name keys",
+      "schema": "entity Book { id: ID }\ninput Filter { a: Int b: String? }\nquery book(id: ID, f: Filter = { a: 1, b: \"x\" }): Book?",
+      "expect": "accepted"
+    },
+    {
+      "name": "the same literal with its keys quoted",
+      "schema": "entity Book { id: ID }\ninput Filter { a: Int b: String? }\nquery book(id: ID, f: Filter = { \"a\": 1, \"b\": \"x\" }): Book?",
+      "expect": "accepted",
+      "sameAs": "an object literal with name keys"
+    },
+    {
+      "name": "an object key that is not a name",
+      "schema": "entity Book { id: ID }\nquery book(id: ID, h: JSON = { \"content-type\": \"text/plain\" }): Book?",
+      "expect": "accepted",
+      "irHas": [
+        {
+          "path": ["ops", "book", "args", 1, "default"],
+          "value": {
+            "content-type": "text/plain"
+          }
+        }
+      ]
+    }
+  ]
+}

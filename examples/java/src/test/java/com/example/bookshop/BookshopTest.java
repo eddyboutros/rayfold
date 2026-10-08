@@ -248,12 +248,59 @@ class BookshopTest {
     }
 
     @Test
+    void aPageMayStartAtAnOffsetInsteadOfAfterACursor() throws Exception {
+        var page = query("books", Map.of("page", Map.of("first", 1, "offset", 1)), "{ items { id } cursor hasMore total }", null);
+        assertEquals(
+            Map.of("items", List.of(Map.of("$type", "Book", "id", "b2")), "cursor", "b2", "hasMore", true, "total", 3L),
+            page.get("data"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void anAuthorizationHeaderThatIsNotABearerTokenIsRefusedNotReadAsAnonymous() throws Exception {
+        var restock = Map.<String, Object>of("id", 1, "op", "restock", "args", Map.of("bookId", "b2", "qty", 4), "key", UUID.randomUUID().toString());
+        HttpRequest basic = HttpRequest.newBuilder(uri("/rayfold")).timeout(Duration.ofSeconds(5))
+            .header("Content-Type", "application/rayfold+json").header("Authorization", "Basic dTE6cGFzc3dvcmQ=")
+            .POST(HttpRequest.BodyPublishers.ofString(Rayfold.toJson(Map.of("ops", List.of(restock))).toString())).build();
+        HttpResponse<String> response = client.send(basic, HttpResponse.BodyHandlers.ofString());
+        assertEquals("401 Expected Authorization: Bearer <token>", response.statusCode() + " " + ((Map<String, Object>) Rayfold.parseJson(response.body())).get("detail"));
+        assertEquals(0, store.book("b2").orElseThrow().stock());
+    }
+
+    @Test
+    void aLiveQueryStaysOpenAndGetsTheNewStockWhenSomeoneBuys() throws Exception {
+        var live = Map.<String, Object>of("id", 1, "op", "book", "args", Map.of("id", "b3"), "shape", "{ id stock }", "live", true);
+        HttpResponse<java.io.InputStream> response = client.send(request(live, null), HttpResponse.BodyHandlers.ofInputStream());
+        assertEquals(200, response.statusCode());
+        try (var frames = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+            assertEquals(Map.of("$type", "Book", "id", "b3", "stock", 7L), at(nextFrame(frames), "data"));
+            command("buy", Map.of("bookId", "b3", "qty", 2), null, "customer");
+            assertEquals(Rayfold.parseJson("{\"id\":1,\"patch\":[{\"set\":\"Book:b3\",\"value\":{\"stock\":5}}]}"), nextFrame(frames));
+        }
+    }
+
+    /** The next frame of a streaming response; each read is bounded, so a frame that never comes fails instead of hanging. */
+    static Object nextFrame(java.io.BufferedReader frames) throws Exception {
+        while (true) {
+            String line = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                try {
+                    return frames.readLine();
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            }).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (line == null) throw new AssertionError("the response ended");
+            if (!line.isBlank()) return Rayfold.parseJson(line);
+        }
+    }
+
+    @Test
     void theExplorerIsServedBesideTheEndpointAndNothingElseIs() throws Exception {
         var page = get("/rayfold/explorer");
         assertEquals(200, page.statusCode());
         assertEquals("text/html; charset=utf-8", page.headers().firstValue("Content-Type").orElse(null));
         // the page carries the endpoint it talks to and the title Bookshop.start gave it
-        assertTrue(page.body().contains("<script type=\"application/json\" id=\"config\">{\"endpoint\":\"/rayfold\",\"title\":\"Bookshop\"}</script>"));
+        assertTrue(page.body().contains("<script type=\"application/json\" id=\"config\">{\"endpoint\":\"/rayfold\",\"title\":\"Bookshop\"}</script>"), page.body());
         assertEquals(404, get("/elsewhere").statusCode());
     }
 

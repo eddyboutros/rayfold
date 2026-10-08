@@ -117,7 +117,7 @@ class RayfoldWebSocket(
                 val input = BufferedInputStream(socket.getInputStream())
                 val v = handshake(input) ?: return
                 socket.soTimeout = 0
-                val s = RayfoldWsSession(server, v, { sendFrame(0x1, it.toByteArray(Charsets.UTF_8)) }, { sendFrame(0x2, it) }, scope, onGoingAway = ::goingAway)
+                val s = RayfoldWsSession(server, v, { sendFrame(0x1, it.toByteArray(Charsets.UTF_8)) }, { sendFrame(0x2, it) }, scope, onExpired = ::expired, onGoingAway = ::goingAway)
                 session = s
                 frames(input, s)
             } catch (e: IOException) {
@@ -298,6 +298,13 @@ class RayfoldWebSocket(
         /** The server is shutting down and this connection's frames are out: close as a server going away, so the client reconnects elsewhere. */
         private fun goingAway() {
             sendFrame(0x8, byteArrayOf(0x03, 0xe9.toByte()) + "server shutting down".toByteArray())
+            runCatching { socket.shutdownOutput() }
+            close()
+        }
+
+        /** The viewer's capability expired and its ops' last frames are out (spec 04 section 5). */
+        private fun expired() {
+            sendFrame(0x8, byteArrayOf(0x03, 0xf0.toByte()) + "capability expired".toByteArray())
             runCatching { socket.shutdownOutput() }
             close()
         }

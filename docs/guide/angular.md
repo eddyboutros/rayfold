@@ -56,6 +56,9 @@ subscription ends. Pass a plain object when nothing about the call changes.
 **The query is in flight the moment it is injected**, not on the first change detection, so `loading()` is true
 immediately and a template never paints an empty state it should not.
 
+A query that fails after it answered keeps its `data()` beside `error()`, so a screen can show what it had and say
+what went wrong; the next answer clears the error.
+
 `refetch()` goes back to the server and ignores the cache. `enabled: false` sends nothing, for a query that has to
 wait for an id — and like the arguments it may be a function, so the query starts by itself once the id arrives:
 
@@ -86,7 +89,8 @@ export class RestockButton {
 @if (problem()) { <p>{{ problem() }}</p> }
 ```
 
-Each run gets a fresh idempotency key unless you pass one, so a retry replays rather than running twice. The command's
+`data()` is the result of the latest run, so a run that fails clears it and sets `error()` instead. Each run gets a
+fresh idempotency key unless you pass one, so a retry replays rather than running twice. The command's
 patches reach the cache, so every query showing that book updates — including ones in components that know nothing
 about this button.
 
@@ -99,6 +103,16 @@ readonly book = injectLive<Book>("book", () => ({ id: this.id() }), { shape: "{ 
 Same signals, except the server pushes every change to the result, whoever made it. The subscription ends when the
 component is destroyed or the arguments change. Give the client a WebSocket transport to share one connection between
 many live queries — see [Live updates](../learn/live.md).
+
+## Tests and server rendering
+
+::: info Next release
+This arrives in the next release; in 0.2.1 the application can count as stable before the first answer.
+:::
+
+A query and a live query keep the application unstable until their first answer has arrived, and a command while it
+runs. So `await fixture.whenStable()` in a test, and server rendering, wait for the data instead of capturing
+"Loading...". [Testing](./testing.md#angular) shows a test without a network.
 
 ## Why signals rather than RxJS
 

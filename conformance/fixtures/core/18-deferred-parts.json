@@ -1,0 +1,634 @@
+{
+  "name": "deferred parts",
+  "schema": "entity Item { id: ID secret: String? @allow(read: viewer.role == \"admin\") bio: String? @lazy }\nquery items: [Item]\nquery item(id: ID): Item?\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Item": {
+        "kind": "entity",
+        "name": "Item",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "secret",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "allow",
+                "args": {
+                  "read": {
+                    "$expr": {
+                      "k": "bin",
+                      "op": "==",
+                      "l": {
+                        "k": "path",
+                        "root": "viewer",
+                        "path": [
+                          "role"
+                        ]
+                      },
+                      "r": {
+                        "k": "lit",
+                        "v": "admin"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "ordinal": 2
+          },
+          {
+            "name": "bio",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [
+              {
+                "name": "lazy",
+                "args": {}
+              }
+            ],
+            "ordinal": 3
+          }
+        ],
+        "implements": []
+      }
+    },
+    "ops": {
+      "items": {
+        "kind": "query",
+        "name": "items",
+        "args": [],
+        "returns": {
+          "kind": "list",
+          "of": {
+            "kind": "named",
+            "name": "Item",
+            "nullable": false
+          },
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "item": {
+        "kind": "query",
+        "name": "item",
+        "args": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "annotations": []
+          }
+        ],
+        "returns": {
+          "kind": "named",
+          "name": "Item",
+          "nullable": true
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {}
+  },
+  "data": {
+    "Item": [
+      {
+        "id": "i0",
+        "secret": "s0",
+        "bio": "b0"
+      },
+      {
+        "id": "i1",
+        "secret": "s1",
+        "bio": "b1"
+      },
+      {
+        "id": "i2",
+        "secret": "s2",
+        "bio": "b2"
+      },
+      {
+        "id": "i3",
+        "secret": "s3",
+        "bio": "b3"
+      },
+      {
+        "id": "i4",
+        "secret": "s4",
+        "bio": "b4"
+      },
+      {
+        "id": "i5",
+        "secret": "s5",
+        "bio": "b5"
+      },
+      {
+        "id": "i6",
+        "secret": "s6",
+        "bio": "b6"
+      },
+      {
+        "id": "i7",
+        "secret": "s7",
+        "bio": "b7"
+      },
+      {
+        "id": "i8",
+        "secret": "s8",
+        "bio": "b8"
+      },
+      {
+        "id": "i9",
+        "secret": "s9",
+        "bio": "b9"
+      },
+      {
+        "id": "i10",
+        "secret": "s10",
+        "bio": "b10"
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "items": {
+        "from": "Item",
+        "mode": "list"
+      },
+      "item": {
+        "from": "Item",
+        "where": {
+          "id": "$args.id"
+        },
+        "mode": "one"
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "a deferred frame carries only its own errors",
+      "viewer": {
+        "id": "u1",
+        "role": "customer"
+      },
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "items",
+            "shape": "{ id @defer { secret @partial } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Item",
+              "id": "i0"
+            },
+            {
+              "$type": "Item",
+              "id": "i1"
+            },
+            {
+              "$type": "Item",
+              "id": "i2"
+            },
+            {
+              "$type": "Item",
+              "id": "i3"
+            },
+            {
+              "$type": "Item",
+              "id": "i4"
+            },
+            {
+              "$type": "Item",
+              "id": "i5"
+            },
+            {
+              "$type": "Item",
+              "id": "i6"
+            },
+            {
+              "$type": "Item",
+              "id": "i7"
+            },
+            {
+              "$type": "Item",
+              "id": "i8"
+            },
+            {
+              "$type": "Item",
+              "id": "i9"
+            },
+            {
+              "$type": "Item",
+              "id": "i10"
+            }
+          ],
+          "meta": {
+            "cost": 1
+          }
+        },
+        {
+          "id": 1,
+          "at": "0",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "0.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "1",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "1.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "2",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "2.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "3",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "3.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "4",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "4.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "5",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "5.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "6",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "6.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "7",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "7.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "8",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "8.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "9",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "9.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "at": "10",
+          "data": {
+            "secret": null
+          },
+          "errors": [
+            {
+              "code": "permission_denied",
+              "message": "Not allowed to access Item.secret",
+              "path": "10.secret"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "a live query sends its deferred part after the first result, in a frame of its own",
+      "take": 2,
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "item",
+            "args": {
+              "id": "i1"
+            },
+            "shape": "{ id bio }",
+            "live": true
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": {
+            "$type": "Item",
+            "id": "i1"
+          },
+          "meta": {
+            "cost": 1
+          }
+        },
+        {
+          "id": 1,
+          "at": "",
+          "data": {
+            "bio": "b1"
+          }
+        }
+      ]
+    }
+  ]
+}

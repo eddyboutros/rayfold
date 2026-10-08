@@ -14,18 +14,34 @@ async function run(engine: Engine, request: Example["request"], viewer: ViewerNa
   return frames;
 }
 
+const leGuin = { $type: "Author", name: "Ursula K. Le Guin" };
 const outcomes: Record<string, (frames: Frame[]) => void> = {
-  read: (f) => expect(f[0]).toMatchObject({ id: 1, data: { title: "A Wizard of Earthsea", stock: 3, author: { name: "Ursula K. Le Guin" } } }),
-  "default-view": (f) => expect(f[0]).toMatchObject({ id: 1, data: { id: "b3", title: "Dune" } }),
-  page: (f) => expect(f[0]).toMatchObject({ data: { items: [{ title: "A Wizard of Earthsea", author: { name: "Ursula K. Le Guin" } }, { title: "The Left Hand of Darkness" }], hasMore: true, total: 3 } }),
+  read: (f) => expect(f).toEqual([{ id: 1, data: { $type: "Book", title: "A Wizard of Earthsea", stock: 3, author: leGuin }, meta: { cost: 2 }, fin: true }]),
+  "default-view": (f) => expect(f).toEqual([{ id: 1, data: { $type: "Book", id: "b3", title: "Dune", stock: 7 }, meta: { cost: 1 }, fin: true }]),
+  page: (f) =>
+    expect(f).toEqual([
+      {
+        id: 1,
+        data: { items: [{ $type: "Book", title: "A Wizard of Earthsea", author: leGuin }, { $type: "Book", title: "The Left Hand of Darkness", author: leGuin }], cursor: "b2", hasMore: true, total: 3 },
+        meta: { cost: 6 },
+        fin: true,
+      },
+    ]),
   buy: (f) => {
     const book = { $type: "Book", id: "b1", title: "A Wizard of Earthsea", stock: 2 };
     expect(f).toEqual([{ id: 1, ok: book, patch: [{ set: "Book:b1", value: book }], meta: { cost: 1 }, fin: true }]);
   },
-  "sold-out": (f) => expect(f[0]).toMatchObject({ id: 1, error: { code: "domain", type: "OutOfStock", data: { bookId: "b2", available: 0 } } }),
-  pipeline: (f) => expect(f.find((x) => x.id === 2 && "data" in x)).toMatchObject({ data: { title: "Dune", stock: 5 } }),
-  policy: (f) => expect(f[0]).toMatchObject({ id: 1, error: { code: "permission_denied" } }),
-  checked: (f) => expect(f[0]).toMatchObject({ id: 1, error: { code: "invalid_argument" } }),
+  "sold-out": (f) => expect(f).toEqual([{ id: 1, error: { code: "domain", message: "Only 0 left", type: "OutOfStock", data: { bookId: "b2", available: 0 } }, fin: true }]),
+  pipeline: (f) => {
+    const dune = { $type: "Book", id: "b3", title: "Dune", stock: 5 };
+    // the second op reads what the first one changed
+    expect(f).toEqual([
+      { id: 1, ok: dune, patch: [{ set: "Book:b3", value: dune }], meta: { cost: 1 }, fin: true },
+      { id: 2, data: { $type: "Book", title: "Dune", stock: 5 }, meta: { cost: 1 }, fin: true },
+    ]);
+  },
+  policy: (f) => expect(f).toEqual([{ id: 1, error: { code: "permission_denied", message: "Not allowed to access Book.costPrice", path: "costPrice" }, fin: true }]),
+  checked: (f) => expect(f).toEqual([{ id: 1, error: { code: "invalid_argument", message: "buy().qty: must be <= 10" }, fin: true }]),
 };
 
 describe("the playground's examples", () => {
@@ -37,7 +53,7 @@ describe("the playground's examples", () => {
 
   it("staff can read what the Staff only example refuses to a customer", async () => {
     const policy = EXAMPLES.find((e) => e.id === "policy")!;
-    expect((await run(createEngine(BOOKSHOP_SCHEMA), policy.request, "staff"))[0]).toMatchObject({ data: { costPrice: "4.20" } });
+    expect(await run(createEngine(BOOKSHOP_SCHEMA), policy.request, "staff")).toEqual([{ id: 1, data: { $type: "Book", title: "A Wizard of Earthsea", costPrice: "4.20" }, meta: { cost: 1 }, fin: true }]);
   });
 
   it("Live stock streams the first result, then the Restock button's change as a patch", async () => {
@@ -89,7 +105,8 @@ describe("a schema of your own", () => {
     const engine = createEngine("entity Note { id: ID text: String }\nquery note(id: ID): Note?");
     expect(engine.mocked).toBe(true);
     const frames = await run(engine, { rayfold: "0.1", ops: [{ id: 1, op: "note", args: { id: "n1" }, shape: "{ id text }" }] }, "anonymous");
-    expect(frames[0]).toMatchObject({ id: 1, data: { text: expect.any(String) } });
+    // made up from the call, so the same on every run
+    expect(frames).toEqual([{ id: 1, data: { $type: "Note", id: "note-277", text: "thistle cinder" }, meta: { cost: 1 }, fin: true }]);
   });
 
   it("a schema that does not read fails with the reader's own error", () => {

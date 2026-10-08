@@ -114,7 +114,9 @@ describe("the reel on the report page", () => {
     expect(t.text).not.toBe("");
     expect(p.showing()).toEqual({ scene: 0, counter: "1 / 13", step: "0" });
     expect(p.toggle.textContent).toBe("Pause");
-    p.advance(t.typing / 2);
+    p.advance(t.typing / 4);
+    expect(p.code(0)).toBe(typed(t.text, 0.25));
+    p.advance(t.typing / 4); // each painted frame asks for the next one
     expect(p.code(0)).toBe(typed(t.text, 0.5));
     p.advance(t.typing / 2 + t.delay);
     expect([p.code(0), p.showing().step]).toEqual([t.text, "1"]);
@@ -146,6 +148,26 @@ describe("the reel on the report page", () => {
     expect(p.showing().step).toBe("2");
   });
 
+  it("paused in the scene's final hold, Play goes on with every step taken", () => {
+    const p = page();
+    const t = timing(0);
+    const steps = Number(p.scenes[0]!.getAttribute("data-steps"));
+    p.advance(t.typing + steps * t.delay + 100);
+    expect(p.showing().step).toBe(null); // the last step clears it
+    p.click(p.toggle);
+    p.click(p.toggle);
+    expect([p.toggle.textContent, p.showing()]).toEqual(["Pause", { scene: 0, counter: "1 / 13", step: null }]);
+  });
+
+  it("a tab hidden while paused stays paused when it is shown again", () => {
+    const p = page();
+    p.advance(500);
+    p.click(p.toggle);
+    p.setHidden(true);
+    p.setHidden(false);
+    expect([p.toggle.textContent, p.timers.size]).toEqual(["Play", 0]);
+  });
+
   it("Pause while the code is typing keeps it half typed, and Play types the rest", () => {
     const p = page();
     const t = timing(0);
@@ -175,7 +197,8 @@ describe("the reel on the report page", () => {
     expect(p.timers.size).toBe(0);
     p.click(p.restart);
     expect([p.toggle.textContent, p.showing(), p.code(0)]).toEqual(["Pause", { scene: 0, counter: "1 / 13", step: "0" }, ""]);
-    expect(p.timers.size).toBeGreaterThan(0);
+    // the typing's end, one per step, and the next scene
+    expect(p.timers.size).toBe(Number(p.scenes[0]!.getAttribute("data-steps")) + 2);
   });
 
   it("a chapter chosen while paused is shown finished, and Play plays that chapter from its start", () => {
@@ -250,7 +273,7 @@ describe("the reel on the report page", () => {
     const results = JSON.parse(readFileSync(new URL("./results.json", import.meta.url), "utf8")) as { rows: Array<{ aspect: string; values: Record<string, number>; Rayfold: string }> };
     const row = results.rows.find((r) => r.aspect.startsWith("Product page"))!;
     const asJson = /(\d+) B as JSON/.exec(row.Rayfold)?.[1];
-    expect(asJson).toBeDefined();
+    expect(asJson).toMatch(/^\d+$/);
     const scene = markup.window.document.querySelectorAll("#reel .scene")[1]!.textContent!.replace(/\s+/g, " ");
     expect(scene).toContain(`3 requests in 2 waves, ${row.values["REST"]} bytes`);
     expect(scene).toContain(`1 request, ${row.values["GraphQL"]} bytes as JSON`);
@@ -270,6 +293,6 @@ describe("the reel on the report page", () => {
     const p = page({ observer: true });
     p.scrolledIntoView();
     expect([p.toggle.textContent, p.showing()]).toEqual(["Pause", { scene: 0, counter: "1 / 13", step: "0" }]);
-    expect(p.timers.size).toBeGreaterThan(0);
+    expect(p.timers.size).toBe(Number(p.scenes[0]!.getAttribute("data-steps")) + 2);
   });
 });

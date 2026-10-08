@@ -60,6 +60,9 @@ class Context internal constructor(private val ctx: RayfoldContext) {
     /** True once the client went away or the deadline passed; long work should stop. */
     fun isCancelled(): Boolean = ctx.isCancelled()
 
+    /** The time by the server's clock, epoch milliseconds: the system's, or the one a test gave `ServerBuilder.clock`. */
+    fun now(): Long = ctx.now()
+
     /** The runtime's context, for anything this class does not cover. */
     fun raw(): RayfoldContext = ctx
 }

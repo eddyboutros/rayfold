@@ -104,6 +104,11 @@ server answers `unauthenticated`: a replay scope needs someone to scope it to. S
 operation, or the same operation with different arguments, and it answers `already_exists` rather than handing back an
 answer to a question you did not ask.
 
+A record is kept for 24 hours unless the store is told otherwise, and it has expired once it is that old: a retry
+made a millisecond short of a day replays, and one made a day after runs the command again. Both runtimes and every
+store draw that line at the same instant. The default store tells the time by the server's clock, which a
+[test](../guide/testing.md#time) can move.
+
 Records live in the server's memory by default, which holds for one server. Point every instance at a shared store
 ([`PgIdempotencyStore`](../guide/postgres.md) on Node, `JdbcIdempotencyStore` on the JVM) and the guarantee holds across
 a fleet: a retry that lands on another instance replays the first answer, and two retries that arrive together take the

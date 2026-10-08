@@ -41,7 +41,12 @@ describe("per-field conflict policy (spec 08 section 5)", () => {
     const c = cache();
     expect(() => c.addLayer("cmd-2", [{ set: "Doc:d1", value: { body: "typed locally" } }])).toThrow(/crdtText/);
     // guard: the same prediction on a field it can carry out is accepted
-    expect(() => c.addLayer("cmd-3", [{ set: "Doc:d1", value: { title: "typed locally" } }])).not.toThrow();
+    c.addLayer("cmd-3", [{ set: "Doc:d1", value: { title: "typed locally" } }]);
+    expect([c.predictions, c.get("Doc:d1")]).toEqual([["cmd-3"], { $type: "Doc", id: "d1", title: "typed locally" }]);
+    // a field with @merge(custom) is refused the same way
+    const custom = new RayfoldCache(() => 0, (_type, field) => (field === "score" ? "custom" : undefined));
+    expect(() => custom.addLayer("cmd-6", [{ set: "Doc:d1", value: { score: 1 } }])).toThrow("@merge(custom) is not implemented: Doc.score cannot be predicted optimistically");
+    expect(custom.predictions).toEqual([]);
   });
 
   it("a client given the schema reads the policy from it", () => {

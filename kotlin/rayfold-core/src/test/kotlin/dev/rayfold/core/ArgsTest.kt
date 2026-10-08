@@ -432,7 +432,8 @@ class ArgsTest {
         )).associateBy { it.opId() }
         assertEquals(obj("""{"${'$'}type":"Author","name":"Ann"}"""), frames[2]?.get("data"))
         assertEquals("ops.3.args.id: \$ref 1.nope resolved to nothing", frames[3]?.errorMessage())
-        assertNull(frames[1]?.errorCode())
+        assertEquals(setOf(1, 2, 3), frames.keys)
+        assertEquals(obj("""{"${'$'}type":"Book","id":"b1","author":{"${'$'}type":"Author","id":"a1"}}"""), frames[1]?.get("data"))
         assertEquals(listOf<JsonElement?>(JsonPrimitive("a1")), authorCalls, "only the op with a live ref reached the resolver")
     }
 

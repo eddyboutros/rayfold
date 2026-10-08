@@ -172,8 +172,16 @@ describe("code-first builder", () => {
     expect(() => object("O", { id: t.id() }).implements("Node")).toThrow("O: only an entity implements an interface, and this is kind object");
   });
 
+  it("a default is kept on an input field only, as the schema language allows, and @cost keeps perItem when given", () => {
+    const n = () => t.int().withDefault(1).cost(2);
+    const fields = (def: { fields: Array<{ name: string; default?: unknown; annotations: unknown[] }> }) => def.fields.map((f) => [f.name, f.default, f.annotations]);
+    const cost = [{ name: "cost", args: { base: 2 } }];
+    for (const make of [entity, object, error, event]) expect(fields(make("T", { id: t.id(), n: n() }).def as never)).toEqual([["id", undefined, []], ["n", undefined, cost]]);
+    expect(fields(input("T", { n: n(), m: t.int().cost(2, 1) }).def as never)).toEqual([["n", 1, cost], ["m", undefined, [{ name: "cost", args: { base: 2, perItem: 1 } }]]]);
+  });
+
   it("a name no schema file could hold is refused at definition time (guard - a name is accepted)", () => {
     expect(() => defineSchema({ types: [entity("A", { id: t.id(), "first-name": t.string() })], ops: {} })).toThrow(/A\.first-name: Field name "first-name" is not a name/);
-    expect(() => defineSchema({ types: [entity("A", { id: t.id(), first_name: t.string() })], ops: {} })).not.toThrow();
+    expect(Object.keys(defineSchema({ types: [entity("A", { id: t.id(), first_name: t.string() })], ops: {} }).ir.types).filter((k) => k === "A")).toEqual(["A"]);
   });
 });

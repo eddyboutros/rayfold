@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { evalExpr, loadSchema, parseExprText, parseShapeText, type ExprEnv } from "@rayfold/schema";
 import { createRayfoldServer, decide, type RayfoldContext, type RayfoldServer } from "@rayfold/server";
 import pg from "pg";
 import { compilePolicy, createPgStore, type PageRequest, type PgStore, type PolicyColumn, type Queryable, type Row } from "./index.ts";
+
+// every test boots its own PGlite, a Postgres compiled to WASM, which on a busy runner takes seconds by itself, the
+// first one in a worker longest; the waits for a signal inside each test keep their own 5 s bound
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const SCHEMA = `
 entity Author { id: ID name: String books(page: PageArgs = { first: 10 }): Page<Book> }
@@ -96,19 +100,22 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
   it("serves a nested shape with one query per level: a page of books, their authors, and each author's first books", async () => {
     const { server } = bookstore(counted);
     const [f] = await server.collect({ ops: [{ id: 1, op: "books", args: { page: { first: 3 } }, shape: "{ total hasMore cursor items { id title author { name books(page: { first: 2 }) { total items { id } } } } }" }] });
-    expect(f).toMatchObject({
+    const book = (id: string) => ({ $type: "Book", id });
+    const row = (id: string, title: string, name: string, total: number, ids: string[]) => ({ $type: "Book", id, title, author: { $type: "Author", name, books: { total, items: ids.map(book) } } });
+    expect(f).toEqual({
       id: 1,
-      fin: true,
       data: {
         total: 7,
         hasMore: true,
         cursor: "b3",
         items: [
-          { id: "b1", title: "The Dispossessed", author: { name: "Ursula K. Le Guin", books: { total: 3, items: [{ id: "b1" }, { id: "b4" }] } } },
-          { id: "b2", title: "Kindred", author: { name: "Octavia E. Butler", books: { total: 2, items: [{ id: "b2" }, { id: "b5" }] } } },
-          { id: "b3", title: "Invisible Cities", author: { name: "Italo Calvino", books: { total: 2, items: [{ id: "b3" }, { id: "b7" }] } } },
+          row("b1", "The Dispossessed", "Ursula K. Le Guin", 3, ["b1", "b4"]),
+          row("b2", "Kindred", "Octavia E. Butler", 2, ["b2", "b5"]),
+          row("b3", "Invisible Cities", "Italo Calvino", 2, ["b3", "b7"]),
         ],
       },
+      meta: { cost: 20 },
+      fin: true,
     });
     expect(log).toHaveLength(3);
   });
@@ -117,14 +124,14 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
     const { store } = bookstore(counted);
     const shape = parseShapeText("{ id title author { name books(page: { first: 2 }) { total items { id } } } }");
     const page = await store.screen("Book", shape, { first: 3 });
-    expect(page).toMatchObject({
+    expect(page).toEqual({
       total: 7,
       hasMore: true,
       cursor: "b3",
       items: [
-        { id: "b1", title: "The Dispossessed", author: { name: "Ursula K. Le Guin", books: { total: 3, items: [{ id: "b1" }, { id: "b4" }] } } },
-        { id: "b2", title: "Kindred", author: { name: "Octavia E. Butler", books: { total: 2, items: [{ id: "b2" }, { id: "b5" }] } } },
-        { id: "b3", title: "Invisible Cities", author: { name: "Italo Calvino", books: { total: 2, items: [{ id: "b3" }, { id: "b7" }] } } },
+        { id: "b1", title: "The Dispossessed", author: { name: "Ursula K. Le Guin", books: { total: 3, hasMore: true, cursor: "b4", items: [{ id: "b1" }, { id: "b4" }] } } },
+        { id: "b2", title: "Kindred", author: { name: "Octavia E. Butler", books: { total: 2, hasMore: false, cursor: "b5", items: [{ id: "b2" }, { id: "b5" }] } } },
+        { id: "b3", title: "Invisible Cities", author: { name: "Italo Calvino", books: { total: 2, hasMore: false, cursor: "b7", items: [{ id: "b3" }, { id: "b7" }] } } },
       ],
     });
     // the same screen the per-level loaders serve in three statements, in one
@@ -184,9 +191,9 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
 
     const second = await store.screen("Book", parseShapeText("{ id }"), { first: 3, after: "b3" });
     expect(second.items.map((b) => b["id"])).toEqual(["b4", "b5", "b6"]);
-    expect(second).toMatchObject({ total: 7, hasMore: true, cursor: "b6" });
+    expect(second).toEqual({ items: [{ id: "b4" }, { id: "b5" }, { id: "b6" }], total: 7, hasMore: true, cursor: "b6" });
     const last = await store.screen("Book", parseShapeText("{ id }"), { first: 3, after: "b7" });
-    expect(last).toMatchObject({ items: [], total: 7, hasMore: false, cursor: null });
+    expect(last).toEqual({ items: [], total: 7, hasMore: false, cursor: null });
   });
 
   it("walks every page with the cursor: no duplicate, no gap, the total on each page, and an empty page after the last", async () => {
@@ -203,6 +210,57 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
     expect(seen).toEqual(["b1", "b2", "b3", "b4", "b5", "b6", "b7"]);
     expect(await store.page("Book", { first: 3, after: "b7" })).toEqual({ items: [], cursor: null, hasMore: false, total: 7 });
     expect(await store.page("Book", { first: 0 })).toEqual({ items: [], cursor: null, hasMore: true, total: 7 });
+  });
+
+  it("a page that holds exactly the rows left has no more, through page and screen alike (guard - one row short has more)", async () => {
+    const { store } = bookstore(counted);
+    const ids = (p: { items: Row[] }) => p.items.map((b) => b["id"]);
+    const all = await store.page("Book", { first: 7 });
+    expect([ids(all), all.hasMore, all.cursor, all.total]).toEqual([["b1", "b2", "b3", "b4", "b5", "b6", "b7"], false, "b7", 7]);
+    expect((await store.page("Book", { first: 6 })).hasMore).toBe(true);
+    expect(await store.screen("Book", parseShapeText("{ id }"), { first: 2, after: "b5" })).toEqual({ items: [{ id: "b6" }, { id: "b7" }], cursor: "b7", hasMore: false, total: 7 });
+    expect((await store.screen("Book", parseShapeText("{ id }"), { first: 1, after: "b5" })).hasMore).toBe(true);
+    // one row past the page is all it takes to know there is more: page and screen fetch first + 1, never the rest
+    log = [];
+    await store.page("Book", { first: 2 });
+    await store.screen("Book", parseShapeText("{ id }"), { first: 2 });
+    expect(log.map((l) => l.rows)).toEqual([3, 3]);
+  });
+
+  it("screen called without a pushed-down policy applies the type's own, in the count after the last page too", async () => {
+    const { store } = bookstore(counted);
+    expect(await store.screen("Order", parseShapeText("{ id }"), { first: 10, after: "o9" }, {}, { viewer: { id: "u1" } })).toEqual({ items: [], cursor: null, hasMore: false, total: 2 });
+    // guard: an admin's count is every order
+    expect((await store.screen("Order", parseShapeText("{ id }"), { first: 10, after: "o9" }, {}, { viewer: { id: "u9", role: "admin" } })).total).toBe(4);
+  });
+
+  it("a nested page of a parent with no rows is empty, with nothing more and no cursor", async () => {
+    await db.exec(`INSERT INTO authors VALUES ('a4', 'Nobody Yet')`);
+    const { store } = bookstore(counted);
+    expect(await store.screen("Author", parseShapeText("{ id books { items { id } total hasMore cursor } }"), { first: 10, after: "a2" })).toEqual({
+      items: [
+        { id: "a3", books: { items: [{ id: "b3" }, { id: "b7" }], total: 2, hasMore: false, cursor: "b7" } },
+        { id: "a4", books: { items: [], total: 0, hasMore: false, cursor: null } },
+      ],
+      cursor: "a4",
+      hasMore: false,
+      total: 4,
+    });
+  });
+
+  it("a screen nests at most nine levels, root included, and says so at the tenth", async () => {
+    const { store } = bookstore(counted);
+    // each author { books } pair is two levels below the book it starts from; `tail` adds one more
+    const levels = (n: number, tail = "") => "{ id " + "author { id books { items { id ".repeat(n) + tail + "}".repeat(3 * n) + " }";
+    expect((await store.screen("Book", parseShapeText(levels(4)), { first: 1 })).items).toHaveLength(1);
+    await expect(store.screen("Book", parseShapeText(levels(4, " author { id }")), { first: 1 })).rejects.toThrow(/^@rayfold\/postgres: a screen nested deeper than 8 levels$/);
+  });
+
+  it("a relation keyed by a field its type does not have is refused by name", async () => {
+    const { ir } = loadSchema(SCHEMA);
+    const store = createPgStore(counted, { ir, naming: "snake", tables: { Author: { table: "authors", relations: { books: { type: "Book", kind: "page", key: "writer" } } }, Book: { table: "books" } } });
+    await expect(store.screen("Author", parseShapeText("{ id books { items { id } } }"), { first: 1 })).rejects.toThrow(/^@rayfold\/postgres: Book has no field writer$/);
+    expect(log).toEqual([]);
   });
 
   it("loads by id in the order asked, with null for a missing id, in one query", async () => {
@@ -238,7 +296,8 @@ describe("@rayfold/postgres on a real Postgres (PGlite)", () => {
     // `where` and the pushed-down read policy in one statement: u1 may not see the order without a customer, an admin may
     expect((await store.screen("Order", parseShapeText("{ id }"), { first: 5 }, { customerId: null }, { viewer: { id: "u1" } })).total).toBe(0);
     expect(await store.screen("Order", parseShapeText("{ id }"), { first: 5 }, { customerId: null }, { viewer: { id: "u9", role: "admin" } })).toEqual({
-      items: [{ id: "o4" }],
+      // customerId goes along because the type's read rule reads it; the runtime leaves it out of what it sends
+      items: [{ id: "o4", customerId: null }],
       cursor: "o4",
       hasMore: false,
       total: 1,
@@ -362,6 +421,8 @@ describe("read policies pushed into SQL (spec 06 §4)", () => {
       "archived == false && qty >= 3",
       `qty == "5"`,
       "has(viewer.teams, customerId)",
+      // the other side reads the row too, though it is no plain field: only the runtime can decide it
+      "archived == (!archived)",
     ];
     const viewers = [null, { id: "u1" }, { id: "7" }, { id: "007", teams: ["u1", "7"] }, { role: "admin" }, { id: "u2", limit: "12.50", min: 3 }, { limit: 12.5, min: 2.5 }];
     const rows = (await db.query<Row>("SELECT * FROM p ORDER BY id")).rows.map((r) => ({ id: r["id"], customerId: r["customer_id"], total: r["total"], qty: r["qty"], archived: r["archived"] }));
@@ -390,8 +451,9 @@ describe("read policies pushed into SQL (spec 06 §4)", () => {
         } else loose++;
       }
     }
-    expect(exact, "guard: most cases translate exactly").toBeGreaterThan(loose);
-    expect(loose, "guard: the cases SQL cannot match exactly are left to the runtime").toBeGreaterThan(0);
+    // how many of the 140 cases translate exactly is part of what is under test: a translation that turned loose
+    // still passes every row check above, and only reads more rows than it should
+    expect({ exact, loose }, "most cases translate exactly; the cases SQL cannot match exactly are left to the runtime").toEqual({ exact: 98, loose: 42 });
   });
 });
 
@@ -534,6 +596,69 @@ query authors(page: PageArgs = { first: 5 }): Page<Author>
       ["a2", ["b2", "b5"], false, 2],
       ["a3", ["b3", "b7"], false, 2],
     ]);
+  });
+});
+
+describe("screen and the read rules of what it returns", () => {
+  // the rules read fields the shape does not ask for: the store pushes them into SQL, and the runtime checks them again
+  // on every row it gets, so a row that left those fields out read as refused
+  const NOTES = `
+entity Author @allow(read: this.deleted == false) { id: ID name: String deleted: Boolean notes(page: PageArgs = { first: 5 }): Page<Note> }
+entity Note @allow(read: this.publishedAt != null) { id: ID title: String authorId: ID publishedAt: Instant? }
+query authors(page: PageArgs = { first: 5 }): Page<Author>
+`;
+  const notes = async (shape: string) => {
+    await db.exec(`
+      CREATE TABLE writers (id text PRIMARY KEY, name text, deleted boolean);
+      CREATE TABLE notes (id text PRIMARY KEY, title text, author_id text, published_at timestamptz);
+      INSERT INTO writers VALUES ('a1', 'Ada', false), ('a2', 'Bob', true);
+      INSERT INTO notes VALUES ('n1', 'Out', 'a1', '2026-01-01T00:00:00Z'), ('n2', 'Draft', 'a1', NULL), ('n3', 'Hidden', 'a2', '2026-01-01T00:00:00Z');
+    `);
+    const store = createPgStore(counted, {
+      ir: loadSchema(NOTES).ir,
+      naming: "snake",
+      tables: { Author: { table: "writers", relations: { notes: { type: "Note", kind: "page", key: "authorId" } } }, Note: { table: "notes" } },
+    });
+    const server = createRayfoldServer({ schema: NOTES, resolvers: { Query: { authors: (a: { page: PageRequest }, ctx) => store.screen("Author", ctx.shape!, a.page, {}, ctx) } } });
+    const [f] = await server.collect({ ops: [{ id: 1, op: "authors", shape }] });
+    return f;
+  };
+
+  it("returns the rows the rules allow, though the shape selects none of the fields the rules read", async () => {
+    expect(await notes("{ total items { id name notes { total items { id title } } } }")).toEqual({
+      id: 1,
+      data: {
+        total: 1,
+        items: [{ $type: "Author", id: "a1", name: "Ada", notes: { total: 1, items: [{ $type: "Note", id: "n1", title: "Out" }] } }],
+      },
+      meta: { cost: 42 },
+      fin: true,
+    });
+    expect(log).toHaveLength(1);
+  });
+
+  it("guard: the fields a rule reads are not added to what the caller gets back, and a shape that asks for them still has them", async () => {
+    expect(await notes("{ items { id deleted notes { items { id publishedAt } } } }")).toEqual({
+      id: 1,
+      data: { items: [{ $type: "Author", id: "a1", deleted: false, notes: { items: [{ $type: "Note", id: "n1", publishedAt: "2026-01-01T00:00:00.000Z" }] } }] },
+      meta: { cost: 42 },
+      fin: true,
+    });
+  });
+});
+
+describe("screen reads a rule's field as the wire carries it", () => {
+  it("an Instant a rule compares, though the shape does not select it, reads as the runtime's ISO text (guard - another instant is still refused)", async () => {
+    const LOG = `entity Entry @allow(read: this.at == "2026-01-01T00:00:00.000Z") { id: ID note: String at: Instant } query entries(page: PageArgs = { first: 5 }): Page<Entry>`;
+    await db.exec(`CREATE TABLE entries (id text PRIMARY KEY, note text, at timestamptz); INSERT INTO entries VALUES ('e1', 'kept', '2026-01-01T00:00:00Z');`);
+    const store = createPgStore(counted, { ir: loadSchema(LOG).ir, naming: "snake", tables: { Entry: { table: "entries" } } });
+    const server = createRayfoldServer({ schema: LOG, resolvers: { Query: { entries: (a: { page: PageRequest }, ctx) => store.screen("Entry", ctx.shape!, a.page, {}, ctx) } } });
+    const [f] = await server.collect({ ops: [{ id: 1, op: "entries", shape: "{ items { id note } }" }] });
+    expect(f).toEqual({ id: 1, data: { items: [{ $type: "Entry", id: "e1", note: "kept" }] }, meta: { cost: 7 }, fin: true });
+    // guard: the rule still refuses: a row at another instant fails the list, as the runtime refuses any row it may not show
+    await db.exec(`INSERT INTO entries VALUES ('e2', 'later', '2026-02-01T00:00:00Z')`);
+    const [refused] = await server.collect({ ops: [{ id: 1, op: "entries", shape: "{ items { id note } }" }] });
+    expect(refused).toEqual({ id: 1, error: { code: "permission_denied", message: "Not allowed to access Entry at items.1", path: "items.1" }, fin: true });
   });
 });
 

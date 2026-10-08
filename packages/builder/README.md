@@ -41,6 +41,9 @@ const Author = entity("Author", {
 }).implements("Node");                                                    // entity Author implements Node
 ```
 
+> **Next release.** `.implements(...)` and a field's `.args(...)` are not in 0.2.1, nor is typing a call with no
+> shape as the default view; they arrive in the next release.
+
 ## Types from the shape
 
 A shape is a string at the call site, so the types can follow it:

@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.LongSupplier;
 
 public final class Bookshop {
     private Bookshop() {}
@@ -35,7 +36,13 @@ public final class Bookshop {
 
     // #region resolvers
     public static RayfoldServer server(Store store) {
+        return server(store, System::currentTimeMillis);
+    }
+
+    /** The same server telling the time by {@code now}, in epoch milliseconds: a test passes a clock it can move. */
+    public static RayfoldServer server(Store store, LongSupplier now) {
         return Rayfold.server(schema())
+            .clock(now)
             .query("book", (args, ctx) -> store.book(args.getString("id")).orElse(null))
             .query("books", (args, ctx) -> page(store.books(), args.getValues("page")))
             .command("buy", (args, ctx) -> {

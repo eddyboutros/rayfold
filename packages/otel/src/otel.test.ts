@@ -183,3 +183,15 @@ describe("OpenTelemetry tracing", () => {
     expect(spans()).toEqual([]);
   });
 });
+
+describe("a batch that throws out of the runtime", () => {
+  it("is an error span carrying the exception, and the client is told internal", async () => {
+    const broken = new Error("the shape store is down");
+    const shapes = { get: () => undefined, register: () => { throw broken; } };
+    const { server } = createBookstore({ instrumentation: rayfoldTracing({ tracer }), shapes });
+    expect(await server.collect({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }" }] })).toEqual([{ error: { code: "internal", message: "Internal error" }, fin: true }]);
+    const batch = named("rayfold batch");
+    expect(batch.status).toEqual({ code: SpanStatusCode.ERROR, message: "the shape store is down" });
+    expect(batch.events.map((e) => [e.name, e.attributes?.["exception.message"]])).toEqual([["exception", "the shape store is down"]]);
+  });
+});

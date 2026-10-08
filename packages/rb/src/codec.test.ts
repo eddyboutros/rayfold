@@ -38,6 +38,51 @@ describe("RB codec", () => {
     expect(codec.decode(codec.encode({ a: 1, u: undefined }))).toEqual({ a: 1 });
   });
 
+  it("decoded bytes are a copy: the message they came in can be reused without changing them", () => {
+    const wire = codec.encode({ b: new Uint8Array([7, 8, 9]) });
+    const decoded = codec.decode(wire) as { b: Uint8Array };
+    wire.fill(0);
+    expect([...decoded.b]).toEqual([7, 8, 9]);
+    expect(decoded.b.buffer.byteLength).toBe(3); // and holds only its own bytes, not the whole message
+  });
+
+  it("an integer past 2^53 is not exact as an integer, so it travels as a double; guard: 2^53 - 1 is a tagged integer", () => {
+    expect([...plain.encode(2 ** 53)]).toEqual([0x04, 0, 0, 0, 0, 0, 0, 0x40, 0x43]);
+    expect([...plain.encode(-(2 ** 60))]).toEqual([0x04, 0, 0, 0, 0, 0, 0, 0xb0, 0xc3]);
+    for (const v of [2 ** 53, -(2 ** 60), 1e300]) expect(plain.decode(plain.encode(v))).toBe(v);
+    expect([...plain.encode(2 ** 53 - 1)]).toEqual([0x03, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1f]);
+  });
+
+  it("a bigint travels as its decimal string, as there is no JSON number that holds it", () => {
+    expect(plain.decode(plain.encode({ big: 12345678901234567890n }))).toEqual({ big: "12345678901234567890" });
+  });
+
+  it("values larger than the writer's starting buffer, and varints that straddle where it grows, read back whole", () => {
+    expect(plain.decode(plain.encode(new Uint8Array(5000).fill(3)))).toEqual(new Uint8Array(5000).fill(3));
+    expect(plain.decode(plain.encode("y".repeat(10_000)))).toBe("y".repeat(10_000));
+    // the buffer starts at 1024 bytes: a 1000-odd byte string puts the next multi-byte varint across that edge
+    for (let k = 1000; k < 1030; k++) {
+      const v = ["x".repeat(k), 2 ** 40, -(2 ** 33), "z".repeat(200)];
+      expect(plain.decode(plain.encode(v))).toEqual(v);
+    }
+  });
+
+  it("the schema dictionary holds every field, field argument, enum value, op and op argument, sorted after the protocol keys", () => {
+    const small = loadSchema(`
+enum Mood { HAPPY GLUM }
+entity Pet { id: ID name: String mood: Mood toys(limit: Int): [String] }
+query pet(petId: ID): Pet?
+command rename(petId: ID, newName: String): Pet
+`).ir;
+    const dict = new KeyDictionary(small);
+    expect(dict.names.slice(0, 40)).toEqual(new KeyDictionary().names);
+    // after, first, hasMore, items, offset and total are the built-in Page and PageArgs fields every schema has
+    expect(dict.names.slice(40)).toEqual(["GLUM", "HAPPY", "after", "first", "hasMore", "items", "limit", "mood", "name", "newName", "offset", "pet", "petId", "rename", "total", "toys"]);
+    // a schema name that is also a protocol key keeps the protocol key's id
+    expect(dict.ids.get("id")).toBe(0);
+    expect([...new RbCodec(small).encode({ limit: 1 })]).toEqual([0x08, 0x01, 46 * 2, 0x81]);
+  });
+
   it("random structures round-trip (property test)", () => {
     let seed = 42;
     const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
@@ -68,7 +113,7 @@ describe("RB codec", () => {
     for (let i = 0; i < bytes.length; i += 7) out.push(...d.feed(bytes.subarray(i, Math.min(i + 7, bytes.length))));
     expect(out).toEqual(frames);
     expect(d.pendingBytes).toBe(0);
-    expect(() => codec.decodeFrames(bytes.subarray(0, bytes.length - 1))).toThrow(/truncated/);
+    expect(() => codec.decodeFrames(bytes.subarray(0, bytes.length - 1))).toThrow(/^RB: truncated frame$/);
   });
 
   it("the key dictionary is deterministic from the IR and reserves frame keys", () => {
@@ -107,13 +152,17 @@ describe("security: decoding hostile RB", () => {
     const nest = (n: number): unknown => (n === 0 ? 1 : [nest(n - 1)]);
     expect(() => codec.decode(codec.encode(nest(100)))).toThrow(/nested deeper than 64 levels/);
     expect(codec.decode(codec.encode(nest(60)))).toEqual(nest(60));
+    // the edge exactly: 64 lists inside each other read, 65 do not
+    expect(codec.decode(codec.encode(nest(64)))).toEqual(nest(64));
+    expect(() => codec.decode(codec.encode(nest(65)))).toThrow(/^RB: nested deeper than 64 levels$/);
   });
 
   it("a list that claims more elements than the bytes left is refused before allocating", () => {
     const bytes = codec.encode([1, 2, 3]);
     const forged = Uint8Array.from(bytes);
     forged[1] = 0x7f; // element count 127, with three elements' worth of bytes behind it
-    expect(() => codec.decode(forged)).toThrow(/length exceeds the input|unexpected end/);
+    expect(() => codec.decode(forged)).toThrow(/^RB: length exceeds the input$/);
+    expect(codec.decode(bytes)).toEqual([1, 2, 3]); // guard: the count as written is accepted
   });
 
   // each forged input sits next to the nearest valid one, so a check that refused everything would fail too
@@ -123,9 +172,35 @@ describe("security: decoding hostile RB", () => {
     ["a string reference past the table", [0x07, 0x02, 0x05, 0x01, 0x61, 0x06, 0x01], /^RB: bad string reference$/, [0x07, 0x02, 0x05, 0x01, 0x61, 0x06, 0x00], ["a", "a"]],
     ["an unknown tag", [0x0a], /^RB: unknown tag 0xa$/, [0x09, 0x00], new Uint8Array(0)],
     ["trailing bytes", [0x00, 0x00], /^RB: trailing bytes$/, [0x00], null],
+    ["nothing at all", [], /^RB: unexpected end of input$/, [0x00], null],
+    ["a string longer than the bytes left", [0x05, 0x02, 0x61], /^RB: unexpected end of input$/, [0x05, 0x01, 0x61], "a"],
+    ["a double cut short", [0x04, 0, 0, 0, 0], /^RB: unexpected end of input$/, [0x04, 0, 0, 0, 0, 0, 0, 0x04, 0x40], 2.5],
+    ["a list claiming one element more than the bytes left", [0x07, 0x04, 0x81, 0x82, 0x83], /^RB: length exceeds the input$/, [0x07, 0x03, 0x81, 0x82, 0x83], [1, 2, 3]],
+    ["an object claiming more members than two bytes each could hold", [0x08, 0x02, 0x00, 0x81], /^RB: length exceeds the input$/, [0x08, 0x01, 0x00, 0x81], { id: 1 }],
   ])("%s is refused with an exact error", (_name, bad, message, good, value) => {
     expect(() => codec.decode(Uint8Array.from(bad as number[]))).toThrow(message);
     expect(codec.decode(Uint8Array.from(good as number[]))).toEqual(value);
+  });
+});
+
+describe("RB string references on a large message", () => {
+  it("may expand it 16 times over once that passes the 1 MiB floor, and no further", () => {
+    const s = "x".repeat(65_536);
+    // the first copy is written out, each later one is a two-byte reference standing for all 64 KiB of it
+    const sixteen = plain.encode(Array(17).fill(s));
+    expect(sixteen.length * 16).toBeGreaterThan(1_048_576); // past the floor, so the 16 times bound is the one that counts
+    expect((plain.decode(sixteen) as string[]).length).toBe(17);
+    expect(() => plain.decode(plain.encode(Array(18).fill(s)))).toThrow(/^RB: string references expand past 16 times the message$/);
+  });
+});
+
+describe("RB frames", () => {
+  it("a zero-length frame is a keep-alive: skipped, in a whole body and fed in pieces", () => {
+    const one = codec.encodeFrames([{ id: 1, fin: true }]);
+    const body = Uint8Array.from([0x00, ...one, 0x00, 0x00]);
+    expect(codec.decodeFrames(body)).toEqual([{ id: 1, fin: true }]);
+    const d = codec.decoder();
+    expect([d.feed(Uint8Array.of(0x00)), d.feed(one), d.feed(Uint8Array.of(0x00)), d.pendingBytes]).toEqual([[], [{ id: 1, fin: true }], [], 0]);
   });
 });
 

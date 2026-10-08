@@ -107,7 +107,7 @@ class JdbcStoreTest {
         val rows = store().byIds("Order", listOf(JsonPrimitive("o3"), JsonPrimitive("nope"), JsonPrimitive("o1"), null))
         assertEquals(listOf("o3", null, "o1", null), rows.map { text(it, "id") })
         assertEquals("u1", text(rows[0], "customerId"))
-        assertEquals("30.00", text(rows[0], "total"))
+        assertEquals(JsonPrimitive("30.00"), rows[0]?.get("total"), "a Decimal column travels as exact text")
     }
 
     @Test
@@ -124,6 +124,8 @@ class JdbcStoreTest {
             after = page.cursor
         }
         assertEquals(listOf("o1", "o2", "o3", "o4"), seen)
+        val whole = store.page("Order", first = 4)
+        assertEquals(false to "o4", whole.hasMore to whole.cursor, "a page exactly as long as what is left has no more")
         val past = store.page("Order", first = 3, after = "o4")
         assertEquals(0, past.items.size)
         assertEquals(4, past.total)

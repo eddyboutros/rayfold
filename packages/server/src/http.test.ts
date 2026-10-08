@@ -663,3 +663,190 @@ describe("a client that stops reading a streaming response over a socket", () =>
     expect(got.map((f) => (f.item ? [f.item.n, f.item.body.length] : f))).toEqual([...Array.from({ length: 40 }, (_, n) => [n, size]), { id: 1, fin: true }]);
   });
 });
+
+describe("a server bound to a loopback address (spec 12 §2)", () => {
+  const ask = (host: string, url = base) => exchange(url, `GET /rayfold/health HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`);
+
+  it("refuses a host name that is not a loopback one, which is what DNS rebinding sends", async () => {
+    const res = await ask("rebound.example");
+    expect([res.status, JSON.parse(res.body)]).toEqual([
+      403,
+      { type: "https://eddyboutros.github.io/rayfold/errors/permission_denied", title: "permission denied", status: 403, detail: "Host rebound.example is not allowed on a loopback server", code: "permission_denied" },
+    ]);
+    // guards: loopback names in any case, the IPv6 one bracketed with and without a port, are served
+    for (const host of ["LocalHost", "127.0.0.1:8080", "[::1]", "[::1]:8080"]) expect([host, (await ask(host)).status]).toEqual([host, 200]);
+  });
+
+  it("over IPv6 loopback too", async () => {
+    const port = new URL(base).port;
+    const v6 = (host: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = httpRequest({ host: "::1", port, path: "/rayfold/health", headers: { host } }, (r) => (r.resume(), resolve(r.statusCode ?? 0)));
+        req.on("error", reject);
+        req.end();
+      });
+    expect(await v6("rebound.example")).toBe(403);
+    expect(await v6("localhost")).toBe(200); // guard
+  });
+
+  it("a request with no Host header at all is refused", async () => {
+    const res = await exchange(base, "GET /rayfold/health HTTP/1.0\r\n\r\n");
+    // HTTP/1.0 is answered unchunked, so the status is what this reads; the refusal's reason is the 403 itself
+    expect(res.status).toBe(403);
+  });
+
+  it("a Host that passes the loopback rule but carries a path is still no authority", async () => {
+    const res = await ask("[::1]/x");
+    expect([res.status, JSON.parse(res.body).detail]).toEqual([400, "Host header is not a valid host"]);
+  });
+
+  it("allowedHosts may name a host with its port", async () => {
+    const pinned = await serve(bs.server, { viewer: viewerOf, allowedHosts: ["api.example:8080"] });
+    expect((await ask("api.example:8080", pinned)).status).toBe(200);
+    expect((await ask("api.example:9090", pinned)).status).toBe(403); // guard: another port is another host
+  });
+});
+
+describe("the Origin rule over a socket, in its details", () => {
+  const write = (headers: Record<string, string>, key: string) =>
+    new Promise<number>((resolve, reject) => {
+      const u = new URL(base);
+      const req = httpRequest({ host: u.hostname, port: u.port, method: "POST", path: "/rayfold", headers: { "content-type": "application/rayfold+json", authorization: "Bearer admin", ...headers } }, (r) => (r.resume(), resolve(r.statusCode ?? 0)));
+      req.on("error", reject);
+      req.end(JSON.stringify({ ops: [{ ...restock, key }] }));
+    });
+
+  it("a page on the same host name but another port is another origin", async () => {
+    const host = new URL(base).host;
+    expect(await write({ origin: `http://127.0.0.1:${Number(new URL(base).port) + 1}` }, KEY)).toBe(403);
+    expect(bs.store.calls["Command.restock"]).toBeUndefined();
+    expect(await write({ origin: `http://${host}` }, KEY)).toBe(200); // guard
+  });
+
+  it("X-Forwarded-Proto is read from its first entry, the proxy nearest the client", async () => {
+    const host = new URL(base).host;
+    expect(await write({ origin: `http://${host}`, "x-forwarded-proto": "https, http" }, KEY)).toBe(403);
+    expect(await write({ origin: `http://${host}`, "x-forwarded-proto": "http, https" }, KEY)).toBe(200); // guard
+  });
+
+  it("a media type is matched without regard to case, as RFC 9110 says", async () => {
+    expect(await write({ "content-type": "Application/Rayfold+JSON; charset=utf-8" }, KEY)).toBe(200);
+  });
+});
+
+describe("a client that goes away", () => {
+  it("mid live query releases its subscription", async () => {
+    const socket = rawSocket(base);
+    const body = JSON.stringify({ ops: [{ id: 1, op: "book", args: { id: "b1" }, shape: "{ id }", live: true }] });
+    const first = new Signal<true>();
+    socket.on("data", () => first.push(true));
+    socket.write(`POST /rayfold HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/rayfold+json\r\nContent-Length: ${body.length}\r\n\r\n${body}`);
+    await first.atLeast(1, "the live query answering");
+    expect(bs.server.changes.size).toBe(1);
+    socket.destroy();
+    await bounded((async () => { while (bs.server.changes.size) await new Promise((r) => setImmediate(r)); })(), "the subscription released");
+    expect(bs.server.changes.size).toBe(0);
+  });
+});
+
+describe("shutdown() and the connections still open", () => {
+  it("closes an idle keep-alive connection at once, rather than waiting for the client", async () => {
+    const http = await listen(createBookstore().server, 0, {});
+    const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+    const socket = rawSocket(url);
+    const answered = new Signal<true>();
+    socket.on("data", () => answered.push(true));
+    socket.write("GET /rayfold/health HTTP/1.1\r\nHost: localhost\r\n\r\n"); // keep-alive: the connection stays open after the answer
+    await answered.atLeast(1, "the health answer");
+    const { shutdown } = await import("./http.ts");
+    await bounded(shutdown(createBookstore().server, http, { flushMs: 60_000 }), "shutdown with only an idle connection");
+  });
+
+  it("cuts off a connection still mid-request once flushMs has passed", async () => {
+    const http = await listen(createBookstore().server, 0, {});
+    const socket = rawSocket(`http://127.0.0.1:${(http.address() as AddressInfo).port}`);
+    const connected = new Signal<true>();
+    socket.on("connect", () => connected.push(true));
+    await connected.atLeast(1, "connected");
+    socket.write("POST /rayfold HTTP/1.1\r\nHost: localhost\r\nContent-Length: 100\r\n\r\n{"); // a request that never finishes
+    const { shutdown } = await import("./http.ts");
+    await bounded(shutdown(createBookstore().server, http, { flushMs: 20 }), "shutdown cutting the stalled connection off");
+  });
+});
+
+describe("a request that arrived over TLS", () => {
+  it("is judged as https by the Node handler, so a page served over http may not write to it", async () => {
+    const { createServer } = await import("node:http");
+    const { createHttpHandler } = await import("./http.ts");
+    const handler = createHttpHandler(bs.server, { viewer: viewerOf });
+    // what a TLS socket says about itself; the bytes travel in the clear only so the test needs no certificate
+    const http = createServer((req, res) => ((req.socket as { encrypted?: boolean }).encrypted = true, void handler(req, res)));
+    await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
+    open.push(http);
+    const host = `127.0.0.1:${(http.address() as AddressInfo).port}`;
+    const write = (origin: string, key: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = httpRequest({ host: "127.0.0.1", port: host.split(":")[1], method: "POST", path: "/rayfold", headers: { "content-type": "application/rayfold+json", authorization: "Bearer admin", origin } }, (r) => (r.resume(), resolve(r.statusCode ?? 0)));
+        req.on("error", reject);
+        req.end(JSON.stringify({ ops: [{ ...restock, key }] }));
+      });
+    expect(await write(`http://${host}`, KEY)).toBe(403);
+    expect(bs.store.calls["Command.restock"]).toBeUndefined();
+    expect(await write(`https://${host}`, KEY)).toBe(200); // guard
+  });
+});
+
+describe("a client that hangs up on an answer still being worked out", () => {
+  it("stops the work: the resolver's signal aborts", async () => {
+    const aborted = new Signal<string>();
+    const started = new Signal<true>();
+    const s = createRayfoldServer({
+      schema: `entity A { id: ID } query slow: A`,
+      resolvers: { Query: { slow: (_a, ctx) => new Promise((_r, rej) => (started.push(true), ctx.signal.addEventListener("abort", () => (aborted.push("aborted"), rej(ctx.signal.reason))))) } },
+    });
+    const url = await serve(s);
+    const socket = rawSocket(url);
+    socket.write("GET /rayfold/slow HTTP/1.1\r\nHost: localhost\r\nAccept: application/json\r\n\r\n"); // answered whole, so nothing streams back first
+    await started.atLeast(1, "the resolver running");
+    socket.destroy();
+    await aborted.atLeast(1, "the resolver told to stop");
+  });
+});
+
+describe("a client that keeps sending past the refusal of an oversized body", () => {
+  /** Sends up to `total` bytes of body after headers claiming that many; resolves, once the socket closes, with how much went out. */
+  const flood = (url: string, path: string, total: number) =>
+    new Promise<{ sent: number }>((resolve) => {
+      const socket = rawSocket(url);
+      let sent = 0;
+      socket.resume();
+      socket.on("error", () => undefined);
+      socket.on("close", () => resolve({ sent }));
+      socket.write(`POST ${path} HTTP/1.1
+
+Host: localhost
+
+Content-Type: application/json
+
+Content-Length: ${total}
+
+
+
+`);
+      const chunk = "x".repeat(64 * 1024);
+      const pump = () => {
+        while (sent < total && !socket.destroyed) {
+          sent += chunk.length;
+          if (!socket.write(chunk)) return void socket.once("drain", pump);
+        }
+      };
+      pump();
+    });
+
+  it("cuts the connection once a megabyte more than the limit has arrived, rather than reading it all", async () => {
+    const small = await serve(bs.server, { viewer: viewerOf, maxBody: 1_024 });
+    const r = await bounded(flood(small, "/rayfold", 64 * 1024 * 1024), "the server cutting the flood off");
+    // the 413 itself may be lost to the reset that cuts the connection; that the connection was cut, early, is the point
+    expect(r.sent).toBeLessThan(16 * 1024 * 1024); // socket buffers let some megabytes out before the cut is seen
+  });
+});

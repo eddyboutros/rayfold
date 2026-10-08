@@ -46,6 +46,8 @@ data class RayfoldContext(
      * apply it itself instead of loading rows the viewer may not see. Null when nothing can be pushed.
      */
     val policy: JsonObject? = null,
+    /** The server's clock, epoch milliseconds: what policies read as `now()`, and what a test sets. */
+    val now: () -> Long = System::currentTimeMillis,
 ) {
     /** Conditional write (spec 03 section 4a): fails when the request's ifVersion differs from the stored version. */
     fun checkVersion(key: String, actual: JsonElement?, current: JsonObject) {
@@ -205,7 +207,8 @@ class Executor(
         } catch (e: ClassCastException) {
             throw CommittedCommandException(RayfoldException.of(e), e)
         }
-        val st = State(ctx, explicit)
+        // a dry run's own answer is what would happen, which nothing loaded so far knows, so it loads for itself
+        val st = State(if (ctx.simulate) ctx.copy(batch = ConcurrentHashMap()) else ctx, explicit)
         val data: JsonElement
         val patch: List<JsonObject>
         try {
@@ -252,7 +255,7 @@ class Executor(
     }
 
     private suspend fun conflictWithCurrent(op: OpDef, shape: Shape, ctx: RayfoldContext, e: VersionConflictException): RayfoldException {
-        val st = State(RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events), false)
+        val st = State(RayfoldContext(ctx.viewer, ctx.simulate, ctx.opId, ctx.opName, ctx.vars, ctx.events, now = ctx.now), false)
         val current = projectValue(e.current, op.returns.copy(nullable = true), shape, "", st)
         while (st.deferred.isNotEmpty()) { val job = st.deferred.removeFirst(); projectMany(job.slots, job.type, job.shape, st, job.nullable) }
         return RayfoldException(Code.FAILED_PRECONDITION, e.message ?: "VersionConflict", "VersionConflict", buildJsonObject {
@@ -277,7 +280,7 @@ class Executor(
     }
 
     internal fun checkOpPolicy(op: OpDef, mode: String, args: JsonObject, ctx: RayfoldContext) {
-        val d = Policy.decide(op.annotations, mode, ExprEnv(ctx.viewer, args, JsonNull))
+        val d = Policy.decide(op.annotations, mode, ExprEnv(ctx.viewer, args, JsonNull, ctx.now))
         if (d != Policy.Decision.ALLOW) throw Policy.error(d, "${op.name}()")
     }
 
@@ -343,13 +346,14 @@ class Executor(
         return slot.outJson()
     }
 
+    /** The entities that implement each interface. Read from the schema once, so the batches sharing this executor share nothing mutable. */
+    private val implementors: Map<String, Set<String>> = ir.types.values
+        .filter { it.kind == "entity" }
+        .flatMap { e -> e.implements.map { it to e.name } }
+        .groupBy({ it.first }, { it.second })
+        .mapValues { it.value.toSet() }
+
     /** [nullable]: the slots sit at a nullable position that is not a list element, where a denied entity reads as null. */
-    private val implementors = ConcurrentHashMap<String, Set<String>>() // one executor serves concurrent batches
-
-    /** Entities that implement an interface. */
-    private fun implementorsOf(iface: String): Set<String> =
-        implementors.getOrPut(iface) { ir.types.values.filter { it.kind == "entity" && iface in it.implements }.map { it.name }.toSet() }
-
     private suspend fun projectMany(slots: List<Slot>, t: TypeRef, shape: Shape, st: State, nullable: Boolean) {
         if (slots.isEmpty()) return
         val def = ir.types[t.listBase().name] ?: throw RayfoldException(Code.INTERNAL, "Unknown type ${t.baseName()}")
@@ -383,7 +387,7 @@ class Executor(
         // `$type`, so the slots are grouped by it and projected as that entity. `...on Concrete` then selects fields the
         // interface does not declare, and `$type` survives compact mode because the schema does not fix it here.
         if (def.kind == "object" && def.isInterface) {
-            val members = implementorsOf(def.name)
+            val members = implementors[def.name].orEmpty()
             val groups = linkedMapOf<String, MutableList<Slot>>()
             for (s in slots) {
                 val tn = (s.value["\$type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -402,7 +406,7 @@ class Executor(
         if (def.annotations.isNotEmpty()) {
             allowed = mutableListOf()
             for (s in slots) {
-                val d = Policy.decide(def.annotations, "read", ExprEnv(st.ctx.viewer, JsonObject(emptyMap()), s.value))
+                val d = Policy.decide(def.annotations, "read", ExprEnv(st.ctx.viewer, JsonObject(emptyMap()), s.value, st.ctx.now))
                 if (d == Policy.Decision.ALLOW) allowed.add(s)
                 // an explicit shape fails, except at a nullable position: there a denied entity reads exactly like a missing one
                 else if (st.explicit && !nullable) throw Policy.error(d, "${def.name} at ${s.path.ifEmpty { "result" }}").withPath(s.path)
@@ -415,7 +419,7 @@ class Executor(
         val (groups, defers) = flatten(shape, def, fields, st)
         // What this client asked for, for `rayfold check --unused` (spec 11). Only the member's path is kept.
         usage?.let { sink ->
-            val at = System.currentTimeMillis()
+            val at = st.ctx.now()
             for (g in groups) sink.record(UsageEvent(st.ctx.opName, "${def.name}.${g.field.name}", st.ctx.client), at)
         }
 
@@ -430,7 +434,7 @@ class Executor(
             if (field.annotations.isNotEmpty()) {
                 targets = mutableListOf()
                 for (s in allowed) {
-                    val d = Policy.decide(field.annotations, "read", ExprEnv(st.ctx.viewer, g.args, s.value))
+                    val d = Policy.decide(field.annotations, "read", ExprEnv(st.ctx.viewer, g.args, s.value, st.ctx.now))
                     if (d == Policy.Decision.ALLOW) targets.add(s)
                     else if (st.explicit && !g.partial) throw Policy.error(d, "${def.name}.${field.name}").withPath(join(s.path, g.alias))
                     else if (st.explicit) { st.errors.add(Policy.error(d, "${def.name}.${field.name}").withPath(join(s.path, g.alias)).toWire()); s.out[g.alias] = JsonNull }

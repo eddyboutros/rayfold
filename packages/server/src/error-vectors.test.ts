@@ -67,7 +67,7 @@ describe("conformance vectors: errors", () => {
           const problem = (await res.json()) as Record<string, unknown>;
           for (const m of doc.problemShape.members) expect(Object.keys(problem), `${why}: member ${m}`).toContain(m);
           expect(problem["code"], why).toBe(c.code);
-          expect(problem["type"], why).toContain(c.type!);
+          expect(problem["type"], why).toBe(`https://eddyboutros.github.io/rayfold/errors/${c.type!}`);
           // lower case, and the underscores gone: "invalid argument", never "Invalid argument"
           expect(problem["title"], `${why}: the title is the problem type, spaced and lower-case`).toBe(c.type!.replace(/_/g, " "));
           return;

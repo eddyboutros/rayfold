@@ -220,4 +220,27 @@ class PolicyTest {
             fx.server.collect(req("b1", "{ id version }")).single()["error"],
         )
     }
+    /** Which of [rows] an entity read policy lets [viewer] see, through a query with the entity's default view. */
+    private fun seen(policy: String, rows: String, viewer: JsonElement = JsonNull): JsonElement? {
+        val s = RayfoldServer(
+            SchemaText.load("entity Row @allow(read: $policy) { id: ID a: String? n: Int } query rows: [Row?]").ir,
+            Resolvers(queries = mapOf("rows" to { _, _ -> kotlinx.serialization.json.Json.parseToJsonElement(rows) })),
+        )
+        var data: JsonElement? = null
+        runTest(timeout = 5.seconds) { data = s.collect(obj("""{"ops":[{"id":1,"op":"rows"}]}"""), viewer).single().let { it["data"] ?: it } }
+        return data
+    }
+
+
+    @Test
+    fun `a policy compares a number with a numeric string by value, in has() as in ==, and tells text and null apart`() {
+        val viewer = obj("""{"id":"u1","ids":["5","7"]}""")
+        fun rows(text: String) = kotlinx.serialization.json.Json.parseToJsonElement(text.replace("TYPE", "\$type"))
+        // has(): an Int column against a viewer list of numeric strings, as ids travel
+        assertEquals(rows("""[{"TYPE":"Row","id":"r1","a":null,"n":5},null]"""), seen("has(viewer.ids, this.n)", """[{"id":"r1","n":5},{"id":"r2","n":6}]""", viewer))
+        // a string "null" is text, not null
+        assertEquals(rows("""[null,{"TYPE":"Row","id":"r2","a":null,"n":1}]"""), seen("this.a == null", """[{"id":"r1","a":"null","n":1},{"id":"r2","a":null,"n":1}]"""))
+        // "5." is not a numeric string, so it is not the number 5; "5" is
+        assertEquals(rows("""[null,{"TYPE":"Row","id":"r2","a":"5","n":1}]"""), seen("this.a == 5", """[{"id":"r1","a":"5.","n":1},{"id":"r2","a":"5","n":1}]"""))
+    }
 }

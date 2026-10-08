@@ -60,7 +60,9 @@ every field the shape selects. A field costs its own `@cost.base` plus `@cost.pe
 by the page sizes that enclose it. A field's base defaults to 1 when it returns objects (an entity, an object, a page
 or a list of them) and to 0 when it returns scalars or enums, which arrive with the row already loaded. The perItem of
 a page, whether an op or a field returns it, defaults to 1, so every row a page can return is charged. The budget
-measures rows and loads, not columns.
+measures rows and loads, not columns. A page's size is the `first` of its `PageArgs` argument, whatever that argument
+is called. At a union position, what is asked of every member ([02 §2](02-shapes.md)) is charged as each member would
+answer it, and the dearest member counts.
 The viewer's budget (server-configured, default 1 000 per batch) is checked before execution; exceeding it is
 `resource_exhausted` with `data: { cost, budget }`. Actual cost is reported in `meta.cost`. Every op that is estimated
 costs at least 1, however cheap its parts; an op refused before it is estimated, such as one whose arguments do not

@@ -35,6 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -213,6 +214,7 @@ class PgRelayTest {
         assertEquals(listOf("change keys=[Book:b1] ops=[]"), received.toList(), "the readable message after the unreadable ones")
         assertEquals(2, errors.size)
         assertEquals("rayfold relay: message 999 is gone from rayfold_relay", errors[0].message)
+        assertIs<kotlinx.serialization.SerializationException>(errors[1], "the payload that is not JSON")
         stop()
     }
 
@@ -349,15 +351,18 @@ class PgRelayTest {
         val dying = Dying()
         val lost = Channel<Throwable>(Channel.UNLIMITED)
         val server = RayfoldServer(ir, Resolvers(), relay = PgRelay(PgNotifications(dying.connection, pollMs = 1), { DriverManager.getConnection(url) }), onRelayError = { lost.trySend(it) })
-        withTimeout(5_000) { server.ready() }
-        assertEquals(emptyList(), server.readiness().reasons)
+        try {
+            withTimeout(5_000) { server.ready() }
+            assertEquals(emptyList(), server.readiness().reasons)
 
-        dying.dies = true
-        val e = withTimeout(5_000) { lost.receive() }
-        assertEquals("This connection has been closed.", e.message)
-        assertEquals(listOf("relay: This connection has been closed."), server.readiness().reasons)
-        assertEquals(false, server.readiness().ready)
-        withTimeout(5_000) { server.close() }
+            dying.dies = true
+            val e = withTimeout(5_000) { lost.receive() }
+            assertEquals("This connection has been closed.", e.message)
+            assertEquals(listOf("relay: This connection has been closed."), server.readiness().reasons)
+            assertEquals(false, server.readiness().ready)
+        } finally {
+            withTimeout(5_000) { server.close() } // a failed assertion must not leave a 1 ms poll loop running
+        }
     }
 
     @Test
@@ -371,6 +376,128 @@ class PgRelayTest {
         assertEquals(emptyList(), lost.toList())
         assertEquals(emptyList(), server.readiness().reasons)
     }
+
+    /**
+     * A listening connection as pgjdbc presents it: every statement it runs is recorded, and its first poll hands over
+     * [pending], as notifications that arrived for any channel this connection listens on.
+     */
+    private class Recording(pending: List<Pair<String, String>> = emptyList()) {
+        val executed = CopyOnWriteArrayList<String>()
+
+        /** Every poll for notifications, and every NOTIFY sent on this connection. */
+        val polls = java.util.concurrent.atomic.AtomicInteger()
+        val notified = java.util.concurrent.atomic.AtomicInteger()
+
+        /** Until set, polls find nothing: the test registers its listeners first. */
+        @Volatile var delivering = false
+        private val queue = java.util.concurrent.ConcurrentLinkedQueue(pending)
+        private val loader = PgRelayTest::class.java.classLoader
+        private val statement = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(java.sql.Statement::class.java)) { _, m, a ->
+            if (m.name == "execute") executed.add(a?.get(0) as String)
+            if (m.name == "execute") false else null
+        }
+        private fun notification(channel: String, payload: String) = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(org.postgresql.PGNotification::class.java)) { _, m, _ ->
+            when (m.name) { "getName" -> channel; "getParameter" -> payload; "getPID" -> 1; else -> null }
+        } as org.postgresql.PGNotification
+        private val pg = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(org.postgresql.PGConnection::class.java)) { _, m, _ ->
+            if (m.name != "getNotifications") null
+            else if (!delivering) emptyArray<org.postgresql.PGNotification>().also { polls.incrementAndGet() }
+            else generateSequence { queue.poll() }.map { (c, p) -> notification(c, p) }.toList().toTypedArray().also { polls.incrementAndGet() }
+        }
+        private val notify = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(java.sql.PreparedStatement::class.java)) { _, m, _ ->
+            when (m.name) {
+                "executeQuery" -> java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(java.sql.ResultSet::class.java)) { _, _, _ -> null }.also { notified.incrementAndGet() }
+                else -> null
+            }
+        }
+        val connection = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(Connection::class.java)) { _, m, _ ->
+            when (m.name) { "createStatement" -> statement; "prepareStatement" -> notify; "unwrap" -> pg; else -> null }
+        } as Connection
+    }
+
+    @Test
+    fun `one LISTEN per channel however many listen on it, and UNLISTEN once the last of them stops`() = runBlocking {
+        val rec = Recording()
+        val n = PgNotifications(rec.connection, pollMs = 1)
+        val first = n.listen("a") {}
+        val second = n.listen("a") {}
+        assertEquals(listOf("LISTEN \"a\""), rec.executed.toList())
+        withTimeout(5_000) { first() }
+        assertEquals(listOf("LISTEN \"a\""), rec.executed.toList(), "guard: another listener still hears the channel")
+        withTimeout(5_000) { second() }
+        assertEquals(listOf("LISTEN \"a\"", "UNLISTEN \"a\""), rec.executed.toList())
+    }
+
+    @Test
+    fun `once the last listener has stopped, nothing polls the connection any more, so it can be closed`() = runBlocking {
+        val rec = Recording()
+        val n = PgNotifications(rec.connection, pollMs = 1)
+        val stop = n.listen("a") {}
+        // the poll loop spins on the connection, taking turns with these NOTIFYs on the fair lock
+        repeat(3) { n.notify("a", "x") }
+        assertTrue(rec.polls.get() > 0, "the loop polls while someone listens")
+        // the unsubscribe waits for the loop's last poll, outside the lock that poll needs; that a poll cannot start
+        // after it returns is a race no test can hold open without a clock, so this pins the loop stopping at all
+        withTimeout(5_000) { stop() }
+        val after = rec.polls.get()
+        // each NOTIFY takes the same fair turn a running loop would take between them
+        repeat(5) { n.notify("a", "x") }
+        assertEquals(after, rec.polls.get(), "a poll after the last listener stopped")
+        assertEquals(8, rec.notified.get())
+    }
+
+    @Test
+    fun `guard - a listener still listening keeps the loop polling after another one stops`() = runBlocking {
+        val rec = Recording()
+        val n = PgNotifications(rec.connection, pollMs = 1)
+        val first = n.listen("a") {}
+        val second = n.listen("b") {}
+        withTimeout(5_000) { first() }
+        val after = rec.polls.get()
+        repeat(5) { n.notify("b", "x") }
+        assertTrue(rec.polls.get() > after, "the loop stopped while b was still listened to")
+        withTimeout(5_000) { second() }
+    }
+
+    @Test
+    fun `a payload reaches the listeners of its own channel only`() = runBlocking {
+        val rec = Recording(listOf("b" to "for b", "a" to "for a"))
+        val n = PgNotifications(rec.connection, pollMs = 1)
+        val heardA = CopyOnWriteArrayList<String>()
+        val heardB = CopyOnWriteArrayList<String>()
+        val gotA = CompletableDeferred<Unit>()
+        val stopB = n.listen("b") { heardB.add(it) }
+        val stopA = n.listen("a") { heardA.add(it); gotA.complete(Unit) }
+        rec.delivering = true
+        withTimeout(5_000) { gotA.await() } // both arrived in one poll, b's first
+        assertEquals(listOf("for a"), heardA.toList())
+        assertEquals(listOf("for b"), heardB.toList())
+        withTimeout(5_000) { stopA(); stopB() }
+    }
+
+    @Test
+    fun `a NOTIFY on a connection of its own closes that connection, and one on the listening connection keeps it`() = runBlocking {
+        val closed = AtomicInteger()
+        val loader = PgRelayTest::class.java.classLoader
+        val sent = CopyOnWriteArrayList<String>()
+        val statement = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(java.sql.PreparedStatement::class.java)) { _, m, a ->
+            when (m.name) {
+                "setString" -> { sent.add(a?.get(1) as String); null }
+                "executeQuery" -> java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(java.sql.ResultSet::class.java)) { _, _, _ -> null }
+                else -> null
+            }
+        }
+        fun pooled() = java.lang.reflect.Proxy.newProxyInstance(loader, arrayOf(Connection::class.java)) { _, m, _ ->
+            when (m.name) { "prepareStatement" -> statement; "close" -> { closed.incrementAndGet(); null }; else -> null }
+        } as Connection
+        PgNotifications(Recording().connection, { pooled() }).notify("a", "one")
+        assertEquals(listOf("a", "one") to 1, sent.toList() to closed.get())
+        // guard: without a notifier the listening connection sends, and is not closed
+        val own = pooled()
+        PgNotifications(own).notify("a", "two")
+        assertEquals(listOf("a", "one", "a", "two") to 1, sent.toList() to closed.get())
+    }
+
 }
 
 /**

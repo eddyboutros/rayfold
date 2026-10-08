@@ -46,9 +46,9 @@ function LiveStock({ id }: { id: string }) {
 
 | Hook | Returns |
 |---|---|
-| `useQuery(op, args, options)` | `{ data, error, loading, refetch }`. `options` takes a `shape`, `policy: "cache"` to use a fresh cached result, and `enabled: false` to wait. Re-renders when the cache changes. |
+| `useQuery(op, args, options)` | `{ data, error, loading, refetch }`. `options` takes a `shape`, `policy: "cache"` to use a fresh cached result, and `enabled: false` to wait. Re-renders when the cache changes. A query that fails after it answered keeps its `data` beside `error`. |
 | `useLive(op, args, options)` | `{ data, error, loading }`, kept current by the server. Unsubscribes on unmount. |
-| `useCommand(op, options)` | `[run, { data, error, running }]`. `run(args)` returns a promise; the outcome also lands in the state, so an unawaited `run` is safe. `error.is("OutOfStock")` narrows on a declared error. |
+| `useCommand(op, options)` | `[run, { data, error, running }]`. `run(args)` returns a promise; the outcome also lands in the state, so an unawaited `run` is safe. `data` is the result of the latest run, so a run that fails clears it. `error.is("OutOfStock")` narrows on a declared error. |
 | `useRayfoldClient()` | The client, for anything else (batches, streams). |
 
 Server rendering renders the loading state and sends no request; the browser fetches after hydration. Works with

@@ -29,7 +29,8 @@ Every command's `patch` (spec 04 §2) is published on the server's **change bus*
 (database replication, event buses) through the same bus.
 
 A live query records its **read set**: the entity keys present in its last result, plus the entity **types**
-reachable from its result type (so that a newly created entity can change list membership). Reachability is computed
+reachable from its result type (so that a newly created entity can change list membership). A union reaches its
+members and an interface every entity that implements it, so a new member of either is a reachable type. Reachability is computed
 to a bounded depth — four levels in both reference runtimes — because the alternative on a richly connected schema is
 to treat every change as intersecting. A change intersects when it names the operation, one of the keys, or a key
 whose type is reachable within that bound. Intersection
@@ -113,9 +114,10 @@ Kotlin client ([guide](../docs/guide/offline.md)); the rest are drafts.
 * Sync sessions: `{ "op": "sync", "args": { "since": cursor } }` resumes a set of live queries from a server
   cursor; the server may answer `must-refetch`.
 * Conflict policy per field: `@merge(serverWins | keepLocal | lww | crdtText | custom)` on a field. A client that
-  holds the schema applies it when a server value arrives for a field a prediction also set: `serverWins` and `lww`
-  drop the predicted value at once (the server's write is the later one), `keepLocal` and no annotation keep the
-  prediction until its command settles. `crdtText` and `custom` are declared but not implemented: a client refuses to
+  holds the schema applies it when a server value arrives for a field a prediction also set, whether in a `set` patch, a
+  command's answer or a query's data: `serverWins` and `lww` drop the predicted value at once (the server's write is
+  the later one), and only for the fields carrying that policy; `keepLocal` and no annotation keep the prediction until
+  its command settles. `crdtText` and `custom` are declared but not implemented: a client refuses to
   predict such a field rather than merge it wrongly.
 * Lowest-common-denominator transport: an Electric-style shape log over plain HTTP (offset/handle,
   long-poll or SSE).

@@ -45,6 +45,8 @@ function BookPage({ id }: { id: string }) {
 - `shape` picks the fields. Without it the type's default view is used.
 - `loading` is true until the first result. When the same query ran before, `data` holds the cached result at once
   while the fresh one loads.
+- A query that fails after it answered keeps its `data` beside `error`, so a screen can show what it had and say
+  what went wrong; the next answer clears the error.
 - `enabled: false` sends nothing, for example until an id is known.
 - `policy: "cache"` uses a fresh cached result instead of asking the server.
 
@@ -66,7 +68,8 @@ function BuyButton({ id }: { id: string }) {
 }
 ```
 
-`buy(...)` returns a promise that rejects on failure, and the outcome also lands in the hook's state. Calling it
+`buy(...)` returns a promise that rejects on failure, and the outcome also lands in the hook's state: `data` is the
+result of the latest run, so a run that fails clears it and sets `error` instead. Calling it
 without `await`, as above, is fine. Each call gets its own idempotency key, so a resend of that call, as the offline
 queue does, is answered from the first attempt instead of buying twice. A second click is a second call; disabling
 the button while it runs is what stops that.

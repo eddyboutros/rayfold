@@ -12,10 +12,15 @@ library also runs on Android. The finished project is [examples/kotlin](../../ex
 
 ## 1. Create the project
 
-A Kotlin JVM project with Gradle's `application` plugin, the Rayfold server and client, and Nimbus to verify tokens.
-`build.gradle.kts`, with a `runClient` task for step 6 and a `token` task for step 5:
+A Kotlin JVM project with Gradle's `application` plugin, the Rayfold server and client, Nimbus to verify tokens, and
+`rayfold-test` for the unit tests. `build.gradle.kts`, with a `runClient` task for step 6 and a `token` task for
+step 5:
 
 <<< @/../examples/kotlin/build.gradle.kts{kotlin}
+
+::: info Next release
+`rayfold-test` arrives in the next release. On 0.2.1, leave out its `testImplementation` line.
+:::
 
 ## 2. Describe the API
 

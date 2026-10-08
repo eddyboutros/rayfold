@@ -1,7 +1,7 @@
 /** RayfoldClient: batches with refs, cache-coherent commands, live-updating watches. */
 import type { Frame, PatchOp, RequestEnvelope, RequestOp, WireError } from "@rayfold/server/protocol";
 import type { RayfoldSchemaIR } from "@rayfold/schema";
-import { annotation, isShapeId, parseShapeText, type Shape, type ViewResolver } from "@rayfold/schema";
+import { annotation, isShapeId, parseShapeText, shapeLevel, type Shape, type ViewResolver } from "@rayfold/schema";
 import { RayfoldCache, type CacheListener, type CachedResult, type MergePolicy, type OptimisticOp } from "./cache.ts";
 import { OfflineQueue, isUnreachable, memoryQueue, type QueueEvent, type QueueStorage, type QueuedCommand } from "./offline.ts";
 import type { Transport, UploadBody, UploadHandle } from "./transport.ts";
@@ -183,12 +183,14 @@ export class RayfoldClient {
   /** The schema's named views, so a spread in a shape is read as the fields it stands for. */
   private readonly views: ViewResolver = (type, view) => this.schema?.views[`${type}.${view}`];
 
-  private typed(op: string, data: unknown, at?: string): unknown {
+  private typed(op: string, data: unknown, shape: Shape | undefined, at?: string): unknown {
     if (!this.schema) return data;
     const def = this.schema.ops[op];
     if (!def) return data;
-    const t = at ? typeAtPath(this.schema, def.returns, at) : def.returns;
-    return t ? restoreTypes(this.schema, t, data) : data;
+    const t = at ? typeAtPath(this.schema, def.returns, at, shape, this.views) : def.returns;
+    // the shape below a deferred part's path is the part's own: an alias there is read against it
+    const below = at ? shapeAt(shape, at, this.views) : shape;
+    return t ? restoreTypes(this.schema, t, data, below, this.views) : data;
   }
 
   newKey(): string {
@@ -278,7 +280,7 @@ export class RayfoldClient {
       try {
         for await (const f of client.opts.transport.send(client.envelope([req]), sendOpts)) {
           if ("item" in f) {
-            yield client.cache.denormalize(client.cache.normalize(client.typed(op, f.item))) as T;
+            yield client.cache.denormalize(client.cache.normalize(client.typed(op, f.item, client.shapeOf(req)))) as T;
             if ("fin" in f && f.fin) return;
           } else if ("error" in f) {
             if (f.error.code === "canceled" && o.signal?.aborted) return;
@@ -403,7 +405,8 @@ export class RayfoldClient {
               failed(new RayfoldClientError(f.error));
               return;
             }
-            if (("data" in f && !("at" in f)) || "patch" in f || "fin" in f) {
+            // a deferred part (`at`) is reported too: a live query sends no `fin` to wait for
+            if ("data" in f || "patch" in f || "fin" in f) {
               failures = 0; // the connection is good again
               const r = this.cache.getResult(rk);
               if (!r) return;
@@ -467,20 +470,20 @@ export class RayfoldClient {
           reject(h, new RayfoldClientError(f.error));
         } else if ("ok" in f && h.req.simulate) {
           // a dry run says what would happen; written to the cache it showed every watcher a change that never was
-          resolve(h, this.typed(h.req.op, f.ok));
+          resolve(h, this.typed(h.req.op, f.ok, this.shapeOf(h.req)));
         } else if ("ok" in f) {
           let r!: ReturnType<RayfoldCache["putCommandResult"]>;
           this.cache.transaction(() => {
-            r = this.cache.putCommandResult(h.req.op, this.typed(h.req.op, f.ok), this.shapeOf(h.req), this.views);
+            r = this.cache.putCommandResult(h.req.op, this.typed(h.req.op, f.ok, this.shapeOf(h.req)), this.shapeOf(h.req), this.views);
             if (f.patch) this.cache.applyPatch(f.patch as PatchOp[]);
           });
           h.skeleton = r.data;
           resolve(h, this.cache.denormalize(r.data));
         } else if ("data" in f && !("at" in f)) {
-          const r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.data), this.shapeOf(h.req), this.views);
+          const r = this.cache.putResult(resultKeys.get(h.id)!, h.req.op, this.typed(h.req.op, f.data, this.shapeOf(h.req)), this.shapeOf(h.req), this.views);
           if (f.fin) resolve(h, this.cache.denormalize(r.data));
         } else if ("at" in f) {
-          this.cache.mergeAt(resultKeys.get(h.id)!, f.at, this.typed(h.req.op, f.data, f.at), this.shapeOf(h.req), this.views);
+          this.cache.mergeAt(resultKeys.get(h.id)!, f.at, this.typed(h.req.op, f.data, this.shapeOf(h.req), f.at), this.shapeOf(h.req), this.views);
         } else if ("patch" in f) {
           // a live update: `at` and `list` ops describe this op's own stored result
           this.cache.applyPatch(f.patch as PatchOp[], resultKeys.get(h.id)!, this.shapeOf(h.req), this.views);
@@ -508,6 +511,13 @@ export class RayfoldClient {
   markQueries(names: string[]): void {
     for (const n of names) this.opKinds.set(n, "query");
   }
+}
+
+/** The shape selected at a result path ("items.0.author"); list indices stay at the same level. */
+function shapeAt(shape: Shape | undefined, path: string, views: ViewResolver): Shape | undefined {
+  let at = shape;
+  for (const seg of path.split(".")) if (!/^\d+$/.test(seg)) at = shapeLevel(at, views).child.get(seg);
+  return at;
 }
 
 function pick(o: OpOptions): Partial<RequestOp> {

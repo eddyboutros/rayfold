@@ -102,7 +102,8 @@ function split(at: string): [string, string | undefined] {
   // "books()" and an argument of it, "books().first", are both about the operation books
   const coordinate = at.replace(/\(\)(?=\.|$)/, "");
   const dot = coordinate.indexOf(".");
-  return dot < 0 ? [coordinate, undefined] : [coordinate.slice(0, dot), coordinate.slice(dot + 1)];
+  // "Book.reviews(sort)", an argument of a field, is about the field reviews
+  return dot < 0 ? [coordinate, undefined] : [coordinate.slice(0, dot), coordinate.slice(dot + 1).replace(/\(.*\)$/, "")];
 }
 
 /** The type name the coordinate points at that the schema has no definition for. */

@@ -357,6 +357,8 @@ class RayfoldBindings(
         /** Methods whose HTTP semantics are idempotent: a command bound to them may run without an Idempotency-Key. */
         val IDEMPOTENT_METHODS = setOf("PUT", "PATCH", "DELETE")
         val DECIMAL_TEXT = Regex("^-?\\d+(\\.\\d+)?$")
+        private val INTEGER_TEXT = Regex("^-?\\d+$")
+        private val MAX_SAFE_INTEGER = java.math.BigInteger.valueOf(9_007_199_254_740_991L)
         val TEMPLATE = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 
         /** Path and query-string values are text; they are coerced by the argument's declared type. */
@@ -366,6 +368,9 @@ class RayfoldBindings(
             return when (def.type.name) {
                 "Int", "Float" -> if (DECIMAL_TEXT.matches(text)) JsonUnquotedLiteral(text) else JsonPrimitive(text)
                 "Boolean" -> when (text) { "true" -> JsonPrimitive(true); "false" -> JsonPrimitive(false); else -> JsonPrimitive(text) }
+                // past 2^53 a JSON number loses digits in most readers, so such a Long stays text, as a client sends it
+                // in a body (spec 04 section 8); argument coercion range-checks it either way
+                "Long" -> if (INTEGER_TEXT.matches(text) && text.toBigInteger().abs() <= MAX_SAFE_INTEGER) JsonUnquotedLiteral(text) else JsonPrimitive(text)
                 "ID", "String", "Decimal", "Date", "Instant" -> JsonPrimitive(text)
                 else -> try {
                     StrictJson.parse(text, "query parameter $name", "not JSON")

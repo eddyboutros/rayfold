@@ -94,7 +94,8 @@ internal class RayfoldWebSocketHandler(private val server: RayfoldServer, privat
         // a Spring session is not safe for concurrent sends, and the batches on one socket send from several coroutines
         val out = ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, maxMessageBytes * 4)
         val viewer = session.attributes[VIEWER] as? JsonElement ?: JsonNull
-        sessions[session.id] = RayfoldWsSession(server, viewer, { send(out, TextMessage(it)) }, { send(out, BinaryMessage(it)) }) {
+        val expired = { runCatching { out.close(CloseStatus.POLICY_VIOLATION.withReason("capability expired")) }; Unit }
+        sessions[session.id] = RayfoldWsSession(server, viewer, { send(out, TextMessage(it)) }, { send(out, BinaryMessage(it)) }, onExpired = expired) {
             // the server is draining and this socket's frames are out: a server going away, so the client reconnects elsewhere
             runCatching { out.close(CloseStatus.GOING_AWAY.withReason("server shutting down")) }
         }

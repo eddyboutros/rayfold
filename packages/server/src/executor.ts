@@ -181,7 +181,8 @@ export class Executor {
     // again. A dry run changed nothing, so it keeps them.
     if (!ctx.simulate) ctx.batch.delete(LOADS);
     const cr: CommandResult = isCommandResult(raw) ? raw : ok(raw);
-    const st: ProjectState = { ctx, errors: [], deferred: [], explicit };
+    // A dry run's own answer is what would happen, which nothing loaded so far knows, so it loads for itself.
+    const st: ProjectState = { ctx: ctx.simulate ? { ...ctx, batch: new Map() } : ctx, errors: [], deferred: [], explicit };
     const extra = cr.patch ?? [];
     let data: unknown;
     let patch: PatchOp[];

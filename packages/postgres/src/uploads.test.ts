@@ -1,7 +1,11 @@
 import { PGlite } from "@electric-sql/pglite";
 import { MemoryUploadStore, createFetchHandler, createRayfoldServer, ok, type UploadStore } from "@rayfold/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgUploadStore, type Queryable } from "./index.ts";
+
+// every test boots its own PGlite, a Postgres compiled to WASM, which on a busy runner takes seconds by itself, the
+// first one in a worker longest; the waits for a signal inside each test keep their own 5 s bound
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 /**
  * Uploads in Postgres, with two servers over one database: the point of the store is that a file sent to one server is
@@ -107,7 +111,8 @@ describe("uploads in Postgres", () => {
     const payload = new Uint8Array([0, 1, 250, 255, 13, 10]);
     const kept = await s.put(bodyOf(payload), { name: "raw.bin", type: "application/octet-stream", viewer });
     const opened = await s.open(kept.id);
-    expect(opened?.upload).toMatchObject({ size: 6, name: "raw.bin", type: "application/octet-stream", viewer });
+    expect(kept).toEqual({ id: kept.id, size: 6, at: opened?.upload.at, name: "raw.bin", type: "application/octet-stream", viewer });
+    expect(opened?.upload).toEqual(kept);
 
     const read: number[] = [];
     const reader = opened!.body.getReader();

@@ -11,7 +11,7 @@ book, watches it, buys a copy and prints the stock the purchase left. One Gradle
 | `src/main/kotlin/com/example/bookshop/Auth.kt` | Who the caller is, from a signed token (JWT); `devToken` for local runs |
 | `src/main/kotlin/com/example/bookshop/Token.kt` | Prints a development token (`./gradlew -q token`) |
 | `src/main/kotlin/com/example/bookshop/Client.kt` | The client app |
-| `src/test/kotlin/com/example/bookshop/` | Tests over HTTP against a server on a free port |
+| `src/test/kotlin/com/example/bookshop/` | Tests over HTTP against a server on a free port; `BookshopUnitTest.kt` has unit tests with `rayfold-test`, with no network |
 
 ## Prerequisites
 

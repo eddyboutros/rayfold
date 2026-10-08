@@ -113,9 +113,11 @@ describe("rayfold check --resolvers", { timeout: 60_000 }, () => {
     writeFileSync(join(work, "old.rayfold"), ["entity Book { id: ID title: String reviews(page: PageArgs = { first: 10 }): Page<Review> }", "entity Review { id: ID rating: Int }", "query book(id: ID): Book?", "query books: [Book]", ""].join("\n"));
     const resolvers = module("covered-again.mjs", "export const resolvers = { Query: { book: () => null }, Book: { reviews: (books) => books.map(() => null) } };\n");
     const both = await rayfold(["check", "schema.rayfold", "--resolvers", resolvers, "--against", "old.rayfold", "--strict"]);
-    expect(both.status).toBe(1);
-    expect(both.stdout).toContain(COVERED);
-    expect(both.stdout).toContain("FAILED: breaking changes against old.rayfold");
+    expect(both).toEqual({
+      status: 1,
+      stdout: `${COVERED}BREAKING  books(): query books removed (deprecate with a sunset date first) [op-removed]\n\nFAILED: breaking changes against old.rayfold\n`,
+      stderr: "",
+    });
     // guard: against itself there is no change, so the same pair of checks passes
     const same = await rayfold(["check", "schema.rayfold", "--resolvers", resolvers, "--against", "schema.rayfold", "--strict"]);
     expect(same).toEqual({ status: 0, stdout: `${COVERED}\nOK: compatible with schema.rayfold (0 changes)\n`, stderr: "" });

@@ -1,0 +1,691 @@
+{
+  "name": "union positions",
+  "schema": "object Named @interface { id: ID name: String }\nentity Book implements Named { id: ID name: String pages: Int reviews(page: PageArgs = { first: 10 }): Page<Review> }\nentity Author implements Named { id: ID name: String reviews(page: PageArgs = { first: 10 }): Page<Review> @cost(base: 70, perItem: 0) }\nobject Photo { url: String }\nentity Review { id: ID rating: Int }\nunion Hit = Book | Author | Photo\nunion Pub = Book | Author\nquery search: [Hit]\nquery pubs: [Pub]\n",
+  "ir": {
+    "rayfold": "0.1",
+    "types": {
+      "ID": {
+        "kind": "scalar",
+        "name": "ID",
+        "annotations": [],
+        "builtin": true
+      },
+      "String": {
+        "kind": "scalar",
+        "name": "String",
+        "annotations": [],
+        "builtin": true
+      },
+      "Int": {
+        "kind": "scalar",
+        "name": "Int",
+        "annotations": [],
+        "builtin": true
+      },
+      "Long": {
+        "kind": "scalar",
+        "name": "Long",
+        "annotations": [],
+        "builtin": true
+      },
+      "Float": {
+        "kind": "scalar",
+        "name": "Float",
+        "annotations": [],
+        "builtin": true
+      },
+      "Boolean": {
+        "kind": "scalar",
+        "name": "Boolean",
+        "annotations": [],
+        "builtin": true
+      },
+      "Decimal": {
+        "kind": "scalar",
+        "name": "Decimal",
+        "annotations": [],
+        "builtin": true
+      },
+      "Instant": {
+        "kind": "scalar",
+        "name": "Instant",
+        "annotations": [],
+        "builtin": true
+      },
+      "Date": {
+        "kind": "scalar",
+        "name": "Date",
+        "annotations": [],
+        "builtin": true
+      },
+      "Duration": {
+        "kind": "scalar",
+        "name": "Duration",
+        "annotations": [],
+        "builtin": true
+      },
+      "Bytes": {
+        "kind": "scalar",
+        "name": "Bytes",
+        "annotations": [],
+        "builtin": true
+      },
+      "JSON": {
+        "kind": "scalar",
+        "name": "JSON",
+        "annotations": [],
+        "builtin": true
+      },
+      "Page": {
+        "kind": "object",
+        "name": "Page",
+        "builtin": true,
+        "typeParams": [
+          "T"
+        ],
+        "annotations": [],
+        "fields": [
+          {
+            "name": "items",
+            "type": {
+              "kind": "list",
+              "of": {
+                "kind": "named",
+                "name": "T",
+                "nullable": false
+              },
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "cursor",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "hasMore",
+            "type": {
+              "kind": "named",
+              "name": "Boolean",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "total",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ]
+      },
+      "PageArgs": {
+        "kind": "input",
+        "name": "PageArgs",
+        "builtin": true,
+        "annotations": [],
+        "fields": [
+          {
+            "name": "first",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "default": 20,
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "after",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "offset",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": true
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          }
+        ]
+      },
+      "Named": {
+        "kind": "object",
+        "name": "Named",
+        "annotations": [
+          {
+            "name": "interface",
+            "args": {}
+          }
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ],
+        "interface": true
+      },
+      "Book": {
+        "kind": "entity",
+        "name": "Book",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "pages",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 3
+          },
+          {
+            "name": "reviews",
+            "type": {
+              "kind": "named",
+              "name": "Page",
+              "nullable": false,
+              "args": [
+                {
+                  "kind": "named",
+                  "name": "Review",
+                  "nullable": false
+                }
+              ]
+            },
+            "args": [
+              {
+                "name": "page",
+                "type": {
+                  "kind": "named",
+                  "name": "PageArgs",
+                  "nullable": false
+                },
+                "annotations": [],
+                "default": {
+                  "first": 10
+                }
+              }
+            ],
+            "annotations": [],
+            "ordinal": 4
+          }
+        ],
+        "implements": [
+          "Named"
+        ]
+      },
+      "Author": {
+        "kind": "entity",
+        "name": "Author",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          },
+          {
+            "name": "reviews",
+            "type": {
+              "kind": "named",
+              "name": "Page",
+              "nullable": false,
+              "args": [
+                {
+                  "kind": "named",
+                  "name": "Review",
+                  "nullable": false
+                }
+              ]
+            },
+            "args": [
+              {
+                "name": "page",
+                "type": {
+                  "kind": "named",
+                  "name": "PageArgs",
+                  "nullable": false
+                },
+                "annotations": [],
+                "default": {
+                  "first": 10
+                }
+              }
+            ],
+            "annotations": [
+              {
+                "name": "cost",
+                "args": {
+                  "base": 70,
+                  "perItem": 0
+                }
+              }
+            ],
+            "ordinal": 3
+          }
+        ],
+        "implements": [
+          "Named"
+        ]
+      },
+      "Photo": {
+        "kind": "object",
+        "name": "Photo",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "url",
+            "type": {
+              "kind": "named",
+              "name": "String",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          }
+        ]
+      },
+      "Review": {
+        "kind": "entity",
+        "name": "Review",
+        "annotations": [],
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "kind": "named",
+              "name": "ID",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 1
+          },
+          {
+            "name": "rating",
+            "type": {
+              "kind": "named",
+              "name": "Int",
+              "nullable": false
+            },
+            "args": [],
+            "annotations": [],
+            "ordinal": 2
+          }
+        ],
+        "implements": []
+      },
+      "Hit": {
+        "kind": "union",
+        "name": "Hit",
+        "annotations": [],
+        "members": [
+          "Book",
+          "Author",
+          "Photo"
+        ]
+      },
+      "Pub": {
+        "kind": "union",
+        "name": "Pub",
+        "annotations": [],
+        "members": [
+          "Book",
+          "Author"
+        ]
+      }
+    },
+    "ops": {
+      "search": {
+        "kind": "query",
+        "name": "search",
+        "args": [],
+        "returns": {
+          "kind": "list",
+          "of": {
+            "kind": "named",
+            "name": "Hit",
+            "nullable": false
+          },
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      },
+      "pubs": {
+        "kind": "query",
+        "name": "pubs",
+        "args": [],
+        "returns": {
+          "kind": "list",
+          "of": {
+            "kind": "named",
+            "name": "Pub",
+            "nullable": false
+          },
+          "nullable": false
+        },
+        "throws": [],
+        "emits": [],
+        "annotations": []
+      }
+    },
+    "views": {}
+  },
+  "data": {
+    "Hit": [
+      {
+        "$type": "Book",
+        "id": "b1",
+        "name": "Dune",
+        "pages": 412
+      },
+      {
+        "$type": "Author",
+        "id": "a1",
+        "name": "Ann"
+      },
+      {
+        "$type": "Photo",
+        "url": "https://img.example/1.png"
+      }
+    ],
+    "Pub": [
+      {
+        "$type": "Book",
+        "id": "b1",
+        "name": "Dune",
+        "pages": 412
+      },
+      {
+        "$type": "Author",
+        "id": "a1",
+        "name": "Ann"
+      }
+    ],
+    "Review": [
+      {
+        "id": "r1",
+        "rating": 5,
+        "bookId": "b1",
+        "authorId": "a1"
+      }
+    ]
+  },
+  "resolvers": {
+    "Query": {
+      "search": {
+        "from": "Hit",
+        "mode": "list"
+      },
+      "pubs": {
+        "from": "Pub",
+        "mode": "list"
+      }
+    },
+    "fields": {
+      "Book": {
+        "reviews": {
+          "from": "Review",
+          "key": "id",
+          "match": "bookId",
+          "mode": "page"
+        }
+      },
+      "Author": {
+        "reviews": {
+          "from": "Review",
+          "key": "id",
+          "match": "authorId",
+          "mode": "page"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "...on an interface selects its fields on the union members that implement it",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "search",
+            "shape": "{ ...on Named { name } ...on Photo { url } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Book",
+              "name": "Dune"
+            },
+            {
+              "$type": "Author",
+              "name": "Ann"
+            },
+            {
+              "$type": "Photo",
+              "url": "https://img.example/1.png"
+            }
+          ],
+          "meta": {
+            "cost": 1
+          },
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "@defer at a union position delivers its part for each member",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "pubs",
+            "shape": "{ ...on Book { id } ...on Author { id } @defer { ...on Book { pages } ...on Author { name } } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Book",
+              "id": "b1"
+            },
+            {
+              "$type": "Author",
+              "id": "a1"
+            }
+          ],
+          "meta": {
+            "cost": 1
+          }
+        },
+        {
+          "id": 1,
+          "at": "0",
+          "data": {
+            "pages": 412
+          }
+        },
+        {
+          "id": 1,
+          "at": "1",
+          "data": {
+            "name": "Ann"
+          }
+        },
+        {
+          "id": 1,
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "compact keeps $type on a union member that is an object",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "search",
+            "compact": true
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Book",
+              "id": "b1",
+              "name": "Dune",
+              "pages": 412
+            },
+            {
+              "$type": "Author",
+              "id": "a1",
+              "name": "Ann"
+            },
+            {
+              "$type": "Photo",
+              "url": "https://img.example/1.png"
+            }
+          ],
+          "fin": true
+        }
+      ]
+    },
+    {
+      "name": "fields asked of a union are charged as the dearest member answers them",
+      "request": {
+        "ops": [
+          {
+            "id": 1,
+            "op": "pubs",
+            "shape": "{ reviews(page: { first: 50 }) { total } }"
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": 1,
+          "data": [
+            {
+              "$type": "Book",
+              "reviews": {
+                "total": 1
+              }
+            },
+            {
+              "$type": "Author",
+              "reviews": {
+                "total": 1
+              }
+            }
+          ],
+          "meta": {
+            "cost": 71
+          },
+          "fin": true
+        }
+      ]
+    }
+  ]
+}

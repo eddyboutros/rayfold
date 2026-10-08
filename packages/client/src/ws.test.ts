@@ -363,6 +363,37 @@ describe("a refused batch on a shared socket", () => {
     expect(await bounded(bad, "the refused batch")).toEqual({ error: "invalid_argument" });
   });
 
+  it("a refusal goes to the one batch left once the other answers it with a frame that does not end it", async () => {
+    const client = new RayfoldClient({ transport: scripted() });
+    const b = client.batch();
+    const live = b.query("book", { id: "b1" }, { live: true });
+    const run = b.run();
+    const bad = outcome(client.query("noSuchOp"));
+    const socket = ScriptedSocket.last!;
+    await socket.sent.atLeast(2, "both envelopes sent");
+    socket.answer({ error: { code: "invalid_argument", message: "Unknown op noSuchOp" }, fin: true });
+    socket.answer({ id: 1, data: { $type: "Book", id: "b1" } }); // the live batch is answered and stays open
+    expect(await bounded(bad, "the refused batch")).toEqual({ error: "invalid_argument" });
+    socket.answer({ id: 1, fin: true });
+    await bounded(run, "the live batch ended with its own fin");
+    expect(await live.promise).toEqual({ $type: "Book", id: "b1" });
+  });
+
+  it("a refusal goes to the one batch left once the other's reader leaves it; the refused batch asks no cancel of the server", async () => {
+    const transport = scripted();
+    const left = transport.send({ rayfold: "0.1", ops: [{ id: 1, op: "book", args: { id: "b1" }, live: true }] })[Symbol.asyncIterator]();
+    const refused = transport.send({ rayfold: "0.1", ops: [{ id: 1, op: "noSuchOp", args: {} }] })[Symbol.asyncIterator]();
+    const socket = ScriptedSocket.last!;
+    await socket.sent.atLeast(2, "both envelopes sent");
+    socket.answer({ error: { code: "invalid_argument", message: "Unknown op noSuchOp" }, fin: true });
+    await left.return!();
+    expect(await bounded(refused.next(), "the refusal")).toEqual({ value: { error: { code: "invalid_argument", message: "Unknown op noSuchOp" }, fin: true }, done: false });
+    expect(await refused.next()).toEqual({ value: undefined, done: true });
+    await refused.return!();
+    // the one left asks the server to stop its op; the refused one has no op on the server to stop
+    expect(socket.sent.items.slice(2)).toEqual([{ cancel: 1 }]);
+  });
+
   it("two refusals among two unanswered batches are one each; guard: a batch answered before them is not failed", async () => {
     const client = new RayfoldClient({ transport: scripted() });
     const b = client.batch();

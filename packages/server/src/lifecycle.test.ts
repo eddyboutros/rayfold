@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
 import { createServer, type Server } from "node:http";
+import type { Frame } from "./protocol.ts";
 import type { AddressInfo } from "node:net";
 import type { RayfoldContext } from "./context.ts";
 import { ok } from "./executor.ts";
@@ -268,6 +270,22 @@ describe("draining", () => {
     await shutdown(built.server, http, { timeoutMs: 5_000 });
     await live.atLeast(2, "the live query being ended before the socket closed");
     expect(live.items[1]).toEqual(unavailable);
+  });
+
+  it("a live query or stream that ended stops listening for the drain, so ended ops do not pile up on the server", async () => {
+    const built = build();
+    const listening = () => getEventListeners(built.server.draining, "abort").length;
+    const before = listening();
+    const ac = new AbortController();
+    const frames = new Signal<Frame>();
+    const ended = (async () => {
+      for await (const f of built.server.execute({ ops: [{ id: 1, ...liveBook }, { id: 2, op: "stockUpdates", args: { bookIds: ["b1"] } }] }, { signal: ac.signal })) frames.push(f);
+    })();
+    await frames.atLeast(1, "the live query answering");
+    expect(listening()).toBe(before + 2); // guard: while they run, each is listening
+    ac.abort();
+    await bounded(ended, "both ops ending on abort");
+    expect(listening()).toBe(before);
   });
 
   it("shutdown() drains, closes the port, and stops hearing the relay", async () => {
