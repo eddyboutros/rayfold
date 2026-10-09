@@ -48,8 +48,8 @@ and a field the schema does not have is `unknown` rather than an error. A call w
 result's default view, since that is what the server sends: `api.query("book", { id })` has the book's scalar fields
 and no `author`, so ask for `{ ... author { name } }` when you need it.
 
-::: info Next release
-Typing a call with no shape, and a field with no sub-shape, as the default view arrives in the next release. In 0.2.1
+::: info Since 0.2.2
+Typing a call with no shape, and a field with no sub-shape, as the default view came with 0.2.2. In 0.2.1
 both are typed as the whole type.
 :::
 

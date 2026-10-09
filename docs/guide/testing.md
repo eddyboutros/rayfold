@@ -28,17 +28,16 @@ headers, status codes, CORS) is a transport's business; test that once, over HTT
 | TypeScript, React, Angular | nothing: `@rayfold/client` has it | `createLocalTransport(server, viewer)`, and `collect` from `@rayfold/client/testing` |
 | Kotlin, Java, Spring Boot | `dev.rayfold:rayfold-test`, in test scope | `RayfoldTest`, a blocking caller per viewer, and `LocalTransport` for the Kotlin client |
 
-::: info Next release
+::: info Since 0.2.2
 `dev.rayfold:rayfold-test`, `@rayfold/client/testing`, the JVM server's clock and Angular's wait for a first answer
-are not in 0.2.1; they arrive in the next release. `createLocalTransport` and the TypeScript server's `now` are in
-0.2.1 already.
+came with 0.2.2. `createLocalTransport` and the TypeScript server's `now` were already in 0.2.1.
 :::
 
 ::: code-group
 
 ```kotlin [Gradle]
 dependencies {
-    testImplementation("dev.rayfold:rayfold-test:0.2.1")
+    testImplementation("dev.rayfold:rayfold-test:0.2.2")
 }
 ```
 
@@ -46,7 +45,7 @@ dependencies {
 <dependency>
   <groupId>dev.rayfold</groupId>
   <artifactId>rayfold-test</artifactId>
-  <version>0.2.1</version>
+  <version>0.2.2</version>
   <scope>test</scope>
 </dependency>
 ```

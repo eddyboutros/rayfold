@@ -51,8 +51,8 @@ The bindings read `?max-count=` and `{"first-name": ...}`, and the published Ope
 again (see [REST routes and OpenAPI](rest-bindings.md#names-your-clients-already-send)). A response has no wire names,
 so a renamed field of a result type is the one rename still listed on stderr.
 
-::: info Next release
-Part of this section arrives in the next release: request bodies bound with `body:`, parameters declared on the path
+::: info Since 0.2.2
+Part of this section came with 0.2.2: request bodies bound with `body:`, parameters declared on the path
 or through `$ref`, names such as `first-name` renamed with their wire names, and optional schemas read as `X?`. The
 0.2.1 importer binds no request body, skips those parameters, keeps parameter and property names as the document
 spells them, and reads an optional nested schema as `JSON`.

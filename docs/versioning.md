@@ -34,10 +34,10 @@ is frozen, so none of them changes what a request means.
 | `maxStreamItems` on the TypeScript server (the JVM always had one) | **0.2.0** | [Streams](./learn/streams.md) |
 | `closeTimeoutMs`, so a server still connecting to its relay can shut down | **0.2.0** | [CHANGELOG](https://github.com/eddyboutros/rayfold/blob/main/CHANGELOG.md) |
 | Published conformance vectors | **0.2.0** | [Conformance](https://github.com/eddyboutros/rayfold/tree/main/conformance) |
-| `rayfold-test` on the JVM and `@rayfold/client/testing` | next release | [Testing](./guide/testing.md) |
-| A clock for the JVM server (`now`, `.clock(...)`, a Spring `Clock` bean) | next release | [Testing](./guide/testing.md#time) |
-| `@http(name:)` wire names, and `rayfold import openapi` keeping them | next release | [REST routes](./guide/rest-bindings.md#names-your-clients-already-send) |
-| `rayfold lock` keeping ordinals by name, with `highestOrdinals` | next release | [Command line](./guide/cli.md#lock) |
+| `rayfold-test` on the JVM and `@rayfold/client/testing` | **0.2.2** | [Testing](./guide/testing.md) |
+| A clock for the JVM server (`now`, `.clock(...)`, a Spring `Clock` bean) | **0.2.2** | [Testing](./guide/testing.md#time) |
+| `@http(name:)` wire names, and `rayfold import openapi` keeping them | **0.2.2** | [REST routes](./guide/rest-bindings.md#names-your-clients-already-send) |
+| `rayfold lock` keeping ordinals by name, with `highestOrdinals` | **0.2.2** | [Command line](./guide/cli.md#lock) |
 
 [CHANGELOG.md](https://github.com/eddyboutros/rayfold/blob/main/CHANGELOG.md) has the rest, including the defects
 each version fixed.

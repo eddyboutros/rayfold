@@ -43,8 +43,8 @@ body only when the binding names `body`, one argument or `"*"` for all of them; 
 
 ### Names your clients already send
 
-::: info Next release
-`@http(name:)` is not in 0.2.1; it arrives in the next release.
+::: info Since 0.2.2
+`@http(name:)` came with 0.2.2.
 :::
 
 A route may have to accept a name the schema cannot hold, such as `?first-name=` or `{"zip-code": "02139"}`. Give the

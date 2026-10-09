@@ -134,8 +134,8 @@ holding another schema closes the socket with code `4409` before anything is dec
 [`unavailable`](/errors/unavailable), and every socket the transport opens after that speaks JSON. Load the manifest
 again and create a new transport to use RB.
 
-::: info Next release
-The WebSocket schema check arrives in the next release. A 0.2.1 transport names no schema when it connects, and a
+::: info Since 0.2.2
+The WebSocket schema check came with 0.2.2. A 0.2.1 transport names no schema when it connects, and a
 server checks nothing on a socket that names none.
 :::
 

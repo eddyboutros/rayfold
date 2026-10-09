@@ -11,13 +11,13 @@ repositories {
 
 // #region deps
 dependencies {
-    implementation("dev.rayfold:rayfold-core:0.2.1")
-    implementation("dev.rayfold:rayfold-client:0.2.1")
+    implementation("dev.rayfold:rayfold-core:0.2.2")
+    implementation("dev.rayfold:rayfold-client:0.2.2")
     // verifies the tokens your identity provider signs
     implementation("com.nimbusds:nimbus-jose-jwt:10.9.1")
 
     // calls the server from a unit test, with no network between them
-    testImplementation("dev.rayfold:rayfold-test:0.2.1")
+    testImplementation("dev.rayfold:rayfold-test:0.2.2")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

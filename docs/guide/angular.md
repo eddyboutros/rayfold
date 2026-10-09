@@ -106,8 +106,8 @@ many live queries — see [Live updates](../learn/live.md).
 
 ## Tests and server rendering
 
-::: info Next release
-This arrives in the next release; in 0.2.1 the application can count as stable before the first answer.
+::: info Since 0.2.2
+This came with 0.2.2; in 0.2.1 the application can count as stable before the first answer.
 :::
 
 A query and a live query keep the application unstable until their first answer has arrived, and a command while it

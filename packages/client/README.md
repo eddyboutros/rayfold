@@ -58,8 +58,7 @@ For React, use `@rayfold/react`.
 network. `collect` from `@rayfold/client/testing` waits for what a watch, a live query or a stream reports next,
 without sleeping:
 
-> **Next release.** `@rayfold/client/testing` is not in 0.2.1; it arrives in the next release. `createLocalTransport` is
-> in 0.2.1.
+> **Since 0.2.2.** `@rayfold/client/testing` came with 0.2.2; `createLocalTransport` was already in 0.2.1.
 
 ```ts
 import { RayfoldClient, createLocalTransport } from "@rayfold/client";

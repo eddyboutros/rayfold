@@ -5,7 +5,7 @@ packages and the Maven artifacts share one version number.
 
 Everything under a dated heading is published on npm and Maven Central.
 
-## Unreleased
+## 0.2.2 (2026-10-09)
 
 - **A live query over an interface type shows new members.** In both runtimes a live query whose result is an
   interface (`query people: [Named]`) watched only the interface's own name, so creating an entity that implements it

@@ -18,9 +18,9 @@ exec plugin that runs the server. `pom.xml`:
 
 <<< @/../examples/java/pom.xml{xml}
 
-::: info Next release
-`rayfold-test` and the server's `.clock(...)` arrive in the next release. On 0.2.1, leave out the `rayfold-test`
-dependency, and in `Bookshop.java` the `server(store, now)` overload with its `.clock(now)` line.
+::: info Since 0.2.2
+`rayfold-test` and the server's `.clock(...)` came with 0.2.2. On 0.2.1, leave out the `rayfold-test` dependency,
+and in `Bookshop.java` the `server(store, now)` overload with its `.clock(now)` line.
 :::
 
 ## 2. Describe the API

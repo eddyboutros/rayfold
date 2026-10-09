@@ -9,15 +9,14 @@
 | `dev.rayfold:rayfold-jdbc` | A SQL database behind resolvers, with read policies pushed into the query ([JDBC](jdbc.md)). |
 | `dev.rayfold:rayfold-test` | Unit tests for your server without a network: a blocking caller per viewer, and the client against the server in one process. Test scope. |
 
-::: info Next release
-`rayfold-test`, the server's `now` clock, and `live(..., onError)` reopening a dropped live query are not in 0.2.1;
-they arrive in the next release.
+::: info Since 0.2.2
+`rayfold-test`, the server's `now` clock, and `live(..., onError)` reopening a dropped live query came with 0.2.2.
 :::
 
 ```kotlin
 dependencies {
-    implementation("dev.rayfold:rayfold-core:0.2.1")    // the server
-    implementation("dev.rayfold:rayfold-client:0.2.1")  // the client
+    implementation("dev.rayfold:rayfold-core:0.2.2")    // the server
+    implementation("dev.rayfold:rayfold-client:0.2.2")  // the client
 }
 ```
 

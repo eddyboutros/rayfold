@@ -126,8 +126,8 @@ that book updates too, not only the live one. In React, only the components show
   right shape for it, not a live query.
 - Stop by calling the function `live` returned, by unmounting the component, or by aborting the request.
 
-::: info Next release
-`maxBuffered`, and the Kotlin client reopening a dropped live query (with `onError`), arrive in the next release.
+::: info Since 0.2.2
+`maxBuffered`, and the Kotlin client reopening a dropped live query (with `onError`), came with 0.2.2.
 :::
 
 ## Next

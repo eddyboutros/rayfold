@@ -18,8 +18,8 @@ step 5:
 
 <<< @/../examples/kotlin/build.gradle.kts{kotlin}
 
-::: info Next release
-`rayfold-test` arrives in the next release. On 0.2.1, leave out its `testImplementation` line.
+::: info Since 0.2.2
+`rayfold-test` came with 0.2.2. On 0.2.1, leave out its `testImplementation` line.
 :::
 
 ## 2. Describe the API

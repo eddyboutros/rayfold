@@ -8,9 +8,8 @@
 
 Both servers read `.rayfold` schema files directly. Java 21 or later.
 
-::: info Next release
-`rayfold-test`, `.clock(...)`, `ctx.now()` and the starter's use of a `Clock` bean are not in 0.2.1; they arrive in
-the next release.
+::: info Since 0.2.2
+`rayfold-test`, `.clock(...)`, `ctx.now()` and the starter's use of a `Clock` bean came with 0.2.2.
 :::
 
 ## Plain Java
@@ -19,7 +18,7 @@ the next release.
 <dependency>
   <groupId>dev.rayfold</groupId>
   <artifactId>rayfold-java</artifactId>
-  <version>0.2.1</version>
+  <version>0.2.2</version>
 </dependency>
 ```
 
@@ -66,7 +65,7 @@ HttpServer http = Rayfold.http(server)
 <dependency>
   <groupId>dev.rayfold</groupId>
   <artifactId>rayfold-spring-boot-starter</artifactId>
-  <version>0.2.1</version>
+  <version>0.2.2</version>
 </dependency>
 ```
 

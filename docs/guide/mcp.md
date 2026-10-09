@@ -48,8 +48,8 @@ a browser could drive a local or intranet server. Configure `allowedOrigins` as 
 over `maxBody` (`maxBodyBytes` on the JVM, 1 MiB by default) is refused with `413`, and a notification gets `202` with
 no body.
 
-::: info Next release
-`maxBody` on the Node handler arrives in the next release; in 0.2.1 it reads a body whole, however large.
+::: info Since 0.2.2
+`maxBody` on the Node handler came with 0.2.2; in 0.2.1 it reads a body whole, however large.
 :::
 
 ## What an agent sees

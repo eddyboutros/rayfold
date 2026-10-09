@@ -23,8 +23,8 @@ npx rayfold check schema.rayfold
 | `lsp` | Runs the language server for `.rayfold` over stdin and stdout: errors as you type, completion, hover, go to definition and an outline, for any editor that speaks LSP. |
 | `dev <dir> [--port 4400]` | Runs an example from a Rayfold repository checkout (a folder whose `src/index.ts` exports `createBookstore()`) with the explorer, WebSocket and MCP. |
 
-> **Next release.** `lock` keeping ordinals by name, `check --against` a lock comparing them by name, and the
-> `import openapi` wire names and `X?` for optional schemas are not in 0.2.1; they arrive in the next release.
+> **Since 0.2.2.** `lock` keeping ordinals by name, `check --against` a lock comparing them by name, and the
+> `import openapi` wire names and `X?` for optional schemas came with 0.2.2.
 
 In CI, `rayfold check schema.rayfold --against rayfold.lock.json` exits non-zero on a breaking change.
 

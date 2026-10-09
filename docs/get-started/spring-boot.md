@@ -17,8 +17,8 @@ OAuth2 resource server for the tokens in step 4, and `rayfold-test` for the unit
 
 <<< @/../examples/spring-boot/pom.xml{xml}
 
-::: info Next release
-`rayfold-test` arrives in the next release. On 0.2.1, leave out its dependency.
+::: info Since 0.2.2
+`rayfold-test` came with 0.2.2. On 0.2.1, leave out its dependency.
 :::
 
 ## 2. Describe the API

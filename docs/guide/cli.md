@@ -49,9 +49,9 @@ Between two `.rayfold` files there is no record of what was assigned, so both nu
 is a warning (`ordinal-shifted`, fatal under `--strict`), and a changed `@ordinal(n)` is still breaking. Lock the schema
 to make a mid-type insertion pass cleanly.
 
-::: info Next release
-Comparing ordinals by name, and `lock` keeping them by name with `highestOrdinals`, arrive in the next release. In
-0.2.1 both number every type's fields by position.
+::: info Since 0.2.2
+Comparing ordinals by name, and `lock` keeping them by name with `highestOrdinals`, came with 0.2.2. In 0.2.1 both
+number every type's fields by position.
 :::
 
 `--resolvers` loads a module and reports fields the schema declares that nothing resolves, and resolvers with no
