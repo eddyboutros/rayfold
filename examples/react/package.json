@@ -18,9 +18,9 @@
   },
   "devDependencies": {
     "@rayfold/server": "*",
-    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-react": "^6.1.2",
     "jose": "^6.2.12",
     "tsx": "^4.23.15",
-    "vite": "^8.3.1"
+    "vite": "^8.3.3"
   }
 }
