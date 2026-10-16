@@ -43,14 +43,14 @@
     "smoke:maven": "node scripts/smoke-maven.mjs"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite": "^0.5.9",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "^2.12.0",
     "@opentelemetry/core": "^2.12.0",
     "@opentelemetry/sdk-trace-base": "^2.12.0",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -62,7 +62,7 @@
     "react-dom": "^19.3.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.4"
   },
   "dependencies": {
     "graphql": "^17.0.2"
