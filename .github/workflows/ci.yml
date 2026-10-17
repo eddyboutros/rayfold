@@ -184,7 +184,7 @@ jobs:
       # and leans on the OSV scanner below when npm is down
       - name: No known vulnerability in what the published packages depend on
         run: node scripts/audit.mjs
-      - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+      - uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           scan-args: --lockfile=package-lock.json
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
