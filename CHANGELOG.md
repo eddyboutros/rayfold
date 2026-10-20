@@ -5,7 +5,7 @@ packages and the Maven artifacts share one version number.
 
 Everything under a dated heading is published on npm and Maven Central.
 
-## Unreleased
+## 0.2.3 (2026-10-20)
 
 - **A reserved sub-path is never an operation, in both runtimes.** `GET /rayfold/ws`, `/uploads` (on a server with no
   upload route) and `/explorer` (in TypeScript, where the explorer is mounted on its own) were read as calls to an
@@ -68,6 +68,15 @@ Everything under a dated heading is published on npm and Maven Central.
   rewrites every place a tracked Markdown file names the version to install (`scripts/markdown-pins.mjs`), and
   `docs/.vitepress/docs-facts.test.ts`, part of `npm test`, fails on a broken link or anchor, a stale version, or a
   package or folder missing from the README's tables.
+
+- **The site reads as written by people.** Every page and the specification lost their em dashes, filler and stacked
+  clauses, with no fact changed, and the docs test fails on an em dash or a stock phrase in a page's prose. Four
+  sentences that said more than the code does were corrected along the way: the package counts on the comparison
+  page, what a view-spreading shape's type promises, what the 0.2.2 explorer shows, and what a GraphQL mutation can
+  read beside its result.
+
+- **The home page's section headings keep their `#` beside them.** It sat 24 px below each heading. The site's
+  browser crawl now checks that every heading's `#` is on the heading's own line, on every page.
 
 ## 0.2.2 (2026-10-09)
 

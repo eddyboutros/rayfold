@@ -15,8 +15,8 @@
 
 ```kotlin
 dependencies {
-    implementation("dev.rayfold:rayfold-core:0.2.2")    // the server
-    implementation("dev.rayfold:rayfold-client:0.2.2")  // the client
+    implementation("dev.rayfold:rayfold-core:0.2.3")    // the server
+    implementation("dev.rayfold:rayfold-client:0.2.3")  // the client
 }
 ```
 

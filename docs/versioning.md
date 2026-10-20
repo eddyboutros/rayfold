@@ -9,12 +9,13 @@ description: Which Rayfold version is published, which features each one added, 
 
 | Version | Date | |
 |---|---|---|
-| **0.2.2** | 2026-10-09 | The current release. `npm install @rayfold/server` gives you this, and `dev.rayfold:*:0.2.2` on Maven Central. Unit testing without a network in every supported language (`rayfold-test`, `@rayfold/client/testing`), a clock for the JVM server, REST wire names, and many fixes found by a test-depth audit of both runtimes. |
+| **0.2.3** | 2026-10-20 | The current release. `npm install @rayfold/server` gives you this, and `dev.rayfold:*:0.2.3` on Maven Central. The explorer as a working tool (stop, status, result views, completion, a shape builder, tabs and history), and a reserved path that a server does not serve answering `404`. |
+| **0.2.2** | 2026-10-09 | Unit testing without a network in every supported language (`rayfold-test`, `@rayfold/client/testing`), a clock for the JVM server, REST wire names, and many fixes found by a test-depth audit of both runtimes. |
 | **0.2.1** | 2026-09-23 | A live query's re-runs load their fields again. |
 | **0.2.0** | 2026-09-19 | Tooling: `@rayfold/angular`, server identity and `/stats`, counters, published conformance vectors. |
 | **0.1.0** | 2026-09-15 | The first release. |
 
-Before 1.0 only the latest minor version gets fixes, so a new project starts on 0.2.2. The table below says which
+Before 1.0 only the latest minor version gets fixes, so a new project starts on 0.2.3. The table below says which
 feature arrived in which version, for anyone still on 0.1.0.
 
 ## What each version added
@@ -47,6 +48,7 @@ Core 0.1 is frozen, so none of them changes what a request means.
 | `maxBuffered` on the TypeScript server, and the Kotlin client reopening a dropped live query (`onError`) | **0.2.2** | [Live updates](./learn/live.md#connections) |
 | `maxBody` on the Node MCP handler | **0.2.2** | [MCP](./guide/mcp.md#mount-it) |
 | The offline queue draining at startup (TypeScript) and behind a new command (both clients) | **0.2.2** | [Offline](./guide/offline.md#typescript-and-react) |
+| The explorer's Stop, status line, Result and Tree views, completion, shape builder, tabs, history and headers | **0.2.3** | [Explorer](./guide/explorer.md) |
 
 [CHANGELOG.md](https://github.com/eddyboutros/rayfold/blob/main/CHANGELOG.md) has the rest, including the defects
 each version fixed.

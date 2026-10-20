@@ -1,6 +1,6 @@
 # Roadmap
 
-Rayfold 0.2.2 is out. This page says what comes next, and just as plainly what does not. It changes as people use
+Rayfold 0.2.3 is out. This page says what comes next, and just as plainly what does not. It changes as people use
 Rayfold: if something here would unblock you, or something you need is missing, open an
 [issue](https://github.com/eddyboutros/rayfold/issues) and say what you are building.
 

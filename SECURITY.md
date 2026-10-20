@@ -8,7 +8,7 @@ Security tab, "Report a vulnerability").
 
 Include what you can of:
 
-- the package or module and version (`@rayfold/server@0.2.2`, `dev.rayfold:rayfold-core:0.2.2`, ...);
+- the package or module and version (`@rayfold/server@0.2.3`, `dev.rayfold:rayfold-core:0.2.3`, ...);
 - the runtime (TypeScript or Kotlin) and transport (HTTP, WebSocket, MCP, REST bindings);
 - a request or schema that reproduces it, and what it lets an attacker do.
 

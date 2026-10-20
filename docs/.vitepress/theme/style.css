@@ -88,6 +88,10 @@
   font-size: 28px;
   letter-spacing: -0.01em;
 }
+/* VitePress drops the # by the padding-top removed above */
+.home-section h2 .header-anchor {
+  top: 0;
+}
 .home-trio {
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.25fr);

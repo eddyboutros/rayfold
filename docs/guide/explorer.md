@@ -30,10 +30,10 @@ From there:
 | **Reading** | Every response shows its HTTP status, size and time. **Frames** shows them as they arrive, each with its cost; **Result** shows what they add up to, patches applied the way a client cache applies them ([spec 13](../../spec/13-patches.md)). A body that is not Rayfold frames, such as a proxy's error page, shows as text under its status. |
 | **Keeping** | Requests live in tabs, and the last fifty sends in a history; both come back when the page is opened again. The token and headers are kept only when you tick the box that says so. Where the browser refuses storage, the page works the same and keeps nothing. |
 
-::: info Next release
+::: info Since 0.2.3
 0.2.2 lists the operations, fills in a request, runs a dry run, and shows the frames as they arrive with their cost.
-The rest of the table comes with the next release. In 0.2.2 a live query stops only when you reload the page, the
-request is a plain text box, and a response shows how many frames came and how long they took, with no status or size.
+The rest of the table arrived in 0.2.3. In 0.2.2 a live query stops only when you reload the page, the request is a
+plain text box, and a response shows how many frames came and how long they took, with no status or size.
 :::
 
 The operations come from the endpoint's manifest, so a server with `manifest: "off"` has nothing to list, and the page

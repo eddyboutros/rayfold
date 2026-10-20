@@ -38,7 +38,7 @@ came with 0.2.2. `createLocalTransport` and the TypeScript server's `now` were a
 
 ```kotlin [Gradle]
 dependencies {
-    testImplementation("dev.rayfold:rayfold-test:0.2.2")
+    testImplementation("dev.rayfold:rayfold-test:0.2.3")
 }
 ```
 
@@ -46,7 +46,7 @@ dependencies {
 <dependency>
   <groupId>dev.rayfold</groupId>
   <artifactId>rayfold-test</artifactId>
-  <version>0.2.2</version>
+  <version>0.2.3</version>
   <scope>test</scope>
 </dependency>
 ```

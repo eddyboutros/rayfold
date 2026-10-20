@@ -35,10 +35,10 @@ From there:
 | **Reading** | Every response shows its HTTP status, size and time. **Frames** shows them as they arrive, each with its cost; **Result** shows what they add up to, patches applied the way a client cache applies them ([spec 13](https://github.com/eddyboutros/rayfold/blob/main/spec/13-patches.md)). A body that is not Rayfold frames, such as a proxy's error page, shows as text under its status. |
 | **Keeping** | Requests live in tabs, and the last fifty sends in a history; both come back when the page is opened again. The token and headers are kept only when you tick the box that says so. Where the browser refuses storage, the page works the same and keeps nothing. |
 
-> **Next release.** The table above comes with the next release, except the dry run, the bearer token and the frames
-> as they arrive with their cost and time. In 0.2.2 the page lists the operations and fills in a request for the one
-> you pick, but the request is a plain text box, a live query cannot be stopped except by reloading the page, and
-> nothing is kept between visits.
+> **Since 0.2.3.** The table above arrived in 0.2.3, except the dry run, the bearer token and the frames as they
+> arrive with their cost and time. In 0.2.2 the page lists the operations and fills in a request for the one you pick,
+> but the request is a plain text box, a live query cannot be stopped except by reloading the page, and nothing is
+> kept between visits.
 
 It is one self-contained document: no fonts, scripts or styles from anywhere else, so it works offline and with no
 network beyond your own server. Its script and styles are inline, so where a `Content-Security-Policy` applies, its

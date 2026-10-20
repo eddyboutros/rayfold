@@ -76,7 +76,20 @@ test.describe("every page of the site", () => {
           h1: document.querySelectorAll("h1").length,
           title: document.title,
           noAlt: [...document.querySelectorAll("img")].filter((i) => !i.hasAttribute("alt")).map((i) => i.getAttribute("src")),
+          // a heading's # sits on its first line, wherever a page restyles the heading's padding
+          adrift: [...document.querySelectorAll(".header-anchor")].flatMap((a) => {
+            const text = [...(a.parentElement?.childNodes ?? [])].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim());
+            if (!text) return [];
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            const line = range.getClientRects()[0];
+            const at = a.getBoundingClientRect();
+            if (!line || at.height === 0) return [];
+            const off = (at.top + at.bottom) / 2 - (line.top + line.bottom) / 2;
+            return Math.abs(off) > 4 ? [`${text.textContent?.trim()} (${Math.round(off)}px)`] : [];
+          }),
         }));
+        for (const heading of facts.adrift) problems.push(`${route}: the # of "${heading}" is off its heading`);
         if (!STANDALONE.has(route)) {
           if (facts.overflow > 0) problems.push(`${route}: the page scrolls sideways by ${facts.overflow}px`);
           if (facts.h1 !== 1) problems.push(`${route}: ${facts.h1} h1 elements`);

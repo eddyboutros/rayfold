@@ -18,7 +18,7 @@ Both servers read `.rayfold` schema files directly. Java 21 or later.
 <dependency>
   <groupId>dev.rayfold</groupId>
   <artifactId>rayfold-java</artifactId>
-  <version>0.2.2</version>
+  <version>0.2.3</version>
 </dependency>
 ```
 
@@ -66,7 +66,7 @@ HttpServer http = Rayfold.http(server)
 <dependency>
   <groupId>dev.rayfold</groupId>
   <artifactId>rayfold-spring-boot-starter</artifactId>
-  <version>0.2.2</version>
+  <version>0.2.3</version>
 </dependency>
 ```
 
