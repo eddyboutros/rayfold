@@ -9,6 +9,7 @@ import { createMcpHandler } from "./mcp.ts";
 import { createBindingHandler } from "./bindings.ts";
 import { originProblem } from "./guard.ts";
 import { createRayfoldServer, type RayfoldServer } from "./server.ts";
+import { MemoryCounters } from "./counters.ts";
 import { Signal, bounded } from "../../../e2e/wait.ts";
 
 type Bookstore = ReturnType<typeof createBookstore>;
@@ -586,6 +587,34 @@ describe("a Host header that is no valid authority", () => {
     const res = await health("localhost:8080");
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ status: "ok" });
+  });
+});
+
+describe("what the Node handler refuses before the fetch handler sees the request", () => {
+  async function counted(opts: HttpOptions = {}) {
+    const counters = new MemoryCounters();
+    const server = createRayfoldServer({ schema: `entity A { id: ID } query a: A`, resolvers: { Query: { a: () => ({ id: "a" }) } }, counters });
+    return { counters, url: await serve(server, opts) };
+  }
+
+  it("is counted as the fetch handler counts its own: a Host that is not this server's, one that is no authority, a body over the limit", async () => {
+    const { counters, url } = await counted({ maxBody: 64 });
+    expect((await exchange(url, `GET /rayfold/health HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n`)).status).toBe(403);
+    expect((await exchange(url, `GET /rayfold/health HTTP/1.1\r\nHost: localhost:99999\r\nConnection: close\r\n\r\n`)).status).toBe(400);
+    const big = JSON.stringify({ ops: [{ id: 1, op: "a", args: { pad: "x".repeat(200) } }] });
+    const head = `POST /rayfold HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/rayfold+json\r\nContent-Length: ${big.length}\r\nConnection: close\r\n\r\n`;
+    expect((await exchange(url, head + big)).status).toBe(413);
+    expect(counters.snapshot()).toEqual([
+      { name: "rayfold.refused", labels: { reason: "host" }, count: 2 },
+      { name: "rayfold.requests", labels: { method: "GET" }, count: 2 },
+      { name: "rayfold.requests", labels: { method: "POST" }, count: 1 },
+    ]);
+  });
+
+  it("guard: a request that gets through is counted once, by the fetch handler, and not again here", async () => {
+    const { counters, url } = await counted();
+    expect((await exchange(url, `GET /rayfold/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`)).status).toBe(200);
+    expect(counters.snapshot()).toEqual([{ name: "rayfold.requests", labels: { method: "GET" }, count: 1 }]);
   });
 });
 

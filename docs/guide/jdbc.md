@@ -1,10 +1,10 @@
 # JDBC
 
-`dev.rayfold:rayfold-jdbc` puts a SQL database behind Kotlin resolvers the way the protocol wants: batch loads, one
-query per nesting level, keyset pages, and read policies pushed into the `WHERE` clause. It is the JVM counterpart of
-[`@rayfold/postgres`](postgres.md) and needs nothing but JDBC. One thing has not crossed over yet: the Node store's
-`screen()`, which compiles a whole nested screen into a single statement. Here a screen is one query per level, which
-is still one round trip per level rather than per row.
+`dev.rayfold:rayfold-jdbc` puts a SQL database behind Kotlin resolvers: batch loads, one query per nesting level,
+keyset pages, and read policies pushed into the `WHERE` clause. It is the JVM counterpart of
+[`@rayfold/postgres`](postgres.md) and needs nothing but JDBC. The Node store's `screen()`, which compiles a whole
+nested screen into a single statement, has no JVM equivalent yet. Here a screen takes one query per level, so one round
+trip per level, not per row.
 
 ```kotlin
 val ir = SchemaText.load(schemaText).ir
@@ -36,7 +36,7 @@ val resolvers = Resolvers(
 val server = RayfoldServer(ir, resolvers)
 ```
 
-The store asks for a connection per query and closes it again, which is what a pool expects: hand it
+The store takes a connection per query and closes it afterwards, as a pool expects. Hand it
 `dataSource::getConnection`, not one long-lived connection. A `date` column comes back as `YYYY-MM-DD` text and a
 timestamp as RFC 3339 in UTC, whatever the JVM's time zone.
 
@@ -53,9 +53,9 @@ idempotency.migrate() // the table and its index; run schema() and index() yours
 val server = RayfoldServer(ir, resolvers, idempotency = idempotency)
 ```
 
-Taking a key is one insert, so of two processes starting the same retry at the same moment exactly one runs the command
-and the other waits and then replays its answer. The process that owns a key renews a lease while the command runs; if
-it stops, the lease runs out and the next retry takes the key over. `BatchOptions(idempotencyLeaseMs = ...)` sets the
+Taking a key is one insert. When two processes start the same retry at the same moment, exactly one runs the command;
+the other waits, then replays its answer. The process that owns a key renews a lease while the command runs. If that
+process stops, the lease runs out and the next retry takes the key over. `BatchOptions(idempotencyLeaseMs = ...)` sets the
 lease (default 30 seconds), and `JdbcIdempotencyOptions` the table name, how long a record answers retries (24 hours)
 and how many are kept (100,000).
 
@@ -64,9 +64,9 @@ hints. Under Spring Boot, declare the store as a bean and the starter wires it i
 
 ## Live updates across servers
 
-A command's patches reach the live queries and streams open on the process that ran it, and no other: each process
-hears only itself. `PgRelay` carries changes and events between processes over Postgres `LISTEN`/`NOTIFY`, in the
-same format the TypeScript server uses, so a mixed fleet shares one channel.
+A command's patches reach only the live queries and streams open on the process that ran it. `PgRelay` carries
+changes and events between processes over Postgres `LISTEN`/`NOTIFY`. It uses the same format as the TypeScript
+server, so a mixed fleet shares one channel.
 
 ```kotlin
 val listener = dataSource.connection // LISTEN belongs to one connection: keep it out of the pool
@@ -77,16 +77,16 @@ val server = RayfoldServer(ir, resolvers, idempotency = idempotency, relay = rel
 runBlocking { server.ready() } // suspends until it is listening to the other servers
 ```
 
-`PgNotifications` needs the Postgres driver on the classpath, and only then: `rayfold-jdbc` does not depend on it. The
-driver serialises everything on one connection, so a `notify` sent on the listening connection waits for the current
-poll to end; give `PgNotifications` a second connection for sending to avoid that. A message too large for one
-notification goes through the `rayfold_relay` table. A server never hears its own message back; a refused message is
-reported through `onRelayError` and `relayFailure`, and the command that made the change still succeeds.
+Only `PgNotifications` needs the Postgres driver on the classpath; `rayfold-jdbc` does not depend on it. The driver
+serialises everything on one connection, so a `notify` sent on the listening connection waits for the current poll to
+end. To avoid that, give `PgNotifications` a second connection for sending. A message too large for one notification
+goes through the `rayfold_relay` table. A server never hears its own message back. A refused message is reported
+through `onRelayError` and `relayFailure`, and the command that made the change still succeeds.
 
 ## Uploads a fleet shares
 
-An upload kept in memory belongs to the process that received it, which is wrong as soon as the command naming it may
-run somewhere else. `JdbcUploadStore` keeps the bytes in the database, in the same table and columns
+An upload kept in memory belongs to the process that received it. A command naming it that runs on another process
+finds nothing. `JdbcUploadStore` keeps the bytes in the database, in the same table and columns
 [`PgUploadStore`](uploads.md) creates, so a fleet of both runtimes shares one:
 
 ```kotlin

@@ -6,7 +6,7 @@ same words.
 
 ```sh
 npm install --save-dev @rayfold/lsp @rayfold/cli
-rayfold lsp        # speaks LSP over stdin and stdout
+npx rayfold lsp    # speaks LSP over stdin and stdout
 ```
 
 What it answers:

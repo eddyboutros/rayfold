@@ -5,6 +5,70 @@ packages and the Maven artifacts share one version number.
 
 Everything under a dated heading is published on npm and Maven Central.
 
+## Unreleased
+
+- **A reserved sub-path is never an operation, in both runtimes.** `GET /rayfold/ws`, `/uploads` (on a server with no
+  upload route) and `/explorer` (in TypeScript, where the explorer is mounted on its own) were read as calls to an
+  operation of that name. They are now a missing route, `404 not_found`, as spec 04 §4 has always required. An
+  operation with one of those names is still reachable by `POST`. Spec 04 §4 now lists `stats`, which both runtimes
+  already reserved, and new `http/` vectors hold both runtimes to the list.
+
+- **A `QUERY` refused for its media type is told what a `QUERY` may carry.** The `415` names the accepted types in
+  `Accept-Query` for a `QUERY` and in `Accept-Post` for a `POST`, in both runtimes; before, it was always
+  `Accept-Post`.
+
+- **The Node transport counts the requests it refuses itself.** A Host that is not the server's, or is no valid
+  authority, a body over the limit, and a request target that is no path are answered by the Node adapter before the
+  fetch handler that counts requests, so `rayfold.requests` and `rayfold.refused{reason:"host"}` missed them. They are
+  counted now, as the fetch handler and the JVM count theirs.
+
+- **The explorer stops a live query.** A live query sent from the explorer kept its Send button disabled until the
+  page was reloaded, so nothing else could be sent. The button now reads Stop while a request runs, and stopping ends
+  the op on the server.
+
+- **The explorer shows the HTTP status of every response**, with its size and time, and shows a body that is not
+  Rayfold frames (a proxy's error page, a plain-text refusal) as text under that status instead of failing to parse it.
+
+- **The explorer grew into a working tool, still one self-contained page in both runtimes.** A Result view applies the
+  frames as a client cache would (spec 13), checked against the published `patch/` vectors; completion offers op
+  names, arguments and the fields a shape can select at the cursor; the manifest's checks name an unknown op, argument
+  or field with the nearest real one before anything is sent; a Shape panel builds a shape by ticking fields and
+  union members, keeping aliases, arguments and modifiers as written; requests live in tabs, the last fifty sends in a
+  history, and both survive a reload; a Headers pane sends headers beside the token, which the browser keeps only when
+  asked to; and a request copies as a `curl` command.
+
+- **The explorer's README no longer claims it works under a strict `Content-Security-Policy`.** Its script and styles
+  have always been inline, so its path needs `'unsafe-inline'` for `script-src` and `style-src`; the README now says so.
+
+- **rayfold.dev says what Rayfold is better at, and how to start, on its first screen.** Beside the pitch, the home
+  page shows six rows of the end-to-end comparison (round trips, refetches, duplicate orders, author lookups, live
+  stock, an AI agent), read at build time from `e2e/results.json`, so the page can only show what was measured; under
+  the buttons, three steps to a running server. A link to the site now shows a card with the pitch (`og:` and Twitter
+  tags), every page names its canonical address, and the site has a sitemap. The wordmark's font is served from the
+  site rather than fetched from another host. The error pages and the specification's change process are in their
+  sidebars.
+
+- **The playground works with a keyboard and a screen reader.** The focused editor shows its focus, the viewer
+  switch moves with the arrow keys as a radio group does, a screen reader hears the newest frame once rather than the
+  whole list, "Link copied" is announced, and Run names Cmd on a Mac.
+
+- **The docs match the code again**, file by file across the repository: the version tables, the security policy, the
+  README's package and module lists, and errata in the specification, the guides, the package READMEs and the
+  conformance pack, each checked against both runtimes.
+
+- **The comparison page is less than half its size** (1.6 MB from 4 MB): a recorded body longer than 80 lines shows
+  its first 80, and the recording in `e2e/*.json` keeps the rest.
+
+- **For contributors: the documentation site is tested in real browsers.** `e2e/browser/site.spec.ts` builds the site
+  as it is deployed and opens every page at a desktop width in the light theme and at a phone width in the dark one:
+  no errors, no failed requests, nothing wider than the screen, one title, and no link to a page that is not there. It
+  also checks the home page's first screen and drives the playground in Chromium, Firefox and WebKit.
+
+- **For contributors: a release keeps the Markdown's version pins in step.** `node scripts/set-version.mjs` now also
+  rewrites every place a tracked Markdown file names the version to install (`scripts/markdown-pins.mjs`), and
+  `docs/.vitepress/docs-facts.test.ts`, part of `npm test`, fails on a broken link or anchor, a stale version, or a
+  package or folder missing from the README's tables.
+
 ## 0.2.2 (2026-10-09)
 
 - **A live query over an interface type shows new members.** In both runtimes a live query whose result is an

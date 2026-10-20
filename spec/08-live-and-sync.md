@@ -2,8 +2,8 @@
 
 The query is the subscription. A client asks for a query with `"live": true`; the server answers the normal
 `data` frame **without** `fin`, then keeps the operation open and pushes updates until it is cancelled.
-No polling, no separate subscription type, no client-side invalidation logic: the same shape, the same
-policies, the same cache patches.
+There is no polling, no separate subscription type and no client-side invalidation logic. A live query
+uses the same shape, policies and cache patches as any other query.
 
 ## 1. Request
 
@@ -31,8 +31,8 @@ Every command's `patch` (spec 04 §2) is published on the server's **change bus*
 A live query records its **read set**: the entity keys present in its last result, plus the entity **types**
 reachable from its result type (so that a newly created entity can change list membership). A union reaches its
 members and an interface every entity that implements it, so a new member of either is a reachable type. Reachability is computed
-to a bounded depth — four levels in both reference runtimes — because the alternative on a richly connected schema is
-to treat every change as intersecting. A change intersects when it names the operation, one of the keys, or a key
+to a bounded depth (four levels in both reference runtimes): on a richly connected schema, an unbounded walk would
+treat every change as intersecting. A change intersects when it names the operation, one of the keys, or a key
 whose type is reachable within that bound. Intersection
 triggers a re-execution with the original args, shape, vars and viewer; the new result is diffed against
 the previous one (§2). Re-executions are coalesced: changes arriving during a run schedule exactly one more.
@@ -49,8 +49,7 @@ intersection test; they MUST NOT widen the frames' meaning.
 
 ## 3a. More than one server
 
-The change bus described above belongs to one server. Behind a load balancer that is not a performance detail but a
-correctness one: a command runs on the server the request happened to reach, and a live query or stream held by any
+The change bus described above belongs to one server. Behind a load balancer this is a correctness problem: a command runs on the server the request happened to reach, and a live query or stream held by any
 other server never learns of it. The client is told nothing, so the failure shows up as a screen that quietly stops
 updating.
 
@@ -83,24 +82,24 @@ stored result of the operation whose frame carried them, so a list that gained o
 moved rather than the whole page. Because every query result is normalized,
 a live query keeps *every* view of the affected entities coherent, not only its own.
 
-A subscription outlives the connection that carried it. When a live op ends with a retryable error — the connection
-dropped, or the server it was on drained for a deploy — a client SHOULD open it again after a short, growing wait
+A subscription outlives the connection that carried it. When a live op ends with a retryable error (the connection
+dropped, or the server it was on drained for a deploy), a client SHOULD open it again after a short, growing wait
 rather than surfacing it as a failure, and SHOULD tell the caller that it is doing so. Only an error that would recur
-— the query is invalid, the viewer may not read it — ends the subscription for good.
+(the query is invalid, the viewer may not read it) ends the subscription for good.
 
-**What that guarantees, exactly.** Reopening re-runs the query and delivers a fresh `data` frame, which the client
+**What reopening guarantees.** Reopening re-runs the query and delivers a fresh `data` frame, which the client
 takes as a replacement for the stored result. So the guarantee Rayfold offers today is:
 
-> Eventual re-establishment of query state by refetch — **not** exactly-once delivery of live updates.
+> Eventual re-establishment of query state by refetch, **not** exactly-once delivery of live updates.
 
-The difference is worth being plain about. A client that was disconnected across a change does not receive the patch
+A client that was disconnected across a change does not receive the patch
 it missed; it receives the current answer, which already reflects it. Nothing is silently lost, and a `patch` a client
 never saw is not a patch it has to reconcile. What a client cannot do is reconstruct the sequence of changes, or
 observe a change that happened and was undone while it was away.
 
-A **resume** — reconnecting with a cursor and receiving the patches since it — is a different guarantee needing
+A **resume** (reconnecting with a cursor and receiving the patches since it) is a different guarantee and needs
 different machinery: server-side retention, revisions, and a defined answer when the cursor is too old. It is not in
-0.1, and refetch being deterministic is the precondition for it rather than a step towards it.
+0.1. Deterministic refetch is a precondition for it, not a step towards it.
 
 ## 5. Optimistic commands, offline queue, sync sessions
 

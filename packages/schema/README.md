@@ -31,7 +31,8 @@ const changes = diffSchemas(v1.ir, v2.ir);
 console.log(isBreaking(changes));        // true: a field was removed without a sunset date
 ```
 
-`loadSchema` throws `RayfoldSchemaError` with every diagnostic when the schema is invalid.
+`loadSchema` throws `RayfoldSyntaxError` when the text does not parse and `RayfoldSchemaError` with every diagnostic
+when the schema is invalid; warnings come back in `warnings`.
 
 The language is specified in `spec/01-schema.md` and `spec/02-shapes.md` in the Rayfold repository.
 

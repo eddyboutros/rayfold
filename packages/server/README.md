@@ -62,7 +62,7 @@ What else is in the package:
 | `attachWebSocket(httpServer, server, options)` | Batches and live queries over one WebSocket. |
 | `createBindingHandler(server)` | REST routes from `@http(...)` annotations in the schema. Node only: it is written against `IncomingMessage`/`ServerResponse`, and the fetch handler does not serve these routes. |
 | `openApiFor(server.ir, options)` | An OpenAPI 3.2 document for those routes. |
-| `createMcpHandler(server, options)` | The schema as an MCP server: commands become tools, queries become resources. `schema` says what `rayfold://schema` serves — `"redacted"` (the default, the IR without policy expressions), `"full"`, or `"off"`. |
+| `createMcpHandler(server, options)` | The schema as an MCP server: every query and command becomes a tool (a command that allows `@simulate` gets a dry-run tool beside it), and a query that needs no arguments is also a resource. `schema` says what `rayfold://schema` serves — `"redacted"` (the default, the IR without policy expressions), `"full"`, or `"off"`. |
 | `MemoryIdempotencyStore` | Where command results are kept so a retry replays instead of running the command again. |
 | `MemoryUploadStore` | Where uploaded bytes are kept: passing `uploads: { store }` mounts `POST /rayfold/uploads`. |
 | `MemoryRelay` | Joins servers in one process: `join()` gives each its own end, so a command's changes and events reach live queries and streams on the others. |
@@ -77,8 +77,9 @@ Running more than one server: pass `idempotency` a store every instance shares, 
 long a server holds a key before another may take it over. Give each server a `relay`, such as `PgRelay` from the same
 package, and a live query or a stream on any server hears a command run on any other. `server.ready()` resolves once
 it does. For a rolling deploy, `server.drain({ timeoutMs })` turns readiness false and waits for the batches in
-flight, then `server.close()` stops it; `GET /rayfold/health` and `GET /rayfold/ready` report what `server.readiness()`
-says, the latter `503` until the server is ready.
+flight, then `server.close()` stops hearing the relay; `shutdown(server, httpServer)` does both and closes the
+connections between. `GET /rayfold/health` answers `200` while the process is up, and `GET /rayfold/ready` reports
+what `server.readiness()` says (plus any `readiness` checks you pass), with `503` until the server is ready.
 
 Security defaults: an allow-list of body content types (`application/rayfold+json`, `application/json` and
 `application/rayfold`, with `application/octet-stream` on the upload route only), an Origin check on state-changing

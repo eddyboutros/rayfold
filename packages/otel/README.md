@@ -5,7 +5,7 @@ span per batch, a child span per op, and a grandchild per loader call, so a trac
 level by level and where the time went.
 
 ```sh
-npm install @rayfold/otel @opentelemetry/api
+npm install @rayfold/otel @rayfold/server @opentelemetry/api
 ```
 
 ```ts

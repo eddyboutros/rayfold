@@ -68,11 +68,11 @@ function BuyButton({ id }: { id: string }) {
 }
 ```
 
-`buy(...)` returns a promise that rejects on failure, and the outcome also lands in the hook's state: `data` is the
-result of the latest run, so a run that fails clears it and sets `error` instead. Calling it
-without `await`, as above, is fine. Each call gets its own idempotency key, so a resend of that call, as the offline
-queue does, is answered from the first attempt instead of buying twice. A second click is a second call; disabling
-the button while it runs is what stops that.
+`buy(...)` returns a promise that rejects on failure. The outcome also lands in the hook's state: `data` is the
+result of the latest run, and a run that fails clears it and sets `error`. Calling it without `await`, as above, is
+fine. Each call gets its own idempotency key. When that call is sent again, as the offline queue does, the server
+answers from the first attempt and does not buy twice. A second click is a second call, so disable the button while
+it runs.
 
 ## Follow other people's changes with `useLive`
 
@@ -86,8 +86,8 @@ function StockBadge({ id }: { id: string }) {
 ```
 
 The server pushes every change to the result, whoever made it. The subscription ends when the component unmounts.
-Over HTTP the TypeScript server streams live queries on the request; to share one connection between many, give the
-client `createWebSocketTransport({ url: "wss://example.com/rayfold/ws" })`.
+Over HTTP, the TypeScript server streams a live query on the request that opened it. To share one connection between
+many, give the client `createWebSocketTransport({ url: "wss://example.com/rayfold/ws" })`.
 
 ## Server rendering
 

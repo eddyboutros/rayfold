@@ -9,19 +9,20 @@ description: Which Rayfold version is published, which features each one added, 
 
 | Version | Date | |
 |---|---|---|
-| **0.2.1** | 2026-09-23 | The current release. `npm install @rayfold/server` gives you this, and `dev.rayfold:*:0.2.1` on Maven Central. A live query's re-runs load their fields again. |
+| **0.2.2** | 2026-10-09 | The current release. `npm install @rayfold/server` gives you this, and `dev.rayfold:*:0.2.2` on Maven Central. Unit testing without a network in every supported language (`rayfold-test`, `@rayfold/client/testing`), a clock for the JVM server, REST wire names, and many fixes found by a test-depth audit of both runtimes. |
+| **0.2.1** | 2026-09-23 | A live query's re-runs load their fields again. |
 | **0.2.0** | 2026-09-19 | Tooling: `@rayfold/angular`, server identity and `/stats`, counters, published conformance vectors. |
 | **0.1.0** | 2026-09-15 | The first release. |
 
-Before 1.0 only the latest minor version gets fixes, so a new project starts on 0.2.1. The table below says which
+Before 1.0 only the latest minor version gets fixes, so a new project starts on 0.2.2. The table below says which
 feature arrived in which version, for anyone still on 0.1.0.
 
 ## What each version added
 
-Everything the protocol itself does — batches, shapes, loaders, commands with declared errors, patches, live queries,
-streams, policies, caching, idempotency, uploads, capability tokens, RB, MCP, `@http` routes and OpenAPI, relays,
-health and readiness, the CLI and the editor server — is 0.1.0. Later versions add tooling and fix defects; Core 0.1
-is frozen, so none of them changes what a request means.
+Everything the protocol itself does arrived in 0.1.0: batches, shapes, loaders, commands with declared errors,
+patches, live queries, streams, policies, caching, idempotency, uploads, capability tokens, RB, MCP, `@http` routes
+and OpenAPI, relays, health and readiness, the CLI and the editor server. Later versions add tooling and fix defects.
+Core 0.1 is frozen, so none of them changes what a request means.
 
 | Feature | Since | Where |
 |---|---|---|
@@ -37,7 +38,15 @@ is frozen, so none of them changes what a request means.
 | `rayfold-test` on the JVM and `@rayfold/client/testing` | **0.2.2** | [Testing](./guide/testing.md) |
 | A clock for the JVM server (`now`, `.clock(...)`, a Spring `Clock` bean) | **0.2.2** | [Testing](./guide/testing.md#time) |
 | `@http(name:)` wire names, and `rayfold import openapi` keeping them | **0.2.2** | [REST routes](./guide/rest-bindings.md#names-your-clients-already-send) |
-| `rayfold lock` keeping ordinals by name, with `highestOrdinals` | **0.2.2** | [Command line](./guide/cli.md#lock) |
+| `rayfold lock` keeping ordinals by name, with `highestOrdinals`, and `check --against` a lock comparing them by name | **0.2.2** | [Command line](./guide/cli.md#lock) |
+| `rayfold import openapi` binding request bodies, reading path and `$ref` parameters, and reading an optional schema as `X?` | **0.2.2** | [Coming from REST](./guide/from-rest.md#start-from-the-document-you-have) |
+| The builder's `.implements(...)` and a field's `.args(...)` | **0.2.2** | [`@rayfold/builder`](https://github.com/eddyboutros/rayfold/tree/main/packages/builder#readme) |
+| `typedClient` and `Select` typing a call or field with no shape as the default view | **0.2.2** | [TypeScript types](./guide/typescript.md#from-the-shape) |
+| Angular holding the application unstable until the first answer | **0.2.2** | [Angular](./guide/angular.md#tests-and-server-rendering) |
+| The WebSocket schema check, closing a socket on another schema with `4409` | **0.2.2** | [The binary format](./learn/binary.md#keep-the-schema-in-step) |
+| `maxBuffered` on the TypeScript server, and the Kotlin client reopening a dropped live query (`onError`) | **0.2.2** | [Live updates](./learn/live.md#connections) |
+| `maxBody` on the Node MCP handler | **0.2.2** | [MCP](./guide/mcp.md#mount-it) |
+| The offline queue draining at startup (TypeScript) and behind a new command (both clients) | **0.2.2** | [Offline](./guide/offline.md#typescript-and-react) |
 
 [CHANGELOG.md](https://github.com/eddyboutros/rayfold/blob/main/CHANGELOG.md) has the rest, including the defects
 each version fixed.

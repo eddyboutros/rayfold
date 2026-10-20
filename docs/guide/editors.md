@@ -1,8 +1,8 @@
 # Editors
 
-`.rayfold` is a language, so it gets what a language gets: errors as you type, completion, hover, go to definition and
-an outline. `@rayfold/lsp` is a language server that reads a schema with the same parser and validator the runtime
-uses, so what an editor underlines is what `rayfold check` reports, in the same words.
+`@rayfold/lsp` gives `.rayfold` files errors as you type, completion, hover, go to definition and an outline. It is a
+language server that reads a schema with the same parser and validator the runtime uses, so an editor underlines
+what `rayfold check` reports, in the same words.
 
 ```sh
 npm install --save-dev @rayfold/cli @rayfold/lsp

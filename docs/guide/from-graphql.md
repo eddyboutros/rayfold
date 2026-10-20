@@ -1,7 +1,7 @@
 # Coming from GraphQL
 
-Most of what you know carries over: a schema, client-chosen fields, nested selections, batch loaders. What changes is
-that the parts GraphQL leaves to libraries and conventions are part of the contract.
+Most of what you know carries over: a schema, client-chosen fields, nested selections, batch loaders. What changes:
+the parts GraphQL leaves to libraries and conventions are part of the schema and protocol.
 
 ## How the ideas map
 
@@ -29,14 +29,14 @@ npm install graphql       # the importer reads the SDL with it
 npx @rayfold/cli import graphql schema.graphql --out api.rayfold
 ```
 
-`Query` fields become queries, `Mutation` fields commands, `Subscription` fields streams, and the type system carries
-across almost whole. The change that touches every line is nullability, which is the other way round: `String!`
-becomes `String`, and `String` becomes `String?`. A type with a non-null `id` becomes an entity, its `id` an `ID`
-even where the SDL said `String!` or `Int!`. A type named like one Rayfold defines, such as `Page`, is renamed, and
-descriptions and `@deprecated` reasons come across.
+`Query` fields become queries, `Mutation` fields commands, `Subscription` fields streams, and almost all of the type
+system carries across. Nullability changes on every line, because the default is reversed: `String!` becomes
+`String`, and `String` becomes `String?`. A type with a non-null `id` becomes an entity, and its `id` an `ID`, even
+where the SDL said `String!` or `Int!`. A type named like one Rayfold defines, such as `Page`, is renamed.
+Descriptions and `@deprecated` reasons come across.
 
-A mutation says nothing about what it can fail with or what it emits, and a Relay connection is not a `Page`, so the
-importer leaves a note rather than inventing either. The notes go to stderr; the schema goes to stdout.
+A mutation says nothing about what it can fail with or what it emits, and a Relay connection is not a `Page`. The
+importer invents neither and leaves a note instead. The notes go to stderr; the schema goes to stdout.
 
 ## Going the other way
 
@@ -52,7 +52,7 @@ since GraphQL has no generics. Every `Query`, `Mutation` and `Subscription` fiel
 operation succeeds or fails on its own. A type with no fields, which GraphQL does not allow, gets a placeholder field
 `_`.
 
-What GraphQL has no way to say is listed on stderr rather than dropped without a word: the errors an operation throws,
+What GraphQL cannot express is listed on stderr: the errors an operation throws,
 the idempotency key and patches of a command, live queries, cacheable reads, operations that use each other's results,
 and rules such as `@allow`, `@cost` and `@cache`. The output describes the API; it does not serve it.
 

@@ -41,33 +41,33 @@ const kept = await client.upload(file); // a File says its own name and type
 await client.command("setAvatar", { userId, upload: kept.id });
 ```
 
-`client.upload()` sends whatever `fetch` takes as a body — a `File`, a `Blob`, bytes, or a stream — through the fetch
-transport, with the same headers it puts on every other request, so whatever authorises a request authorises an upload
-too. It is the fetch transport that carries uploads: a client built on the WebSocket transport answers
-`unimplemented`, because bytes this size do not belong in a frame. Pass `{ name, type }`
+`client.upload()` sends whatever `fetch` takes as a body (a `File`, a `Blob`, bytes, or a stream) through the fetch
+transport. It sends the same headers as every other request, so whatever authorises a request authorises an upload
+too. Only the fetch transport carries uploads: a client built on the WebSocket transport answers `unimplemented`,
+because bytes this size do not belong in a frame. Pass `{ name, type }`
 to say something other than what the file claims, and a `signal` to abort it. A refusal arrives as a
 `RayfoldClientError` with the server's code (`resource_exhausted` for one over the bound, `unauthenticated` with no
-viewer), so the caller reads it like any other error. Nothing is cached: the bytes go one way, and the command that
-names them is what changes anything.
+viewer), so the caller reads it like any other error. Nothing is cached: the bytes go one way, and only the command
+that names them changes anything.
 
 ## Why a route rather than a multipart batch
 
-GraphQL's upload convention posts `multipart/form-data` to the one endpoint. Rayfold does not, for a reason worth
-knowing: a browser may send `multipart/form-data`, `text/plain` and `application/x-www-form-urlencoded` to **any**
-origin without a preflight. The batch endpoint accepts JSON media types only for exactly that reason
-([spec 12 §2.1](../../spec/12-security.md)) — it is half of what stops a foreign page writing to your API.
+GraphQL's upload convention posts `multipart/form-data` to the one endpoint. Rayfold does not, because a browser may
+send `multipart/form-data`, `text/plain` and `application/x-www-form-urlencoded` to any origin without a preflight.
+The batch endpoint accepts JSON media types only for that reason ([spec 12 §2.1](../../spec/12-security.md)). It is
+half of what stops a foreign page writing to your API.
 `application/octet-stream` is not on that list either, so the upload route keeps the same protection, and the Origin
 rule applies to it as to any write.
 
-The other half is cost: base64 in a JSON argument is a third larger than the bytes and has to be held whole at both
-ends. A body that is just the bytes is neither.
+The other reason is cost: base64 in a JSON argument is a third larger than the bytes and has to be held whole at both
+ends. A body of raw bytes has neither cost.
 
 ## What the server enforces
 
 | | |
 |---|---|
-| Size | `maxBytes` (default 25 MiB), counted **as the bytes arrive** — a `Content-Length` that understates the body does not get past it |
-| Who | an identified viewer, unless you set `viewerRequired: false`; an open upload route is a way to fill your storage with nothing to trace it to |
+| Size | `maxBytes` (default 25 MiB), counted as the bytes arrive, so a `Content-Length` that understates the body does not get past it |
+| Who | an identified viewer, unless you set `viewerRequired: false`; an open upload route lets anyone fill your storage with nothing to trace it to |
 | Where from | the Origin rule, as for any write |
 | In what form | `application/octet-stream` only |
 | How long | the store's lifetime (`MemoryUploadStore`: an hour), and its bound (256 MiB), oldest first |
@@ -77,8 +77,8 @@ check the type yourself where it matters rather than believing the header.
 
 ## A store that writes them down
 
-`MemoryUploadStore` holds bytes in the process, which suits tests and a single small server. Anything that can keep
-bytes is three methods:
+`MemoryUploadStore` holds bytes in the process, which suits tests and a single small server. A store you write
+needs three methods:
 
 ```ts
 interface UploadStore {
@@ -88,8 +88,8 @@ interface UploadStore {
 }
 ```
 
-`FileUploadStore` streams them to a directory instead, so what the server holds at once is one chunk whatever the
-file weighs — the store to reach for when the bytes are files:
+`FileUploadStore` streams them to a directory instead, so the server holds one chunk at a time whatever the file
+weighs. Use it when the bytes are files:
 
 ```ts
 import { FileUploadStore } from "@rayfold/server";
@@ -98,10 +98,10 @@ const uploads = new FileUploadStore({ dir: "/var/lib/app/uploads" }); // ttlMs i
 ```
 
 It is a staging area, not storage: whatever no command claims is swept once its lifetime passes. An application
-that keeps files moves them somewhere of its own and hands out a URL — [worked through below](#a-worked-example-keeping-what-arrives).
+that keeps files moves them somewhere of its own and hands out a URL, as the [worked example below](#a-worked-example-keeping-what-arrives) shows.
 
-For a fleet, the store has to be shared the way the idempotency records are ([Deployment](deployment.md)): an upload
-that landed on one server is named by a command that may run on another. A directory works when it is a shared
+For a fleet, the store has to be shared, as the idempotency records are ([Deployment](deployment.md)). An upload that
+landed on one server is named by a command that may run on another. A directory works when it is a shared
 volume; otherwise use one of the two below. `PgUploadStore` keeps them in Postgres, in
 the same table the JVM's `JdbcUploadStore` creates, so a mixed fleet shares one:
 
@@ -113,13 +113,13 @@ await uploads.migrate(); // safe from every server at once
 await listen(server, 4000, { viewer, uploads: { store: uploads } });
 ```
 
-Bytes live in a row, which is the simplest thing that works at the sizes this extension is for. Beyond them, the
-answer below is better than a bigger table.
+Bytes live in a row, which is the simplest thing that works at the sizes this extension is for. For larger files, the
+approach at the end of this page works better than a bigger table.
 
 ## On the JVM
 
-The same route, the same bounds, the same store interface. Give the HTTP server an `UploadOptions` and it appears;
-leave it out and there is no route:
+The JVM has the same route, the same bounds and the same store interface. Give the HTTP server an `UploadOptions` and
+the route appears; leave it out and there is no route:
 
 ::: code-group
 
@@ -153,8 +153,8 @@ name the returned id in the command.
 An upload is a staging area with a lifetime. Keeping a file is a different job, and the two stores should be
 different things: whatever no command claims is swept, and what a command kept stays until it is deleted.
 
-[examples/document-store](https://github.com/eddyboutros/rayfold/tree/main/examples/document-store) is that shape end
-to end — upload a file, replace it, keep every revision, share it with someone who has no account. Everything below
+[examples/document-store](https://github.com/eddyboutros/rayfold/tree/main/examples/document-store) does this end
+to end: upload a file, replace it, keep every revision, share it with someone who has no account. Everything below
 is quoted from it, and its tests run on every change to the repository.
 
 **The move.** A command takes the bytes out of the upload store and writes them where they will live. The upload is
@@ -162,7 +162,7 @@ consumed, not copied and left:
 
 <<< @/../examples/document-store/src/resolvers.ts#move{ts}
 
-**What the command answers with.** A `Document` carrying `url` — the same string an `<img>`, a download link or
+**What the command answers with.** A `Document` carrying `url`, the same string an `<img>`, a download link or
 another service would use. The bytes are not in the answer and never were:
 
 <<< @/../examples/document-store/src/resolvers.ts#create{ts}
@@ -172,9 +172,9 @@ file behind. The old revision keeps its own url and still serves:
 
 <<< @/../examples/document-store/src/resolvers.ts#replace{ts}
 
-**Serving them.** Where `url` points. Note what it does first: an unguessable URL is not a permission, so the route
-asks the same question the schema asks, and asks it before the status line goes out — a stream that fails afterwards
-can only close the connection, which a client cannot tell from a network fault.
+**Serving them.** Where `url` points. An unguessable URL is not a permission, so the route first asks the
+same question the schema asks. It asks before the status line goes out: a stream that fails afterwards can only close
+the connection, and a client cannot tell that from a network fault.
 
 <<< @/../examples/document-store/src/documents.ts#serve{ts}
 
@@ -184,14 +184,14 @@ The document store hands out a [capability token](capabilities.md) rather than c
 
 <<< @/../examples/document-store/src/resolvers.ts#share{ts}
 
-The viewer that token speaks for has a `documentId` and nothing else, which is what the policy on the entity reads:
+The viewer that token speaks for has a `documentId` and nothing else. The policy on the entity reads it:
 
 ```rayfold
 entity Document @allow(read: viewer.id == ownerId || viewer.documentId == id) { ... }
 ```
 
-So the holder reads one document. Asking for another returns `null` rather than `permission_denied` — a refused
-entity at a nullable position is simply not there, so a share link cannot be used to learn what else exists. The
+So the holder reads one document. Asking for another returns `null`, not `permission_denied`. A refused
+entity at a nullable position is treated as absent, so a share link cannot be used to learn what else exists. The
 token also names the operations it may call, and the batch refuses the rest before a resolver runs.
 
 ## When not to use this
@@ -203,5 +203,5 @@ URL from your own storage and let the client upload there:
 command avatarUploadUrl(userId: ID): UploadTicket
 ```
 
-That costs the protocol nothing, keeps the bytes off your servers, and is what object storage is for. This extension
-is for the sizes where a round trip through the API is simply the easier thing.
+That keeps the bytes off your servers and costs the protocol nothing. This extension is for the sizes where a round
+trip through the API is the easier option.

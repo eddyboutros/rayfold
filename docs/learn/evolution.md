@@ -5,9 +5,9 @@ description: Add to a schema freely, retire what you no longer need with a sunse
 
 # Changing a schema safely
 
-A Rayfold schema has no version number. There is no `/v2`: you keep one schema and change it in ways that clients
-already in the field survive, and `rayfold check` refuses the changes they would not survive. This page shows which
-changes are safe, how to retire a field, and how to run the check in CI with a lockfile.
+A Rayfold schema has no version number, and there is no `/v2`. You keep one schema and change it only in ways that
+clients already in the field survive. `rayfold check` refuses the other changes. This page shows which changes are
+safe, how to retire a field, and how to run the check in CI with a lockfile.
 
 ## Record what shipped
 
@@ -23,9 +23,9 @@ npx rayfold lock src/bookshop.rayfold
 `npx @rayfold/cli` runs it instead.
 
 From then on `rayfold check src/bookshop.rayfold` compares the schema against `rayfold.lock.json` in the current
-directory, or against the file you name with `--against`, which may also be an older copy of the `.rayfold` file. It
-exits with status 1 when a change would break a client, so the same command fails a CI build. Run `rayfold lock`
-again when the next release ships.
+directory. To compare against another file, name it with `--against`; an older copy of the `.rayfold` file works too.
+The check exits with status 1 when a change would break a client, so the same command fails a CI build. Run
+`rayfold lock` again when the next release ships.
 
 ## Add freely
 
@@ -65,13 +65,13 @@ OK: compatible with rayfold.lock.json (4 changes)
 ## Put new fields where they read best
 
 The lockfile records each field's number (its ordinal), and a field keeps its number by name. Adding `pages` between
-`title` and `stock` instead of at the end is as compatible as adding it last: against `rayfold.lock.json` the check
-reports only `Book.pages: field added`. What breaks is a number that changes: an `@ordinal(n)` that disagrees with the
-lock, or a new field given one the lock already assigned. Locking again keeps those numbers: `pages` gets the next
-number the type has not used, and `title` and `stock` keep theirs.
+`title` and `stock` is as compatible as adding it at the end. Against `rayfold.lock.json` the check reports only
+`Book.pages: field added`. A change of number is what breaks: an `@ordinal(n)` that disagrees with the lock, or a new
+field given a number the lock already assigned. Locking again keeps the numbers. `pages` gets the next number the
+type has not used, and `title` and `stock` keep theirs.
 
-Checked against an older copy of the `.rayfold` file instead of a lockfile, there is no record of the numbers, so the
-fields after `pages` are reported as moved:
+An older copy of the `.rayfold` file has no record of the numbers. Checked against one, the fields after `pages` are
+reported as moved:
 
 ```
 warning   Book.stock: moved from position 3 to 4; against a lockfile it keeps its ordinal by name [ordinal-shifted]
@@ -183,8 +183,8 @@ the lockfile before the removal.
 
 ## Find out who still uses it
 
-A sunset date is a promise; traffic tells you whether anyone still relies on the field. Give the server a usage sink
-and it records, per client, each operation and field that requests touch: no arguments, no values, no viewer.
+Traffic tells you whether anyone still relies on a field before its sunset date. Give the server a usage sink and it
+records, per client, each operation and field that requests touch. It records no arguments, values or viewers.
 
 ```ts
 import { readFileSync, writeFileSync } from "node:fs";
@@ -204,9 +204,9 @@ Clients name themselves with the `Rayfold-Client` header, or the `client` option
 { "op": "book", "path": "Book.costPrice", "client": "admin/0.9.2", "lastSeen": "2026-09-15T08:21:51.201Z", "count": 1 }
 ```
 
-After a web client read `{ title stock author { name } }` and a staff tool read `{ title costPrice }`, run it against
-the schema from the section above — the one where `costPrice` carries `@deprecated`, since that is what the
-`still used` line reports on:
+Say a web client read `{ title stock author { name } }` and a staff tool read `{ title costPrice }`. Run the check
+against the schema from the section above, where `costPrice` carries `@deprecated`. The `still used` line reports only
+on deprecated members:
 
 ```sh
 npx rayfold check src/bookshop.rayfold --unused usage.json --since 30d
@@ -224,8 +224,8 @@ still used  Book.costPrice: admin/0.9.2
 ```
 
 `still used` lists deprecated members and the clients that asked for them inside the window (`30d`, `12h`, `90m`).
-"Unused" means no traffic was seen, not that nothing could call it, so the snapshot should cover every server and a
-long enough period. `MemoryUsage` keeps one process's records in memory; in production, pass your own object with a
+"Unused" means no traffic was seen, not that nothing could call it. The snapshot should cover every server and a long
+enough period. `MemoryUsage` keeps one process's records in memory. In production, pass your own object with a
 `record(event, at)` method that forwards to the metrics you already run.
 
 ## Next

@@ -38,3 +38,23 @@ describe("the icons browsers ask for", () => {
     expect(pngSize(read("docs/public/apple-touch-icon.png"))).toEqual([180, 180]);
   });
 });
+
+describe("the card a shared link shows, and the wordmark's font", () => {
+  const config = read("docs/.vitepress/config.ts").toString("utf8");
+
+  it("og.png is the 1200 by 630 image the head names, at its size", () => {
+    expect(config).toContain('{ property: "og:image", content: `${SITE}/og.png` }');
+    expect(config).toContain('{ property: "og:image:width", content: "1200" }');
+    expect(config).toContain('{ property: "og:image:height", content: "630" }');
+    expect(pngSize(read("docs/public/og.png"))).toEqual([1200, 630]);
+  });
+
+  it("the font is served from the site with its licence beside it, and no page asks another host for it", () => {
+    const css = read("docs/.vitepress/theme/style.css").toString("utf8");
+    expect(css).toContain('src: url("/fonts/archivo-600-latin.woff2") format("woff2")');
+    expect(config).toContain('href: "/fonts/archivo-600-latin.woff2", as: "font"');
+    expect(read("docs/public/fonts/archivo-600-latin.woff2").subarray(0, 4).toString("latin1")).toBe("wOF2");
+    expect(read("docs/public/fonts/OFL.txt").toString("utf8")).toContain("SIL Open Font License, Version 1.1");
+    expect(`${config}\n${css}`).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
+  });
+});

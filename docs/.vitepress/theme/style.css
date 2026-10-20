@@ -44,6 +44,16 @@
   --pg-patch: #a5b4fc;
 }
 
+/* Archivo SemiBold, Latin only, under the SIL Open Font License (public/fonts/OFL.txt) */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/archivo-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* the wordmark: Archivo SemiBold, tracked in slightly, as in logo/README.md */
 .VPNavBarTitle .title,
 .VPHero .name {
@@ -143,4 +153,254 @@
 }
 .error-table td:first-child {
   white-space: nowrap;
+}
+
+/* text only screen readers get */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* the home page's first screen: the pitch and how to start on one side, what was measured on the other */
+.VPHero.VPHomeHero {
+  padding-top: calc(var(--vp-nav-height) + var(--vp-layout-top-height, 0px) + 32px);
+  padding-bottom: 32px;
+}
+/* one alignment for the pitch and the steps under it, on every width */
+.VPHero.has-image .container .main {
+  text-align: left;
+}
+.VPHero.has-image .container .heading .name,
+.VPHero.has-image .container .heading .text {
+  margin: 0;
+}
+.VPHero.has-image .container .actions {
+  justify-content: flex-start;
+}
+.VPHero .container .name,
+.VPHero .container .text {
+  font-size: 34px;
+  line-height: 1.15;
+}
+.VPHero .container .text {
+  font-size: 26px;
+  max-width: 560px;
+}
+.VPHero .container .tagline {
+  font-size: 16px;
+  line-height: 1.6;
+  max-width: 560px;
+  padding-top: 12px;
+}
+@media (min-width: 960px) {
+  .VPHero .container .name { font-size: 48px; }
+  .VPHero .container .text { font-size: 38px; }
+  .VPHero .container .tagline { font-size: 18px; }
+}
+/* the scoreboard follows the pitch on a narrow screen, where the theme would put an image first */
+.VPHero .container .image {
+  order: 2;
+  margin: 28px 0 0;
+}
+.VPHero .container .image-container {
+  width: auto;
+  height: auto;
+  transform: none;
+}
+.VPHero .container .image-bg {
+  display: none;
+}
+@media (min-width: 960px) {
+  .VPHero .container .image {
+    margin: 0 0 0 40px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+.scoreboard {
+  margin: 0;
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
+  padding: 16px 18px 14px;
+  text-align: left;
+}
+.scoreboard table {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.scoreboard caption {
+  caption-side: top;
+  text-align: left;
+  padding-bottom: 8px;
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+}
+.scoreboard tr {
+  background: transparent;
+  border: 0;
+}
+.scoreboard th,
+.scoreboard td {
+  border: 0;
+  border-top: 1px solid var(--vp-c-divider);
+  padding: 7px 6px;
+  background: transparent;
+}
+.scoreboard thead th {
+  border-top: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  text-align: right;
+}
+.scoreboard tbody th {
+  font-weight: 500;
+  color: var(--vp-c-text-1);
+  text-align: left;
+}
+.scoreboard td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-text-2);
+  width: 64px;
+}
+.scoreboard .ours {
+  color: var(--vp-c-brand-1);
+  font-weight: 700;
+}
+.scoreboard figcaption {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+.scoreboard figcaption a {
+  display: inline-block;
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.home-start {
+  margin-top: 24px;
+  text-align: left;
+}
+.home-start h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+.home-start ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 8px;
+}
+.home-start li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: baseline;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--vp-c-text-1);
+}
+.home-start li::before {
+  content: counter(step);
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+.home-start .step {
+  grid-column: 2;
+}
+.home-start .command {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  max-width: 100%;
+}
+.home-start code {
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--vp-code-bg);
+  color: var(--vp-code-color);
+}
+.home-start .command code {
+  padding: 6px 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.home-start .copy {
+  flex-shrink: 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+  cursor: pointer;
+}
+.home-start .copy:hover {
+  border-color: var(--vp-c-brand-1);
+}
+.home-start .copy:focus-visible,
+.scoreboard a:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+.home-start .more {
+  margin: 10px 0 0 34px;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+.home-start .more .dot {
+  margin: 0 6px;
+}
+.home-start .more a {
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
+}
+@media (max-width: 640px) {
+  .scoreboard {
+    padding: 12px 12px 10px;
+  }
+  .scoreboard th,
+  .scoreboard td {
+    padding: 7px 3px;
+  }
+  .scoreboard td {
+    width: 46px;
+  }
+  .scoreboard thead th {
+    font-size: 11px;
+  }
 }

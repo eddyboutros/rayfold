@@ -29,11 +29,13 @@ npx @rayfold/cli import openapi openapi.json --out api.rayfold
 A `GET` becomes a query, anything that changes data becomes a command, `components.schemas` become types, and every
 operation keeps the URL it already has with `@http`. A JSON request body keeps its place too: a body that names a
 schema becomes an `input` argument (`body: input`), and a body written inline becomes one argument per property
-(`body: "*"`). An object with a non-null `id` becomes an entity, since that is
-what gives the cache and the patches something to address. Parameters become arguments, those declared on the path
-and through `$ref` included, and a name like `first-name` becomes `firstName`, with the `@http` path following it.
-An optional schema, `anyOf: [X, { type: "null" }]` (how Rayfold itself publishes one) or OpenAPI 3.0's `allOf: [X]`
-beside `nullable: true`, becomes `X?`, so a document a Rayfold server publishes imports back to the same types.
+(`body: "*"`). An object with a non-null `id` becomes an entity, since the `id` gives the cache and the patches
+something to address. Parameters become arguments, including those declared on the path and through `$ref`. A name
+like `first-name` becomes `firstName`, and the `@http` path follows the new name.
+
+An optional schema becomes `X?`. That covers `anyOf: [X, { type: "null" }]`, which is how Rayfold itself publishes
+one, and OpenAPI 3.0's `allOf: [X]` beside `nullable: true`. A document a Rayfold server publishes therefore imports
+back to the same types.
 
 A renamed parameter or request-body property keeps its original name as its wire name, so existing clients go on
 sending what they send today:
@@ -58,9 +60,9 @@ or through `$ref`, names such as `first-name` renamed with their wire names, and
 spells them, and reads an optional nested schema as `JSON`.
 :::
 
-What the document cannot say, the importer does not invent: what may be cached, who may read what, which errors a
-command throws, which events it emits. Those are the parts that make the schema worth having, and they go in by hand.
-Everything it had to assume is listed on stderr, so the schema on stdout stays a schema.
+The importer does not invent what the document cannot say: what may be cached, who may read what, which errors a
+command throws, which events it emits. You add those by hand. Everything the importer had to assume is listed on
+stderr, and stdout carries only the schema.
 
 ## A migration in five steps
 
@@ -80,7 +82,8 @@ Everything it had to assume is listed on stderr, so the schema on stdout stays a
 
 - **Idempotency keys.** Commands need a key of 16 to 128 characters. The clients add one; `curl` users must too, or
   the route opts out with `@idempotent(false)`. Bound `PUT`, `PATCH` and `DELETE` routes do not need one.
-- **Cross-site requests.** Rayfold accepts only JSON and its binary format (`application/rayfold`) as bodies, which a
-  browser cannot send cross-site without a preflight, and checks the Origin of every request that can change data. Behind a proxy that rewrites Host, list your public origin in `allowedOrigins`.
+- **Cross-site requests.** Rayfold accepts only JSON and its binary format (`application/rayfold`) as bodies. A
+  browser cannot send either cross-site without a preflight. The server also checks the Origin of every request that
+  can change data. Behind a proxy that rewrites Host, list your public origin in `allowedOrigins`.
 - **Costs.** Every batch has a budget (1 000 by default); a list's cost grows with its page size. Raise it for trusted
   internal callers instead of turning it off.

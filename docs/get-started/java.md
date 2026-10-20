@@ -57,8 +57,8 @@ The books are records, kept in memory by `Store.java`:
   so a page of 50 books looks up authors once.
 - `Rayfold.domainError("OutOfStock", ...)` is the error the schema declared. Clients receive it by name, with its
   data.
-- `Rayfold.result(book).emit(...)` returns the changed book, which becomes a patch for every client cache, and the
-  event the schema says the command emits.
+- `Rayfold.result(book).emit(...)` returns the changed book and the event the schema says the command emits. The
+  book becomes a patch for every client cache.
 
 ## 4. Say who is calling
 
@@ -68,9 +68,9 @@ its claims into the viewer:
 
 <<< @/../examples/java/src/main/java/com/example/bookshop/Auth.java{java}
 
-What `viewerOf` returns is `viewer` in the schema's `@allow` rules, and the resolvers never check permissions
+What `viewerOf` returns is `viewer` in the schema's `@allow` rules. The resolvers never check permissions
 themselves. Until you have a provider, the server signs and checks tokens with the development key at the top of the
-class; `devToken` makes one as a provider would, and `main` prints one.
+class. `devToken` makes a token as a provider would, and `main` prints one.
 
 ## 5. Start the server
 
@@ -81,7 +81,8 @@ class; `devToken` makes one as a provider would, and `main` prints one.
 ```
 
 Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. To try the commands, paste a
-development token into the auth field; this prints a customer's, and `-Dexec.args=staff` a member of staff's:
+development token into the auth field. This command prints a customer's token, and with `-Dexec.args=staff` it
+prints a staff member's:
 
 ```sh
 ./mvnw -q compile exec:java -Dexec.mainClass=com.example.bookshop.Auth

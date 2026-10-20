@@ -1,6 +1,6 @@
 ---
 title: Command line
-description: Every rayfold command — validate a schema, record its ordinals, generate types, read a plan, mock a server, and run the language server.
+description: Every rayfold command. Validate a schema, record its ordinals, generate types, read a plan, mock a server, and run the language server.
 ---
 
 # Command line
@@ -14,8 +14,9 @@ npx @rayfold/cli check schema.rayfold
 Or add it to the project with `npm install --save-dev @rayfold/cli`, after which `npx rayfold ...` runs the installed
 copy. The examples on this page use the short form.
 
-Every command takes a `.rayfold` file and does its work without a server, a database or a network. That is what makes
-them usable in CI: `check` is the one that belongs in a pipeline, and the rest are for the desk.
+Apart from `mock` and `dev`, which serve, and `lsp`, which talks to an editor, every command reads its files and does
+its work without a server, a database or a network, so each one runs in CI. `check` is the one that belongs in a
+pipeline; the others are for local use.
 
 **Exit codes.** `0` succeeded. `2` the command line was malformed: an unknown command, a missing argument, a bad
 `--since`. `1` everything else: an invalid schema, a refused change, resolvers that do not cover the schema, or a file
@@ -29,8 +30,8 @@ rayfold check <schema.rayfold> --resolvers <module>
 rayfold check <schema.rayfold> --unused <usage.json> [--since 30d]
 ```
 
-Validates the schema and prints every finding with the line it is on. On its own it answers whether the schema is
-valid at all:
+Validates the schema and prints every finding with the line it is on. With no options it reports whether the schema
+is valid:
 
 ```
 OK: examples/bookstore-ts/bookstore.rayfold is valid (hash 7fb44054edd7)
@@ -38,28 +39,30 @@ OK: examples/bookstore-ts/bookstore.rayfold is valid (hash 7fb44054edd7)
 
 `--against` compares with an earlier schema, or with a lockfile, and refuses a breaking change. With no `--against`
 it uses `rayfold.lock.json` when one is beside you, so in a repository that has a lockfile the bare command already
-checks compatibility. `--strict` additionally fails on warnings — changes that are compatible but worth a look, such
-as a policy added to an operation that had none. See
+checks compatibility. `--strict` also fails on warnings: compatible changes that deserve a look, such as a policy
+added to an operation that had none. See
 [Changing a schema safely](../learn/evolution.md) for what counts as breaking.
 
 Ordinals are compared by name. Against a lockfile, every field and enum value keeps the ordinal the lock recorded for
-it, so adding a field between two others, or reordering them, is compatible; only an `@ordinal(n)` that disagrees with
-the lock (`ordinal-changed`), or a new member taking an ordinal the lock gave another (`ordinal-reused`), breaks.
-Between two `.rayfold` files there is no record of what was assigned, so both number by position: a member that moved
-is a warning (`ordinal-shifted`, fatal under `--strict`), and a changed `@ordinal(n)` is still breaking. Lock the schema
-to make a mid-type insertion pass cleanly.
+it, so adding a field between two others, or reordering them, is compatible. Only two changes break: an
+`@ordinal(n)` that disagrees with the lock (`ordinal-changed`), and a new member taking an ordinal the lock gave
+another (`ordinal-reused`).
+
+Between two `.rayfold` files there is no record of what was assigned, so both are numbered by position. A member that
+moved is a warning (`ordinal-shifted`, fatal under `--strict`), and a changed `@ordinal(n)` is still breaking. Lock
+the schema to let a field inserted mid-type pass without a warning.
 
 ::: info Since 0.2.2
 Comparing ordinals by name, and `lock` keeping them by name with `highestOrdinals`, came with 0.2.2. In 0.2.1 both
 number every type's fields by position.
 :::
 
-`--resolvers` loads a module and reports fields the schema declares that nothing resolves, and resolvers with no
-field to attach to. It answers "are the resolvers complete?" before a request does. It runs beside the compatibility
-check, not instead of it, and either one failing fails the command.
+`--resolvers` loads a module and reports operations with no resolver and fields that take arguments with no loader
+(both errors), and resolvers with nothing in the schema to attach to (warnings). A gap shows up here before a request
+hits it. It runs alongside the compatibility check, and if either fails, the command fails.
 
 `--unused` reads an exported usage snapshot and lists members no client asked for inside `--since` (default `30d`),
-so a removal is a fact rather than a guess. Servers record usage per client from the `Rayfold-Client` header.
+so you know a member is unused before you remove it. Servers record usage per client from the `Rayfold-Client` header.
 
 ## lock
 
@@ -71,9 +74,9 @@ Writes `rayfold.lock.json`: the field ordinals the binary format depends on, and
 in the repository, `check` compares against it by default, so a changed or reused ordinal fails in CI rather than
 corrupting a decode in production.
 
-Run again over an existing lock, it keeps the ordinals that lock recorded: every field and enum value keeps its
-number by name, wherever it now sits in the type, and a new one gets the next number above any the type has ever
-used, so the number of a removed member is never handed out again. A written `@ordinal(n)` is recorded as written.
+Run over an existing lock, it keeps the ordinals that lock recorded. Every field and enum value keeps its number by
+name, wherever it now sits in the type. A new one gets the next number above any the type has ever used, so a
+removed member's number is never handed out again. A written `@ordinal(n)` is recorded as written.
 The lock keeps each type's highest number so far in `highestOrdinals`.
 
 ## hash
@@ -88,10 +91,9 @@ Prints the schema hash alone, with no other output:
 7fb44054edd70f691d3560cc27959509a762762ba7a914a573f741cb6daf58a3
 ```
 
-This is the value a server publishes in its manifest and sends as `Rayfold-Schema` on every response. Useful for
-asserting in a deploy script that the schema you built is the schema that is running. It is SHA-256 of the canonical
-IR, and [spec 01 §9](../../spec/01-schema.md) defines that exactly, so an independent implementation computes the
-same value.
+This is the value a server publishes in its manifest and sends as `Rayfold-Schema` on every response. Use it in a
+deploy script to assert that the schema you built is the one running. It is the SHA-256 of the canonical IR, which
+[spec 01 §9](../../spec/01-schema.md) defines exactly, so an independent implementation computes the same value.
 
 ## explain
 
@@ -121,8 +123,8 @@ level 0: Page<Book>
       name: property
 ```
 
-"1 call" per level is the thing to read: a page of fifty books loads its authors in one call, not fifty. A level that
-says otherwise is an N+1 you can see before shipping it. `--args` matters when cost depends on a page size.
+Read the call count on each level. A page of fifty books loads its authors in one call, not fifty. A level that says
+otherwise is an N+1, and you see it before you ship it. `--args` matters when cost depends on a page size.
 
 ## gen
 
@@ -142,7 +144,7 @@ export interface PageArgs { first?: number; after?: string | null; offset?: numb
 
 `--package` names the Kotlin or Java package; `--class` names the generated Java holder. `gen graphql` prints the SDL
 and lists on standard error what it could not carry across, since GraphQL cannot express typed errors, live queries,
-idempotency keys or several steps in one request — see [Coming from GraphQL](from-graphql.md).
+idempotency keys or several steps in one request. See [Coming from GraphQL](from-graphql.md).
 
 If you write the schema in TypeScript with `@rayfold/builder` instead, you need none of this: the types are inferred
 from the schema value ([Schema in TypeScript](typescript.md)).
@@ -162,11 +164,10 @@ Reads one shape per line and prints the id of each, as JSON keyed by id:
 }
 ```
 
-This is the other half of running with `trustedShapes` on. A hardened server refuses shape text it was not given in
-advance and accepts only ids; these are the ids, and the canonical form beside each one is what the id was taken
-over — note that `{ id title author { name } }` canonicalises with its fields sorted, which is why the same selection
-written in another order has the same id. Register them in code so every server in a fleet agrees
-([Deployment](deployment.md)).
+Use it with `trustedShapes` on. A server in that mode refuses shape text it was not given in advance and accepts only
+ids, and this command prints those ids. Beside each id is the canonical form it was computed from.
+`{ id title author { name } }` canonicalises with its fields sorted, so the same selection written in another order
+has the same id. Register the ids in code so every server in a fleet agrees ([Deployment](deployment.md)).
 
 ## import
 
@@ -174,8 +175,8 @@ written in another order has the same id. Register them in code so every server 
 rayfold import openapi|graphql <file> [--out schema.rayfold]
 ```
 
-Reads an OpenAPI document or a GraphQL SDL and writes a Rayfold schema. It tells you on standard error what it could
-not bring over, so the gaps are a list to work through rather than a surprise later. See
+Reads an OpenAPI document or a GraphQL SDL and writes a Rayfold schema. It lists on standard error what it could
+not bring over, so you have the gaps as a list to work through. See
 [Coming from REST](from-rest.md) and [Coming from GraphQL](from-graphql.md).
 
 ## mock
@@ -195,8 +196,9 @@ rayfold dev <example-dir> [--port 4400]
 ```
 
 Runs one of this repository's examples, a directory whose `src/index.ts` exports `createBookstore()`, with the explorer
-in front of it. This is what `npm run dev` uses in this repository. It believes any bearer token as a user id, so it
-is for local development only.
+in front of it: `npm run rayfold -- dev examples/bookstore-ts` in this repository. Beside the explorer it serves the
+WebSocket endpoint and MCP at `/mcp`. It accepts any bearer token as a user id (`Bearer admin` is an admin), so use it
+for local development only.
 
 ## lsp
 
@@ -205,17 +207,17 @@ rayfold lsp
 ```
 
 The language server for `.rayfold` files, speaking LSP over stdio: diagnostics as you type, completion, hover,
-go-to-definition and document symbols. Editors start it themselves — see [Editors](editors.md) for the VS Code and
+go-to-definition and document symbols. Editors start it themselves; [Editors](editors.md) has the VS Code and
 Neovim configuration.
 
 ## In CI
 
-The one line worth having in a pipeline:
+The command for a pipeline:
 
 ```sh
 npx @rayfold/cli check schema.rayfold --against rayfold.lock.json --strict --resolvers ./src/resolvers.ts
 ```
 
-It fails the build on a breaking change, on a compatible one nobody meant to make, and, with `--resolvers`, when the
-schema and the code have drifted apart. The module must export `resolvers`, a default export, or a function that
+It fails the build on a breaking change, on a compatible change that raises a warning, and, with `--resolvers`, when
+the schema and the code no longer match. The module must export `resolvers`, a default export, or a function that
 returns them.

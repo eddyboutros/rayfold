@@ -1,8 +1,7 @@
 # 02 - Shapes
 
-A **shape** says which fields of a result the caller wants. Shapes are what make Rayfold client-shaped without
-giving up HTTP caching: a shape is canonicalised, hashed and can be persisted, so a read becomes a
-`GET`/`QUERY` on a stable key.
+A **shape** says which fields of a result the caller wants. Shapes let Rayfold be client-shaped and keep HTTP
+caching: a shape is canonicalised, hashed and can be persisted, so a read becomes a `GET`/`QUERY` on a stable key.
 
 ## 1. Grammar
 
@@ -62,15 +61,15 @@ Example:
 The canonical text of a shape is produced by:
 
 1. Expanding named-view spreads (type-condition spreads stay).
-2. Sorting items at each level by kind first — fields, then type conditions (`...on`), then `@defer` blocks, then
-   named-view spreads — and within a kind: fields by output name (alias or field name) then canonical args, type
+2. Sorting items at each level by kind first, in the order fields, type conditions (`...on`), `@defer` blocks,
+   named-view spreads; and within a kind: fields by output name (alias or field name) then canonical args, type
    conditions by type name, defers by label, spreads by `Type.view`. Names and args are compared as strings of
    UTF-16 code units, one after the other: the args decide only between equal names, so `item` sorts before `item2`.
 3. Sorting args by name; encoding literal values as canonical JSON, numbers included
    ([12 §4.2](12-security.md)); keeping `$name` references verbatim.
 4. Emitting with single spaces and no newlines: `{ author { id name } id title }`.
 
-Separators are part of the identity, because the id is the hash of this text, so they are given exactly:
+The id is the hash of this text, so separators are part of the identity. They are given exactly:
 
 | Between | Separator |
 |---|---|
@@ -79,8 +78,8 @@ Separators are part of the identity, because the id is the hash of this text, so
 | members of a composite argument value | `,`, with the key quoted: `{"after":"r1","first":2}` |
 | elements of a list argument value | `,` |
 
-So a field with two arguments is `reviews(after: "r1" first: 2)` — the arguments are items, and items are separated
-by a space — while the members *inside* a value are canonical JSON and separated by commas:
+So a field with two arguments is `reviews(after: "r1" first: 2)`: the arguments are items, and items are separated
+by a space. The members *inside* a value are canonical JSON and separated by commas:
 `reviews(page: {"after":"r1","first":2})`. The two rules meet in
 `{ reviews(page: {"after":"r1","first":2}) { items { id rating } } }`.
 
@@ -90,7 +89,7 @@ An operation refers to its shape either inline (`"shape": "{ id title }"`) or by
 (`"shape": "sha256:..."`). Servers MUST accept inline shapes in development mode and MAY refuse them in
 production (**trusted shapes**): with that mode on, the allowlist is the set of shapes the application registered,
 one at a time, before serving. `rayfold shapes` prints the id of every shape in a file so a build can collect them;
-registering each one is what puts it on the list.
+registering each one puts it on the list.
 
 ## 4. Variables
 

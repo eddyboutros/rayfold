@@ -1,7 +1,6 @@
 # Postgres
 
-`@rayfold/postgres` turns a Postgres table into Rayfold resolvers that behave the way the protocol wants: batch loads,
-one SQL query per nesting level, keyset pages, and read policies pushed into the `WHERE` clause.
+`@rayfold/postgres` turns a Postgres table into Rayfold resolvers: batch loads, one SQL query per nesting level, keyset pages, and read policies pushed into the `WHERE` clause.
 
 ```sh
 npm install @rayfold/postgres pg
@@ -32,10 +31,10 @@ A `Date` field reaches your resolvers as `YYYY-MM-DD` text, not a JavaScript `Da
 
 ## One statement for a whole screen
 
-The resolvers above send one query per nesting level, which is already the shape of the problem GraphQL solves with
-DataLoader. `store.screen()` goes further: it compiles the shape the op asked for into a **single** statement, gathering
-related rows with correlated JSON subqueries, pushing each level's read policy into its own `WHERE`, and giving every
-nested page its own `total`. Depth costs no extra round trip to the database.
+The resolvers above send one query per nesting level, the result a GraphQL server gets from DataLoader.
+`store.screen()` compiles the shape the op asked for into a single statement. It gathers related rows with correlated
+JSON subqueries, pushes each level's read policy into its own `WHERE`, and gives every nested page its own `total`.
+Depth costs no extra round trip to the database.
 
 Declare the relations a shape may follow, then hand the store the shape the runtime gives the resolver as `ctx.shape`:
 
@@ -55,19 +54,19 @@ const resolvers = {
 ```
 
 `kind: "one"` names the field on *this* type holding the other row's key; `kind: "page"` names the field on the *other*
-type holding this row's key. Nested pages are first pages, which is what a screen shows, of the size the shape asks
-for or else the field's declared default; the root page still takes a cursor. A field the shape selects must be a
-mapped column or a declared relation, so a shape that reaches past the mapping is refused rather than quietly served
+type holding this row's key. Nested pages are first pages, as a screen shows them. Their size is the one the shape
+asks for, or else the field's declared default. The root page still takes a cursor. A field the shape selects must be a
+mapped column or a declared relation, so a shape that reaches past the mapping is refused instead of being served
 wrong. For the same reason a field selected twice under two aliases must be selected the same way both times.
 
-Each row also carries the columns its type's read rule reads, and the rules of the fields it selects, whether the
-shape asks for them or not, so the runtime can check those rules on every row: a rule such as
+Each row also carries the columns read by its type's read rule and by the rules of the fields it selects, whether the
+shape asks for them or not. The runtime checks those rules on every row, so a rule such as
 `@allow(read: this.publishedAt != null)` holds on a screen that does not select `publishedAt`. The runtime leaves those
 columns out of the answer.
 
 A relation that takes arguments, such as `Author.books(page:)`, needs no loader here: the runtime serves the page
 `screen` already gathered. `checkWiring` cannot see that from the resolvers alone and still reports it as
-`missing-loader`, so filter that finding for the fields your screens gather.
+`missing-loader`. Filter that finding out for the fields your screens gather.
 
 ## Idempotency records for more than one server
 
@@ -84,10 +83,10 @@ await idempotency.migrate(); // once, or run idempotencySchema() in your migrati
 const server = createRayfoldServer({ schema, resolvers, idempotency });
 ```
 
-The store is what makes "runs once" hold across servers. A command takes its key with one statement, so of two servers
-starting the same retry at the same moment exactly one runs it and the other waits and then replays its answer. The
-running server holds a lease and renews it while the command runs; if that server stops, the lease runs out and the
-next retry takes the key over. Records last 24 hours and the table is bounded, both adjustable:
+With this store, a command runs once across servers. A command takes its key with one statement. When two servers
+start the same retry at the same moment, exactly one runs it; the other waits, then replays its answer. The running
+server holds a lease and renews it while the command runs. If that server stops, the lease runs out and the next retry
+takes the key over. Records last 24 hours and the table is bounded; you can change both:
 
 ```ts
 new PgIdempotencyStore(pool, { table: "rayfold_idempotency", ttlMs: 24 * 3600_000, maxRecords: 100_000 });
@@ -120,12 +119,12 @@ const server = createRayfoldServer({ schema, resolvers, idempotency, relay });
 await server.ready(); // listening to the other servers
 ```
 
-A message travels in one notification unless it is large; then it goes through the `rayfold_relay` table and the
+A message travels in one notification unless it is large. A large one goes through the `rayfold_relay` table, and the
 notification names the row, which is swept later. A relay never hands a server back what that server published, so
 nothing is applied twice. If the relay refuses a message, the command that made the change still succeeds on its own
 server; `onRelayError` and `server.relayFailure` say what the other servers missed. If the listening connection
-drops, the server hears nobody from then on: it reports that through `onRelayError` and stops being ready, so the
-balancer takes it out and the orchestrator replaces it, rather than serving live queries that no longer update.
+drops, the server hears nobody from then on. It reports that through `onRelayError` and stops being ready, so the
+balancer takes it out and the orchestrator replaces it. It does not go on serving live queries that no longer update.
 `server.close()` stops listening, for a shutdown.
 
 ## Why pass `ctx`
@@ -141,7 +140,7 @@ whole ([spec 06 §3](../../spec/06-auth.md)), and the database reads rows nobody
 
 The translation never drops a row the policy allows. Where SQL cannot match the runtime exactly (ordering text,
 comparisons across types, `Decimal` inequality) it lets the row through and the runtime's check removes it. A property
-test runs every translation against a real Postgres for many policies, viewers and rows to hold it to that.
+test checks this by running every translation against a real Postgres for many policies, viewers and rows.
 
 The [package README](../../packages/postgres/README.md) lists every call and the SQL it sends.
 

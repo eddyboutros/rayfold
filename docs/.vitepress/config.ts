@@ -1,15 +1,9 @@
-import { cpSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, posix } from "node:path";
-import { fileURLToPath } from "node:url";
+import { cpSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { defineConfig, type DefaultTheme, type MarkdownOptions } from "vitepress";
+import { ERROR_TYPES } from "./errors.ts";
+import { REPO, ROOT, siteLink, slugify } from "./links.ts";
 import { rayfoldGrammar } from "./rayfold-grammar.ts";
-
-const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const REPO = "https://github.com/eddyboutros/rayfold";
-
-/** GitHub's heading ids, so an anchor that works on GitHub works here too. */
-const slugify = (text: string) =>
-  text.toLowerCase().trim().replace(/<[^>]+>/g, "").replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s/g, "-");
 
 function pagesIn(dir: string, route: string): DefaultTheme.SidebarItem[] {
   return readdirSync(join(ROOT, dir))
@@ -21,47 +15,57 @@ function pagesIn(dir: string, route: string): DefaultTheme.SidebarItem[] {
     });
 }
 
-/**
- * Where a relative link in a page goes. Pages are written to work on GitHub, so links point at files: another page
- * of the site becomes that page, and any other file in the repository becomes its page on GitHub. A link to a file
- * that does not exist fails the build.
- */
-function siteLink(sourcePath: string, href: string): string {
-  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("#") || href.startsWith("/")) return href;
-  const [path = "", hash] = href.split("#");
-  const target = posix.normalize(posix.join(posix.dirname(sourcePath), path));
-  const anchor = hash ? `#${hash}` : "";
-  if (/^(docs|spec)\/.+\.md$/.test(target) && existsSync(join(ROOT, target))) {
-    return `/${target.replace(/^docs\//, "").replace(/\.md$/, "")}${anchor}`;
-  }
-  if (!existsSync(join(ROOT, target))) throw new Error(`${sourcePath}: link to ${href}, which does not exist`);
-  return `${REPO}/${statSync(join(ROOT, target)).isDirectory() ? "tree" : "blob"}/main/${target}${anchor}`;
-}
-
 /** The file in the repository a page comes from: spec pages are read from spec/, the rest from docs/. */
 const sourceOf = (relativePath: string) => (relativePath.startsWith("spec/") ? relativePath : `docs/${relativePath}`);
+
+const SITE = "https://rayfold.dev";
+const DESCRIPTION =
+  "One protocol for app APIs: a typed schema, queries shaped by the screen, live updates and cache patches. For TypeScript, React, Kotlin, Java and Spring Boot.";
+
+/** The address a page is served at, as `cleanUrls` serves it: no `.md`, no `index`. */
+const pageUrl = (relativePath: string) => `${SITE}/${relativePath.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "")}`;
 
 type Language = NonNullable<MarkdownOptions["languages"]>[number];
 
 export default defineConfig({
   title: "Rayfold",
-  description:
-    "One protocol for app APIs: a typed schema, queries shaped by the screen, live updates and cache patches. For TypeScript, React, Kotlin, Java and Spring Boot.",
+  description: DESCRIPTION,
   lang: "en-US",
   base: "/",
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: ["releasing.md", "**/README.md"],
   ignoreDeadLinks: "localhostLinks",
+  sitemap: { hostname: SITE },
+
+  // each page says where it lives and what it is, for search engines and for the card a shared link shows
+  transformHead({ pageData }) {
+    if (pageData.isNotFound) return [];
+    const url = pageUrl(pageData.relativePath);
+    const title = pageData.frontmatter["titleTemplate"] && pageData.relativePath === "index.md" ? `Rayfold: ${pageData.frontmatter["titleTemplate"]}` : pageData.title ? `${pageData.title} | Rayfold` : "Rayfold";
+    const description = (pageData.frontmatter["description"] as string | undefined) ?? pageData.description ?? DESCRIPTION;
+    return [
+      ["link", { rel: "canonical", href: url }],
+      ["meta", { property: "og:url", content: url }],
+      ["meta", { property: "og:title", content: title }],
+      ["meta", { property: "og:description", content: description || DESCRIPTION }],
+    ];
+  },
   head: [
     ["link", { rel: "icon", href: "/favicon.ico", sizes: "32x32" }],
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
     ["link", { rel: "apple-touch-icon", href: "/apple-touch-icon.png" }],
-    ["meta", { name: "theme-color", content: "#0f6e5a" }],
-    // Archivo SemiBold is the wordmark's typeface
-    ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],
-    ["link", { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" }],
-    ["link", { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Archivo:wght@600&display=swap" }],
+    ["meta", { name: "theme-color", content: "#0f6e5a", media: "(prefers-color-scheme: light)" }],
+    ["meta", { name: "theme-color", content: "#1b1b1f", media: "(prefers-color-scheme: dark)" }],
+    ["meta", { property: "og:site_name", content: "Rayfold" }],
+    ["meta", { property: "og:type", content: "website" }],
+    ["meta", { property: "og:image", content: `${SITE}/og.png` }],
+    ["meta", { property: "og:image:width", content: "1200" }],
+    ["meta", { property: "og:image:height", content: "630" }],
+    ["meta", { property: "og:image:alt", content: "Rayfold: one request per screen, and every screen stays right" }],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    // Archivo SemiBold is the wordmark's typeface, served from the site so no other host holds up the first paint
+    ["link", { rel: "preload", href: "/fonts/archivo-600-latin.woff2", as: "font", type: "font/woff2", crossorigin: "" }],
   ],
 
   markdown: {
@@ -92,10 +96,13 @@ export default defineConfig({
 
     sidebar: {
       "/spec/": [
-        { text: "Specification", items: pagesIn("spec", "/spec") },
+        { text: "Specification", items: [...pagesIn("spec", "/spec"), { text: "How the specification changes", link: "/spec/process" }] },
         { text: "Design decisions", collapsed: true, items: pagesIn("spec/adr", "/spec/adr") },
       ],
-      "/errors/": [{ text: "Errors", items: [{ text: "All error types", link: "/errors/" }] }],
+      "/errors/": [
+        { text: "Errors", items: [{ text: "All error types", link: "/errors/" }] },
+        { text: "Each type", items: ERROR_TYPES.map((e) => ({ text: e.type, link: `/errors/${e.type}` })) },
+      ],
       "/": [
         {
           text: "Get started",

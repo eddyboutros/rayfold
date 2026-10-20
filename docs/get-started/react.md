@@ -25,18 +25,18 @@ In development the page comes from Vite on port 5173 and the API from port 4000.
 
 <<< @/../examples/react/vite.config.ts
 
-The browser still names the page's origin on every command, and a Rayfold server refuses commands from origins it
-does not know, which is what stops other websites from acting for your users. Behind the proxy above the request
-arrives looking same-origin, so it is allowed whatever the server is written in; name the origin anyway, so the app
-keeps working the day you point it straight at port 4000. On the TypeScript server it is an option in
+The browser still sends the page's origin with every command. A Rayfold server refuses commands from origins it
+does not know, and that check stops other websites from acting for your users. Behind the proxy above, the request
+arrives looking same-origin, so every server allows it, whatever it is written in. Name the origin anyway, so the app
+keeps working when you point it straight at port 4000. On the TypeScript server it is an option in
 `src/bookshop.ts`:
 
 <<< @/../examples/react/src/bookshop.ts#origins{ts}
 
 On the JVM it is `HttpOptions(allowedOrigins = setOf("http://localhost:5173"))` in Kotlin, `.allowedOrigins(...)` on
 `Rayfold.http(server)` in Java, and `rayfold.allowed-origins=http://localhost:5173` under Spring Boot. Without the
-proxy, the listed origin is also what lets the browser's CORS preflight through: the server answers it, and every
-response to that origin, with the `Access-Control-Allow-*` headers naming it.
+proxy, the listed origin also lets the browser's CORS preflight through. The server answers the preflight, and every
+response to that origin, with `Access-Control-Allow-*` headers that name it.
 
 ## 3. Provide the client
 
@@ -44,21 +44,21 @@ Replace `src/main.tsx`:
 
 <<< @/../examples/react/src/main.tsx#provider{tsx}
 
-`accessToken()` is your sign-in: your identity provider's SDK returns the signed-in user's current token, refreshed
+`accessToken()` is your sign-in. Your identity provider's SDK returns the signed-in user's current token, refreshed
 before it expires, and the client sends it with every request. The server verifies it and turns it into the viewer
 that the schema's `@allow` rules check.
 
 <<< @/../examples/react/src/session.ts
 
 Until sign-in is wired in, a development token stands in for it. Every example server accepts one, since they share
-a development key: print one with that server's token command (`npm run token` for the TypeScript one), and put it
+a development key. Print one with that server's token command (`npm run token` for the TypeScript one) and put it
 in `.env.local`:
 
 ```sh
 VITE_DEV_TOKEN=<the token the command printed>
 ```
 
-Development tokens last eight hours; when one expires every request fails with `unauthenticated`, so print a new one
+Development tokens last eight hours. When one expires, every request fails with `unauthenticated`. Print a new one
 and restart `npm run dev`, which reads `.env.local` when it starts.
 
 ## 4. List the books

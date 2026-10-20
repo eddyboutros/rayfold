@@ -5,9 +5,11 @@ description: Change data with commands that return patches, are safe to retry, a
 
 # Commands and errors
 
-A command changes data. Three things set it apart from a POST endpoint or a GraphQL mutation: it always comes back
-with a patch that tells every client cache what changed, it carries an idempotency key so sending it twice never does
-it twice, and the errors it can end with are part of the schema.
+A command changes data. It differs from a POST endpoint or a GraphQL mutation in three ways:
+
+- It always comes back with a patch that tells every client cache what changed.
+- It carries an idempotency key, so sending it twice never does it twice.
+- The errors it can end with are part of the schema.
 
 ## Declare it
 
@@ -101,8 +103,8 @@ command marked `@idempotent(false)` ignores the key it is sent, so every call ru
 
 A record belongs to the caller who made it and to the exact command it answered. Send a key with no viewer and the
 server answers `unauthenticated`: a replay scope needs someone to scope it to. Send a key that was used for another
-operation, or the same operation with different arguments, and it answers `already_exists` rather than handing back an
-answer to a question you did not ask.
+operation, or the same operation with different arguments, and it answers `already_exists`. It does not hand back the
+answer to the other request.
 
 A record is kept for 24 hours unless the store is told otherwise, and it has expired once it is that old: a retry
 made a millisecond short of a day replays, and one made a day after runs the command again. Both runtimes and every
@@ -110,9 +112,9 @@ store draw that line at the same instant. The default store tells the time by th
 [test](../guide/testing.md#time) can move.
 
 Records live in the server's memory by default, which holds for one server. Point every instance at a shared store
-([`PgIdempotencyStore`](../guide/postgres.md) on Node, `JdbcIdempotencyStore` on the JVM) and the guarantee holds across
-a fleet: a retry that lands on another instance replays the first answer, and two retries that arrive together take the
-key with one statement, so one of them runs the command and the other waits for it. A fleet needs a
+([`PgIdempotencyStore`](../guide/postgres.md) on Node, `JdbcIdempotencyStore` on the JVM) and retries are safe across a
+fleet. A retry that lands on another instance replays the first answer. Two retries that arrive together take the key
+with one statement: one of them runs the command and the other waits for it. A fleet needs a
 [`relay`](../guide/deployment.md) too, or the patch a command produced on one instance never reaches the live queries
 held by the others.
 
@@ -127,13 +129,12 @@ deadline passes *after* the command committed, the record says exactly that:
 {"id":1,"error":{"code":"canceled","message":"buy() committed, then the op ended before its result was delivered"},"meta":{"replay":true},"fin":true}
 ```
 
-The retry is told its effect happened. Replaying the op's own `deadline_exceeded` would say the opposite, and since that
-code is retryable the client would come back with a fresh key and buy a second copy.
+The retry is told its effect happened. Replaying the op's own `deadline_exceeded` would say the opposite. That code is
+retryable, so the client would come back with a fresh key and buy a second copy.
 
 ## Conditional writes
 
-Retrying safely is one half of writing from several places at once; not overwriting someone else's change is the
-other. Mark the field that says which version of a row you have:
+To keep a command from overwriting someone else's change, mark the field that says which version of a row you have:
 
 ```rayfold
 entity Book {
@@ -153,18 +154,18 @@ await client.command("restock", { bookId: "b1", qty: 5 }, { ifVersion: book.vers
 ```
 
 A stale version comes back as the typed error `VersionConflict`, carrying the key, the version you expected and the
-version the row is actually at — so a client can show the current value, or retry against it, without a second
-round trip to find out what happened. Over a [REST binding](../guide/rest-bindings.md) this is `If-Match`, and the
+version the row is at. A client can show the current value, or retry against it, without a second round trip. Over a [REST binding](../guide/rest-bindings.md) this is `If-Match`, and the
 refusal is `412 Precondition Failed`.
 
 A `@version` field can be an `Int`, a `Long`, a `String` or an `Instant`; the resolver bumps it on every write. The
-comparison is the resolver's to make, because only it reads the row: `ctx.checkVersion(key, actual, current)` compares
+resolver makes the comparison, because only it reads the row. `ctx.checkVersion(key, actual, current)` compares
 the version the command sent with the one the row has, and throws `VersionConflict` if they differ. A resolver that
 does not call it writes whatever version the client sent.
 
 ```ts
 restock: ({ bookId, qty }, ctx) => {
   const book = store.books.get(bookId);
+  if (!book) throw new RayfoldError("not_found", `No book ${bookId}`);
   ctx.checkVersion(`Book:${bookId}`, book.version, book); // refuses a stale ifVersion, with the current book
   book.stock += qty;
   book.version += 1;
@@ -188,10 +189,11 @@ When the resolver throws `OutOfStock`, the client receives it by name, with the 
 
 :::
 
-The message is for people; code branches on `type`. A resolver may only throw errors its operation declares. Anything
-else reaches the client as [`internal`](/errors/internal) with the message `Internal error`, so nothing about the
-server leaks. The original exception still reaches the server: the `op` hook of an
-[`Instrumentation`](../guide/tracing.md) gets it as its outcome's `cause`, stack and all, so log it there.
+The message is for people; code branches on `type`. A resolver may only throw errors its operation declares. A domain
+error the operation does not declare reaches the client as [`internal`](/errors/internal), naming only the operation
+and the error type (`buy raised undeclared error Other`). Any other exception becomes `internal` with the message
+`Internal error`, so nothing about the server leaks. The server still sees the original exception: the `op` hook of an
+[`Instrumentation`](../guide/tracing.md) gets it, with its stack, as its outcome's `cause`. Log it there.
 
 ## Errors every API shares
 
@@ -210,9 +212,9 @@ type](../errors/index.md) has a page with its causes and what to do.
 ## Dry runs
 
 A command marked `@simulate` accepts `"simulate": true`. The resolver sees `ctx.simulate` and returns what would
-happen without writing anything, which lets a form preview a result or an AI agent check a plan before acting.
-Without the annotation, a dry run is refused with [`failed_precondition`](/errors/failed_precondition); a caller who
-may not run the command is refused for that first. The clients leave their cache alone for a dry run: its result and
+happen without writing anything. A form can use it to preview a result, and an AI agent to check a plan before
+acting. Without the annotation, a dry run is refused with [`failed_precondition`](/errors/failed_precondition). A
+caller who may not run the command is refused for that first. The clients leave their cache alone for a dry run: its result and
 patch are not applied.
 
 ## Next

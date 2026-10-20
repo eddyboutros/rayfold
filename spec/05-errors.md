@@ -70,14 +70,14 @@ non-partial field.
 ## 5. Declared errors
 
 A command's `throws` list is a closed union. A resolver MUST NOT raise a domain error that is not declared; the
-runtime converts an undeclared one to `internal`. The check is made on commands, which are the operations whose
-errors clients branch on; queries and streams MAY declare `throws` too, and their declarations are documentation
-rather than an enforced closed set. Generated clients expose the union as a discriminated type on `error.type`.
+runtime converts an undeclared one to `internal`. The check is made on commands, the operations whose errors
+clients branch on. Queries and streams MAY declare `throws` too; their declarations are documentation, not an
+enforced closed set. Generated clients expose the union as a discriminated type on `error.type`.
 
 ## 6. Problem Details
 
 Refusals a server makes before it parses a batch, and every response from an HTTP binding ([04 §8](04-frames-and-transport.md)),
-use RFC 9457. A batch that parses and then fails as a whole — over budget, for one — is an `error` frame on the frame
+use RFC 9457. A batch that parses and then fails as a whole (over budget, for one) is an `error` frame on the frame
 channel instead, because by then there is a frame channel to put it on.
 
 ```json

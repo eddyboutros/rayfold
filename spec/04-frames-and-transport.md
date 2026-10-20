@@ -62,9 +62,9 @@ result of that operation ignores them.
 | `at` | `{ "at": "columns.2", "value": { "count": 9 } }` merges these fields into the object at this path of the result. The path is dotted, array positions included; `""` is the result itself. A path that lands on an entity merges into that entity as a deferred frame does (§3), fields under an alias or with arguments staying with the result ([07 §3](07-cache.md)). |
 | `list` | `{ "list": "items", "del": [3], "ins": [{ "at": 0, "value": { ... } }] }` removes those positions of the list at that path, then inserts those elements at those positions. `del` names positions in the list as the client currently holds it; `ins` positions are in the list after the removals, applied in order. |
 
-An `ins` carries the projected element in full form — `$type` retained even when the op asked for compact frames,
-because a patch is applied to the cache rather than read as a result — so the client stores its entities and records
-which fields the result selected. A server MUST NOT also send those entities as `set`
+An `ins` carries the projected element in full form, with `$type` retained even when the op asked for compact
+frames, because a patch is applied to the cache and not read as a result. This lets the client store its entities and
+record which fields the result selected. A server MUST NOT also send those entities as `set`
 operations in the same patch. A server MUST NOT describe a change it cannot express this way (a reordering, a
 different set of fields): it sends a fresh `data` frame instead.
 
@@ -94,8 +94,9 @@ root of the result.
 | `GET /rayfold/{op}?a=...&s=...&v=...` | none | one query; `a` = base64url canonical-JSON args, `s` = shape text or `sha256:` id, `v` = base64url vars |
 
 These sub-paths of the endpoint are reserved and are never treated as an operation name: `manifest`,
-`openapi.json`, `health`, `ready`, `uploads`, `ws` and `explorer`. An operation whose name collides with one of them
-is still reachable by `POST`, but not by `GET /rayfold/{op}`.
+`openapi.json`, `health`, `ready`, `stats`, `uploads`, `ws` and `explorer`. One a server does not serve is a missing
+route (`404`, code `not_found`), not an operation. An operation whose name collides with one of them is still reachable
+by `POST`, but not by `GET /rayfold/{op}`.
 
 A request body MUST carry one of three content types: `application/rayfold+json`, `application/json`, or the binary
 `application/rayfold` ([09](09-binary-format.md)). Accepting no others is half of what stops a page on another origin
@@ -119,12 +120,13 @@ SHOULD write a keep-alive at least every 30 seconds: an empty line in NDJSON, a 
 and they are how a server notices a client that went away, since many HTTP servers only see a closed connection
 when they write to it.
 
-Failures the server refuses before it parses a batch — a malformed body, a query string that is not
-percent-encoding, a media type it does not read, a bad Origin or Host, a body over the limit — are answered with an RFC 9457 `application/problem+json` body whose `code` member is
-the Rayfold error code, with the status derived from that code except in two cases HTTP names itself: a media type it
-does not read is `415` (code `invalid_argument`, problem type `unsupported_media_type`, with `Accept-Post` or
-`Accept-Query`), and a body over the limit is `413` (code `resource_exhausted`, problem type `payload_too_large`). A batch that parses and then fails as a whole, such as one over budget, is an
-`error` frame on the frame channel rather than a problem document ([05 §5](05-errors.md)).
+Failures the server refuses before it parses a batch (a malformed body, a query string that is not
+percent-encoding, a media type it does not read, a bad Origin or Host, a body over the limit) are answered with an
+RFC 9457 `application/problem+json` body whose `code` member is the Rayfold error code. The status is derived from
+that code except in two cases HTTP names itself: a media type it
+does not read is `415` (code `invalid_argument`, problem type `unsupported_media_type`, with `Accept-Post`, or
+`Accept-Query` when the request was a `QUERY`), and a body over the limit is `413` (code `resource_exhausted`, problem type `payload_too_large`). A batch that parses and then fails as a whole, such as one over budget, is an
+`error` frame on the frame channel rather than a problem document ([05 §6](05-errors.md)).
 
 Headers:
 
@@ -132,6 +134,7 @@ Headers:
 |---|---|---|
 | `Rayfold-Client` | request | same as `meta.client`, for a client that cannot set it in the envelope; Rayfold clients use `meta` |
 | `Rayfold-Deadline` | request | milliseconds, same as `meta.deadline`, on the same terms |
+| `Rayfold-Safe: true` | request | on a `POST` holding only queries: treated as `QUERY` for caching and exempt from the Origin rule ([12 §2.2](12-security.md)) |
 | `traceparent` / `tracestate` | request | W3C trace context, carried into the batch's `meta` |
 | `Rayfold-Schema` | response | schema hash; clients detect drift |
 | `ETag`, `Cache-Control`, `Vary` | response | per [07](07-cache.md), on safe requests: `GET`, `QUERY`, and `POST` with `Rayfold-Safe: true` |
@@ -157,14 +160,14 @@ Headers:
 | Member | Meaning |
 |---|---|
 | `rayfold` | the protocol version this server speaks |
-| `schemaHash` | SHA-256 of the canonical IR ([01 §9](01-schema.md)), lower-case hexadecimal and **not** prefixed — unlike a shape id ([02 §3](02-shapes.md)), which is. The same value the `Rayfold-Schema` response header carries. |
+| `schemaHash` | SHA-256 of the canonical IR ([01 §9](01-schema.md)), lower-case hexadecimal and **not** prefixed, unlike a shape id ([02 §3](02-shapes.md)). The same value the `Rayfold-Schema` response header carries. |
 | `extensions` | exactly the extensions this server serves. A client MUST NOT use an extension that is not listed ([process.md](process.md)). `http` is listed when the schema's `@http` routes are served beside the endpoint, not merely because the schema declares them. |
 | `limits` | the bounds a batch is judged against ([06 §5](06-auth.md), [12 §3](12-security.md)), so a client can size a batch rather than discover a refusal. `budget`, `maxOps`, `maxDepth` and `maxFields` are defined; a server MAY name others it enforces. |
 | `schema` | the IR ([01 §9](01-schema.md)), with policy expressions redacted unless the server is configured to serve them ([12 §5.6](12-security.md)) |
 
 **`schemaHash` is not recomputable from `schema`.** It is taken over the IR the server holds, and what it serves here
 is redacted by default, so hashing the `schema` member gives a different value. The hash is an identity to compare
-against — the one in this document, the one in the `Rayfold-Schema` header on every response — and not a checksum of
+against, as carried in this document and in the `Rayfold-Schema` header on every response. It is not a checksum of
 what was sent. A client detects drift by noticing the two stop matching, and a client that needs to verify the hash
 itself has to be served the full IR.
 
@@ -188,7 +191,7 @@ allowed to finish, long-lived operations (streams and live queries) end with a r
 request is refused `503` with `Retry-After`. A WebSocket connection closes with code `1001`.
 
 Preflight is answered by the endpoint: an `OPTIONS` request gets `204` with the `Access-Control-Allow-*` headers the
-configured origins imply ([12 §2.1](12-security.md)). An origin listed as allowed, or any origin when `*` is listed,
+configured origins imply ([12 §2.2](12-security.md)). An origin listed as allowed, or any origin when `*` is listed,
 gets `Access-Control-Allow-Origin` naming it, with `Vary: Origin`, on the preflight and on the responses that follow
 it; any other origin gets the `204` without them, so its browser stops there.
 
@@ -243,8 +246,8 @@ none is required for conformance, and no runtime implements them today.
 
 A cancelled or expired op MUST stop calling loaders, and a resolver already running MUST be given a way to notice:
 cancellation is cooperative, so the runtime offers the signal and the resolver is expected to observe it. How it is
-offered is the runtime's own business — an `AbortSignal` on the context, a cancelled coroutine — but a resolver that
-never looks will run to completion, and only its result is discarded. The op ends with
+offered is up to the runtime (an `AbortSignal` on the context, a cancelled coroutine). A resolver that never looks
+will run to completion, and only its result is discarded. The op ends with
 `{ id, error: { code: "canceled" | "deadline_exceeded" }, fin: true }` unless it had already finished.
 
 ## 8. HTTP bindings (extension `http`)
@@ -327,6 +330,6 @@ Requirements:
 6. `name` and `type` are what the client said. A server MUST NOT treat `name` as a path, and SHOULD check the type
    itself where it matters rather than believe it.
 
-For files measured in hundreds of megabytes, a command that answers with a URL from the application's own storage,
-which the client then uploads to, costs the protocol nothing and the server less; this extension is for the sizes
-where a round trip through the API is the simpler thing.
+For files measured in hundreds of megabytes, a command can answer with a URL from the application's own storage, and
+the client uploads there. That costs the protocol nothing and the server less. This extension is for the sizes where a
+round trip through the API is simpler.

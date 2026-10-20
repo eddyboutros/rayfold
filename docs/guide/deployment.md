@@ -1,13 +1,13 @@
 # Deployment
 
-Running Rayfold as several servers behind a load balancer: what the servers share, how each tells the balancer when it
-can take traffic, and how one stops without dropping anyone. One server needs none of this; the defaults are right for
-it.
+This page covers running Rayfold as several servers behind a load balancer: what the servers share, how each tells the
+balancer when it can take traffic, and how one stops without dropping anyone. A single server needs none of this; the
+defaults cover it.
 
 ## What the servers share
 
-Behind a load balancer a request can land on any server, and a retry on a different one from the first attempt. Four
-things must therefore be shared, or the guarantees a single server gives stop holding:
+Behind a load balancer a request can land on any server, and its retry can land on a different one. Four things have
+to be shared, or what holds on a single server stops holding:
 
 | What | Without sharing | Share it with |
 |---|---|---|
@@ -45,12 +45,12 @@ Postgres's catalogue, and the one refused runs the statement again and finds the
 change back over the relay, so nothing is applied twice.
 
 **Shapes.** A shape the client sends as text works on every server. A shape sent by id must be known to the server
-that receives it: ids are hashes of the shape, so shapes registered in code (`server.registerShape`) have the same id
-on every instance, and `trustedShapes` fleets are consistent by construction. A shape id one server learned from a
-request and another has never seen answers `not_found`, so send text unless the shape is registered.
+that receives it. Ids are hashes of the shape, so a shape registered in code (`server.registerShape`) has the same id
+on every instance, and `trustedShapes` fleets are consistent by construction. If one server learned a shape id from a
+request and another has never seen it, the other answers `not_found`. Send text unless the shape is registered.
 
 **Sizing the idempotency bound.** Keys held by commands running right now count against the store's bound (default
-100,000) and are never evicted, so the room left for records is the bound minus the commands in flight. A bound below
+100,000) and are never evicted. The room left for records is the bound minus the commands in flight. A bound below
 the number of commands a server runs at once leaves nothing to replay from ([spec 12 §3.6](../../spec/12-security.md)).
 
 ## Telling the balancer
@@ -62,11 +62,16 @@ Two routes beside the endpoint, for whatever probes your platform runs:
 | `GET /rayfold/health` | `200 {"status":"ok"}` while the process runs | the liveness probe: restart the process when it stops answering |
 | `GET /rayfold/ready` | `200 {"ready":true,"reasons":[]}`, or `503` with every reason it should not take traffic | the readiness probe: route traffic only while it answers 200 |
 
-A server is not ready while it is still connecting to the relay (`relay: not listening yet`), when that failed or the
-connection dropped later (`relay:` followed by whatever stopped it), once it is shutting down (`shutting down`), and
-when a check you configured fails or does not answer within `readinessTimeoutMs` (default 2 seconds): `db: connection
-refused`, `db: no answer within 2000 ms`. On the JVM a check that blocks its thread, such as a JDBC `isValid`, is
-still answered at the limit. The body says which, so a pod that never becomes ready explains itself.
+A server is not ready:
+
+- while it is still connecting to the relay (`relay: not listening yet`);
+- when that failed or the connection dropped later (`relay:` followed by whatever stopped it);
+- once it is shutting down (`shutting down`);
+- when a check you configured fails or does not answer within `readinessTimeoutMs` (default 2 seconds):
+  `db: connection refused`, `db: no answer within 2000 ms`. On the JVM a check that blocks its thread, such as a JDBC
+  `isValid`, is still answered at the limit.
+
+The body lists the reasons, so a pod that never becomes ready tells you why.
 
 ```yaml
 livenessProbe:
@@ -79,7 +84,7 @@ readinessProbe:
 ## What a server will tell you
 
 `GET {base}/health` is liveness and `GET {base}/ready` is whether to send traffic. Neither says anything about the
-server itself, which is the gap `stats` fills:
+server itself. `stats` does:
 
 ```ts
 const handler = createFetchHandler(server, {
@@ -99,18 +104,18 @@ const handler = createFetchHandler(server, {
 extensions it speaks.
 
 The route does not exist until you configure it, and an unconfigured server answers `404` rather than `403`, so it
-does not advertise itself. Give the server an `identity` to make its answers worth comparing:
+does not advertise itself. Give the server an `identity` so answers from different instances can be compared:
 
 ```ts
-createRayfoldServer({ schema, resolvers, identity: { name: "bookshop", version: process.env.GIT_SHA } });
+createRayfoldServer({ schema, resolvers, identity: { name: "bookshop", version: process.env.GIT_SHA ?? "dev" } });
 ```
 
-`instance` is generated per process when you do not supply one, so a restart is visible as a restart. None of this
-is in the manifest — that document's members are fixed by the specification.
+`instance` is generated per process when you do not supply one, so a restart shows up as a new instance. None of this
+is in the manifest, whose members the specification fixes.
 
-**Two servers disagreeing about the schema** is the failure this makes obvious: every response already carries
-`Rayfold-Schema`, and `stats` carries the same hash, so a fleet where one instance is still serving last week's
-schema shows up without any instrumentation at all.
+This makes one failure easy to spot: two servers disagreeing about the schema. Every response already carries
+`Rayfold-Schema`, and `stats` carries the same hash, so an instance still serving last week's schema shows up without
+any instrumentation.
 
 ## Counting what happened
 
@@ -131,8 +136,8 @@ createRayfoldServer({ schema, resolvers, counters });   // then GET {base}/stats
 | `rayfold.idempotency` | `claim`: owned, done, inflight; `record`: failed | A replayed command is otherwise invisible. `record: failed` counts committed commands the store could not record: their keys stay held until the lease runs out |
 | `rayfold.live.opened` / `.reran` / `.closed` | `op` | One live query is a single op for its whole life; `opened` minus `closed` is a leak you can see |
 
-Both runtimes emit the same names. A full sink keeps counting what it already knows and reports `countersDropped`
-beside the numbers, rather than going quiet and leaving a graph that keeps drawing and stops being true.
+Both runtimes emit the same names. A full sink keeps counting the counters it already holds and reports
+`countersDropped` beside the numbers. It does not go quiet, so a graph never keeps drawing after it stops being true.
 
 ## Stopping
 
@@ -156,8 +161,8 @@ they abort, and `server.inflight` the batches still running.
 
 ## On the JVM
 
-The same shape, with the same routes and the same wire format on the relay, so TypeScript and JVM servers can stand
-behind one balancer and share one Postgres:
+The JVM setup is the same, with the same routes and the same wire format on the relay. TypeScript and JVM servers can
+stand behind one balancer and share one Postgres:
 
 ```kotlin
 val idempotency = JdbcIdempotencyStore(dataSource::getConnection)

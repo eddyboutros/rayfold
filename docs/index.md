@@ -5,12 +5,8 @@ titleTemplate: One protocol for your app's API
 
 hero:
   name: Rayfold
-  text: The rules live in the schema
-  tagline: An API protocol that carries not just the shape of a request, but who may make it, what may be cached, how clients stay consistent, and what may change later. Describe the API once, in one place. For TypeScript, React, Kotlin, Java and Spring Boot.
-  image:
-    light: /logo.svg
-    dark: /logo-dark.svg
-    alt: ""
+  text: One request per screen, and every screen stays right
+  tagline: An API protocol for queries, commands and live data. Commands tell clients what they changed, so nothing refetches. The schema says who may do what and what a request may cost, and the server enforces it. For TypeScript, React, Angular, Kotlin, Java and Spring Boot.
   actions:
     - theme: brand
       text: Get started
@@ -19,8 +15,8 @@ hero:
       text: Try it in your browser
       link: /playground
     - theme: alt
-      text: View on GitHub
-      link: https://github.com/eddyboutros/rayfold
+      text: How it compares
+      link: /comparison
 
 features:
   - title: One request per screen
@@ -122,7 +118,7 @@ command buy(bookId: ID, qty: Int = 1): Book
 </div>
 </div>
 
-The last frame comes later, when a member of staff restocks the book: the query was sent with `live: true`, so the
+The last frame comes later, when a member of staff restocks the book. The query was sent with `live: true`, so the
 server keeps it open and sends only what changed.
 
 </div>
@@ -131,11 +127,11 @@ server keeps it open and sends only what changed.
 
 ## Before and after
 
-The advantage is not that the requests are smaller. It is that the server says what changed, so the code that keeps
-screens correct after a write stops existing. Here is the same feature — buy a book, show it, and leave every other
-open screen correct — written the usual way and then in Rayfold.
+The server says what each write changed. The code that keeps screens correct after a write is no longer needed.
+Here is one feature written the usual way and then in Rayfold: buy a book, show it, and leave every other open
+screen correct.
 
-**Before.** Nothing here is wrong or unusual; this is what careful code looks like today.
+**Before.** Nothing here is wrong or unusual. This is typical client code today.
 
 ```ts
 // 1. the write
@@ -167,13 +163,13 @@ const { title, stock } = await book.promise;
 // changed, and every cached view holding that book has already applied them
 ```
 
-Two round trips become one, because step 2 travels in the same request and takes its argument from step 1's result.
-Step 3 disappears, because the command's answer carries the patch. Add `live: true` to the query and another
-customer's purchase arrives through the same mechanism, with no second system to run.
+Two round trips become one. Step 2 travels in the same request and takes its argument from step 1's result.
+Step 3 is gone, because the command's answer carries the patch. Add `live: true` to the query and another
+customer's purchase arrives as a patch too, with no second system to run.
 
-The cost of that: your API has to be described in a schema, and your team learns one more protocol.
-<a href="/should-you-use-rayfold.html">Should you use Rayfold?</a> is the honest version of that trade, and
-[the comparison](/comparison) says which rows are defaults rather than things the alternatives cannot do.
+What you give up: every operation has to be declared in a schema first, and your team learns a new protocol.
+<a href="/should-you-use-rayfold.html">Should you use Rayfold?</a> says when that is worth it and when it is not.
+[The comparison](/comparison) shows where REST and GraphQL reach the same result with more work.
 
 </div>
 
@@ -181,8 +177,8 @@ The cost of that: your API has to be described in a schema, and your team learns
 
 ## Pick your stack
 
-Every guide builds the same small bookshop, and every example project runs its tests on each change to the
-repository, so the code you copy is code that works.
+Every guide builds the same small bookshop. Every example project runs its tests on each change to the
+repository, so the code you copy works.
 
 <div class="home-stacks">
   <a href="./get-started/typescript"><strong>TypeScript</strong><span>Server and client on Node.js</span></a>

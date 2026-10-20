@@ -5,9 +5,9 @@ description: A stream sends items as they happen. Commands emit events, streams 
 
 # Streams and events
 
-A [live query](./live.md) keeps a screen current: it re-runs and tells you what the answer is *now*. A **stream** is
-the other shape — it carries each thing that happened, in order, as it happens. A live query of a book's stock says
-"the stock is 7"; a stream of stock changes says "it went 5, then 6, then 7".
+A [live query](./live.md) keeps a screen current: it re-runs and tells you what the answer is *now*. A **stream**
+carries each thing that happened, in order, as it happens. A live query of a book's stock says "the stock is 7". A
+stream of stock changes says "it went 5, then 6, then 7".
 
 Use a stream when the steps matter: an activity feed, a progress log, a ticker, anything where a value that changed
 and changed back is two events and not a no-op. Use a live query when only the current answer matters. A live query
@@ -28,13 +28,13 @@ command restock(bookId: ID, qty: Int): Book
 stream stockUpdates(bookIds: [ID]): StockChanged
 ```
 
-`emits` is enforced, not documentation: a command that publishes an event it did not declare fails with `internal`
-rather than sending it. So the schema is the whole list of what can reach a client, and a reader can see which
-commands feed which streams without reading a resolver.
+`emits` is enforced. A command that publishes an event it did not declare fails with `internal`, and the event is not
+sent. The schema therefore lists everything that can reach a client, and you can see which commands feed which
+streams without reading a resolver.
 
 A `stream` returns the event type. It is the third operation kind beside `query` and `command`, and it takes
-arguments the same way — `bookIds` here is the filter, so a screen watching three books does not receive every
-change in the shop.
+arguments the same way. Here `bookIds` is the filter, so a screen watching three books does not receive every change
+in the shop.
 
 ## Emit from the command
 
@@ -50,8 +50,8 @@ restock: (args: { bookId: string; qty: number }, ctx) => {
 },
 ```
 
-The runtime never publishes the events or patches of a dry run (`@simulate`), so a simulation is visible to nobody
-else; the `ctx.simulate` check is what keeps the resolver from writing.
+The runtime never publishes the events or patches of a dry run (`@simulate`), so nobody else sees a simulation. The
+`ctx.simulate` check keeps the resolver from writing.
 
 ## Resolve the stream
 
@@ -87,9 +87,9 @@ for await (const ev of client.stream<{ bookId: string; stock: number }>(
 }
 ```
 
-Stop by aborting the signal, or by breaking out of the loop, which closes the stream on the server too; aborting makes
-the loop return rather than throw, because a cancellation you asked for is not an error. Anything else the server
-sends is thrown as a `RayfoldClientError` with its code, and a stream cut off before `fin` fails as `unavailable`.
+Stop by aborting the signal or by breaking out of the loop. Either closes the stream on the server too. Aborting makes
+the loop return without throwing, because a cancellation you asked for is not an error. Any other error the server
+sends is thrown as a `RayfoldClientError` with its code. A stream cut off before `fin` fails as `unavailable`.
 
 In Kotlin it is a `Flow`:
 
@@ -109,6 +109,6 @@ subscription when the request ends.
 
 ## Next
 
-- [Live updates](./live.md) — when you want the current answer rather than every step.
-- [Commands and errors](./commands.md) — what a command returns, and what `@simulate` changes.
+- When you want the current answer, not every step: [Live updates](./live.md).
+- What a command returns, and what `@simulate` changes: [Commands and errors](./commands.md).
 - [The live and sync chapter](../../spec/08-live-and-sync.md) of the specification.

@@ -1,7 +1,7 @@
 # 10 - MCP bridge (extension `mcp`)
 
-Any Rayfold server is a Model Context Protocol server. The bridge is a pure projection of the schema; there is
-no second definition of tools, no hand-written descriptions and no separate auth path: an agent calling a
+Any Rayfold server is a Model Context Protocol server. The bridge is a pure projection of the schema. There is
+no second definition of tools, no hand-written descriptions and no separate auth path. An agent calling a
 tool goes through the same policies, idempotency, typed errors and patches as any other client.
 
 Target revision: MCP **2026-07-28** (stateless; Streamable HTTP; JSON Schema 2020-12).

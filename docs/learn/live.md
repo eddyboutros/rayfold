@@ -58,19 +58,19 @@ A change that leaves the result as it was sends nothing.
 ## How the server knows
 
 You do not tell the server what to watch. Every command's patch goes onto the server's change bus. Each live query
-remembers the entities its last result contained and the types it can reach; when a change touches one of them, the
+remembers the entities its last result contained and the types it can reach. When a change touches one of them, the
 server runs the query again with the same arguments, shape and viewer, and sends the difference. Changes that arrive
-while it runs are folded into one more run. A query whose result is an interface, such as `query people: [Named]`,
-watches every entity type that implements it, so a newly created member shows up; on servers up to 0.2.1 it showed only
-after a reload.
+during that run are folded into one more run. A query whose result is an interface, such as `query people: [Named]`,
+watches every entity type that implements it, so a newly created member shows up. On servers up to 0.2.1 it showed
+only after a reload.
 
-That makes live queries correct by default: the same policies apply to every update as to the first result, and a
-query can never show a field its viewer may not read. A server can also put changes from elsewhere, such as rows
-written by another system, onto the same bus.
+Because the query runs again, every update passes the same policies as the first result, and a query can never show
+a field its viewer may not read. A server can also put changes from elsewhere, such as rows written by another
+system, onto the same bus.
 
-Because every change re-runs the query, some queries are a poor fit — a search whose results depend on a keyword
-rather than on any one entity would re-run on every write to a type it can reach, and pay for it. Mark such a query
-`@live(false)` and the server refuses to open it live:
+Every change re-runs the query, so some queries are a poor fit. A search whose results depend on a keyword, not on any one entity,
+would re-run at full cost on every write to a type it can reach. Mark such a query `@live(false)` and the server refuses
+to open it live:
 
 ```rayfold
 query search(q: String, page: PageArgs = { first: 20 }): Page<SearchHit> @live(false)
@@ -79,10 +79,10 @@ query search(q: String, page: PageArgs = { first: 20 }): Page<SearchHit> @live(f
 A client asking for it with `live: true` is refused with `invalid_argument`, and the whole batch is refused before it
 runs; the same query still answers normally without `live`.
 
-The bus belongs to one server. Behind a load balancer that is silently wrong: a command that runs on the second
-server never reaches a live query held by the first, and the screen sits there showing stale data with no error to
-say so. Give every server the same `relay` and the changes cross between them — `MemoryRelay` for servers sharing a
-process, `PgRelay` over Postgres `LISTEN`/`NOTIFY` for separate ones ([Deployment](../guide/deployment.md)).
+The bus belongs to one server. Behind a load balancer, a command that runs on the second server never reaches a live
+query held by the first. The screen keeps showing stale data, and no error says so. Give every server the same
+`relay` and the changes cross between them: `MemoryRelay` for servers sharing a process, `PgRelay` over Postgres
+`LISTEN`/`NOTIFY` for separate ones ([Deployment](../guide/deployment.md)).
 
 ## On the client
 
@@ -110,20 +110,18 @@ that book updates too, not only the live one. In React, only the components show
   http.listen(4000);
   ```
 
-  It serves `/rayfold/ws` by default, speaks the `rayfold.0.1` subprotocol, and checks the handshake's `Origin` —
-  browsers attach cookies to a WebSocket handshake, so without that check any site could open a socket as your user.
+  It serves `/rayfold/ws` by default, speaks the `rayfold.0.1` subprotocol, and checks the handshake's `Origin`.
+  Browsers attach cookies to a WebSocket handshake, so without that check any site could open a socket as your user.
   `maxMessage` bounds an assembled message (1 MiB by default), and `maxBuffered` what may wait for a client that
-  stops reading (8 MiB). One socket carries many operations, and `{ "cancel": <id> }` cancels one of them, even one
-  sent in the same batch as others, without closing it. A socket opened with a capability token closes with code
-  `1008` when the token expires, its live queries ended with `unauthenticated`. On the JVM, `RayfoldWebSocket` does
+  stops reading (8 MiB). One socket carries many operations. `{ "cancel": <id> }` cancels one of them without closing
+  the socket, even one sent in the same batch as others. A socket opened with a capability token closes with code
+  `1008` when the token expires, and its live queries end with `unauthenticated`. On the JVM, `RayfoldWebSocket` does
   the same job.
-- A dropped connection is not the end of the subscription. Both clients reopen it after half a second, doubling to
-  thirty, so a screen survives a deploy; `onError` says whether it is coming back (`{ retrying }` in TypeScript, the
-  second argument in Kotlin), and only an error that would recur ends it.
-- Reopening re-runs the query, so what comes back is the current answer rather than the changes you missed. The
-  guarantee is that the screen catches up, not that you see every step it took to get there: a value that changed and
-  changed back while you were away leaves no trace. If you need the steps, [an event stream](./streams.md) is the
-  right shape for it, not a live query.
+- A dropped connection does not end the subscription. Both clients reopen it after half a second, doubling up to
+  thirty, so a screen survives a deploy. `onError` says whether it is coming back (`{ retrying }` in TypeScript, the
+  second argument in Kotlin). Only an error that would recur ends it.
+- Reopening re-runs the query, so you get the current answer, not the changes you missed. A value that changed and
+  changed back while you were away leaves no trace. If you need every step, use [an event stream](./streams.md).
 - Stop by calling the function `live` returned, by unmounting the component, or by aborting the request.
 
 ::: info Since 0.2.2
@@ -133,6 +131,6 @@ that book updates too, not only the live one. In React, only the components show
 ## Next
 
 - Commands are what live queries react to: [Commands and errors](./commands.md).
-- Every step rather than the current answer: [Streams and events](./streams.md).
+- Every step, not only the current answer: [Streams and events](./streams.md).
 - Show a change before the server confirms it: [Offline and optimistic](../guide/offline.md).
 - The [live chapter of the specification](../../spec/08-live-and-sync.md) describes change detection exactly.

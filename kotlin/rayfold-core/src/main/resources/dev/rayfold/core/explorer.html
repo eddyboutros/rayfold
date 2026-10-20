@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rayfold explorer</title>
 <style>
-:root { color-scheme: light dark; --ink: #16202b; --muted: #5b6875; --rule: #d6dde5; --surface: #fff; --ground: #f3f6f9; --accent: #2a78d6; --ok: #0a7d3f; --bad: #b3261e; }
-@media (prefers-color-scheme: dark) { :root { --ink: #e8eef5; --muted: #a2aebc; --rule: #2b333d; --surface: #171c22; --ground: #0f1318; --accent: #5aa2f0; --ok: #4cc073; --bad: #f2836f; } }
+:root { color-scheme: light dark; --ink: #16202b; --muted: #5b6875; --rule: #d6dde5; --surface: #fff; --ground: #f3f6f9; --accent: #2a78d6; --ok: #0a7d3f; --bad: #b3261e; --warn: #8a5a00; }
+@media (prefers-color-scheme: dark) { :root { --ink: #e8eef5; --muted: #a2aebc; --rule: #2b333d; --surface: #171c22; --ground: #0f1318; --accent: #5aa2f0; --ok: #4cc073; --bad: #f2836f; --warn: #e3b25a; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.55 ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
 header { display: flex; gap: 12px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--rule); background: var(--surface); }
@@ -16,31 +16,65 @@ main { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 0; heigh
 @media (max-width: 800px) { main { grid-template-columns: 1fr; height: auto; } }
 aside { border-right: 1px solid var(--rule); overflow: auto; background: var(--surface); }
 aside h2 { font: 600 11px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 12px 6px; }
-button.op { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.op { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 12px; cursor: pointer; }
 button.op:hover, button.op.on { background: var(--ground); }
 button.op .kind { font: 11px ui-monospace, monospace; color: var(--muted); margin-left: 6px; }
-section.work { display: grid; grid-template-rows: auto auto 1fr; min-width: 0; }
+section.work { display: grid; grid-template-rows: auto auto auto 1fr; min-width: 0; overflow: auto; }
 .doc { padding: 12px 16px; border-bottom: 1px solid var(--rule); background: var(--surface); }
 .doc h3 { margin: 0 0 4px; font-size: 15px; }
 .doc dl { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 2px 10px; margin: 6px 0 0; font-size: 13px; }
 .doc dt { color: var(--muted); font: 12px ui-monospace, monospace; }
 .doc dd { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
 .editor { display: grid; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+.tabs { display: flex; gap: 2px; flex-wrap: wrap; align-items: center; }
+.tabs button { border: 1px solid var(--rule); background: var(--surface); border-radius: 6px; padding: 3px 9px; font: 12px ui-monospace, monospace; cursor: pointer; }
+.tabs button.on { border-color: var(--accent); color: var(--accent); }
+.tabs button.tab-close { border: 0; background: none; color: var(--muted); padding: 3px 5px; margin-left: -4px; }
+.field { position: relative; }
 textarea, input[type=text] { width: 100%; font: 12.5px/1.5 ui-monospace, monospace; color: inherit; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px; }
 textarea { min-height: 120px; resize: vertical; }
+#headers { min-height: 60px; }
+#token { width: 170px; }
+.complete { position: absolute; z-index: 2; margin: 0; padding: 4px 0; list-style: none; min-width: 180px; max-height: 220px; overflow: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .14); font: 12.5px/1.4 ui-monospace, monospace; }
+.complete li { padding: 3px 10px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+.complete li .kind { color: var(--muted); }
+.complete li[aria-selected=true] { background: var(--accent); color: #fff; }
+.complete li[aria-selected=true] .kind { color: inherit; }
+.problems { margin: 0; padding: 0; list-style: none; font: 12px/1.5 ui-monospace, monospace; color: var(--warn); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row label { font-size: 12.5px; color: var(--muted); display: flex; gap: 5px; align-items: center; }
-button.go { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: 600 13px/1 inherit; cursor: pointer; }
-button.go:disabled { opacity: .55; cursor: default; }
+button.go { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: 600 13px/1 inherit; cursor: pointer; min-width: 64px; }
+button.go.stop { background: var(--bad); }
+button.quiet { border: 1px solid var(--rule); background: var(--surface); border-radius: 6px; padding: 5px 10px; font-size: 12.5px; cursor: pointer; }
+button.quiet[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+.panel { border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); padding: 8px 10px; display: grid; gap: 6px; max-height: 320px; overflow: auto; }
+.panel[hidden] { display: none; }
+.panel ol, .panel ul { margin: 0; padding: 0; list-style: none; }
+.panel ul ul { padding-left: 18px; }
+.panel li label { display: flex; gap: 6px; align-items: baseline; font: 12.5px/1.6 ui-monospace, monospace; }
+.panel li .kind, .history .when { color: var(--muted); font: 11.5px ui-monospace, monospace; }
+.history button { display: flex; gap: 10px; width: 100%; text-align: left; border: 0; background: none; padding: 3px 4px; font: 12.5px ui-monospace, monospace; cursor: pointer; border-radius: 4px; }
+.history button:hover { background: var(--ground); }
+.views { display: flex; gap: 6px; align-items: center; padding: 8px 16px 0; }
 .out { overflow: auto; padding: 12px 16px; display: grid; gap: 8px; align-content: start; }
-.frame { border: 1px solid var(--rule); border-left-width: 3px; border-radius: 6px; background: var(--surface); padding: 8px 10px; }
+.frame { border: 1px solid var(--rule); border-left-width: 3px; border-radius: 6px; background: var(--surface); padding: 8px 10px; min-width: 0; }
 .frame pre { margin: 4px 0 0; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .frame .tag { font: 600 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .frame.ok, .frame.data { border-left-color: var(--ok); }
-.frame.error { border-left-color: var(--bad); }
+.frame.error, .frame.http { border-left-color: var(--bad); }
 .frame.patch, .frame.item, .frame.at { border-left-color: var(--accent); }
+.tree { font: 12px/1.6 ui-monospace, monospace; margin-top: 4px; overflow-wrap: anywhere; }
+.tree details > :not(summary) { margin-left: 16px; }
+.tree summary { cursor: pointer; }
+.tree .k { color: var(--muted); }
+.tree .string { color: var(--ok); }
+.tree .number, .tree .boolean { color: var(--accent); }
+.tree .null { color: var(--muted); font-style: italic; }
 .hint { color: var(--muted); font-size: 12.5px; }
 code { font-family: ui-monospace, monospace; }
+@media (prefers-reduced-motion: no-preference) { button.go { transition: background .15s; } }
 </style>
 </head>
 <body>
@@ -54,15 +88,37 @@ code { font-family: ui-monospace, monospace; }
   <section class="work">
     <div class="doc" id="doc"><p class="hint">Pick an operation on the left. The explorer reads everything it shows from the server's manifest.</p></div>
     <div class="editor">
-      <textarea id="req" spellcheck="false"></textarea>
+      <div class="tabs" id="tabs" role="group" aria-label="Requests"></div>
+      <div class="field">
+        <textarea id="req" spellcheck="false" aria-label="Request" aria-autocomplete="list" aria-controls="complete"></textarea>
+        <ul class="complete" id="complete" role="listbox" aria-label="Suggestions" hidden></ul>
+      </div>
+      <ul class="problems" id="problems" aria-live="polite"></ul>
       <div class="row">
         <button class="go" id="send">Send</button>
         <label><input type="checkbox" id="simulate"> dry run</label>
         <label><input type="checkbox" id="live"> live</label>
-        <label>auth <input type="text" id="token" placeholder="bearer token" style="width:170px"></label>
+        <label>auth <input type="text" id="token" placeholder="bearer token" autocomplete="off"></label>
+        <button class="quiet" id="toggle-shape" aria-pressed="false" aria-controls="shape-panel">Shape</button>
+        <button class="quiet" id="toggle-headers" aria-pressed="false" aria-controls="headers-panel">Headers</button>
+        <button class="quiet" id="toggle-history" aria-pressed="false" aria-controls="history-panel">History</button>
+        <button class="quiet" id="curl">Copy as curl</button>
         <span class="hint" id="status"></span>
+        <span class="hint" id="note" aria-live="polite"></span>
       </div>
-      <p class="hint">A batch can hold several ops, and a later one can use an earlier result: <code>{"$ref": "1.id"}</code> in its args. Ctrl+Enter sends.</p>
+      <div class="panel" id="shape-panel" hidden></div>
+      <div class="panel" id="headers-panel" hidden>
+        <label class="hint" for="headers">Headers sent with every request, as a JSON object of names to values</label>
+        <textarea id="headers" spellcheck="false" placeholder='{ "x-tenant": "acme" }'></textarea>
+        <label class="hint"><input type="checkbox" id="remember"> keep the token and these headers in this browser</label>
+      </div>
+      <div class="panel history" id="history-panel" hidden><ol id="history"></ol></div>
+      <p class="hint">A batch can hold several ops, and a later one can use an earlier result: <code>{"$ref": "1.id"}</code> in its args. Ctrl+Enter sends; Ctrl+Space suggests.</p>
+    </div>
+    <div class="views" role="group" aria-label="Response">
+      <button class="quiet" id="view-frames" aria-pressed="true">Frames</button>
+      <button class="quiet" id="view-result" aria-pressed="false">Result</button>
+      <button class="quiet" id="copy-frames">Copy frames</button>
     </div>
     <div class="out" id="out"></div>
   </section>
@@ -70,13 +126,22 @@ code { font-family: ui-monospace, monospace; }
 <script>
 var CONFIG = JSON.parse(document.getElementById("config").textContent);
 var $ = function (sel) { return document.querySelector(sel); };
+var NL = String.fromCharCode(10);
+var HISTORY = 50;
+var STORE = "rayfold-explorer:" + CONFIG.endpoint;
 var manifest = null;
 var current = null;
+var running = null;
+var view = "frames";
+var openNodes = {};
+var shown = { request: null, frames: [], http: null, type: "", raw: null, ms: 0, bytes: 0, ended: "", local: null };
+var state = { tabs: [{ op: null, text: "", simulate: false, live: false }], active: 0, history: [], remember: false };
 
 document.getElementById("title").textContent = CONFIG.title;
 
 function text(node, s) { node.textContent = s; return node; }
 function el(tag, cls, s) { var n = document.createElement(tag); if (cls) n.className = cls; if (s !== undefined) n.textContent = s; return n; }
+function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
 function typeName(t) {
   if (!t) return "?";
   if (t.kind === "list") return "[" + typeName(t.of) + "]" + (t.nullable ? "?" : "");
@@ -95,23 +160,62 @@ function policiesOf(def) {
   annotationsOf(def, "deny").forEach(function () { names.push("deny"); });
   return names.length ? names.join(", ") : "none on the operation";
 }
-/** A shape that selects the scalar fields of what an op returns: a starting point, not a rule. */
-function defaultShape(typeRef) {
-  var base = typeRef;
-  while (base && base.kind === "list") base = base.of;
-  if (!base) return "";
-  var def = manifest.schema.types[base.name];
-  if (!def || !def.fields) return "";
-  if (base.name === "Page" && base.args && base.args.length) {
-    return "{ total hasMore cursor items " + (defaultShape(base.args[0]) || "{ id }") + " }";
-  }
-  var scalars = def.fields.filter(function (f) {
-    var t = f.type.kind === "list" ? f.type.of : f.type;
-    var sub = manifest.schema.types[t.name];
-    return !f.args.length && sub && (sub.kind === "scalar" || sub.kind === "enum");
-  });
-  if (!scalars.length) return "";
-  return "{ " + scalars.map(function (f) { return f.name; }).join(" ") + " }";
+
+// ---------------------------------------------------------------- types, as the manifest describes them
+
+/** A type reference with a generic's parameters replaced by what they were bound to. */
+function bound(ref, bind) {
+  if (!ref) return ref;
+  if (ref.kind === "list") return { kind: "list", of: bound(ref.of, bind), nullable: ref.nullable };
+  if (bind && bind[ref.name]) return bind[ref.name];
+  if (!ref.args || !ref.args.length) return ref;
+  return { kind: "named", name: ref.name, nullable: ref.nullable, args: ref.args.map(function (a) { return bound(a, bind); }) };
+}
+/** The named type under any lists, with the bindings its own parameters get: Page<Book> knows its items are Books. */
+function typeAt(ref, bind) {
+  var r = bound(ref, bind);
+  while (r && r.kind === "list") r = r.of;
+  if (!r || !manifest) return null;
+  var def = manifest.schema.types[r.name];
+  if (!def) return null;
+  var mine = {};
+  (def.typeParams || []).forEach(function (p, i) { if (r.args && r.args[i]) mine[p] = r.args[i]; });
+  return { name: r.name, def: def, bind: mine };
+}
+function fieldsOf(t) { return t && t.def && t.def.fields && t.def.kind !== "input" ? t.def.fields : null; }
+function fieldOf(t, name) { var fs = fieldsOf(t) || []; for (var i = 0; i < fs.length; i++) if (fs[i].name === name) return fs[i]; return null; }
+function isLeaf(t) { return !t || t.def.kind === "scalar" || t.def.kind === "enum"; }
+/** What a selection on this type may narrow to: a union's members, or the entities that implement an interface. */
+function membersOf(t) {
+  if (!t) return [];
+  if (t.def.kind === "union") return t.def.members.slice().sort();
+  if (!t.def.interface) return [];
+  var types = manifest.schema.types;
+  return Object.keys(types).filter(function (n) { return (types[n].implements || []).indexOf(t.name) >= 0; }).sort();
+}
+/** Whether an object of this concrete type is selected by ...on cond. */
+function matches(type, cond) {
+  if (!type || !manifest) return type === cond;
+  if (type === cond) return true;
+  var c = manifest.schema.types[cond];
+  if (c && c.kind === "union") return c.members.indexOf(type) >= 0;
+  var d = manifest.schema.types[type];
+  return !!(d && (d.implements || []).indexOf(cond) >= 0);
+}
+/**
+ * A shape that selects the scalar fields of what an op returns: a starting point, not a rule. A field behind a policy
+ * is left out, so the first send works for whoever is reading; the Shape panel adds it back.
+ */
+function defaultShape(typeRef, bind) {
+  var t = typeAt(typeRef, bind);
+  var fields = fieldsOf(t);
+  if (!fields) return "";
+  var open = function (f) { return !annotationsOf(f, "allow").length && !annotationsOf(f, "deny").length; };
+  var scalars = fields.filter(function (f) { return !f.args.length && open(f) && isLeaf(typeAt(f.type, t.bind)); });
+  var nested = t.def.typeParams ? fields.filter(function (f) { return !f.args.length && !isLeaf(typeAt(f.type, t.bind)); }) : [];
+  var parts = scalars.map(function (f) { return f.name; });
+  nested.forEach(function (f) { parts.push(f.name + " " + (defaultShape(f.type, t.bind) || "{ id }")); });
+  return parts.length ? "{ " + parts.join(" ") + " }" : "";
 }
 function argSkeleton(def) {
   var args = {};
@@ -123,7 +227,721 @@ function argSkeleton(def) {
   });
   return args;
 }
-function show(op) {
+
+// ---------------------------------------------------------------- shapes (spec 02)
+
+function shapeError(message, at) { var e = new Error(message); e.at = at; return e; }
+function tokenizeShape(src) {
+  var out = [];
+  var i = 0;
+  while (i < src.length) {
+    var c = src.charAt(i);
+    if (c === " " || c === "\t" || c === "\r" || c === NL || c === ",") { i++; continue; }
+    if (c === "/" && src.charAt(i + 1) === "/") { while (i < src.length && src.charAt(i) !== NL) i++; continue; }
+    if (c === "/" && src.charAt(i + 1) === "*") { var end = src.indexOf("*/", i + 2); if (end < 0) throw shapeError("unterminated comment", i); i = end + 2; continue; }
+    if (src.substr(i, 3) === "...") { out.push({ t: "p", v: "...", at: i }); i += 3; continue; }
+    if ("{}():@$[].".indexOf(c) >= 0) { out.push({ t: "p", v: c, at: i }); i++; continue; }
+    if (c === '"') {
+      var j = i + 1;
+      while (j < src.length && src.charAt(j) !== '"') j += src.charAt(j) === "\\" ? 2 : 1;
+      if (j >= src.length) throw shapeError("unterminated string", i);
+      out.push({ t: "s", v: src.slice(i, j + 1), at: i });
+      i = j + 1;
+      continue;
+    }
+    var m = /^-?[0-9][0-9A-Za-z_.+-]*/.exec(src.slice(i)) || /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i));
+    if (!m) throw shapeError("unexpected " + JSON.stringify(c), i);
+    out.push({ t: /^[A-Za-z_]/.test(m[0]) ? "w" : "n", v: m[0], at: i });
+    i += m[0].length;
+  }
+  return out;
+}
+/**
+ * The shape as items: { kind: "field", name, alias?, args?, shape?, eager?, partial? }, { kind: "on", type, shape },
+ * { kind: "spread", type, view } and { kind: "defer", label, shape }. Arguments stay as the text that was written, so a
+ * shape edited by ticking a box keeps every argument exactly as it was.
+ */
+function parseShape(src) {
+  var ts = tokenizeShape(src);
+  var pos = 0;
+  function at() { return ts[pos] ? ts[pos].at : src.length; }
+  function is(v) { return !!ts[pos] && ts[pos].t === "p" && ts[pos].v === v; }
+  function expect(v) { if (!is(v)) throw shapeError("expected " + v, at()); pos++; }
+  function name() { var t = ts[pos]; if (!t || t.t !== "w") throw shapeError("expected a name", at()); pos++; return t.v; }
+  function raw() {
+    var start = at();
+    var depth = 0;
+    for (;;) {
+      if (!ts[pos]) throw shapeError("unclosed (", start);
+      if (is("(")) depth++;
+      if (is(")")) depth--;
+      var t = ts[pos++];
+      if (depth === 0) return src.slice(start, t.at + 1);
+    }
+  }
+  function block() {
+    expect("{");
+    var items = [];
+    while (!is("}")) { if (!ts[pos]) throw shapeError("unclosed {", src.length); items.push(item()); }
+    pos++;
+    return { items: items };
+  }
+  function item() {
+    if (is("...")) {
+      pos++;
+      if (ts[pos] && ts[pos].v === "on" && ts[pos + 1] && ts[pos + 1].t === "w") { pos++; var type = name(); return { kind: "on", type: type, shape: block() }; }
+      var of = name();
+      expect(".");
+      return { kind: "spread", type: of, view: name() };
+    }
+    if (is("@")) {
+      pos++;
+      if (name() !== "defer") throw shapeError("only @defer starts an item", at());
+      var label = is("(") ? raw() : "";
+      return { kind: "defer", label: label, shape: block() };
+    }
+    var first = name();
+    var it = { kind: "field", name: first };
+    if (is(":")) { pos++; it.alias = first; it.name = name(); }
+    if (is("(")) { var args = raw(); if (args.replace(/[\s(),]/g, "") !== "") it.args = args; }
+    if (is("{")) it.shape = block();
+    while (is("@") && ts[pos + 1] && (ts[pos + 1].v === "eager" || ts[pos + 1].v === "partial")) { it[ts[pos + 1].v] = true; pos += 2; }
+    return it;
+  }
+  var shape = block();
+  if (ts[pos]) throw shapeError("unexpected " + ts[pos].v + " after the shape", at());
+  return shape;
+}
+function printShape(shape) {
+  var kept = shape.items.filter(function (i) { return (i.kind !== "on" && i.kind !== "defer") || i.shape.items.length; });
+  return "{ " + kept.map(printItem).join(" ") + " }";
+}
+function printItem(i) {
+  if (i.kind === "on") return "...on " + i.type + " " + printShape(i.shape);
+  if (i.kind === "spread") return "..." + i.type + "." + i.view;
+  if (i.kind === "defer") return "@defer" + i.label + " " + printShape(i.shape);
+  var sub = i.shape && i.shape.items.length ? " " + printShape(i.shape) : "";
+  return (i.alias ? i.alias + ": " : "") + i.name + (i.args || "") + sub + (i.eager ? " @eager" : "") + (i.partial ? " @partial" : "");
+}
+/** A view from the manifest, in the same form as a parsed shape. */
+function viewItems(type, view) {
+  var v = manifest && manifest.schema.views && manifest.schema.views[type + "." + view];
+  return v ? irItems(v.shape.items) : [];
+}
+function irItems(items) {
+  return items.map(function (i) {
+    if (i.kind === "field") { var f = { kind: "field", name: i.name }; if (i.alias) f.alias = i.alias; if (i.args && Object.keys(i.args).length) f.args = "(" + JSON.stringify(i.args) + ")"; if (i.shape) f.shape = { items: irItems(i.shape.items) }; return f; }
+    if (i.kind === "on" || i.kind === "defer") return { kind: i.kind, type: i.type, label: "", shape: { items: irItems(i.shape.items) } };
+    return i;
+  });
+}
+
+// ---------------------------------------------------------------- frames into a result (spec 04 §2, spec 13)
+
+function keyOf(o) {
+  return o && typeof o === "object" && !Array.isArray(o) && typeof o.$type === "string" && (typeof o.id === "string" || typeof o.id === "number") ? o.$type + ":" + o.id : null;
+}
+function gone(v) { return !!v && typeof v === "object" && !Array.isArray(v) && typeof v.$gone === "string"; }
+/**
+ * At one level of a result: which keys were selected under an alias or with arguments (they belong to this result, not
+ * to the entity), and the items each child was selected with. Without a shape every key is the entity's own.
+ */
+function selection(items, type) {
+  var sel = { notOwn: {}, children: {} };
+  (function add(list) {
+    list.forEach(function (i) {
+      if (i.kind === "field") {
+        var key = i.alias || i.name;
+        if (i.alias || i.args) sel.notOwn[key] = true;
+        sel.children[key] = i.shape ? i.shape.items : null;
+      } else if (i.kind === "on") { if (matches(type, i.type)) add(i.shape.items); }
+      else if (i.kind === "defer") add(i.shape.items);
+      else if (i.kind === "spread") { if (matches(type, i.type)) add(viewItems(i.type, i.view)); }
+    });
+  })(items);
+  return sel;
+}
+function eachObject(s, fn) {
+  (function visit(v, items) {
+    if (!v || typeof v !== "object" || gone(v)) return;
+    if (Array.isArray(v)) { v.forEach(function (x) { visit(x, items); }); return; }
+    var sel = items ? selection(items, v.$type) : null;
+    fn(v, function (k) { return !sel || !sel.notOwn[k]; });
+    Object.keys(v).forEach(function (k) { visit(v[k], sel && sel.children[k] !== undefined ? sel.children[k] : null); });
+  })(s.root, s.shape ? s.shape.items : null);
+}
+function nestedEntities(v, out) {
+  if (!v || typeof v !== "object") return out;
+  if (Array.isArray(v)) { v.forEach(function (x) { nestedEntities(x, out); }); return out; }
+  if (keyOf(v)) out.push(v);
+  Object.keys(v).forEach(function (k) { nestedEntities(v[k], out); });
+  return out;
+}
+/** A set reaches the entity wherever this result holds it, field by field, for the fields this result selected. */
+function setEntity(s, key, value) {
+  eachObject(s, function (obj, own) {
+    if (keyOf(obj) !== key) return;
+    Object.keys(value).forEach(function (f) { if (f in obj && own(f)) obj[f] = clone(value[f]); });
+  });
+  Object.keys(value).forEach(function (f) {
+    nestedEntities(value[f], []).forEach(function (n) { setEntity(s, keyOf(n), n); });
+  });
+}
+/** A deleted entity reads as null; in a list it leaves a gap, so later positions still line up with the server's. */
+function dropEntity(v, key) {
+  if (!v || typeof v !== "object" || gone(v)) return v;
+  if (Array.isArray(v)) return v.map(function (x) { return keyOf(x) === key ? { $gone: key } : dropEntity(x, key); });
+  if (keyOf(v) === key) return null;
+  var out = {};
+  Object.keys(v).forEach(function (k) { out[k] = dropEntity(v[k], key); });
+  return out;
+}
+function pathOf(path) { return path === "" ? [] : path.split("."); }
+function nodeAt(s, path) {
+  var v = s.root;
+  var items = s.shape ? s.shape.items : null;
+  var segs = pathOf(path);
+  for (var i = 0; i < segs.length; i++) {
+    if (!v || typeof v !== "object") return null;
+    if (Array.isArray(v)) { v = v[Number(segs[i])]; continue; }
+    var sel = items ? selection(items, v.$type) : null;
+    items = sel && sel.children[segs[i]] !== undefined ? sel.children[segs[i]] : null;
+    v = v[segs[i]];
+  }
+  return v && typeof v === "object" ? { node: v, sel: items && !Array.isArray(v) ? selection(items, v.$type) : null } : null;
+}
+/** Fields merged in at a path: into the entity there, wherever it appears, unless this result selected them its own way. */
+function mergeAt(states, s, path, value) {
+  var found = nodeAt(s, path);
+  if (!found || Array.isArray(found.node) || gone(found.node)) return;
+  var node = found.node;
+  var key = keyOf(node);
+  Object.keys(value).forEach(function (f) {
+    node[f] = clone(value[f]);
+    if (!key || (found.sel && found.sel.notOwn[f])) return;
+    var one = {};
+    one[f] = value[f];
+    eachHeld(states, function (o) { setEntity(o, key, one); });
+  });
+}
+function applyList(s, p) {
+  var found = p.list === "" ? { node: s.root } : nodeAt(s, p.list);
+  if (!found || !Array.isArray(found.node)) return;
+  var arr = found.node;
+  (p.del || []).slice().sort(function (a, b) { return b - a; }).forEach(function (n) { arr.splice(n, 1); });
+  (p.ins || []).forEach(function (x) { arr.splice(x.at, 0, clone(x.value)); });
+}
+function eachHeld(states, fn) { Object.keys(states.byId).forEach(function (id) { if (states.byId[id].held) fn(states.byId[id]); }); }
+function contains(v, key) {
+  if (!v || typeof v !== "object") return false;
+  if (Array.isArray(v)) return v.some(function (x) { return contains(x, key); });
+  return keyOf(v) === key || Object.keys(v).some(function (k) { return contains(v[k], key); });
+}
+/** set, del, inv and invOp reach every result this response holds; at and list only the one their frame names. */
+function applyPatch(states, own, ops) {
+  ops.forEach(function (p) {
+    if ("set" in p) { eachHeld(states, function (s) { setEntity(s, p.set, p.value); }); delete states.stale[p.set]; }
+    else if ("list" in p) { if (own && own.held) applyList(own, p); }
+    else if ("at" in p) { if (own && own.held) mergeAt(states, own, p.at, p.value); }
+    else if ("del" in p) eachHeld(states, function (s) { s.root = dropEntity(s.root, p.del); });
+    else if ("inv" in p) p.inv.forEach(function (k) { states.stale[k] = true; });
+    else if ("invOp" in p) eachHeld(states, function (s) { if (p.invOp.indexOf(s.op) >= 0) s.stale = true; });
+  });
+}
+function applyFrame(states, f) {
+  var s = states.byId[f.id];
+  if (s) {
+    if ("error" in f) s.error = f.error;
+    if ("ok" in f) { s.root = clone(f.ok); s.held = true; }
+    if ("data" in f) {
+      if (typeof f.at === "string") { if (s.held) mergeAt(states, s, f.at, f.data); }
+      else { s.root = clone(f.data); s.held = true; s.stale = false; }
+    }
+    if ("item" in f) s.items.push(clone(f.item));
+  }
+  if (Array.isArray(f.patch)) applyPatch(states, s, f.patch);
+  if (s && f.fin) s.done = true;
+}
+/** What each op of a request adds up to once these frames are applied in order, as a client cache would hold it. */
+function applyFrames(request, frames) {
+  var states = { byId: {}, order: [], stale: {} };
+  ((request && request.ops) || []).forEach(function (o) {
+    var shape = null;
+    if (typeof o.shape === "string") { try { shape = parseShape(o.shape); } catch (e) { shape = null; } }
+    states.byId[o.id] = { id: o.id, op: o.op, shape: shape, root: undefined, held: false, error: null, items: [], stale: false, done: false };
+    states.order.push(o.id);
+  });
+  frames.forEach(function (f) { applyFrame(states, f); });
+  return states;
+}
+function materialize(v) {
+  if (!v || typeof v !== "object") return v;
+  if (gone(v)) return null;
+  if (Array.isArray(v)) return v.filter(function (x) { return !gone(x); }).map(materialize);
+  var out = {};
+  Object.keys(v).forEach(function (k) { out[k] = materialize(v[k]); });
+  return out;
+}
+
+// ---------------------------------------------------------------- where the cursor is, and what fits there
+
+/** Reads the JSON before the cursor: the path of keys to the innermost container, and whether a key or a value is being typed. */
+function jsonContext(src, pos) {
+  var stack = [];
+  var str = -1;
+  for (var i = 0; i < pos; i++) {
+    var c = src.charAt(i);
+    var top = stack[stack.length - 1];
+    if (str >= 0) {
+      if (c === "\\") { i++; continue; }
+      if (c === '"') {
+        var s = src.slice(str + 1, i);
+        if (top && !top.arr) { if (top.expectKey) top.cur = s; else top.vals[top.cur] = s; }
+        str = -1;
+      }
+      continue;
+    }
+    if (c === '"') str = i;
+    else if (c === "{" || c === "[") stack.push({ arr: c === "[", key: top ? (top.arr ? top.idx : top.cur) : null, idx: 0, expectKey: c === "{", cur: null, vals: {} });
+    else if (c === "}" || c === "]") stack.pop();
+    else if (c === ":" && top && !top.arr) top.expectKey = false;
+    else if (c === "," && top) { if (top.arr) top.idx++; else { top.expectKey = true; top.cur = null; } }
+  }
+  var inner = stack[stack.length - 1];
+  return {
+    path: stack.slice(1).map(function (f) { return f.key; }),
+    inString: str >= 0,
+    start: str + 1,
+    isKey: !!inner && !inner.arr && inner.expectKey,
+    key: inner && !inner.arr ? inner.cur : null,
+    vals: inner && !inner.arr ? inner.vals : {},
+  };
+}
+/** The type a shape is selecting at its end: walks the fields and ...on conditions opened before the cursor. */
+function shapeTypeAt(prefix, root) {
+  var ts;
+  try { ts = tokenizeShape(prefix); } catch (e) { return null; }
+  var stack = [];
+  var cur = root;
+  var next = null;
+  var on = false;
+  var depth = 0;
+  for (var i = 0; i < ts.length; i++) {
+    var t = ts[i];
+    if (depth > 0) { if (t.v === "(") depth++; if (t.v === ")") depth--; continue; }
+    if (t.t === "p" && t.v === "(") { depth = 1; continue; }
+    if (t.t === "p" && t.v === "{") { stack.push(cur); cur = stack.length === 1 ? root : next; next = null; continue; }
+    if (t.t === "p" && t.v === "}") { cur = stack.pop() || null; next = null; continue; }
+    if (t.t === "p" && t.v === "...") { on = true; continue; }
+    if (t.t === "w") {
+      if (on) { if (t.v !== "on") { on = false; next = typeAt({ kind: "named", name: t.v, nullable: false }, {}); } continue; }
+      if (ts[i + 1] && ts[i + 1].v === ":") continue;
+      var f = fieldOf(cur, t.v);
+      next = f ? typeAt(f.type, cur.bind) : null;
+    }
+  }
+  return stack.length ? cur : null;
+}
+var OP_KEYS = ["id", "op", "args", "shape", "vars", "key", "live", "simulate"];
+/** What fits at the cursor: op names, an op's keys and arguments, or the fields of the type a shape is selecting. */
+function suggestionsAt(src, pos) {
+  if (!manifest) return null;
+  var word = /[A-Za-z0-9_]*$/.exec(src.slice(0, pos))[0];
+  var ctx = jsonContext(src, pos);
+  var ops = manifest.schema.ops;
+  var opIndex = ctx.path.length >= 2 && ctx.path[0] === "ops" && typeof ctx.path[1] === "number" ? ctx.path[1] : -1;
+  function opDef() {
+    var body = null;
+    try { body = JSON.parse(src); } catch (e) { body = null; }
+    var name = body && body.ops && body.ops[opIndex] ? body.ops[opIndex].op : ctx.path.length === 2 ? ctx.vals.op : null;
+    return typeof name === "string" ? ops[name] || null : null;
+  }
+  var list = null;
+  if (opIndex >= 0 && ctx.path.length === 2 && ctx.inString && ctx.isKey) list = OP_KEYS.map(function (k) { return { label: k, kind: "key" }; });
+  else if (opIndex >= 0 && ctx.path.length === 2 && ctx.inString && ctx.key === "op") list = Object.keys(ops).sort().map(function (n) { return { label: n, kind: ops[n].kind }; });
+  else if (opIndex >= 0 && ctx.path.length === 3 && ctx.path[2] === "args" && ctx.inString && ctx.isKey) {
+    var def = opDef();
+    if (def) list = def.args.map(function (a) { return { label: a.name, kind: typeName(a.type) }; });
+  } else if (opIndex >= 0 && ctx.path.length === 2 && ctx.inString && ctx.key === "shape") {
+    var d = opDef();
+    var type = d ? shapeTypeAt(src.slice(ctx.start, pos), typeAt(d.returns, {})) : null;
+    if (type) {
+      list = (fieldsOf(type) || []).map(function (f) { return { label: f.name, kind: typeName(bound(f.type, type.bind)) }; });
+      membersOf(type).forEach(function (m) { list.push({ label: "...on " + m, kind: "type", insert: "...on " + m + " { id }" }); });
+    }
+  }
+  if (!list) return null;
+  var lower = word.toLowerCase();
+  var starts = list.filter(function (s) { return s.label.toLowerCase().indexOf(lower) === 0 || s.label.toLowerCase().indexOf("...on " + lower) === 0; });
+  var inside = list.filter(function (s) { return starts.indexOf(s) < 0 && lower && s.label.toLowerCase().indexOf(lower) > 0; });
+  return { word: word, items: starts.concat(inside).slice(0, 40) };
+}
+
+// ---------------------------------------------------------------- checks the manifest can make before anything is sent
+
+function closest(name, names) {
+  var best = null;
+  var score = 3;
+  names.forEach(function (n) { var d = distance(String(name).toLowerCase(), n.toLowerCase()); if (d < score) { score = d; best = n; } });
+  return best ? "; did you mean " + best + "?" : "";
+}
+function distance(a, b) {
+  var row = [];
+  for (var j = 0; j <= b.length; j++) row.push(j);
+  for (var i = 1; i <= a.length; i++) {
+    var prev = row[0];
+    row[0] = i;
+    for (var k = 1; k <= b.length; k++) { var tmp = row[k]; row[k] = Math.min(row[k] + 1, row[k - 1] + 1, prev + (a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1)); prev = tmp; }
+  }
+  return row[b.length];
+}
+function checkShape(items, type, where, out) {
+  items.forEach(function (i) {
+    if (i.kind === "on") {
+      var t = typeAt({ kind: "named", name: i.type, nullable: false }, {});
+      if (!t) out.push(where + ": there is no type " + i.type);
+      else checkShape(i.shape.items, t, where, out);
+    } else if (i.kind === "spread") {
+      if (!manifest.schema.views || !manifest.schema.views[i.type + "." + i.view]) out.push(where + ": there is no view " + i.type + "." + i.view);
+    } else if (i.kind === "defer") checkShape(i.shape.items, type, where, out);
+    else if (fieldsOf(type)) {
+      var f = fieldOf(type, i.name);
+      if (!f) out.push(where + ": " + type.name + " has no field " + i.name + closest(i.name, fieldsOf(type).map(function (x) { return x.name; })));
+      else if (i.shape) {
+        var sub = typeAt(f.type, type.bind);
+        if (isLeaf(sub)) out.push(where + ": " + type.name + "." + i.name + " is a " + typeName(f.type) + " and takes no selection");
+        else checkShape(i.shape.items, sub, where, out);
+      }
+    }
+  });
+}
+/** What would fail before the request reaches the server; the server stays the judge, so none of this blocks a send. */
+function problemsOf(src) {
+  if (!manifest || !src.trim()) return [];
+  var body;
+  try { body = JSON.parse(src); } catch (e) { return ["not JSON yet: " + e.message]; }
+  if (!body || typeof body !== "object" || !Array.isArray(body.ops)) return ["a request is { \"ops\": [ ... ] }"];
+  var out = [];
+  var names = Object.keys(manifest.schema.ops);
+  body.ops.forEach(function (o, n) {
+    var where = "op " + (o && o.id !== undefined ? o.id : n + 1);
+    var def = o && typeof o.op === "string" ? manifest.schema.ops[o.op] : null;
+    if (!def) { out.push(where + ": there is no operation " + JSON.stringify(o && o.op) + closest(o && o.op, names)); return; }
+    var args = o.args && typeof o.args === "object" ? o.args : {};
+    Object.keys(args).forEach(function (a) {
+      if (!def.args.some(function (d) { return d.name === a; })) out.push(where + ": " + def.name + " takes no argument " + a + closest(a, def.args.map(function (d) { return d.name; })));
+    });
+    def.args.forEach(function (a) { if (!a.type.nullable && a.default === undefined && !(a.name in args)) out.push(where + ": " + def.name + " needs " + a.name); });
+    if (def.kind === "command" && typeof o.key !== "string") out.push(where + ": a command needs an idempotency key");
+    if (typeof o.shape === "string") {
+      var shape = null;
+      try { shape = parseShape(o.shape); } catch (e) { out.push(where + ": the shape does not read: " + e.message + " at " + e.at); }
+      if (shape) checkShape(shape.items, typeAt(def.returns, {}), where, out);
+    }
+  });
+  return out;
+}
+var checkTimer = null;
+function checkSoon() {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(function () {
+    var list = $("#problems");
+    list.innerHTML = "";
+    problemsOf($("#req").value).forEach(function (p) { list.appendChild(el("li", null, p)); });
+  }, 120);
+}
+
+// ---------------------------------------------------------------- the suggestion list
+
+var suggest = { open: false, items: [], index: 0, word: "" };
+function caretPoint(area) {
+  var mirror = el("div");
+  var style = getComputedStyle(area);
+  ["fontFamily", "fontSize", "lineHeight", "padding", "border", "boxSizing", "letterSpacing"].forEach(function (p) { mirror.style[p] = style[p]; });
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.overflowWrap = "break-word";
+  mirror.style.width = area.clientWidth + "px";
+  mirror.textContent = area.value.slice(0, area.selectionStart);
+  var mark = el("span", null, ".");
+  mirror.appendChild(mark);
+  document.body.appendChild(mirror);
+  var point = { left: mark.offsetLeft, top: mark.offsetTop + mark.offsetHeight - area.scrollTop };
+  mirror.remove();
+  return point;
+}
+function openSuggestions(force) {
+  var area = $("#req");
+  var found = suggestionsAt(area.value, area.selectionStart);
+  if (!found || !found.items.length || (!force && !found.word)) return closeSuggestions();
+  suggest.open = true;
+  suggest.items = found.items;
+  suggest.word = found.word;
+  suggest.index = 0;
+  var point = caretPoint(area);
+  var list = $("#complete");
+  list.style.left = Math.min(point.left, Math.max(0, area.clientWidth - 200)) + "px";
+  list.style.top = Math.min(point.top + 4, area.clientHeight) + "px";
+  drawSuggestions();
+  list.hidden = false;
+}
+function drawSuggestions() {
+  var list = $("#complete");
+  list.innerHTML = "";
+  suggest.items.forEach(function (s, i) {
+    var li = el("li");
+    li.id = "suggest-" + i;
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(i === suggest.index));
+    li.appendChild(el("span", null, s.label));
+    li.appendChild(el("span", "kind", s.kind));
+    li.onmousedown = function (e) { e.preventDefault(); suggest.index = i; acceptSuggestion(); };
+    list.appendChild(li);
+  });
+  $("#req").setAttribute("aria-activedescendant", "suggest-" + suggest.index);
+}
+function closeSuggestions() {
+  suggest.open = false;
+  $("#complete").hidden = true;
+  $("#req").removeAttribute("aria-activedescendant");
+}
+function acceptSuggestion() {
+  var s = suggest.items[suggest.index];
+  var area = $("#req");
+  var pos = area.selectionStart;
+  var before = area.value.slice(0, pos - suggest.word.length);
+  var after = area.value.slice(pos).replace(/^[A-Za-z0-9_]*/, "");
+  var insert = s.insert || s.label;
+  if (insert.indexOf("...") === 0 && /\.\.\.$/.test(before)) insert = insert.slice(3);
+  area.value = before + insert + after;
+  area.selectionStart = area.selectionEnd = before.length + insert.length;
+  closeSuggestions();
+  edited();
+}
+
+// ---------------------------------------------------------------- tabs, history and what the browser keeps
+
+function loadState() {
+  try {
+    var raw = window.localStorage.getItem(STORE);
+    var s = raw ? JSON.parse(raw) : null;
+    if (!s || !Array.isArray(s.tabs) || !s.tabs.length) return false;
+    state.tabs = s.tabs.map(function (t) { return { op: typeof t.op === "string" ? t.op : null, text: String(t.text || ""), simulate: !!t.simulate, live: !!t.live }; });
+    state.active = Math.min(Math.max(0, s.active | 0), state.tabs.length - 1);
+    state.history = Array.isArray(s.history) ? s.history.slice(0, HISTORY) : [];
+    state.remember = !!s.remember;
+    $("#remember").checked = state.remember;
+    if (state.remember) { $("#token").value = String(s.token || ""); $("#headers").value = String(s.headers || ""); }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function saveState() {
+  keepTab();
+  var s = { tabs: state.tabs, active: state.active, history: state.history, remember: state.remember };
+  // a token is a credential: it stays in this browser only when the reader asked for that
+  if (state.remember) { s.token = $("#token").value; s.headers = $("#headers").value; }
+  try { window.localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* a private window or storage turned off: the page works without it */ }
+}
+function keepTab() {
+  var t = state.tabs[state.active];
+  t.text = $("#req").value;
+  t.simulate = $("#simulate").checked;
+  t.live = $("#live").checked;
+}
+function renderTabs() {
+  var bar = $("#tabs");
+  bar.innerHTML = "";
+  state.tabs.forEach(function (t, i) {
+    var b = el("button", "tab" + (i === state.active ? " on" : ""), t.op || "new");
+    if (i === state.active) b.setAttribute("aria-current", "true");
+    b.onclick = function () { openTab(i); };
+    bar.appendChild(b);
+    if (state.tabs.length > 1) {
+      var x = el("button", "tab-close", "×");
+      x.setAttribute("aria-label", "Close the " + (t.op || "new") + " tab");
+      x.onclick = function () { closeTab(i); };
+      bar.appendChild(x);
+    }
+  });
+  var add = el("button", "tab-add", "+");
+  add.setAttribute("aria-label", "New tab");
+  add.onclick = newTab;
+  bar.appendChild(add);
+}
+function loadTab() {
+  var t = state.tabs[state.active];
+  $("#req").value = t.text;
+  $("#simulate").checked = t.simulate;
+  $("#live").checked = t.live;
+  var def = manifest && t.op ? manifest.schema.ops[t.op] : null;
+  if (def) describe(def);
+  renderTabs();
+  renderShapePanel();
+  checkSoon();
+}
+function openTab(i) {
+  if (running || i === state.active) return;
+  keepTab();
+  state.active = i;
+  loadTab();
+  saveState();
+}
+function newTab() {
+  if (running) return;
+  keepTab();
+  state.tabs.push({ op: null, text: "", simulate: false, live: false });
+  state.active = state.tabs.length - 1;
+  var first = firstOp();
+  if (first) show(first);
+  else loadTab();
+  saveState();
+}
+function closeTab(i) {
+  if (running || state.tabs.length < 2) return;
+  keepTab();
+  state.tabs.splice(i, 1);
+  if (i < state.active) state.active--;
+  state.active = Math.min(state.active, state.tabs.length - 1);
+  loadTab();
+  saveState();
+}
+function remember(body, http) {
+  state.history.unshift({ at: Date.now(), ops: body.ops.map(function (o) { return o.op; }).join(", "), status: http, text: $("#req").value });
+  if (state.history.length > HISTORY) state.history.length = HISTORY;
+  renderHistory();
+  saveState();
+}
+/** The time of day a send was made, on the reader's own clock. */
+function clock(at) {
+  var d = new Date(at);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (n) { return (n < 10 ? "0" : "") + n; }).join(":");
+}
+function renderHistory() {
+  var list = $("#history");
+  list.innerHTML = "";
+  if (!state.history.length) { list.appendChild(el("li", "hint", "Nothing sent yet.")); return; }
+  state.history.forEach(function (h) {
+    var li = el("li");
+    var b = el("button");
+    b.appendChild(el("span", "when", clock(h.at)));
+    b.appendChild(el("span", null, h.ops));
+    b.appendChild(el("span", "when", h.status === null ? "no answer" : "HTTP " + h.status));
+    b.onclick = function () {
+      if (running) return;
+      $("#req").value = h.text;
+      var first = /"op"\s*:\s*"([^"]+)"/.exec(h.text);
+      state.tabs[state.active].op = first ? first[1] : null;
+      if (first && manifest && manifest.schema.ops[first[1]]) describe(manifest.schema.ops[first[1]]);
+      renderTabs();
+      edited();
+    };
+    li.appendChild(b);
+    list.appendChild(li);
+  });
+}
+
+// ---------------------------------------------------------------- the shape panel: tick the fields to select
+
+/** The op in the request that the panel edits: the first one for the operation picked on the left. */
+function shapeTarget() {
+  if (!current) return null;
+  var body;
+  try { body = JSON.parse($("#req").value); } catch (e) { return null; }
+  var ops = body && Array.isArray(body.ops) ? body.ops : [];
+  for (var i = 0; i < ops.length; i++) if (ops[i] && ops[i].op === current.name) return { body: body, op: ops[i] };
+  return null;
+}
+function writeShape(target, shape) {
+  if (shape.items.length) target.op.shape = printShape(shape);
+  else delete target.op.shape;
+  $("#req").value = JSON.stringify(target.body, null, 2);
+  edited();
+}
+function plainField(items, name) {
+  for (var i = 0; i < items.length; i++) if (items[i].kind === "field" && items[i].name === name && !items[i].alias) return items[i];
+  return null;
+}
+function condition(items, type) {
+  for (var i = 0; i < items.length; i++) if (items[i].kind === "on" && items[i].type === type) return items[i];
+  return null;
+}
+function starter(t) {
+  var text = defaultShape({ kind: "named", name: t.name, nullable: false, args: [] }, {});
+  if (!text && fieldOf(t, "id")) text = "{ id }";
+  return text ? parseShape(text) : { items: [] };
+}
+function shapeLevel(items, t, shape, target) {
+  var ul = el("ul");
+  (fieldsOf(t) || []).forEach(function (f) {
+    var li = el("li");
+    var label = el("label");
+    var box = el("input");
+    box.type = "checkbox";
+    box.dataset.field = f.name;
+    var item = plainField(items, f.name);
+    box.checked = !!item;
+    var sub = typeAt(f.type, t.bind);
+    box.onchange = function () {
+      if (box.checked) { var add = { kind: "field", name: f.name }; if (!isLeaf(sub)) add.shape = starter(sub); items.push(add); }
+      else items.splice(items.indexOf(plainField(items, f.name)), 1);
+      writeShape(target, shape);
+    };
+    label.appendChild(box);
+    label.appendChild(document.createTextNode(f.name));
+    label.appendChild(el("span", "kind", typeName(bound(f.type, t.bind)) + (f.args.length ? " · takes " + f.args.map(function (a) { return a.name; }).join(", ") : "")));
+    li.appendChild(label);
+    if (item && !isLeaf(sub)) {
+      if (!item.shape) item.shape = { items: [] };
+      li.appendChild(shapeLevel(item.shape.items, sub, shape, target));
+    }
+    ul.appendChild(li);
+  });
+  membersOf(t).forEach(function (m) {
+    var li = el("li");
+    var label = el("label");
+    var box = el("input");
+    box.type = "checkbox";
+    box.dataset.on = m;
+    var cond = condition(items, m);
+    box.checked = !!cond;
+    var mt = typeAt({ kind: "named", name: m, nullable: false }, {});
+    box.onchange = function () {
+      if (box.checked) items.push({ kind: "on", type: m, shape: starter(mt) });
+      else items.splice(items.indexOf(condition(items, m)), 1);
+      writeShape(target, shape);
+    };
+    label.appendChild(box);
+    label.appendChild(document.createTextNode("...on " + m));
+    li.appendChild(label);
+    if (cond) li.appendChild(shapeLevel(cond.shape.items, mt, shape, target));
+    ul.appendChild(li);
+  });
+  return ul;
+}
+function renderShapePanel() {
+  var host = $("#shape-panel");
+  if (host.hidden) return;
+  host.innerHTML = "";
+  var target = shapeTarget();
+  if (!target) { host.appendChild(el("p", "hint", current ? "The request holds no " + current.name + " op to shape." : "Pick an operation first.")); return; }
+  var t = typeAt(current.returns, {});
+  if (!fieldsOf(t) && !membersOf(t).length) { host.appendChild(el("p", "hint", current.name + " returns " + typeName(current.returns) + ", which has no fields to pick.")); return; }
+  var shape;
+  try { shape = typeof target.op.shape === "string" ? parseShape(target.op.shape) : { items: [] }; } catch (e) { host.appendChild(el("p", "hint", "The shape does not read yet: " + e.message)); return; }
+  host.appendChild(shapeLevel(shape.items, t, shape, target));
+}
+
+// ---------------------------------------------------------------- operations
+
+function firstOp() {
+  if (!manifest) return null;
+  var ops = Object.keys(manifest.schema.ops).map(function (n) { return manifest.schema.ops[n]; });
+  return ops.filter(function (o) { return o.kind === "query"; })[0] || ops[0] || null;
+}
+function describe(op) {
   current = op;
   Array.prototype.forEach.call(document.querySelectorAll("button.op"), function (b) { b.classList.toggle("on", b.dataset.op === op.name); });
   var doc = document.getElementById("doc");
@@ -140,69 +958,240 @@ function show(op) {
   if (op.emits && op.emits.length) add("emits", op.emits.join(" "));
   if (annotationsOf(op, "simulate").length) add("dry run", "allowed: tick it and nothing is written");
   doc.appendChild(dl);
-
-  var request = { ops: [{ id: 1, op: op.name, args: argSkeleton(op) }] };
-  var shape = defaultShape(op.returns);
-  if (shape) request.ops[0].shape = shape;
-  if (op.kind === "command") request.ops[0].key = "explorer-" + Math.random().toString(36).slice(2).padEnd(16, "0").slice(0, 16);
-  $("#req").value = JSON.stringify(request, null, 2);
   $("#simulate").disabled = op.kind !== "command";
   $("#live").disabled = op.kind !== "query";
 }
-function render(frames, ms) {
-  var out = document.getElementById("out");
-  out.innerHTML = "";
-  frames.forEach(function (f) {
-    var kind = "error" in f ? "error" : "ok" in f ? "ok" : "at" in f ? "at" : "patch" in f ? "patch" : "item" in f ? "item" : "data" in f ? "data" : "fin";
-    var box = el("div", "frame " + kind);
+function show(op) {
+  if (running) return;
+  describe(op);
+  var request = { ops: [{ id: 1, op: op.name, args: argSkeleton(op) }] };
+  var shape = defaultShape(op.returns, {});
+  if (shape) request.ops[0].shape = shape;
+  if (op.kind === "command") request.ops[0].key = "explorer-" + Math.random().toString(36).slice(2).padEnd(16, "0").slice(0, 16);
+  $("#req").value = JSON.stringify(request, null, 2);
+  state.tabs[state.active].op = op.name;
+  renderTabs();
+  edited();
+}
+function edited() {
+  renderShapePanel();
+  checkSoon();
+  saveState();
+}
+
+// ---------------------------------------------------------------- what came back
+
+function size(n) { return n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB"; }
+function drawStatus() {
+  if (running && shown.http === null) { $("#status").textContent = "sending..."; return; }
+  var parts = [];
+  if (shown.http !== null) parts.push("HTTP " + shown.http);
+  parts.push(shown.frames.length + (shown.frames.length === 1 ? " frame" : " frames"));
+  parts.push(shown.ms + " ms");
+  parts.push(size(shown.bytes));
+  if (shown.ended) parts.push(shown.ended);
+  $("#status").textContent = parts.join(" · ");
+}
+function frameKind(f) {
+  return "error" in f ? "error" : "ok" in f ? "ok" : "at" in f ? "at" : "patch" in f ? "patch" : "item" in f ? "item" : "data" in f ? "data" : "fin";
+}
+function box(cls, tag, body) {
+  var b = el("div", "frame " + cls);
+  b.appendChild(el("span", "tag", tag));
+  if (body !== undefined) b.appendChild(el("pre", null, body));
+  return b;
+}
+function drawFrames(out) {
+  shown.frames.forEach(function (f) {
+    var kind = frameKind(f);
     var cost = f.meta && f.meta.cost !== undefined ? "  cost " + f.meta.cost : "";
-    box.appendChild(el("span", "tag", kind + (f.id !== undefined ? " · op " + f.id : "") + cost));
-    box.appendChild(el("pre", null, JSON.stringify(f, null, 2)));
-    out.appendChild(box);
+    out.appendChild(box(kind, kind + (f.id !== undefined ? " · op " + f.id : "") + cost, JSON.stringify(f, null, 2)));
   });
-  $("#status").textContent = frames.length + (frames.length === 1 ? " frame" : " frames") + " in " + ms + " ms";
+}
+function tree(v, key, path, depth) {
+  if (v === null || typeof v !== "object") {
+    var leaf = el("div", "leaf");
+    if (key !== null) leaf.appendChild(el("span", "k", key + ": "));
+    leaf.appendChild(el("span", v === null ? "null" : typeof v, JSON.stringify(v)));
+    return leaf;
+  }
+  var d = el("details");
+  d.open = openNodes[path] !== undefined ? openNodes[path] : depth < 3;
+  d.ontoggle = function () { openNodes[path] = d.open; };
+  var sum = el("summary");
+  if (key !== null) sum.appendChild(el("span", "k", key + ": "));
+  var arr = Array.isArray(v);
+  sum.appendChild(el("span", "t", arr ? "[" + v.length + "]" : keyOf(v) ? v.$type + " " + v.id : "{" + Object.keys(v).length + "}"));
+  d.appendChild(sum);
+  (arr ? v.map(function (x, i) { return [String(i), x]; }) : Object.keys(v).map(function (k) { return [k, v[k]]; })).forEach(function (kv) {
+    d.appendChild(tree(kv[1], kv[0], path + "." + kv[0], depth + 1));
+  });
+  return d;
+}
+function drawResult(out) {
+  var states = applyFrames(shown.request, shown.frames);
+  states.order.forEach(function (id) {
+    var s = states.byId[id];
+    var notes = [s.op, s.error ? "failed" : s.done ? "done" : running ? "open" : shown.ended || "ended"];
+    if (s.stale) notes.push("stale");
+    var b = box(s.error ? "error" : s.held || s.items.length ? "data" : "fin", "op " + id + " · " + notes.join(" · "));
+    var holder = el("div", "tree");
+    if (s.error) holder.appendChild(tree(s.error, "error", id + ".error", 0));
+    if (s.held) holder.appendChild(tree(materialize(s.root), null, String(id), 0));
+    if (s.items.length) holder.appendChild(tree(s.items, "items", id + ".items", 0));
+    var stale = Object.keys(states.stale).filter(function (k) { return contains(s.root, k); });
+    if (stale.length) holder.appendChild(el("p", "hint", "stale: " + stale.join(", ")));
+    b.appendChild(holder);
+    out.appendChild(b);
+  });
+}
+function draw() {
+  var out = $("#out");
+  out.innerHTML = "";
+  if (shown.local) out.appendChild(box("error", "explorer", shown.local));
+  if (view === "frames") drawFrames(out);
+  else drawResult(out);
+  if (shown.raw !== null) out.appendChild(box("http", "HTTP " + shown.http + (shown.type ? " · " + shown.type : "") + " · not Rayfold frames", shown.raw || "(empty body)"));
+  if (shown.request) drawStatus();
+}
+function setView(v) {
+  view = v;
+  $("#view-frames").setAttribute("aria-pressed", String(v === "frames"));
+  $("#view-result").setAttribute("aria-pressed", String(v === "result"));
+  draw();
+}
+function parseFrame(line) {
+  try { var f = JSON.parse(line); return f && typeof f === "object" && !Array.isArray(f) ? f : undefined; } catch (e) { return undefined; }
+}
+
+// ---------------------------------------------------------------- sending
+
+function requestHeaders() {
+  var h = { "content-type": "application/rayfold+json" };
+  var extra = $("#headers").value.trim();
+  if (extra) {
+    var given = JSON.parse(extra);
+    if (!given || typeof given !== "object" || Array.isArray(given)) throw new Error("the headers are a JSON object of names to values");
+    Object.keys(given).forEach(function (k) { h[k.toLowerCase()] = String(given[k]); });
+  }
+  if ($("#token").value) h.authorization = "Bearer " + $("#token").value;
+  return h;
+}
+/** The request as it goes out: the editor's batch, with the dry-run and live boxes applied, and its headers. */
+function prepared() {
+  var body;
+  try { body = JSON.parse($("#req").value); } catch (e) { throw new Error("the request is not JSON: " + e.message); }
+  if (!body || !Array.isArray(body.ops)) throw new Error("a request is { \"ops\": [ ... ] }");
+  if (current && current.kind === "command" && $("#simulate").checked) body.ops.forEach(function (o) { o.simulate = true; });
+  if (current && current.kind === "query" && $("#live").checked) body.ops.forEach(function (o) { o.live = true; });
+  var headers;
+  try { headers = requestHeaders(); } catch (e) { throw new Error("the headers are not JSON: " + e.message); }
+  return { body: body, headers: headers };
+}
+/** A request that never went: what was wrong with it, in place of the last response, which it would only confuse. */
+function fail(message) {
+  shown = { request: null, frames: [], http: null, type: "", raw: null, ms: 0, bytes: 0, ended: "", local: message };
+  $("#status").textContent = "";
+  draw();
+}
+function sending(on) {
+  var b = $("#send");
+  b.textContent = on ? "Stop" : "Send";
+  b.classList.toggle("stop", on);
 }
 async function send() {
-  var button = $("#send");
-  button.disabled = true;
-  $("#status").textContent = "sending...";
+  if (running) { running.abort(); return; }
+  closeSuggestions();
+  var req;
+  try { req = prepared(); } catch (e) { fail(e.message); return; }
+  var controller = new AbortController();
+  running = controller;
+  sending(true);
+  shown = { request: req.body, frames: [], http: null, type: "", raw: null, ms: 0, bytes: 0, ended: "", local: null };
   var started = Date.now();
+  draw();
   try {
-    var body = JSON.parse($("#req").value);
-    if (current && current.kind === "command" && $("#simulate").checked) body.ops.forEach(function (o) { o.simulate = true; });
-    if (current && current.kind === "query" && $("#live").checked) body.ops.forEach(function (o) { o.live = true; });
-    var headers = { "content-type": "application/rayfold+json" };
-    if ($("#token").value) headers.authorization = "Bearer " + $("#token").value;
-    var res = await fetch(CONFIG.endpoint, { method: "POST", headers: headers, body: JSON.stringify(body) });
-    var frames = [];
+    var res = await fetch(CONFIG.endpoint, { method: "POST", headers: req.headers, body: JSON.stringify(req.body), signal: controller.signal });
+    shown.http = res.status;
+    shown.type = (res.headers.get("content-type") || "").split(";")[0];
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
     var buffered = "";
     for (;;) {
       var chunk = await reader.read();
       if (chunk.done) break;
-      buffered += decoder.decode(chunk.value, { stream: true });
-      var cut;
-      while ((cut = buffered.indexOf(String.fromCharCode(10))) >= 0) {
-        var line = buffered.slice(0, cut);
-        buffered = buffered.slice(cut + 1);
-        if (line.trim()) frames.push(JSON.parse(line));
-        render(frames, Date.now() - started);
+      shown.bytes += chunk.value.byteLength;
+      var piece = decoder.decode(chunk.value, { stream: true });
+      if (shown.raw !== null) { if (shown.raw.length < 4000) shown.raw += piece; }
+      else {
+        buffered += piece;
+        var cut;
+        while ((cut = buffered.indexOf(NL)) >= 0) {
+          var line = buffered.slice(0, cut);
+          buffered = buffered.slice(cut + 1);
+          if (!line.trim()) continue;
+          var f = parseFrame(line);
+          // a proxy's error page or a plain-text refusal: show what came, under the status it came with
+          if (f === undefined) { shown.raw = line + NL + buffered; buffered = ""; break; }
+          shown.frames.push(f);
+        }
       }
+      shown.ms = Date.now() - started;
+      draw();
     }
-    if (buffered.trim()) frames.push(JSON.parse(buffered));
-    render(frames, Date.now() - started);
+    if (shown.raw === null && buffered.trim()) {
+      var last = parseFrame(buffered);
+      if (last === undefined) shown.raw = buffered;
+      else shown.frames.push(last);
+    }
+    if (shown.raw !== null) shown.raw = shown.raw.slice(0, 4000);
   } catch (e) {
-    $("#out").innerHTML = "";
-    var box = el("div", "frame error");
-    box.appendChild(el("span", "tag", "explorer"));
-    box.appendChild(el("pre", null, String(e && e.message ? e.message : e)));
-    $("#out").appendChild(box);
-    $("#status").textContent = "";
+    if (controller.signal.aborted) shown.ended = "stopped";
+    else { shown.ended = "failed"; shown.local = "no answer from " + CONFIG.endpoint + ": " + String(e && e.message ? e.message : e); }
   } finally {
-    button.disabled = false;
+    running = null;
+    sending(false);
+    shown.ms = Date.now() - started;
+    remember(req.body, shown.http);
+    draw();
   }
 }
+function flash(s) {
+  var note = $("#note");
+  note.textContent = s;
+  setTimeout(function () { if (note.textContent === s) note.textContent = ""; }, 2500);
+}
+function copy(value, what) {
+  var done = function () { flash(what + " copied"); };
+  var fallback = function () {
+    var t = el("textarea");
+    t.value = value;
+    t.style.position = "fixed";
+    t.style.opacity = "0";
+    document.body.appendChild(t);
+    t.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    t.remove();
+    flash(ok ? what + " copied" : "this browser will not copy from here");
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(value).then(done, fallback);
+  else fallback();
+}
+function quote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+function curlOf(req) {
+  var parts = ["curl", "-N", quote(new URL(CONFIG.endpoint, location.href).href)];
+  Object.keys(req.headers).forEach(function (k) { parts.push("-H", quote(k + ": " + req.headers[k])); });
+  parts.push("--data-raw", quote(JSON.stringify(req.body)));
+  return parts.join(" ");
+}
+function toggle(button, panel, after) {
+  var open = panel.hidden;
+  panel.hidden = !open;
+  button.setAttribute("aria-pressed", String(open));
+  if (open && after) after();
+}
+
 async function start() {
   try {
     var res = await fetch(CONFIG.endpoint + "/manifest");
@@ -211,6 +1200,7 @@ async function start() {
     manifest = await res.json();
   } catch (e) {
     text(document.getElementById("about"), "no manifest at " + CONFIG.endpoint + "/manifest");
+    renderTabs();
     return;
   }
   text(document.getElementById("about"), "rayfold " + manifest.rayfold + " · schema " + String(manifest.schemaHash).slice(0, 12) + " · extensions " + (manifest.extensions || []).join(", "));
@@ -229,10 +1219,39 @@ async function start() {
       aside.appendChild(b);
     });
   });
-  if (ops.length) show(ops.filter(function (o) { return o.kind === "query"; })[0] || ops[0]);
+  renderHistory();
+  if (loadState()) { renderHistory(); loadTab(); return; }
+  var first = firstOp();
+  if (first) show(first);
+  else renderTabs();
 }
+
 $("#send").onclick = send;
-$("#req").addEventListener("keydown", function (e) { if (e.ctrlKey && e.key === "Enter") send(); });
+$("#view-frames").onclick = function () { setView("frames"); };
+$("#view-result").onclick = function () { setView("result"); };
+$("#copy-frames").onclick = function () { copy(shown.frames.map(function (f) { return JSON.stringify(f); }).join(NL), "frames"); };
+$("#curl").onclick = function () { try { copy(curlOf(prepared()), "curl command"); } catch (e) { fail(e.message); } };
+$("#toggle-shape").onclick = function () { toggle($("#toggle-shape"), $("#shape-panel"), renderShapePanel); };
+$("#toggle-headers").onclick = function () { toggle($("#toggle-headers"), $("#headers-panel")); };
+$("#toggle-history").onclick = function () { toggle($("#toggle-history"), $("#history-panel"), renderHistory); };
+$("#remember").onchange = function () { state.remember = $("#remember").checked; saveState(); };
+$("#token").addEventListener("input", saveState);
+$("#headers").addEventListener("input", saveState);
+$("#simulate").onchange = saveState;
+$("#live").onchange = saveState;
+$("#req").addEventListener("input", function () { edited(); openSuggestions(false); });
+$("#req").addEventListener("blur", closeSuggestions);
+$("#req").addEventListener("keydown", function (e) {
+  if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); if (!running) send(); return; }
+  if (e.ctrlKey && e.key === " ") { e.preventDefault(); openSuggestions(true); return; }
+  if (!suggest.open) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    suggest.index = (suggest.index + (e.key === "ArrowDown" ? 1 : suggest.items.length - 1)) % suggest.items.length;
+    drawSuggestions();
+  } else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); acceptSuggestion(); }
+  else if (e.key === "Escape") { e.preventDefault(); closeSuggestions(); }
+});
 start();
 </script>
 </body>

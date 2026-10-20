@@ -92,18 +92,17 @@ type. Every result carries its `$type`, so a client knows which arm it got.
 
 ## Deliver a field later
 
-Not every field has to arrive with the first frame. Four things control that, and they work together:
+Not every field has to arrive with the first frame. Four markers control that, and they combine:
 
 | | Where it goes | What it does |
 |---|---|---|
 | `@defer { ... }` | in the shape | Send this part in a later `at` frame. The caller decides. |
 | `@lazy` | on the field | The field arrives in a later frame by default. The schema decides, for a field that is usually expensive and rarely needed. |
 | `@eager` | in the shape | Overrides `@lazy` for this request: send it with everything else. |
-| `@partial` | on the field | The field may fail on its own — `null`, and an entry in the frame's `errors` — instead of failing the operation. |
+| `@partial` | on the field | The field may fail on its own (`null`, and an entry in the frame's `errors`) instead of failing the operation. |
 
 A deferred part arrives as an `at` frame naming its path, and a client fills it in when it lands. The first frame is
-what a screen can paint immediately, so the choice is really "what does this screen need before it can show
-anything".
+what a screen can paint immediately. Put in it what the screen needs before it can show anything, and defer the rest.
 
 ## Or leave the shape out
 
@@ -116,8 +115,8 @@ view `default`. Here is `book b1` without a shape, for a customer and then for s
 ```
 
 A field the caller may not read is left out of a default view without an error, which is why only staff see
-`costPrice`. Asking for it by name is different: the customer gets `permission_denied`. Default views make a bare
-call from curl or an AI agent return something useful, and never leak.
+`costPrice`. A customer who asks for it by name gets `permission_denied`. With default views, a bare call from curl
+or an AI agent returns something useful and never leaks a field.
 
 ## Related data without N+1
 
@@ -135,10 +134,10 @@ Fields that hold other entities are resolved by loaders, and a loader receives e
 
 :::
 
-The server resolves a shape level by level. For a page of 20 books, `Book.author` is called once with all 20 books
-and returns their authors in the same order — one entry per book, `null` only where the field's type allows it
-(`author: Author?`). On a non-null field a `null` is an `internal` error naming the field, not a missing value. You
-get one lookup per level however many rows there are, without writing a DataLoader.
+The server resolves a shape level by level. For a page of 20 books, `Book.author` is called once with all 20 books.
+It returns their authors in the same order, one entry per book, with `null` only where the field's type allows it
+(`author: Author?`). On a non-null field a `null` is an `internal` error naming the field. You get one lookup per
+level however many rows there are, without writing a DataLoader.
 
 `rayfold explain` shows the plan for a query before you run it:
 
@@ -151,9 +150,8 @@ npx rayfold explain src/bookshop.rayfold books --shape "{ items { title author {
 
 ### Tuning a loader
 
-A loader gets every parent at once by default, which is what avoids the N+1. `@load(single)` marks a field whose
-source can only be asked one parent at a time; the executor then calls it per parent rather than pretending it
-batches.
+By default a loader gets every parent at once, which avoids the N+1. `@load(single)` marks a field whose source can
+only be asked for one parent at a time. The executor then calls it once per parent.
 
 ## Pages
 
@@ -185,13 +183,13 @@ The next page passes the cursor back: `"page": { "first": 2, "after": "b2" }`.
 
 ## Cursors or offsets
 
-`@page(cursor)` is the default and the one to prefer: a cursor names a position in the result, so a row inserted
+`@page(cursor)` is the default, and the one to prefer. A cursor names a position in the result, so a row inserted
 while the reader is on page two does not shift everything down and show them a row twice. Pass the `cursor` from one
 page as `after` on the next.
 
-`@page(offset)` numbers pages instead, and `PageArgs.offset` skips that many rows. Use it when the caller genuinely
-needs to jump to page seven — a table with numbered pages — and accept that concurrent inserts can duplicate or skip
-a row at a boundary.
+`@page(offset)` numbers pages instead, and `PageArgs.offset` skips that many rows. Use it when the caller needs to
+jump to page seven, as in a table with numbered pages. Concurrent inserts can then duplicate or skip a row at a
+page boundary.
 
 ## What a query costs
 

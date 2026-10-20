@@ -1,8 +1,8 @@
 # TypeScript types
 
 A schema written with the builder needs no code generation step. The schema is a value, and every type a caller
-needs is read from it - the entities, the arguments of an operation, what it returns, and, because a shape is a
-string at the call site, exactly the fields a shape asks for. (`rayfold gen ts` exists for a schema written as text;
+needs is read from it: the entities, an operation's arguments and what it returns. A shape is a string at the call
+site, so the types also follow exactly the fields a shape asks for. (`rayfold gen ts` exists for a schema written as text;
 see [the quickstart](quickstart.md).)
 
 ## From the schema
@@ -42,11 +42,11 @@ book?.author.name;   // string
 book?.stock;         // a type error: the shape did not ask for it
 ```
 
-It is the same client underneath, so caching, patches, live queries and everything else are unchanged; only the types
-are sharper. Lists and pages are followed through (`{ items { title } hasMore }` narrows the items), nulls are kept,
+It is the same client underneath. Caching, patches, live queries and everything else are unchanged; only the types
+are narrower. Lists and pages are followed through (`{ items { title } hasMore }` narrows the items), nulls are kept,
 and a field the schema does not have is `unknown` rather than an error. A call with no shape is typed as the
-result's default view, since that is what the server sends: `api.query("book", { id })` has the book's scalar fields
-and no `author`, so ask for `{ ... author { name } }` when you need it.
+result's default view, since that is what the server sends. `api.query("book", { id })` has the book's scalar fields
+and no `author`; ask for `{ ... author { name } }` when you need it.
 
 ::: info Since 0.2.2
 Typing a call with no shape, and a field with no sub-shape, as the default view came with 0.2.2. In 0.2.1
@@ -65,12 +65,12 @@ both are typed as the whole type.
 | `...on Type { ... }` | optional, because the member may not be the one that came back |
 | `...Book.card` | the view's text lives in the schema, not in the call, so the whole type stands |
 
-That last row is one limit: a shape that spreads a named view types as the full entity. It is wider than the
-truth, never narrower, so nothing a caller reads is a lie.
+That last row is one limit: a shape that spreads a named view is typed as the full entity. The type then names fields
+the view may not select, and those are missing at run time, so read only what the view lists.
 
-The other is a `default` view the schema declares itself. A bare field is typed as the view the server derives when
-none is declared, since the type cannot see the view's text; if the type declares `view Author.default`, ask for the
-fields you read (`author { name }`) and the type follows the shape instead. Scalar fields that take arguments are not in
+The other limit is a `default` view the schema declares itself. The type cannot see the view's text, so a bare field
+is typed as the view the server derives when none is declared. If the type declares `view Author.default`, ask for
+the fields you read (`author { name }`), and the type follows the shape instead. Scalar fields that take arguments are not in
 the derived view either, and the type cannot see arguments, so select those explicitly too.
 
 ## In React

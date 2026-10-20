@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import type { Frame, RequestEnvelope } from "@rayfold/server/core";
 import { EXAMPLES, type Example, type ViewerName } from "./examples.ts";
 import { BOOKSHOP_SCHEMA, createEngine, execute, kindOf, prepare, restock, sizes, type Engine, type FrameKind } from "./engine.ts";
@@ -32,6 +32,17 @@ const bytes = ref<{ json: number; rb: number } | null>(null);
 const liveBook = ref<string | null>(null);
 const copied = ref(false);
 const engine = shallowRef<Engine | null>(null);
+const viewerButtons = ref<HTMLButtonElement[]>([]);
+/** The shortcut as this keyboard writes it: CodeMirror's Mod is Cmd on a Mac. */
+const modKey = ref("Ctrl");
+/**
+ * What a screen reader hears: the newest frame, once. The list itself is not a live region, because a live query
+ * adds to it for as long as it runs.
+ */
+const announced = computed(() => {
+  const last = frames.value[frames.value.length - 1];
+  return last ? `${last.kind === "fin" ? "done" : last.kind}, ${last.hint}` : "";
+});
 
 let schemaEditor: Editor | null = null;
 let requestEditor: Editor | null = null;
@@ -127,6 +138,16 @@ function setViewer(name: ViewerName) {
   void run();
 }
 
+/** Arrow keys move the choice within the group, as in any radio group; Tab leaves it. */
+function onViewerKey(event: KeyboardEvent, index: number) {
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+  const to = event.key === "Home" ? 0 : event.key === "End" ? VIEWER_NAMES.length - 1 : step === undefined ? -1 : (index + step + VIEWER_NAMES.length) % VIEWER_NAMES.length;
+  if (to < 0) return;
+  event.preventDefault();
+  setViewer(VIEWER_NAMES[to]!);
+  void nextTick(() => viewerButtons.value[to]?.focus());
+}
+
 function onSchemaChange(text: string) {
   clearTimeout(schemaTimer);
   schemaTimer = setTimeout(() => {
@@ -171,6 +192,7 @@ async function share() {
 }
 
 onMounted(() => {
+  if (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) modKey.value = "Cmd";
   const shared = fromHash(location.hash);
   const schemaText = shared?.schema ?? BOOKSHOP_SCHEMA;
   if (shared) {
@@ -223,9 +245,19 @@ onBeforeUnmount(() => {
           <span class="pg-spacer" />
           <div class="pg-viewers" role="radiogroup" aria-label="Signed in as">
             <span class="pg-muted">as</span>
-            <button v-for="v in VIEWER_NAMES" :key="v" role="radio" :aria-checked="viewer === v" :class="{ active: viewer === v }" @click="setViewer(v)">{{ v }}</button>
+            <button
+              v-for="(v, i) in VIEWER_NAMES"
+              :key="v"
+              ref="viewerButtons"
+              role="radio"
+              :aria-checked="viewer === v"
+              :tabindex="viewer === v ? 0 : -1"
+              :class="{ active: viewer === v }"
+              @click="setViewer(v)"
+              @keydown="onViewerKey($event, i)"
+            >{{ v }}</button>
           </div>
-          <button class="pg-run" :disabled="!engine" @click="run">Run <kbd>Ctrl+Enter</kbd></button>
+          <button class="pg-run" :disabled="!engine" @click="run">Run <kbd>{{ modKey }}+Enter</kbd></button>
         </header>
         <div ref="requestHost" class="pg-editor" />
         <p v-if="requestProblem" class="pg-problem" role="alert">{{ requestProblem }}</p>
@@ -245,7 +277,8 @@ onBeforeUnmount(() => {
           <button class="pg-quiet" @click="stop">Stop</button>
         </div>
         <p v-if="note" class="pg-note">{{ note }}</p>
-        <ol class="pg-frames" aria-live="polite">
+        <p class="pg-announce" aria-live="polite">{{ announced }}</p>
+        <ol class="pg-frames">
           <li v-for="f in frames" :key="f.n" :class="['pg-frame', `is-${f.kind}`]">
             <div class="pg-frame-head">
               <span class="pg-kind">{{ f.kind === "fin" ? "done" : f.kind }}</span>
@@ -260,6 +293,7 @@ onBeforeUnmount(() => {
     <footer class="pg-foot">
       <button class="pg-quiet" @click="resetData">Reset data</button>
       <button class="pg-quiet" @click="share">{{ copied ? "Link copied" : "Copy link" }}</button>
+      <span class="pg-announce" aria-live="polite">{{ copied ? "Link copied to the clipboard" : "" }}</span>
       <span class="pg-spacer" />
       <span class="pg-muted">This is the Rayfold server itself, running in your browser. Nothing is sent anywhere.</span>
     </footer>
@@ -267,6 +301,20 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.pg button:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+/* read aloud, not shown */
+.pg-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  margin: 0;
+}
 .pg {
   --pg-radius: 10px;
   display: flex;
@@ -372,6 +420,12 @@ onBeforeUnmount(() => {
 .pg-run kbd {
   font: 11px var(--vp-font-family-mono);
   opacity: 0.75;
+}
+/* a touch screen has no keyboard shortcut to offer */
+@media (hover: none) and (pointer: coarse) {
+  .pg-run kbd {
+    display: none;
+  }
 }
 .pg-quiet {
   font-size: 13px;

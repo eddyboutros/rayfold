@@ -45,8 +45,8 @@ npx rayfold check src/bookshop.rayfold
   order, so a page of 50 books looks up authors once.
 - `RayfoldError.domain("OutOfStock", ...)` is the error the schema declared. The client receives it by name, with
   its data.
-- `ok(book, { emit })` returns the changed book, which the server turns into a patch for every client cache, and
-  announces `StockChanged`.
+- `ok(book, { emit })` returns the changed book and announces `StockChanged`. The server turns the book into a
+  patch for every client cache.
 
 ## 4. Say who is calling
 
@@ -56,9 +56,9 @@ viewer:
 
 <<< @/../examples/typescript/src/auth.ts{ts}
 
-What `viewerFrom` returns is `viewer` in the schema's `@allow` rules, and the resolvers never check permissions
+What `viewerFrom` returns is `viewer` in the schema's `@allow` rules. The resolvers never check permissions
 themselves. Until you have a provider, the server signs and checks tokens with the development key at the top of the
-file; `devToken` makes one as a provider would. `src/token.ts` prints one for you to try the server with:
+file. `devToken` makes a token as a provider would. `src/token.ts` prints one for you to try the server with:
 
 <<< @/../examples/typescript/src/token.ts{ts}
 
@@ -78,8 +78,8 @@ npm run server
 ```
 
 Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. To try the commands, paste a
-token into the auth field: `npm run token` prints a customer's, `npm run token -- staff` a member of staff's. Or call
-it with curl, marking the request as a read with `rayfold-safe`:
+token into the auth field. `npm run token` prints a customer's token, and `npm run token -- staff` prints a staff
+member's. Or call it with curl, marking the request as a read with `rayfold-safe`:
 
 ```sh
 curl -s localhost:4000/rayfold -H 'content-type: application/rayfold+json' -H 'rayfold-safe: true' \

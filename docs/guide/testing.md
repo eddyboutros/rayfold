@@ -1,6 +1,6 @@
 ---
 title: Testing
-description: Unit test resolvers, policies, errors, retries, live queries and time with the real server in the test's own process — no port, no sleeping, in TypeScript, React, Angular, Kotlin, Java and Spring Boot.
+description: Unit test resolvers, policies, errors, retries, live queries and time with the real server in the test's own process, with no port and no sleeping, in TypeScript, React, Angular, Kotlin, Java and Spring Boot.
 ---
 
 # Testing
@@ -10,7 +10,7 @@ directly, in the test's own process: no port is opened, and nothing is mocked. E
 argument checks, policies, idempotency and patches as a request over HTTP, so what a test proves is what a client
 will see.
 
-Three rules keep such tests fast and honest:
+Three rules keep these tests fast and reliable:
 
 - **One caller per viewer.** The viewer is who is calling, which over HTTP the server reads from a token. A test
   names it directly and keeps a caller for each kind of person: nobody, a customer, staff.
@@ -18,8 +18,9 @@ Three rules keep such tests fast and honest:
   does not come fails the test with a message saying what it waited for, instead of hanging the run.
 - **Give the server its clock.** Anything that depends on time is tested by moving a clock the test owns.
 
-Every example below is a test from this repository's bookshop examples, run in CI. What the network adds (tokens,
-headers, status codes, CORS) is a transport's business; test that once, over HTTP, as the examples' other tests do.
+Every example below is a test in this repository, run in CI: the bookshop examples' own, and for Angular the
+package's tests against the TypeScript bookshop. What the network adds (tokens,
+headers, status codes, CORS) belongs to the transport. Test it once, over HTTP, as the examples' other tests do.
 
 ## Set up
 
@@ -128,8 +129,8 @@ rejects with it; on the JVM the caller throws the `RayfoldException` the server 
 
 ## A retried command
 
-A command sent twice under one [idempotency key](../learn/commands.md#safe-to-retry) runs once. Prove it on what
-the command does, the stock here, and prove the other side: another key is another purchase.
+A command sent twice under one [idempotency key](../learn/commands.md#safe-to-retry) runs once. Check what the
+command did (the stock, here), and check the other side too: another key is another purchase.
 
 On the JVM a command without a key gets a fresh one, so a test passes a key only when the key is what it tests.
 `frames(...)` returns what the server sent as it sent it, which is where `meta.replay` is.
@@ -172,9 +173,10 @@ a time: each `next()` waits for one more, and fails when none comes.
 
 ## Time
 
-The server reads the time from one clock: for `now()` in a policy, `ctx.now` in a resolver, when an idempotency
-record expires, and its uptime. It is the system clock unless you give it another. A test gives it one it can move,
-and a day passes in a line.
+The server reads the time from one clock. It uses it for `now()` in a policy, `ctx.now` in a resolver, the expiry of
+records in its default idempotency store, and its uptime. A store you give the server keeps its own clock. The clock
+is the system clock unless you give the server another. A test gives it one it can move, so a day passes in one
+line.
 
 - TypeScript: the `now` option of `createRayfoldServer`, epoch milliseconds.
 - Kotlin: `RayfoldServer(..., now = ...)`, a function returning epoch milliseconds.
@@ -196,7 +198,7 @@ and a day passes in a line.
 
 ## The client and its cache
 
-What the client adds, the cache, [optimistic updates](offline.md) and watches, is tested with the client itself
+What the client adds (the cache, [optimistic updates](offline.md) and watches) is tested with the client itself
 over the in-process transport. The server answers for real, so a prediction is checked against what the server
 then says. In Kotlin that transport is `LocalTransport(server) { viewer }`; the test below wraps it to count the batches
 the client sends.
@@ -259,7 +261,7 @@ To wait for a signal, follow it with `createWatch` from `@angular/core/primitive
 
 ## What to test over the network
 
-Keep a few tests that go through the transport you deploy, because these are decided there and not in the server:
+Keep a few tests that go through the transport you deploy, because the transport decides these, not the server:
 
 - **Who the caller is.** That a token becomes the right viewer, and that a bad one is refused with 401
   ([Who can do what](../learn/auth.md#who-is-calling)).

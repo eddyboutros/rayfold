@@ -8,8 +8,9 @@ npm install --save-dev @rayfold/conformance
 ```
 
 The package holds two kinds of artifact. A **fixture** is a request and the frames a server must answer it with. A
-**vector** is a pure function and the answer the specification says it has: a number's canonical form, a shape's id,
-a hash, the status an error code derives, the outcome of a denial.
+**vector** is an input and the answer the specification says it has: a number's canonical form, a shape's id, a hash,
+the status an error code derives, the outcome of a denial, or what a server answers to a raw HTTP request, a
+WebSocket session or an MCP call.
 
 The difference matters. Every vector's expectation is written from the specification, never captured from a runtime —
 a vector taken from an implementation proves only that the implementations agree, and two implementations can agree
@@ -21,8 +22,8 @@ What the package contains:
 - `fixtures/core/*.json`: one file per topic (default views, shapes, pipelining, commands, errors, auth, defer,
   streams, limits, trusted shapes, ...). Each file holds a `.rayfold` schema, its parsed IR, seed data, and cases:
   a request, the viewer, and the exact frames expected back.
-- `vectors/*/*.json`: ten areas — `numbers`, `canonicalization`, `shapes`, `binary`, `hashing`, `manifest`,
-  `errors`, `idempotency`, `authorization`, `patch`. Each file carries the normative rule restated in prose, the
+- `vectors/*/*.json`: fourteen areas — `numbers`, `canonicalization`, `shapes`, `binary`, `hashing`, `manifest`,
+  `errors`, `idempotency`, `authorization`, `patch`, `validation`, `http`, `websocket`, `mcp`. Each file carries the normative rule restated in prose, the
   specification section it comes from, and its cases. `vectors/README.md` explains how to run them.
 - The harness the reference runtime uses (`seedStore`, `fixtureResolvers`, `groupFrames`): it turns a fixture's
   data and declarative resolver specs into resolvers for `@rayfold/server`, so you can see how each case is meant

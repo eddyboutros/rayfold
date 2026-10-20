@@ -21,8 +21,8 @@ extension only when it is listed there.
 
 ## What a requirement's status means
 
-The table above says how fast a document may change. This one says what a requirement inside it obliges, because the
-two are different questions and conflating them is how a specification comes to describe something nothing does.
+The table above says how fast a document may change. This one says what a requirement inside it obliges. The two are
+different questions, and conflating them is how a specification comes to describe something nothing does.
 
 | Status | Meaning |
 |---|---|
@@ -38,7 +38,7 @@ Unmarked text in a Core document is normative. The rule that matters:
 
 Where an implementation falls short, one of two things happens and both are visible: the requirement is demoted to
 **Reserved** in the same change, or the gap is recorded as a known defect. What must not happen is a MUST sitting in a
-document that neither runtime honours — a reader has no way to tell that from a MUST that works, and an implementer
+document that neither runtime honours. A reader has no way to tell that from a MUST that works, and an implementer
 building from the text will get it wrong in a way the reference implementations never will.
 
 Credit-based flow control ([04 §5](04-frames-and-transport.md)) is the worked example: it was written as a MUST,

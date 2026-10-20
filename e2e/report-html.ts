@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { CATALOGUE_SIZE } from "../examples/bookstore-ts/src/catalogue.ts";
 import { demosHtml } from "./report-demos.ts";
+import { PACKAGES } from "../scripts/packages.mjs";
 
 type Verdict = "lead" | "tie" | "behind";
 type Values = { REST: number | null; GraphQL: number | null; Rayfold: number | null };
@@ -21,6 +22,9 @@ interface Attack { area: string; attack: string; defence: string; result: string
 const e2e = JSON.parse(readFileSync("e2e/results.json", "utf8")) as { generatedAt: string; rows: Row[] };
 // the released version, from the package that carries it, so the page does not go stale at every release
 const version = (JSON.parse(readFileSync("packages/server/package.json", "utf8")) as { version: string }).version;
+// what a release publishes, counted from the lists the release itself reads
+const npmCount = PACKAGES.length;
+const jvmCount = [...readFileSync(new URL("../kotlin/settings.gradle.kts", import.meta.url), "utf8").matchAll(/include\("[^"]+"\)/g)].length;
 const bench = JSON.parse(readFileSync("bench/results/latest.json", "utf8")) as { generatedAt: string; node: string; iterations: number; rows: BenchRow[] };
 const methods: MethodBlock[] = existsSync("e2e/methods.json") ? (JSON.parse(readFileSync("e2e/methods.json", "utf8")) as { methods: MethodBlock[] }).methods : [];
 const security: { generatedAt: string; attacks: Attack[] } | null = existsSync("e2e/security.json") ? JSON.parse(readFileSync("e2e/security.json", "utf8")) : null;
@@ -168,6 +172,7 @@ function benchChart(measure: "roundTrips" | "bytesDown", title: string, unit: st
 // ------------------------------------------------------------------ recorded exchanges
 const REASON: Record<number, string> = { 200: "OK", 201: "Created", 202: "Accepted", 204: "No Content", 304: "Not Modified", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 409: "Conflict", 412: "Precondition Failed", 413: "Content Too Large", 415: "Unsupported Media Type", 422: "Unprocessable Content", 429: "Too Many Requests", 431: "Request Header Fields Too Large" };
 const MAX_LINES = 16;
+const MAX_FULL_LINES = 80;
 
 /** Bodies are JSON, NDJSON frames (one per line) or an RB note followed by the decoded JSON. */
 function pretty(body: string): { head: string; full: string; cut: boolean } {
@@ -184,7 +189,10 @@ function pretty(body: string): { head: string; full: string; cut: boolean } {
   }
   const lines = text.split("\n");
   const cut = lines.length > MAX_LINES;
-  return { head: cut ? `${lines.slice(0, MAX_LINES).join("\n")}\n... ${lines.length - MAX_LINES} more lines` : text, full: text, cut };
+  // a few recorded bodies run to thousands of lines (an MCP tool list is most of a megabyte): the page shows enough to
+  // read, and the recording beside it keeps the rest, so a phone does not parse megabytes nobody opens
+  const full = lines.length > MAX_FULL_LINES ? `${lines.slice(0, MAX_FULL_LINES).join("\n")}\n... ${lines.length - MAX_FULL_LINES} more lines, recorded whole in the e2e/*.json files of the repository` : text;
+  return { head: cut ? `${lines.slice(0, MAX_LINES).join("\n")}\n... ${lines.length - MAX_LINES} more lines` : text, full, cut };
 }
 
 const headerLines = (h: Record<string, string>) => Object.entries(h).map(([k, v]) => `\n<span class="hk">${esc(k)}:</span> ${esc(v)}`).join("");
@@ -258,10 +266,10 @@ const securityHtml = security
       return `<section id="security">
   <span class="eyebrow">Security</span>
   <h2>${refused} attacks tried, ${refused === security.attacks.length ? "every one refused" : `${refused} refused`}</h2>
-  <p class="lede">Each row is an automated test that sends the attack to a running Rayfold server and checks that it fails safely. Next to it, a second test proves the defence does not also block honest use. No software can promise it will never be broken; what Rayfold can promise is that these defences are part of the protocol and are tested on every change.</p>
+  <p class="lede">Each row is an automated test that sends the attack to a running Rayfold server and checks that it fails safely. Next to it, a second test sends the ordinary request the defence must still allow, and checks that it works. These defences are part of the protocol and are tested on every change. That does not make Rayfold unbreakable.</p>
   ${areas.map((area) => `<div class="sec-area"><h3>${esc(area)}</h3><div class="tablewrap"><table>
     <colgroup><col class="c-result"><col class="c-attack"><col class="c-defence"><col class="c-guard"><col class="c-runtimes"></colgroup>
-    <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Honest use still works</th><th scope="col">Runtimes</th></tr></thead>
+    <thead><tr><th scope="col">Result</th><th scope="col">Attack</th><th scope="col">Defence</th><th scope="col">Ordinary use still works</th><th scope="col">Runtimes</th></tr></thead>
     <tbody>${security.attacks.filter((a) => a.area === area).map((a) => `<tr><td><span class="chip ${a.result === "refused" ? "chip-ok" : "chip-behind"}">${a.result === "refused" ? "refused" : esc(a.result)}</span></td><td>${esc(a.attack)}${a.exchange ? `<details class="sec-ex"><summary>request and response</summary>${exchangeHtml(a.exchange)}</details>` : ""}</td><td>${esc(a.defence)}</td><td>${esc(a.guard)}</td><td>${esc(a.runtimes.join(", "))}</td></tr>`).join("")}</tbody>
   </table></div></div>`).join("")}
 </section>`;
@@ -301,7 +309,7 @@ const workspaceHtml = workspace
       return `<section id="workspace">
   <span class="eyebrow">A bigger example</span>
   <h2>A whole issue tracker, built three ways</h2>
-  <p class="lede">A bookstore is a small API. This is the opposite: a multi-tenant issue tracker with ${n("issues")} issues, ${n("comments")} comments and ${n("activity")} activity entries across ${n("orgs")} organisations, ${n("projects")} projects and ${n("sprints")} sprints. It has the things that make an API hard: boards with a page per column, sub-issues, labels, versions, a feed holding four kinds of entry, search across three kinds of thing, per-tenant and per-field permissions, bulk writes and live updates. The same domain was built as REST, as GraphQL (with and without DataLoader) and as Rayfold, and every scenario below ran against all three over real HTTP, checking that they agree before measuring what they cost.</p>
+  <p class="lede">A bookstore is a small API. This is the opposite: a multi-tenant issue tracker with ${n("issues")} issues, ${n("comments")} comments and ${n("activity")} activity entries across ${n("orgs")} organisations, ${n("projects")} projects and ${n("sprints")} sprints. It has the things that make an API hard: boards with a page per column, sub-issues, labels, versions, a feed holding four kinds of entry, search across three kinds of thing, per-tenant and per-field permissions, bulk writes and live updates. The same domain was built as REST, as GraphQL (with and without DataLoader) and as Rayfold. Every scenario below ran against all three over real HTTP, and the test checked that they agree before measuring what they cost.</p>
   <p class="lede">Rayfold was ahead on <strong>${wsLead} of ${wsRows.length}</strong>${wsTie ? `, level on ${wsTie}` : ""} and behind on ${wsBehind ? plural(wsBehind, "one", `${wsBehind}`) : "none"}.</p>
   <div class="theme" style="margin-top:14px">${wsRows.map((r) => caseCard(r, r.aspect, "")).join("")}</div>
   <p class="caption" style="margin-top:10px">The domain is in <code>examples/workspace-ts</code>; the scenarios are <code>e2e/workspace.test.ts</code>. Every number here is produced by that test run, not written by hand.</p>
@@ -515,7 +523,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
 <header class="hero">
   <span class="eyebrow">A measured comparison of Rayfold, REST and GraphQL</span>
   <h1>Should you use Rayfold?</h1>
-  <p class="answer"><strong>Rayfold is a way for an app to talk to its server</strong> - the job REST and GraphQL do today. The same online bookstore was built all three ways and tested for real. Rayfold was ahead on <strong>${led} of ${e2e.rows.length}</strong> everyday tasks${tied ? `, level on ${tied}` : ""}${behind ? ` and behind on ${behind}` : ""}, and on <strong>${mLead} of ${methods.length}</strong> HTTP methods.${realdata ? ` On the full Project Gutenberg catalogue (${(realdata.dataset?.books ?? 0).toLocaleString("en-US")} real books)${rdBehind ? ` the picture is more mixed: Rayfold was ahead on ${rdLead}, level on ${rdTie} and behind on ${plural(rdBehind, "task", "tasks")}, all shown below.` : ` Rayfold was ahead on ${rdLead} of ${realdata.rows.length} tasks${rdTie ? ` and level on ${rdTie}` : ""}, and behind on none; all are shown below.`}` : ""}${workspace ? ` A second, much larger example, a multi-tenant issue tracker with ${(workspace.dataset["issues"] ?? 0).toLocaleString("en-US")} issues, was built the same three ways: Rayfold was ahead on ${wsLead} of ${wsRows.length} scenarios${wsTie ? `, level on ${wsTie}` : ""} and behind on ${wsBehind ? String(wsBehind) : "none"}.` : ""} Use it if your screens combine related data, you need live updates, or AI assistants will call your API. Be aware that Rayfold is new: version ${version} is published and its core is frozen, but no one runs it in production yet. New to any of this? <a href="#start">Start with the plain-language section</a>, which explains what is being compared before any numbers appear.</p>
+  <p class="answer"><strong>Rayfold is a way for an app to talk to its server</strong>, the job REST and GraphQL do today. The same online bookstore was built all three ways and tested over real HTTP. Rayfold was ahead on <strong>${led} of ${e2e.rows.length}</strong> everyday tasks${tied ? `, level on ${tied}` : ""}${behind ? ` and behind on ${behind}` : ""}, and on <strong>${mLead} of ${methods.length}</strong> HTTP methods.${realdata ? ` On the full Project Gutenberg catalogue (${(realdata.dataset?.books ?? 0).toLocaleString("en-US")} real books)${rdBehind ? ` the picture is more mixed: Rayfold was ahead on ${rdLead}, level on ${rdTie} and behind on ${plural(rdBehind, "task", "tasks")}, all shown below.` : ` Rayfold was ahead on ${rdLead} of ${realdata.rows.length} tasks${rdTie ? ` and level on ${rdTie}` : ""}, and behind on none; all are shown below.`}` : ""}${workspace ? ` A second, much larger example, a multi-tenant issue tracker with ${(workspace.dataset["issues"] ?? 0).toLocaleString("en-US")} issues, was built the same three ways: Rayfold was ahead on ${wsLead} of ${wsRows.length} scenarios${wsTie ? `, level on ${wsTie}` : ""} and behind on ${wsBehind ? String(wsBehind) : "none"}.` : ""} Use it if your screens combine related data, you need live updates, or AI assistants will call your API. Be aware that Rayfold is new: version ${version} is published and its core is frozen, but no one runs it in production yet. If any of this is new to you, <a href="#start">start with the plain-language section</a>. It explains what is being compared before any numbers appear.</p>
   ${heroCompare}
   <p class="caption">One product page (a book, its author and three reviews), loaded from each API. The code lines are the actual requests. Measured: ${esc(productPage?.metric ?? "")}.</p>
   <div class="legend"><span class="l-rest">REST: resources and URLs, with ETags, Idempotency-Key and SSE</span><span class="l-gql">GraphQL: one query language, with DataLoader batching and subscriptions</span><span class="l-rayfold">Rayfold</span></div>
@@ -537,7 +545,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
 <section id="start">
   <span class="eyebrow">Start here</span>
   <h2>What this page is comparing, in plain words</h2>
-  <p class="lede">Every app you use - a shop, a chat, a bank - is a screen that asks a server for data and tells it
+  <p class="lede">Every app you use, such as a shop, a chat or a bank, is a screen that asks a server for data and tells it
   about changes. The rules for that conversation are called an <strong>API</strong>. This page compares three sets of
   rules doing the same job. The job never changes: draw one product page, which needs a book, the author who wrote it,
   and its first three reviews.</p>
@@ -555,11 +563,11 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
       back, in one trip.</p>
       <ul>
         <li>No wasted trips and no wasted fields.</li>
-        <li>Calls go to one address and are POSTs by default, which shared caches and CDNs skip. Persisted queries can put reads behind a GET so a CDN can store them; it is a setup step each team makes, not the default.</li>
-        <li>And the things a server must get right anyway - safe retries, who may read what, how expensive a call may be - are left to libraries, conventions and code review.</li>
+        <li>Calls go to one address and are POSTs by default, which shared caches and CDNs skip. Persisted queries can put reads behind a GET so a CDN can store them, but each team has to set that up.</li>
+        <li>Safe retries, who may read what and how expensive a call may be are left to libraries, conventions and code review.</li>
       </ul></article>
     <article class="d-rayfold"><h3>Rayfold, what is measured here</h3>
-      <p>The app names the fields it wants, as in GraphQL, and several steps travel in one request - a later step may
+      <p>The app names the fields it wants, as in GraphQL, and several steps travel in one request. A later step may
       use an earlier step's result.</p>
       <ul>
         <li>A write comes back saying exactly what changed, so screens already open correct themselves instead of reloading.</li>
@@ -576,7 +584,7 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
     <span class="eyebrow">Rayfold in one minute</span>
     <h2>One request per screen, with the safety rules in the contract</h2>
     <ul class="points">
-      <li><strong>You ask for exactly the fields you need.</strong><span class="muted">A shape such as <code>{ title author { name } }</code>, like GraphQL. With no shape, you get a sensible default view, so a plain curl call works.</span></li>
+      <li><strong>You ask for exactly the fields you need.</strong><span class="muted">A shape such as <code>{ title author { name } }</code>, like GraphQL. With no shape, you get the operation's default view, so a plain curl call works.</span></li>
       <li><strong>Several steps travel in one request.</strong><span class="muted">A later step can use an earlier step's result, as in the example on the right: place an order, then pay for it, in one round trip.</span></li>
       <li><strong>Writes are safe to retry.</strong><span class="muted">Every write carries an idempotency key. If the network fails and the app sends it again, the server answers with the first result.</span></li>
       <li><strong>Screens stay correct after a write.</strong><span class="muted">Every write returns patches, so every cached screen that shows the changed data updates without reloading.</span></li>
@@ -593,28 +601,28 @@ main, .hero, .theme, .case, .method, .methods, .sec-area, .ex, .hc, .stack-col, 
 <section id="why">
   <span class="eyebrow">Why it comes out ahead</span>
   <h2>Five differences, and what each one costs the others</h2>
-  <p class="lede">None of these is a trick of the benchmark. Each is a structural choice, and each produces a measured
-  difference in the sections below.</p>
+  <p class="lede">Each of these comes from how the protocol is designed, not from how the benchmark was set up. Each
+  produces a measured difference in the sections below.</p>
   <ul class="points">
     <li><strong>One request per screen, not one per thing.</strong><span class="muted">Several operations travel in one
       batch, and a later one can use an earlier one's result, so placing an order and reading it back is a single trip.
       Across the three benchmark flows: ${rtRest} round trips over REST, ${rtGql} over GraphQL, ${rtRayfold} over
       Rayfold. On a phone far from the server, each trip saved is tens of milliseconds the user does not wait.</span></li>
     <li><strong>Related data is loaded in batches, by default.</strong><span class="muted">A resolver is handed the
-      whole level at once, so a list of twenty books costs one author lookup rather than twenty. GraphQL can do this,
-      but only with a loader written and wired by hand for each relation; in Rayfold there is no other shape to
-      write, so the slow version cannot be reached by accident.</span></li>
-    <li><strong>A write says what it changed.</strong><span class="muted">Every write returns patches - small
-      statements such as "this book now has stock 3" - so open screens correct themselves. The others report that
-      something changed and leave the client to fetch the whole screen again, which is the difference between sending
-      one changed row and re-sending an entire board.</span></li>
+      whole level at once, so a list of twenty books costs one author lookup instead of twenty. GraphQL can do this
+      with a loader written and wired by hand for each relation. A Rayfold loader can only be written in the batched
+      form, so the slow version cannot be reached by accident.</span></li>
+    <li><strong>A write says what it changed.</strong><span class="muted">Every write returns patches, small
+      statements such as "this book now has stock 3", so open screens correct themselves. REST and GraphQL report that
+      something changed and leave the client to fetch the whole screen again. For one changed row on a board, that
+      means sending the entire board again.</span></li>
     <li><strong>The rules are part of the contract.</strong><span class="muted">Who may read a field, how expensive a
       call may be, what may be cached and for how long, and that a retried write must not run twice: all declared in
-      the schema and enforced on every way in - batches, REST-style routes, live updates and AI tools alike - instead
-      of being remembered in each handler.</span></li>
+      the schema. The server enforces them on every way in: batches, REST-style routes, live updates and AI tools.
+      Nobody has to remember them in each handler.</span></li>
     <li><strong>It is still plain HTTP.</strong><span class="muted">Reads are ordinary GETs with ETags, so a shared
-      cache or a CDN can answer them; the binary encoding is optional and moves ${Math.round((bRb / bGql) * 100)}% of
-      GraphQL's bytes, while JSON always works from curl. Nothing here requires a new network stack.</span></li>
+      cache or a CDN can answer them. The binary encoding is optional and moves ${Math.round((bRb / bGql) * 100)}% of
+      GraphQL's bytes; JSON always works from curl. Nothing here requires a new network stack.</span></li>
   </ul>
 </section>
 
@@ -649,8 +657,8 @@ ${demosHtml}
     <ul>
       <li>Rayfold Core 0.1 (the batch envelope, frames, shapes, errors, permissions, caching and evolution rules) is frozen with the 0.1.0 release: it changes only by errata that no conforming server fails. The live updates, binary encoding, AI bridge and REST-route extensions are drafts and may still change; a server says which it serves in its manifest.</li>
       <li>There are two reference implementations, TypeScript and Kotlin, both complete: batches, live queries over HTTP and WebSocket, the binary encoding, AI tools and REST routes. They produce identical frames for every conformance case.</li>
-      <li>The tools a working day needs are there: an explorer served next to the endpoint, a language server so editors underline a broken schema as you type, a mock server that answers from the schema before any resolver exists, importers from an OpenAPI document or a GraphQL SDL, result types that follow the shape you asked for, and a build-time check that every operation and every field taking arguments is actually wired to a resolver.</li>
-      <li>Version ${version} is published: twelve npm packages and seven JVM artifacts on Maven Central, with the documentation at rayfold.dev. What is young is the use: no one runs Rayfold in production yet, and it has no ecosystem beside these packages.</li>
+      <li>The tools a working day needs are there: an explorer served next to the endpoint, a language server so editors underline a broken schema as you type, a mock server that answers from the schema before any resolver exists, importers from an OpenAPI document or a GraphQL SDL, result types that follow the shape you asked for, and a build-time check that every operation and every field taking arguments is wired to a resolver.</li>
+      <li>Version ${version} is published: ${npmCount} npm packages and ${jvmCount} JVM artifacts on Maven Central, with the documentation at rayfold.dev. What is missing is use: no one runs Rayfold in production yet, and it has no ecosystem beside these packages.</li>
       <li>All numbers on this page come from automated tests on one computer, not from production traffic. The next section shows every request, so you can judge them yourself.</li>
     </ul>
   </div>
@@ -696,7 +704,7 @@ ${securityHtml}
     <h2>Same data, same tasks, real HTTP</h2>
     <ul>
       <li>One online bookstore with real titles, authors and reviews, built three times: REST, GraphQL (graphql-js) and Rayfold.</li>
-      <li>The REST and GraphQL versions use the practices careful teams use: ETags, Idempotency-Key, DataLoader batching, server-sent events and subscriptions.</li>
+      <li>The REST and GraphQL versions use common production practices: ETags, Idempotency-Key, DataLoader batching, server-sent events and subscriptions.</li>
       <li>Every test sends real HTTP requests to all three servers. A recorder saves each request and response; they are the examples on this page.</li>
       <li>Each result (ahead, level, behind) is calculated from the measured numbers, never written by hand.</li>
       ${realdata ? `<li>A second run loads the full Project Gutenberg catalogue into all three servers and checks every answer against the catalogue itself.</li>` : ""}

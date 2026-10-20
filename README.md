@@ -36,10 +36,15 @@ that runs Rayfold in your browser.
 | Editor support for `.rayfold` | `npm install --save-dev @rayfold/lsp` | [Editors](docs/guide/editors.md) |
 | Schemas written in TypeScript | `npm install @rayfold/builder` | [TypeScript](docs/guide/typescript.md) |
 | Schema tooling: check, lock, explain, gen, import, mock | `npm install --save-dev @rayfold/cli` | [CLI](packages/cli/README.md) |
+| Reading `.rayfold` schemas in your own tools | `npm install @rayfold/schema` | [Schema](packages/schema/README.md) |
+| The binary encoding on its own | `npm install @rayfold/rb` | [Binary](docs/learn/binary.md) |
+| A Rayfold server of your own, checked against the reference | `npm install --save-dev @rayfold/conformance` | [Conformance](conformance/README.md) |
 | A Kotlin server | `dev.rayfold:rayfold-core` | [Kotlin](docs/guide/kotlin.md) |
 | A Kotlin or Android client | `dev.rayfold:rayfold-client` (and `rayfold-client-okhttp` on Android) | [Kotlin client](docs/guide/kotlin.md#a-client) |
 | A Java server | `dev.rayfold:rayfold-java` | [Java](docs/guide/java-spring.md) |
 | A Spring Boot app | `dev.rayfold:rayfold-spring-boot-starter` | [Spring Boot](docs/guide/java-spring.md#spring-boot) |
+| Resolvers, idempotency and live updates over JDBC | `dev.rayfold:rayfold-jdbc` | [JDBC](docs/guide/jdbc.md) |
+| OpenTelemetry tracing on the JVM | `dev.rayfold:rayfold-opentelemetry` | [Tracing](docs/guide/tracing.md#kotlin-java-and-spring-boot) |
 | Unit tests without a network, on the JVM | `dev.rayfold:rayfold-test`, in test scope (since 0.2.2) | [Testing](docs/guide/testing.md) |
 
 Version 0.2.2 is on npm and Maven Central; the [changelog](CHANGELOG.md) lists what it holds, and
@@ -109,7 +114,7 @@ npm run typecheck
 npm run build                              # the npm packages into packages/*/dist
 npm run smoke:packages                     # install the packed packages in a fresh project and use them there
 npm run docs:dev                           # the documentation site and playground at http://localhost:5173/
-npm run rayfold -- dev examples/bookstore-ts   # explorer http://localhost:4400, /rayfold, /rayfold/ws, /mcp
+npm run rayfold -- dev examples/bookstore-ts   # http://localhost:4400/: /rayfold/explorer, /rayfold, /rayfold/ws, /mcp
 npm run bench                              # REST vs GraphQL vs Rayfold (JSON, RB) -> bench/results/latest.md
 npm run e2e && npm run e2e:html            # the comparison suite -> e2e/report.html
 npm run demo                               # web demo on the Project Gutenberg catalogue: http://localhost:4610
@@ -128,10 +133,14 @@ npm run smoke:maven                        # publish the JVM modules locally and
 | [`packages/react`](packages/react) | `useQuery`, `useLive`, `useCommand` |
 | [`packages/angular`](packages/angular) | `injectQuery`, `injectLive`, `injectCommand`, as signals |
 | [`packages/rb`](packages/rb) | Rayfold Binary codec |
+| [`packages/postgres`](packages/postgres) | resolvers that read Postgres with the schema's policies pushed into SQL, and Postgres stores for idempotency, the relay and uploads |
+| [`packages/otel`](packages/otel) | OpenTelemetry spans for batches, ops and loaders |
+| [`packages/explorer`](packages/explorer) | the explorer page a server serves next to its endpoint |
+| [`packages/lsp`](packages/lsp) | the language server behind editor support for `.rayfold` |
 | [`packages/cli`](packages/cli) | `rayfold check \| lock \| hash \| explain \| gen ts\|kotlin\|java\|graphql \| shapes \| import openapi\|graphql \| mock \| lsp \| dev` |
 | [`conformance/`](conformance) | the fixtures (schema, IR, data, expected frames) every implementation must pass, and the vectors: an input and the answer the specification says it has, from pure functions to HTTP, WebSocket and MCP requests |
 | [`kotlin/`](kotlin) | JVM modules: `rayfold-core`, `rayfold-java`, `rayfold-spring-boot-starter`, `rayfold-client`, `rayfold-client-okhttp`, `rayfold-opentelemetry`, `rayfold-jdbc`, `rayfold-test` |
-| [`examples/`](examples) | the bookstore used by tests, explorer and bench; the same bookshop per stack (`typescript`, `react`, `kotlin`, `java`, `spring-boot`) that the get-started guides are written from; the web demo; `workspace-ts`, a multi-tenant issue tracker that exercises every part of the protocol at once |
+| [`examples/`](examples) | the bookstore used by tests, explorer and bench; the same bookshop per stack (`typescript`, `react`, `kotlin`, `java`, `spring-boot`) that the get-started guides are written from; the web demo; `workspace-ts`, a multi-tenant issue tracker that exercises every part of the protocol at once; `document-store`, uploads that keep every revision with the bytes only on disk |
 | [`e2e/`](e2e/report.md) | the same flows over REST, GraphQL and Rayfold, every report cell asserted |
 | [`scripts/`](scripts) | build, publish, set-version, smoke tests, docs site, oracles for the Kotlin tests |
 | [`data/`](data) | the Project Gutenberg catalogue used by the real-data tests and the demo (see its README for attribution) |

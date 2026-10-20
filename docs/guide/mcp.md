@@ -1,17 +1,17 @@
 ---
 title: MCP for AI agents
-description: Serve the same API to AI agents over the Model Context Protocol — commands become tools, queries become tools and resources, and every rule still applies.
+description: Serve the same API to AI agents over the Model Context Protocol. Commands become tools, queries become tools and resources, and every rule still applies.
 ---
 
 # MCP for AI agents
 
-An agent that wants to use your API has the same problem a developer has: what can it call, what arguments does it
-take, and what comes back. A Rayfold schema already answers all three, so the MCP endpoint is a translation rather
-than a second API — mount it and an agent sees the operations you already wrote.
+An agent that uses your API needs to know what it can call, what arguments each operation takes, and what comes back.
+A Rayfold schema already says that, so the MCP endpoint translates the schema into MCP. Mount it and an agent sees the
+operations you already wrote.
 
-Nothing about authorization changes. An agent's request runs as a viewer like any other, through the same
+Authorization does not change. An agent's request runs as a viewer like any other, through the same
 `@allow`/`@deny` rules, the same cost limits and the same idempotency. There is no separate path into your data for
-agents, which is the point.
+agents.
 
 ## Mount it
 
@@ -43,8 +43,8 @@ RayfoldMcp(server) { ex -> viewerOf(ex) }.mount(http)              // adds /mcp 
 The handler answers `false` for a path that is not its own, so it chains in front of anything else. The default path
 is `/mcp`; pass `path` to change it. A server serving MCP says `mcp` in its manifest, so a client can tell.
 
-`POST` only, `application/json` only, and the `Origin` of the request is checked — without that, any web page open in
-a browser could drive a local or intranet server. Configure `allowedOrigins` as you do for the main endpoint. A body
+The endpoint accepts only `POST` and only `application/json`, and it checks the `Origin` of the request. Without that
+check, any web page open in a browser could drive a local or intranet server. Configure `allowedOrigins` as you do for the main endpoint. A body
 over `maxBody` (`maxBodyBytes` on the JVM, 1 MiB by default) is refused with `413`, and a notification gets `202` with
 no body.
 
@@ -63,22 +63,22 @@ no body.
 | the schema | a resource at `rayfold://schema` |
 
 Argument schemas come from the operation's own arguments, so an agent gets the types, the defaults and the
-descriptions you wrote once. A tool's `outputSchema` describes what a call returns, which is the default view: it
-declares every field, but requires none, since the view may leave some out. Resource arguments in the URI are
+descriptions you wrote once. A tool's `outputSchema` describes what a call returns (the default view). It
+declares every field but requires none, since the view may leave some out. Resource arguments in the URI are
 converted by their declared types, so `?limit=5` passes the number 5 to an `Int` argument.
 
 A command called as a tool, unless it is `@idempotent(false)`, gets an idempotency key made from the operation and
-its arguments: the same call sent again is answered with the first one's result rather than run twice.
+its arguments. The same call sent again is answered with the first one's result and does not run twice.
 
-The `.simulate` variant appears **only** where the command declares `@simulate`. The runtime cannot make a resolver
-honour a dry run that never checks `ctx.simulate`, so it does not offer a dry run it cannot keep — an agent that
-wants to check before it acts can trust the tool being there.
+The `.simulate` variant appears only where the command declares `@simulate`. A resolver that never checks
+`ctx.simulate` would ignore a dry run, and the runtime cannot force it to, so the runtime offers no dry run it cannot
+keep. When the tool is there, an agent can rely on it to check before it acts.
 
 ## What the schema resource serves
 
-`rayfold://schema` serves the IR **without policy expressions** by default. A policy expression is a description of
-what your authorization depends on, which is a map of what to probe; the rules still run, the agent simply does not
-get to read them.
+`rayfold://schema` serves the IR **without policy expressions** by default. A policy expression shows
+what your authorization depends on, which tells a caller what to probe. The rules still run; the agent cannot read
+them.
 
 ```ts
 createMcpHandler(server, { viewer, schema: "redacted" }); // the default
@@ -86,16 +86,16 @@ createMcpHandler(server, { viewer, schema: "full" });     // everything, for a t
 createMcpHandler(server, { viewer, schema: "off" });      // no schema resource at all
 ```
 
-`resources/read` is a read verb, and it refuses to run a command however the URI is written — a read cannot be made
-to write.
+`resources/read` is a read verb. It refuses to run a command however the URI is written, so a read cannot be made to
+write.
 
 ## Giving an agent less than a user
 
-An agent usually needs a fraction of what the user it acts for can do. A [capability token](./capabilities.md) is the
-narrow credential for that: mint one scoped to the operations the agent needs, hand it over, and let it expire.
+An agent usually needs a fraction of what the user it acts for can do. A [capability token](./capabilities.md) covers
+that: mint one scoped to the operations the agent needs, hand it over, and let it expire.
 
 ## Next
 
-- [Who can do what](../learn/auth.md) — the rules that still apply to every agent request.
-- [Capability tokens](./capabilities.md) — scoped, short-lived credentials to hand an agent.
+- [Who can do what](../learn/auth.md): the rules that still apply to every agent request.
+- [Capability tokens](./capabilities.md): scoped, short-lived credentials to hand an agent.
 - [The MCP bridge chapter](../../spec/10-mcp-bridge.md) of the specification, which defines the mapping exactly.

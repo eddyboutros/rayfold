@@ -36,13 +36,14 @@ class WebSocketDisabledTest {
                 fail("the socket opened although rayfold.websocket=false");
             } catch (ExecutionException e) {
                 assertThat(e.getCause()).isInstanceOf(WebSocketHandshakeException.class);
-                assertThat(((WebSocketHandshakeException) e.getCause()).getResponse().statusCode()).isEqualTo(400);
+                assertThat(((WebSocketHandshakeException) e.getCause()).getResponse().statusCode()).isEqualTo(404);
             }
-            // no upgrade: the HTTP endpoint answers that path, as a GET of an operation named ws, and refuses it
+            // no upgrade either: `ws` is a reserved sub-path (spec 04 section 4), so with no socket served it is a missing
+            // route, never a GET of an operation named ws
             HttpResponse<String> plain = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/rayfold/ws"))
                 .timeout(Duration.ofSeconds(5)).GET().build(), HttpResponse.BodyHandlers.ofString());
-            assertThat(plain.statusCode()).isEqualTo(400);
-            assertThat(json(plain.body())).isEqualTo(json(problem(400, "invalid_argument", "Safe requests (GET/QUERY) may only contain queries", "invalid_argument")));
+            assertThat(plain.statusCode()).isEqualTo(404);
+            assertThat(json(plain.body())).isEqualTo(json(problem(404, "not_found", "No route for /rayfold/ws", "not_found")));
 
             HttpResponse<String> res = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/rayfold"))
                 .timeout(Duration.ofSeconds(5)).header("Content-Type", "application/rayfold+json")

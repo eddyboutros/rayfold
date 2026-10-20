@@ -14,7 +14,8 @@ the same way everywhere. Errors an operation declares in the schema, such as `Ou
 carry their own `type` and data.
 
 When a whole request is refused over HTTP, the answer is an RFC 9457 problem document whose `type` links to one of
-these pages.
+these pages. A declared error is the exception: its `type` ends with its own name, such as `/errors/OutOfStock`, and
+the `domain` page in the table below says where to look it up.
 
 <table class="error-table">
   <thead>
@@ -31,5 +32,5 @@ these pages.
 </table>
 
 A command can be sent again with the same idempotency key: if the first attempt went through, the server answers with
-its original result instead of running the command twice. The key has to name the same command — reused for another
-operation, or the same one with different arguments, it answers `already_exists`.
+its original result instead of running the command twice. If the key is reused for another operation, or for the
+same one with different arguments, the server answers `already_exists`.

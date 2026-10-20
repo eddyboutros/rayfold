@@ -5,9 +5,11 @@
  *
  *   node scripts/set-version.mjs 0.2.0
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HISTORY, pinVersions } from "./markdown-pins.mjs";
 import { PACKAGES } from "./packages.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -46,15 +48,25 @@ const pins = [
 for (const { file, kind } of pins) {
   const path = join(ROOT, file);
   const before = readFileSync(path, "utf8");
-  const after =
+  const pin =
     kind === "pom"
       ? // only the <version> of a dev.rayfold dependency; the example's own version is left alone
-        before.replace(
-          /(<groupId>dev\.rayfold<\/groupId>\s*<artifactId>[^<]+<\/artifactId>\s*<version>)[^<]+(<\/version>)/g,
-          `$1${version}$2`,
-        )
-      : before.replace(/(["']dev\.rayfold:[^:"']+:)[^"']+(["'])/g, `$1${version}$2`);
-  if (after === before) throw new Error(`no dev.rayfold version to set in ${file}`);
+        /(<groupId>dev\.rayfold<\/groupId>\s*<artifactId>[^<]+<\/artifactId>\s*<version>)[^<]+(<\/version>)/g
+      : /(["']dev\.rayfold:[^:"']+:)[^"']+(["'])/g;
+  // a pin already at this version is fine, so a run can be repeated; a file with no pin at all is not
+  if (!pin.test(before)) throw new Error(`no dev.rayfold version to set in ${file}`);
+  const after = before.replace(pin, `$1${version}$2`);
+  writeFileSync(path, after);
+  console.log(`${file} ${version}`);
+}
+
+// the Markdown that tells a reader which version to install; the changelog and the versioning page are written by hand
+const markdown = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter((f) => f && !HISTORY.has(f));
+for (const file of markdown) {
+  const path = join(ROOT, file);
+  const before = readFileSync(path, "utf8");
+  const after = pinVersions(before, version);
+  if (after === before) continue;
   writeFileSync(path, after);
   console.log(`${file} ${version}`);
 }

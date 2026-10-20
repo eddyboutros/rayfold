@@ -66,6 +66,8 @@ const FRAMES_TYPE = "application/rayfold-frames+json";
 const PROBLEM_TYPE = "application/problem+json";
 const KEEP_ALIVE_RB = Uint8Array.of(0);
 const BODY_TYPES = new Set(["application/rayfold+json", "application/json", RB_CONTENT_TYPE]);
+/** The endpoint's own sub-paths (spec 04 §4), which `GET {path}/{op}` never reads as an operation name. */
+const RESERVED_PATHS = new Set(["manifest", "openapi.json", "health", "ready", "stats", "uploads", "ws", "explorer"]);
 
 const codecs = new WeakMap<RayfoldServer, RbCodec>();
 /** One RB codec per server: its key dictionary comes from the schema. */
@@ -460,7 +462,8 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
             count("rayfold.refused", { reason: "media" });
             return withCommon(
               problemResponse(415, "invalid_argument", `Content-Type ${ct || "(none)"} is not accepted; send application/rayfold+json`, "unsupported_media_type", {
-                "Accept-Post": [...BODY_TYPES].join(", "),
+                // the header that names what this method takes: a QUERY is told what a QUERY may carry
+                [request.method === "QUERY" ? "Accept-Query" : "Accept-Post"]: [...BODY_TYPES].join(", "),
               }),
             );
           }
@@ -498,6 +501,9 @@ export function createFetchHandler(server: RayfoldServer, opts: FetchOptions = {
         // GET /rayfold/{op}?a=<b64url json>&s=<shape id>&v=<b64url json>
         checkQueryEscapes(url.search);
         const op = sub.slice(1);
+        // spec 04 §4: these name the endpoint's own routes, so one the server does not serve is a missing route, never
+        // an operation of that name; an operation called `ws` is still reachable by POST
+        if (RESERVED_PATHS.has(op)) throw new RayfoldError("not_found", `No route for ${url.pathname}`);
         const a = url.searchParams.get("a");
         const s = url.searchParams.get("s");
         const v = url.searchParams.get("v");

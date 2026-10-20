@@ -75,7 +75,7 @@ export const ERROR_TYPES: ErrorType[] = [
       "The request carries no credentials, or they have expired.",
       "A capability token was edited, is signed with another secret, or has expired.",
       "A command carried an idempotency key but nobody is signed in: a replay record is scoped to the caller it belongs to, so it needs one.",
-      "An upload was sent by nobody: an open upload route is a way to fill your storage with nothing to trace it to.",
+      "An upload was sent with nobody signed in. An open upload route would let anyone fill your storage with nothing to trace it to.",
     ],
     fixes: ["Sign in again or refresh the token, then repeat the request. A command keeps its idempotency key, so repeating it is safe."],
     retryable: false,
@@ -119,7 +119,7 @@ export const ERROR_TYPES: ErrorType[] = [
       "A create command for an id, name or other unique value that is taken.",
     ],
     fixes: [
-      "Use a fresh key for each distinct command; a key names one command with one set of arguments, so that a replay answers the question that was asked.",
+      "Use a fresh key for each distinct command. A key names one command with one set of arguments, so a replay answers the request that was sent.",
       "Read the existing item instead, or choose another value.",
     ],
     retryable: false,
@@ -157,10 +157,14 @@ export const ERROR_TYPES: ErrorType[] = [
     code: "resource_exhausted",
     status: 413,
     summary: "The request body is bigger than the server accepts. Nothing was read past the limit and nothing ran.",
-    causes: ["A request body over the server's limit, 1 MiB unless the server changes it."],
+    causes: [
+      "A request body over the server's limit, 1 MiB unless the server changes it.",
+      "A file sent to the upload route over that route's own limit, 25 MiB unless the server changes it.",
+    ],
     fixes: [
       "Send less in one request, for example by splitting a large batch.",
       "If large bodies are expected, raise the limit on the server: `maxBody` in TypeScript, `maxBodyBytes` on the JVM.",
+      "For a file, raise the upload route's `maxBytes`, or hand the client a URL from object storage for very large files.",
     ],
     retryable: false,
     detail: "Body exceeds 1048576 bytes",

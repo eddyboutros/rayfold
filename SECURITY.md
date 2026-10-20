@@ -8,7 +8,7 @@ Security tab, "Report a vulnerability").
 
 Include what you can of:
 
-- the package or module and version (`@rayfold/server 0.1.0`, `dev.rayfold:rayfold-core:0.1.0`, ...);
+- the package or module and version (`@rayfold/server@0.2.2`, `dev.rayfold:rayfold-core:0.2.2`, ...);
 - the runtime (TypeScript or Kotlin) and transport (HTTP, WebSocket, MCP, REST bindings);
 - a request or schema that reproduces it, and what it lets an attacker do.
 
@@ -21,7 +21,7 @@ Rayfold is before 1.0: only the latest minor version receives security fixes.
 
 | Version | Supported |
 |---|---|
-| 0.1.x | yes |
+| 0.2.x | yes |
 
 ## What is in scope
 

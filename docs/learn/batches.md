@@ -6,9 +6,8 @@ description: Send queries and commands together in one batch, feed one step's re
 # Several steps, one request
 
 Every Rayfold request is a batch: a list of operations sent together. A screen that needs three reads makes one round
-trip, and a step can use what an earlier step returned, so "buy a copy, then show the book with its author" is one
-request too. This page covers references, failures, the order steps run in and the limits, then how the clients
-build a batch.
+trip. A step can also use what an earlier step returned, so "buy a copy, then show the book with its author" is one
+request too.
 
 ## A batch
 
@@ -58,8 +57,8 @@ fails that op:
 ```
 
 A reference can only point to an op with a smaller id. Anything else refuses the whole batch before it starts, with a
-frame that has no `id`. A WebSocket carries many batches, so there the same error goes to each op id the batch named
-instead:
+frame that has no `id`. A WebSocket carries many batches, so on a socket the same error goes to each op id the batch
+named:
 
 ```json
 {"error":{"code":"invalid_argument","message":"ops[0].args: $ref to op 2 must point to an earlier op"},"fin":true}
@@ -134,8 +133,7 @@ is bounded only by the batch's cost.
 
 ## Deadlines
 
-A caller can say how long it is willing to wait, and the server stops rather than finishing work nobody is waiting
-for. Send `meta.deadline` on the envelope, or per operation, in milliseconds:
+A caller can say how long it is willing to wait, and the server stops work that nobody is waiting for any more. Send `meta.deadline` on the envelope, or per operation, in milliseconds:
 
 ```json
 { "meta": { "deadline": 2000 }, "ops": [{ "id": 1, "op": "books", "args": {} }] }
@@ -143,8 +141,8 @@ for. Send `meta.deadline` on the envelope, or per operation, in milliseconds:
 
 Over HTTP the `Rayfold-Deadline` header does the same. An operation's own `deadline` counts from the start of the
 batch, as `meta.deadline` does, so time it spends waiting for an earlier operation counts too. An operation that runs
-out ends with `deadline_exceeded`. A command that had already committed records that fact, so a retry is answered
-with what happened rather than running the command a second time — see [Safe to retry](./commands.md#safe-to-retry).
+out ends with `deadline_exceeded`. A command that had already committed records that fact. A retry is answered with
+what happened, and the command does not run a second time (see [Safe to retry](./commands.md#safe-to-retry)).
 
 ## Build a batch in the client
 

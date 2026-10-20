@@ -37,7 +37,8 @@
         "headers": {
           "Accept-Post": {
             "listIncludes": "application/rayfold+json"
-          }
+          },
+          "Accept-Query": null
         }
       },
       "why": "spec 04 §4: a 415 carries Accept-Post, which is how a client that sent the wrong type learns the right one without reading a manual"
@@ -996,6 +997,91 @@
           }
         }
       }
+    },
+    {
+      "name": "a QUERY with a media type the endpoint does not read is told what a QUERY may carry",
+      "route": "endpoint",
+      "request": {
+        "method": "QUERY",
+        "path": "/rayfold",
+        "headers": {
+          "Content-Type": "text/plain"
+        },
+        "body": {
+          "ops": [
+            {
+              "id": 1,
+              "op": "book",
+              "args": {
+                "id": "b1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 415,
+        "problem": "invalid_argument",
+        "headers": {
+          "Accept-Query": {
+            "listIncludes": "application/rayfold+json"
+          },
+          "Accept-Post": null
+        }
+      },
+      "why": "spec 04 §4: a 415 carries Accept-Query when the request was a QUERY, the header that names what that method takes"
+    },
+    {
+      "name": "GET /rayfold/ws on a server that does not serve it is a missing route, not an operation",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/ws"
+      },
+      "expect": {
+        "status": 404,
+        "problem": "not_found"
+      },
+      "why": "spec 04 §4: `ws` is a reserved sub-path, never read as an operation name; this server serves no ws route, so there is no route"
+    },
+    {
+      "name": "GET /rayfold/uploads on a server that does not serve it is a missing route, not an operation",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/uploads"
+      },
+      "expect": {
+        "status": 404,
+        "problem": "not_found"
+      },
+      "why": "spec 04 §4: `uploads` is a reserved sub-path, never read as an operation name; this server serves no uploads route, so there is no route"
+    },
+    {
+      "name": "GET /rayfold/explorer on a server that does not serve it is a missing route, not an operation",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/explorer"
+      },
+      "expect": {
+        "status": 404,
+        "problem": "not_found"
+      },
+      "why": "spec 04 §4: `explorer` is a reserved sub-path, never read as an operation name; this server serves no explorer route, so there is no route"
+    },
+    {
+      "name": "GET /rayfold/stats on a server that does not serve it is a missing route, not an operation",
+      "route": "endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/rayfold/stats"
+      },
+      "expect": {
+        "status": 404,
+        "problem": "not_found"
+      },
+      "why": "spec 04 §4: `stats` is a reserved sub-path, never read as an operation name; this server serves no stats route, so there is no route"
     }
   ]
 }

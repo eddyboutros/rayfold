@@ -70,12 +70,12 @@ The state of the standards and projects Rayfold draws from, with sources, as of 
 
 ## What Rayfold takes from them
 1. `QUERY` is an RFC: Rayfold reads are designed as `QUERY` with body, with a mandatory `POST` + `Rayfold-Safe: true` fallback for browsers (04 §4).
-2. Advertise `Accept-Query`; ETag is a hash of the payload so body-keyed CDN caching works when it lands (07 §2).
-3. Core is stateless like MCP 2026-07-28, and the MCP bridge mirrors op names into headers (10). The `input_required` retry pattern for human-in-the-loop is reserved in spec 10, not implemented.
-4. MCP tool definitions use JSON Schema 2020-12 for input and output; the bridge emits `structuredContent` and `ttlMs`/`cacheScope` from `@cache` (10).
+2. Advertise `Accept-Query` on a `415` and on a method the endpoint does not serve (04 §4); ETag is a hash of the payload so body-keyed CDN caching works when it lands (07 §2).
+3. Core is stateless like MCP 2026-07-28, and the MCP bridge refuses a request whose `Mcp-Method` header disagrees with its body (10). The `input_required` retry pattern for human-in-the-loop is reserved in spec 10, not implemented.
+4. MCP tool definitions use JSON Schema 2020-12 for input and output; the bridge emits `structuredContent`, and lists tools and resources with `ttlMs: 300000` and `cacheScope: "public"` (10).
 5. Sync follows Zero/Convex: the query is the subscription, and optimistic commands rebase on the server's answer (08). Versioned transitions over one stream, so a reconnect resumes where it left off, are a draft in spec 08 §5 and not implemented.
 6. An Electric-style plain-HTTP shape log (offset/handle, `up-to-date`, long-poll or SSE) as the lowest-common-denominator sync transport is a draft in spec 08; neither runtime implements it.
 7. Error model: RFC 9457 body for batch-level failures, Connect's 16 codes as the protocol code set, HTTP 200 for frame streams (05).
-8. GET for single idempotent queries with base64url-encoded args, like Connect (04 §4). Rayfold defines its own incremental delivery (defer frames) rather than waiting on GraphQL's.
+8. GET for single idempotent queries with base64url-encoded args, like Connect (04 §4). Rayfold defines its own incremental delivery (defer frames) and does not wait on GraphQL's.
 9. Trusted shapes (SHA-256 allowlist) are in Core now; GraphQL's persisted-documents appendix is still unmerged (02 §3).
 10. WebTransport is Baseline, so the spec names it as the bidirectional transport tier (04 §6); neither runtime implements it.

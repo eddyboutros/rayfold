@@ -29,7 +29,7 @@ three and fails on breaking ones; `--strict` also fails on warnings.
   Without a lock there is no record of assignment, so a member whose position changed is a warning.
 
 ## Deprecation
-`@deprecated(reason:, sunset: Date, replacement:)`. Removal is allowed only after `sunset`. Servers report usage of deprecated members per client (`Rayfold-Client`) so removal is a fact, not a guess.
+`@deprecated(reason:, sunset: Date, replacement:)`. Removal is allowed only after `sunset`. Servers report usage of deprecated members per client (`Rayfold-Client`) so a removal can rest on recorded usage.
 
 ## Field usage telemetry
 Runtimes record (op, field path, client, last seen). `rayfold check <schema.rayfold> --unused <usage.json> --since 30d` lists members with no traffic, from an exported usage snapshot.
@@ -39,10 +39,9 @@ Runtimes record (op, field path, client, last seen). `rayfold check <schema.rayf
 forward by name: a member the lock already holds keeps its ordinal wherever it now sits, a member with `@ordinal(n)`
 takes `n`, and a new member takes the next ordinal above the highest its type has ever used (the lock keeps that
 highest per type in `highestOrdinals`), so an ordinal is never reused. Committing it and running
-`rayfold check --against rayfold.lock.json` in CI is what turns these rules into a build failure rather than a
-convention.
+`rayfold check --against rayfold.lock.json` in CI makes a change that breaks these rules fail the build.
 
 ## What implements this
-Unlike the rest of Core, evolution is a tooling contract rather than a wire contract: it is the `rayfold` CLI that
-enforces it, and there is no obligation on a server at runtime. An implementation in another language is conformant
+Unlike the rest of Core, evolution is a tooling contract, not a wire contract. The `rayfold` CLI
+enforces it, and it places no obligation on a server at runtime. An implementation in another language is conformant
 without shipping a diff tool.

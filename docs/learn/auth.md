@@ -6,7 +6,8 @@ description: Say who is calling in one function, write the rules in the schema, 
 # Who can do what
 
 Your server works out who is calling. The schema says what they may do. Rayfold enforces those rules on every
-request, before and while it runs, so resolvers never repeat a permission check and a new field cannot forget one.
+request, before it runs and while it runs. Resolvers never repeat a permission check, and a new field cannot forget
+one.
 
 ## Who is calling
 
@@ -79,8 +80,8 @@ command restock(bookId: ID, qty: Int @range(min: 1, max: 1000)): Book
 - A rule can sit on an operation, a type or a field. A field is readable only if every level allows it, and `@deny`
   overrides `@allow`.
 - Rules are expressions over `viewer`, `this` (the object being read) and `args`, with `==`, `!=`, `<`, `<=`, `>`,
-  `>=`, `in`, `&&`, `||` and `!`, and the built-in functions `has()`, `len()` and `now()`. That makes rules about rows
-  natural:
+  `>=`, `in`, `&&`, `||` and `!`, and the built-in functions `has()`, `len()` and `now()`. A rule can depend on the row
+  being read:
 
 ```rayfold
 entity Order @allow(read: viewer.id == customerId || viewer.role == "admin") {
@@ -105,14 +106,13 @@ A path reads only an object's own fields, the same in both runtimes, so `tags.le
 | An entity at a position that may be `null` | `null`, exactly as if it did not exist |
 | An entity at a position that may not be `null`, or an element of a list | `permission_denied` with a `path`, and the operation fails as a whole |
 
-The row about positions that may be `null` matters: there a caller cannot tell an entity it may not see from one
-that does not exist.
+At a position that may be `null`, a caller cannot tell an entity it may not see from one that does not exist.
 
 ## Rules in the database too
 
-A rule that only uses `viewer`, `args`, literals and plain fields of `this` can be handed to the loader as a filter,
-so a list query never loads rows the viewer may not see. Loaders that do not use it still get correct results: the
-runtime filters afterwards. The [Postgres adapter](../guide/postgres.md) turns these rules into SQL.
+A rule that only uses `viewer`, `args`, literals and plain fields of `this` can be handed to the loader as a filter.
+A list query then never loads rows the viewer may not see. A loader that ignores the filter still returns correct
+results, because the runtime filters afterwards. The [Postgres adapter](../guide/postgres.md) turns these rules into SQL.
 
 ## Cost limits
 
@@ -123,9 +123,9 @@ every caller. See [what a query costs](./queries.md#what-a-query-costs).
 ## Narrow access for agents and services
 
 A capability token lets an AI agent or another service act for a user in a limited way, without holding the user's
-credentials: it names the viewer, the operations it may call and when it expires, and it is signed. A token can be
-narrowed further before being handed on, never widened. The operation list is enforced by the runtime, and the
-policies on this page still run on the viewer the token names — a token narrows, it never widens.
+credentials. It is signed, and it names the viewer, the operations it may call and when it expires. A token can be
+narrowed further before being handed on, but never widened. The runtime enforces the operation list, and the policies
+on this page still run on the viewer the token names.
 
 [Capability tokens](../guide/capabilities.md) shows how to mint, use and attenuate one; the
 [authorization chapter](../../spec/06-auth.md) defines the format.
@@ -133,8 +133,8 @@ policies on this page still run on the viewer the token names — a token narrow
 ## Browsers
 
 - A Rayfold server refuses any request that is not a safe read (commands, live queries, plain `POST`s) from a browser
-  origin it does not know, which stops another website from acting for your users. List your web app's origin in `allowedOrigins`; the [React guide](../get-started/react.md#2-send-api-calls-to-the-server)
-  shows it.
+  origin it does not know. This stops another website from acting for your users. List your web app's origin in
+  `allowedOrigins`, as the [React guide](../get-started/react.md#2-send-api-calls-to-the-server) shows.
 - The batch endpoint reads only JSON and its binary format as request bodies, and the uploads route only
   `application/octet-stream`. None of those is a type a plain HTML form on another site can send without asking
   permission first.

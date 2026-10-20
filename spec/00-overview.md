@@ -35,8 +35,8 @@ live), `command` (state-changing, idempotency key required, typed errors, return
 patches**) and `stream` (a sequence of typed items). It also declares `event` types, published facts a stream can
 deliver. A client sends a **batch** of operations; later operations may reference
 results of earlier ones. The server answers with a stream of **frames**, one or more per operation, on any
-transport that can carry ordered chunks. Every **entity** has a global identity `Type:id`, which is what
-patches, caches and ETags are keyed on. JSON and the binary RB format encode the same model; a server MUST
+transport that can carry ordered chunks. Every **entity** has a global identity `Type:id`; patches,
+caches and ETags are keyed on it. JSON and the binary RB format encode the same model; a server MUST
 support JSON.
 
 ## Protocol, schema language, libraries
@@ -44,8 +44,8 @@ support JSON.
 Rayfold has three layers, and only the first two are normative.
 
 * **The protocol**: the batch envelope, frames, error codes with their `retryable` hint, idempotency keys and what
-  a server promises about a repeated key, and how `@cache` becomes HTTP caching headers. This is what any
-  implementation in any language must get right, and what the conformance fixtures check.
+  a server promises about a repeated key, and how `@cache` becomes HTTP caching headers. Any implementation in
+  any language must get this layer right, and the conformance fixtures check it.
 * **The schema language**: types, operations and the rules written next to them (policies, cost, cache lifetimes,
   declared errors, deprecation). Every implementation enforces the same rules for the same schema.
 * **The reference libraries**: `@rayfold/server`, `@rayfold/client`, `@rayfold/react` and the JVM modules. Their
@@ -53,11 +53,11 @@ Rayfold has three layers, and only the first two are normative.
   are one way to build on the protocol. A client that sends a batch and reads the frames, a curl script included, is
   as much a Rayfold client as they are.
 
-## Why not just GraphQL / REST / gRPC
+## Compared with GraphQL, REST and gRPC
 
 See [`docs/comparison.md`](../docs/comparison.md) for the feature matrix and benchmark results and
 [`docs/landscape.md`](../docs/landscape.md) for the 2026 state of each incumbent.
-The short version: each of them wins one dimension. Rayfold is designed so that the mechanisms compose:
+Each of them wins one dimension. In Rayfold the mechanisms compose:
 persisted shapes make client-shaped queries CDN-cacheable; batch-by-default loaders make client-shaped
 queries safe from N+1; typed error unions and patches make commands composable; schema-level policy makes
 all of the above enforceable before deployment.

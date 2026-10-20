@@ -29,7 +29,7 @@ ETag: "sha256-..."         (hash of the frame payload, excluding meta.ms)
 Vary: Rayfold-Client, Accept, Authorization
 ```
 
-When neither `maxAge` nor `swr` survives the minimum — the case for a schema with no `@cache` at all — the header
+When neither `maxAge` nor `swr` survives the minimum (the case for a schema with no `@cache` at all), the header
 carries `no-cache` as well: `public, max-age=0, no-cache`, or `private, max-age=0, no-cache` for an identified
 viewer.
 
@@ -38,8 +38,8 @@ says for it: weakly (`W/"x"` matches `"x"`), against each entity tag of a comma-
 response. A proxy that compresses a response turns its `ETag` weak, and the client sends it back that way. A `POST` batch that is not marked safe MUST carry
 `Cache-Control: no-store`, so it is never held by a shared cache; clients that want shared caching for a read use `QUERY` (or `POST` + `Rayfold-Safe: true` where `QUERY`
 is unavailable) or `GET`. Because a whole batch of queries is one safe request, a complete screen (for
-example book + author + reviews) is one cache entry and one `304`, where resource-per-URL designs need one
-revalidation per resource and query-in-POST designs cannot use shared caches at all.
+example book + author + reviews) is one cache entry and one `304`. Resource-per-URL designs need one revalidation per
+resource, and query-in-POST designs cannot use shared caches at all.
 
 ## 3. Client normalized cache
 

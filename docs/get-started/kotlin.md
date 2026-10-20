@@ -41,14 +41,14 @@ The books live in memory, in `Store.kt`:
 
 <<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Server.kt{kotlin}
 
-- `queries` and `commands` have one function per operation, named as in the schema. Arguments arrive as JSON already
-  checked against the schema, `@range` included, which is why the helpers can read them without checks.
+- `queries` and `commands` have one function per operation, named as in the schema. Arguments arrive as JSON, already
+  checked against the schema, `@range` included. The helpers read them without checking again.
 - The `author` loader in `fields` receives every book in the result at once and returns their authors in the same
   order. A page of 50 books looks up authors once.
 - `RayfoldException.domain("OutOfStock", ...)` is the error the schema declared. Clients receive it by name, with
   its data.
-- A command returns the book it changed, which becomes a patch for every client cache, and the `StockChanged` event
-  the schema says it emits.
+- A command returns the book it changed and the `StockChanged` event the schema says it emits. The book becomes a
+  patch for every client cache.
 
 ## 4. Say who is calling
 
@@ -58,9 +58,9 @@ its claims into the viewer:
 
 <<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Auth.kt{kotlin}
 
-What `viewerOf` returns is `viewer` in the schema's `@allow` rules, and the resolvers never check permissions
+What `viewerOf` returns is `viewer` in the schema's `@allow` rules. The resolvers never check permissions
 themselves. Until you have a provider, the server signs and checks tokens with the development key at the top of the
-file; `devToken` makes one as a provider would, and `Token.kt` prints one:
+file. `devToken` makes a token as a provider would, and `Token.kt` prints one:
 
 <<< @/../examples/kotlin/src/main/kotlin/com/example/bookshop/Token.kt{kotlin}
 
@@ -73,8 +73,8 @@ file; `devToken` makes one as a provider would, and `Token.kt` prints one:
 ```
 
 Open http://localhost:4000/rayfold/explorer to browse the operations and send requests. To try the commands, paste a
-token into the auth field: `./gradlew -q token` prints a customer's, `./gradlew -q token --args=staff` a member of
-staff's. Or call it with curl:
+token into the auth field. `./gradlew -q token` prints a customer's token, and `./gradlew -q token --args=staff`
+prints a staff member's. Or call it with curl:
 
 ```sh
 curl -s localhost:4000/rayfold -H 'content-type: application/rayfold+json' -H 'rayfold-safe: true' \

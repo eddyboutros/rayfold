@@ -6,7 +6,9 @@ number ([versioning.md](versioning.md)).
 ## Cutting a release
 
 1. Set the version everywhere: `node scripts/set-version.mjs 0.2.0`.
-2. Move the "Unreleased" entries of `CHANGELOG.md` under a heading for the version and its date.
+2. Move the "Unreleased" entries of `CHANGELOG.md` under a heading for the version and its date, and add the
+   version's row to the top of the published table in `docs/versioning.md`. Step 1 rewrites every other place the
+   Markdown names the version to install; `docs/.vitepress/docs-facts.test.ts` fails until all of them agree.
 3. Check locally: `npm ci && npm test && npm run build && npm run smoke:packages`, then `cd kotlin && ./gradlew check`
    and `npm run smoke:maven`. `npm run release:dry-run` lists what each npm package would contain, and uploads nothing.
 4. Commit, then tag and push: `git tag v0.2.0 && git push origin main --tags`.
@@ -44,9 +46,9 @@ allows unpublishing only within 72 hours, and Maven Central not at all.
 | POM details | `kotlin/gradle.properties` |
 | The documentation site | `.github/workflows/docs.yml` deploys rayfold.dev on every push to `main`. Settings > Pages holds the custom domain with Enforce HTTPS ticked; DNS has four A records on `@` for GitHub Pages and a CNAME `www` |
 
-To publish the JVM artifacts from a machine instead, put the same four secrets, plus `signAllPublications=true`, in `~/.gradle/gradle.properties`
-(`mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyPassword`, and
-`signAllPublications=true`), then run `./gradlew publishAndReleaseToMavenCentral` in `kotlin/`.
+To publish the JVM artifacts from a machine instead, put the same four secrets in `~/.gradle/gradle.properties`
+(`mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyPassword`), with
+`signAllPublications=true`, then run `./gradlew publishAndReleaseToMavenCentral` in `kotlin/`.
 
 ## Before offering anything commercial
 

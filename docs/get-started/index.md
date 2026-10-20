@@ -7,8 +7,8 @@ description: Build a small bookshop API with Rayfold in TypeScript, React, Kotli
 
 Pick the stack you work in. Each guide builds the same bookshop: books with an author and a stock count, a cost
 price only staff can see, and two commands, `buy` and `restock`. Every server listens on port 4000, serves the same
-schema byte for byte, and speaks the same protocol, so the React app works just as well against the Kotlin, Java or
-Spring server as against the TypeScript one.
+schema byte for byte, and speaks the same protocol. The React app works against the Kotlin, Java and Spring servers
+the same way it works against the TypeScript one.
 
 <div class="home-stacks">
   <a href="./typescript"><strong>TypeScript</strong><span>Server and client on Node.js</span></a>

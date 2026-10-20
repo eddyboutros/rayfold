@@ -5,10 +5,8 @@ description: Carry the same frames in about half the bytes with RB, and choose i
 
 # The binary format
 
-RB, short for Rayfold Binary, is a second encoding of the frames you have seen as JSON. It changes the bytes on the
-wire, not what they mean: the same request gives the same frames, and a client picks JSON or RB for each request. This
-page explains what makes RB smaller, when it is worth it, how client and server agree on it, and what it saves on the
-bookshop.
+RB, short for Rayfold Binary, is a second encoding of the frames you have seen as JSON. The same request gives the
+same frames in either encoding, and a client picks JSON or RB for each request.
 
 ## What RB is
 
@@ -42,7 +40,7 @@ Over HTTP, two headers decide, independently of each other:
 | `Accept` | anything else | answer with JSON frames, one per line |
 
 A JSON body sent with `Accept: application/rayfold` gets an RB answer. An `Accept` that lists RB and a JSON type as
-well gets JSON. Here is `book` for `b1` with its author, both ways RB:
+well gets JSON. Here is `book` for `b1` with its author, RB in both directions:
 
 ```http
 POST /rayfold
@@ -67,14 +65,13 @@ The same request as JSON is 107 bytes up and 158 bytes down. Decoded, both answe
 Over WebSocket, text messages are JSON and binary messages are RB, and one socket can carry both.
 
 A server lists `rb` among its extensions in `GET /rayfold/manifest` (`"extensions":["live","rb"]`), next to the schema
-a client needs to build the key numbers. That schema leaves out how access policies decide, which RB does not need:
-it encodes exactly like the server's own copy.
+a client needs to build the key numbers. That schema leaves out how access policies decide. RB does not need that
+part, so the manifest's schema encodes exactly like the server's own copy.
 
 ## Turn it on
 
-The codec is `@rayfold/rb` on npm, and `dev.rayfold:rayfold-core` carries the JVM one. You rarely use it directly —
-the client and server negotiate it for you — but it is a package you can depend on if you are writing a client of
-your own.
+The codec is `@rayfold/rb` on npm, and `dev.rayfold:rayfold-core` carries the JVM one. You rarely use it directly,
+because the client and server negotiate it for you. Depend on it if you are writing a client of your own.
 
 ## TypeScript
 
@@ -99,7 +96,7 @@ const book = await client.query<Book>("book", { id: "b1" }, { shape: "{ title st
   can check that the server still holds that schema before it trusts the key numbers (see
   [Keep the schema in step](#keep-the-schema-in-step)).
 - `schema` on the client asks for compact frames: the server leaves out `$type` wherever the schema already fixes it,
-  and the client puts it back. It works with JSON too, and the savings add up.
+  and the client puts it back. It works with JSON too, and combined with RB it saves more.
 
 Queries and commands return the same values as over JSON. A WebSocket transport takes the schema too:
 `createWebSocketTransport({ url: "ws://localhost:4000/rayfold/ws", binary: manifest })`. The bookshop example
@@ -113,8 +110,8 @@ a TypeScript or browser client can use RB against it.
 
 ## Keep the schema in step
 
-The key numbers come from the schema, and adding one name moves the numbers of every name sorted after it, so client
-and server must hold the same schema. Every response carries the server's schema hash in the `Rayfold-Schema` header,
+The key numbers come from the schema. Adding one name moves the number of every name sorted after it, so client and
+server must hold the same schema. Every response carries the server's schema hash in the `Rayfold-Schema` header,
 and the manifest has the same hash as `schemaHash`. The HTTP transport compares them:
 
 - It sends JSON until a response shows that the server's hash is the manifest's, then switches to RB. The first

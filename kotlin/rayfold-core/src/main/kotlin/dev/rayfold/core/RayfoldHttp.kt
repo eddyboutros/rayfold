@@ -270,6 +270,9 @@ class RayfoldHttp(
                 }
                 safe = call.method == "QUERY" || call.header("Rayfold-Safe") == "true"
             } else if (call.method == "GET") {
+                // spec 04 §4: these name the endpoint's own routes, so one the server does not serve is a missing
+                // route, never an operation of that name; an operation called `ws` is still reachable by POST
+                if (sub.removePrefix("/") in RESERVED_PATHS) throw RayfoldException(Code.NOT_FOUND, "No route for ${call.path}")
                 // a malformed escape (`%zz`) is the client's error, a 400, not the decoder's exception as a 500
                 val q = RayfoldBindings.parseQuery(call.rawQuery).toMap()
                 envelope = buildJsonObject {
@@ -424,7 +427,8 @@ class RayfoldHttp(
         val media = raw?.substringBefore(';')?.trim()?.lowercase()
         if (media == null || media !in BODY_TYPES) {
             server.counters?.add("rayfold.refused", mapOf("reason" to "media"))
-            call.setHeader("Accept-Post", BODY_TYPES.joinToString(", "))
+            // the header that names what this method takes: a QUERY is told what a QUERY may carry
+            call.setHeader(if (call.method == "QUERY") "Accept-Query" else "Accept-Post", BODY_TYPES.joinToString(", "))
             throw HttpProblem(415, Code.INVALID_ARGUMENT, "Content-Type ${raw?.ifEmpty { null } ?: "(none)"} is not accepted; send application/rayfold+json", "unsupported_media_type")
         }
         return media
@@ -676,6 +680,8 @@ class RayfoldHttp(
         const val CORS_HEADERS = "Content-Type, Authorization, Rayfold-Client, Rayfold-Deadline, Rayfold-Safe, Rayfold-Upload-Name, Rayfold-Upload-Type"
         const val CORS_METHODS = "GET, POST, QUERY, OPTIONS"
         val BODY_TYPES = setOf("application/rayfold+json", "application/json", RbCodec.CONTENT_TYPE)
+        /** The endpoint's own sub-paths (spec 04 §4), which `GET {path}/{op}` never reads as an operation name. */
+        val RESERVED_PATHS = setOf("manifest", "openapi.json", "health", "ready", "stats", "uploads", "ws", "explorer")
         val KEEP_ALIVE_JSON = byteArrayOf('\n'.code.toByte())
         val KEEP_ALIVE_RB = byteArrayOf(0)
     }

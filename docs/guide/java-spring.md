@@ -55,9 +55,10 @@ HttpServer http = Rayfold.http(server)
 - `queryAsync`, `commandAsync` and `fieldAsync` take resolvers that return a `CompletionStage`.
 - Registering a resolver for an operation or field the schema does not have fails when you call it, not at the first
   request.
-- `.clock(clock)` gives the server the clock it tells the time by, a `java.time.Clock` or epoch milliseconds from a
-  `LongSupplier`: `now()` in a policy and `ctx.now()` in a resolver read it, and idempotency records expire by it.
-  Without one it is the system clock ([Testing](testing.md#time)).
+- `.clock(clock)` sets the clock the server tells the time by: a `java.time.Clock`, or epoch milliseconds from a
+  `LongSupplier`. `now()` in a policy and `ctx.now()` in a resolver read it, and the default idempotency store's
+  records expire by it (a store given to `.idempotencyStore(...)` keeps its own clock). Without one, the server uses
+  the system clock ([Testing](testing.md#time)).
 
 ## Spring Boot
 
@@ -92,7 +93,8 @@ public class BookResolvers {
 
 The endpoint is at `/rayfold`. Arguments and results go through your application's Jackson mapper, so records,
 `java.time` types and Jackson annotations behave as in Spring MVC. Methods may return a `CompletableFuture`. A
-parameter can be `@Arg` (named after the parameter), `Values` for all arguments, or `Context`.
+parameter can be `@Arg` (named after the parameter), `Values` for all arguments, `Context`, or the runtime's own
+`RayfoldContext`.
 
 Startup fails with a clear message when a method names an operation, field or argument the schema does not have, or
 has a parameter nothing can fill.
@@ -110,7 +112,11 @@ rayfold.websocket=true
 rayfold.allowed-hosts=api.example.com
 rayfold.max-body-bytes=1048576
 rayfold.max-depth=8
+rayfold.explorer.enabled=false
+rayfold.explorer.title=Bookshop
 ```
+
+`rayfold.explorer.enabled=true` serves the [explorer](explorer.md) at `{path}/explorer`; it is off by default.
 
 A browser on an origin in `rayfold.allowed-origins` gets its CORS preflight answered with `204` and the
 `Access-Control-Allow-*` headers, as do the responses that follow; no other origin gets them.
@@ -118,7 +124,7 @@ A browser on an origin in `rayfold.allowed-origins` gets its CORS preflight answ
 ### Live queries and WebSocket
 
 Live queries work over the HTTP endpoint as they are: the response stays open and gets keep-alives while nothing
-changes. For many batches over one connection, add `spring-boot-starter-websocket`; the starter then serves the
+changes. For many batches over one connection, add `spring-boot-starter-websocket`. The starter then serves the
 WebSocket transport at `/rayfold/ws` on the application's own port, with the same viewer (from Spring Security) and
 the same Origin check. `rayfold.websocket=false` turns it off.
 
@@ -138,8 +144,8 @@ port open ([Testing](testing.md)).
 ### More than one instance
 
 Idempotency records are kept in memory, so a command retried against another instance runs a second time. Declare an
-`IdempotencyStore` bean and the starter hands it to the server; `JdbcIdempotencyStore` from `rayfold-jdbc` keeps the
-records in the database, so every instance shares them and a keyed command runs once across the fleet ([JDBC](jdbc.md)).
+`IdempotencyStore` bean and the starter hands it to the server. `JdbcIdempotencyStore` from `rayfold-jdbc` keeps the
+records in the database. Every instance shares them, so a keyed command runs once across the fleet ([JDBC](jdbc.md)).
 
 ```java
 @Bean
@@ -151,7 +157,7 @@ IdempotencyStore idempotency(DataSource dataSource) {
 }
 ```
 
-Declare a `Relay` bean as well and live queries and streams on every instance hear the commands run on the others;
+Declare a `Relay` bean as well and live queries and streams on every instance hear the commands run on the others.
 `PgRelay` from `rayfold-jdbc` carries them over Postgres `LISTEN`/`NOTIFY` ([JDBC](jdbc.md#live-updates-across-servers)).
 
 If you serve uploads, the store has to be shared for the same reason: an `UploadStore` bean turns the route on, and
@@ -165,11 +171,11 @@ authorities without the prefix, `role` the first of them, and `authorities` all 
 (`@allow(read: viewer.role == "ADMIN")`) see exactly that. Define a `RayfoldViewerResolver` bean to build the viewer
 yourself.
 
-Rayfold protects its endpoint against cross-site requests itself: it accepts only JSON and its binary format as
-bodies, which a browser cannot send cross-site without a preflight, and checks the Origin of every request that can
-change data. So turn off Spring Security's CSRF token check for that path. The endpoint itself is open to anonymous
-callers, because the schema's `@allow` rules decide what a caller with no viewer may do; the rest of the application
-keeps its own rules:
+Rayfold protects its endpoint against cross-site requests on its own. It accepts only JSON and its binary format as
+bodies, which a browser cannot send cross-site without a preflight. It also checks the Origin of every request that can
+change data. Turn off Spring Security's CSRF token check for that path. The endpoint is open to anonymous callers,
+because the schema's `@allow` rules decide what a caller with no viewer may do. The rest of the application keeps its
+own rules:
 
 ```java
 @Bean

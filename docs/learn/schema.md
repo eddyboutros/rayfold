@@ -5,9 +5,9 @@ description: "The schema language, with the bookshop as the example: types, null
 
 # The schema
 
-A Rayfold API starts with a schema. It is the contract between server and clients: the server is checked against
-it, clients learn from it what they can ask for, and the rules about who may do what, what things cost and how long
-results may be cached live in it too, instead of in code scattered across handlers.
+A Rayfold API starts with a schema, the contract between server and clients. The server is checked against it, and
+clients learn from it what they can ask for. The rules for who may do what, what things cost and how long results may
+be cached are in the schema too, not scattered across handlers.
 
 Here is the bookshop every guide on this site builds:
 
@@ -27,7 +27,7 @@ Here is the bookshop every guide on this site builds:
 | `scalar` | A scalar of your own: `scalar Money @format("decimal")`. It travels as its base form with a name and a hint on it. |
 
 Twelve scalars are built in, plus the generic `Page<T>`, which a field or an operation may return but an argument or
-an input field may not take. Five of the scalars are text on the wire in a particular form:
+an input field may not take. On the wire they look like this:
 
 | Scalar | On the wire |
 |---|---|
@@ -38,7 +38,7 @@ an input field may not take. Five of the scalars are text on the wire in a parti
 | `Decimal` | a string, always, for the same reason |
 | `Instant` | RFC 3339 in UTC: `2026-09-18T14:30:00Z` |
 | `Date` | `YYYY-MM-DD` |
-| `Duration` | `250ms`, `60s`, `5m`, `2h`, `7d` |
+| `Duration` | `250ms`, `60s`, `5m`, `2h`, `7d`, or a whole number of milliseconds |
 | `Bytes` | base64url |
 | `JSON` | any JSON value, unchecked |
 
@@ -57,7 +57,7 @@ entity Person implements Named { id: ID  name: String  email: String }
 entity Team   implements Named { id: ID  name: String  size: Int }
 ```
 
-A field typed `Named` may hold either. A `union` is the other shape — several types with nothing in common:
+A field typed `Named` may hold either. A `union` groups several types that have nothing in common:
 
 ```rayfold
 union SearchHit = Book | Author
@@ -80,8 +80,7 @@ entity Book {
 }
 ```
 
-This is the other way round from GraphQL, and it matches how APIs are used: most fields are always there, so the
-schema marks the exceptions.
+This is the other way round from GraphQL. Most fields are always there, so the schema marks the exceptions.
 
 ## Operations
 
@@ -125,7 +124,7 @@ Annotations put rules and hints next to the thing they apply to. The ones you wi
 | `@http(method: GET, path: "/books/{id}")` | Also serve the operation as a [REST route](../guide/rest-bindings.md). |
 | `@version` | The field holding an entity's version, for [conditional writes](./commands.md#conditional-writes). |
 | `@page(cursor)` or `@page(offset)` | How a `Page<T>` field or query is paged. Default `cursor`. |
-| `@load(batch)` or `@load(single)` | How a field's loader is called. Default `batch`, which is what avoids N+1. |
+| `@load(batch)` or `@load(single)` | How a field's loader is called. Default `batch`, which avoids N+1. |
 | `@lazy` | The field arrives in a later frame unless a shape asks for it eagerly. See [deliver a field later](./queries.md#deliver-a-field-later). |
 | `@live(false)` | The query may not be opened [live](./live.md). |
 | `@interface` | The object declares an interface other types implement. |

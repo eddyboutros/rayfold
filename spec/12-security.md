@@ -4,8 +4,8 @@ Status: part of Rayfold Core 0.1, frozen with the 0.1.0 release ([process.md](pr
 MUST meet the requirements marked MUST. The reference
 runtimes enforce them by default, and `e2e/security.test.ts` sends most of the attacks below to a running server.
 
-No protocol can make an API impossible to attack. What Rayfold can do is make the safe behaviour the default, put it in
-the contract instead of in each handler, and test it on every change. This chapter lists the threats Rayfold Core
+No protocol can make an API impossible to attack. Rayfold makes the safe behaviour the default, puts it in the contract
+instead of in each handler, and tests it on every change. This chapter lists the threats Rayfold Core
 addresses, the rule that addresses each one, and what stays the application's job.
 
 ## 1. Threat model

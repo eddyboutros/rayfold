@@ -6,12 +6,14 @@ place; this page explains how they fit together.
 ## Set up
 
 - Node.js 22 or 24, and a JDK 21 or newer.
-- `npm ci`, then `npm test` (TypeScript: every package, the conformance suite, the end-to-end comparisons) and
-  `npm run typecheck`.
+- `npm ci`, then `npm test` (TypeScript: every package, the examples, the conformance suite, the end-to-end
+  comparisons, and the docs checks of links, versions and package lists) and `npm run typecheck`.
 - `cd kotlin && ./gradlew test` runs every JVM module: the Kotlin runtime, the Java API, the Spring Boot starter, the
-  Kotlin client and its OkHttp transport, OpenTelemetry, the JDBC stores, and the test support.
-- `npm run e2e:html` renders the comparison report from the last test run; `npm run docs:dev` serves the docs site
-  with the playground, and `npm run docs:build` builds it (a broken link fails the build).
+  Kotlin client and its OkHttp transport, OpenTelemetry, the JDBC stores, and the test support. CI runs
+  `./gradlew check`, which adds the Android API level 26 check of the client modules.
+- `npm run e2e:html` renders the comparison report from what `npm run e2e` and `npm run bench` last wrote (a plain
+  `npm test` checks the same flows and writes nothing); `npm run docs:dev` serves the docs site with the playground,
+  and `npm run docs:build` builds it (a broken link fails the build).
 - The code on the site comes from `examples/`. Change an example, and its tests and the pages that show it change
   with it; `node scripts/examples-jvm.mjs` builds and tests the Kotlin, Java and Spring Boot examples.
 

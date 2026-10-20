@@ -57,7 +57,8 @@ const theme = EditorView.theme({
   ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--vp-c-text-3)" },
   ".cm-activeLine": { backgroundColor: "var(--pg-active-line)" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--vp-c-text-2)" },
-  "&.cm-focused": { outline: "none" },
+  // a keyboard user has to see which editor has the focus
+  "&.cm-focused": { outline: "2px solid var(--vp-c-brand-1)", outlineOffset: "-2px" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--vp-c-brand-1)" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--pg-selection)" },
   ".cm-matchingBracket": { backgroundColor: "var(--pg-selection)", outline: "none" },

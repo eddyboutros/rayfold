@@ -1,7 +1,7 @@
 # Rayfold web demo
 
-The bookstore with the real Project Gutenberg catalogue (see `data/README.md`), used from a real browser through the
-real `@rayfold/client`.
+The bookstore with the real Project Gutenberg catalogue (see [data/README.md](../../data/README.md)), used from a real
+browser through the real `@rayfold/client`. From the repository root:
 
 ```
 npm run demo

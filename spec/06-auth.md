@@ -2,7 +2,7 @@
 
 Authorization in Rayfold is declared in the schema and evaluated by the runtime before and during execution.
 There is no separate middleware layer to keep in sync with the types, and the same declarations drive cache
-scope ([07](07-cache.md)), the manifest ([10](10-mcp-bridge.md)) and static analysis.
+scope ([07](07-cache.md)), the manifest ([04 §4a](04-frames-and-transport.md)) and static analysis.
 
 ## 1. Principal
 
@@ -49,7 +49,7 @@ allow and `@deny` denies. Numbers and numeric text (Decimal and Long travel as t
 
 A policy that references only `viewer`, `args`, literals and scalar fields of `this` is **pushable**: the
 runtime hands it to the loader as a filter predicate on the context so that list queries never fetch rows the viewer
-cannot see. Where on the context is the runtime's own business — the TypeScript runtime uses `ctx.policy.filter`, the
+cannot see. Where it sits on the context is up to the runtime: the TypeScript runtime uses `ctx.policy.filter`, the
 Kotlin one `ctx.policy`. Loaders that do not implement pushdown get the runtime's post-filter, which is
 correct but pays the cost. `rayfold explain` reports which policies were pushed down.
 

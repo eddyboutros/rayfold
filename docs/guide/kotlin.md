@@ -52,9 +52,9 @@ RayfoldWebSocket(server) { request -> userOf(request.header("authorization"))?.l
 Resolvers are suspend functions over kotlinx.serialization JSON. A command returns the changed entity, or
 `CommandResult(result, patch, emit)` for extra cache patches and events. Throw
 `RayfoldException.domain("OutOfStock", data, message)` for an error the operation declares with `throws`.
-`RayfoldServer(..., now = { epochMillis })` gives the server the clock it tells the time by: `now()` in a policy,
-`ctx.now()` in a resolver, when an idempotency record expires, and its uptime. It is the system clock unless a
-[test](testing.md#time) hands in its own.
+`RayfoldServer(..., now = { epochMillis })` sets the clock the server tells the time by. It drives `now()` in a policy,
+`ctx.now()` in a resolver, the expiry of the default idempotency store's records, and the server's uptime. It is the
+system clock unless a [test](testing.md#time) hands in its own.
 
 `allowedOrigins` also answers a browser's CORS preflight from those origins with `204` and the
 `Access-Control-Allow-*` headers, and adds them to the responses that follow; other origins get none.
@@ -62,17 +62,16 @@ Resolvers are suspend functions over kotlinx.serialization JSON. A command retur
 If you prefer plain Java types and functional interfaces, use `rayfold-java` ([Java guide](java-spring.md)).
 
 `HttpOptions(explorer = true)` serves the [explorer](explorer.md) at `/rayfold/explorer`, the same page
-`@rayfold/explorer` serves; `RayfoldExplorer(endpoint, title).mount(http)` puts it on a server of its own. It is off
-until it is turned on.
+`@rayfold/explorer` serves. `RayfoldExplorer(endpoint, title).mount(http)` adds it to any JDK server, and its `html`
+is the page for a server of another kind. It is off by default.
 
 ## Any JVM server
 
-The built-in JDK server above and the [Spring Boot starter](./java-spring.md) are two hosts for the same engine, not
-two implementations. The seam between them is `HttpCall`: implement it over whatever your server calls a request and
-a response, and `RayfoldHttp.serve(call, base, viewer)` does the rest — batches, live queries, the manifest, caching,
-health and readiness.
+The built-in JDK server above and the [Spring Boot starter](./java-spring.md) both host the same engine. They meet at
+`HttpCall`: implement it over whatever your server calls a request and a response, and
+`RayfoldHttp.serve(call, base, viewer)` handles batches, live queries, the manifest, caching, health and readiness.
 
-A sketch for Ktor, to show the shape; the [Spring Boot starter's `ServletCall`](../../kotlin/rayfold-spring-boot-starter/src/main/kotlin/dev/rayfold/spring/RayfoldAutoConfiguration.kt)
+Here is a sketch for Ktor; the [Spring Boot starter's `ServletCall`](../../kotlin/rayfold-spring-boot-starter/src/main/kotlin/dev/rayfold/spring/RayfoldAutoConfiguration.kt)
 is a complete one. `serve` blocks while it reads and writes, so on Ktor call it inside `withContext(Dispatchers.IO)`:
 
 ```kotlin
@@ -90,11 +89,11 @@ class KtorCall(private val call: ApplicationCall) : HttpCall {
 }
 ```
 
-Two members earn their place. `secure` and `localAddress` feed the Origin and loopback-Host checks, so a host that
-cannot answer them truthfully weakens those rules rather than breaking them. Over TLS, or behind a proxy that sends
-`X-Forwarded-Proto: https`, a page served over plain http is not the server's own origin; a `secure` that answers
-false behind a TLS-terminating proxy still lets the server's own https pages write. And `respond(status, length)` takes
-`-1` for `length` when the body streams, which is how a live query or a stream stays open instead of being buffered.
+Two members need care. `secure` and `localAddress` feed the Origin and loopback-Host checks. A host that cannot answer
+them truthfully weakens those rules; it does not break them. Over TLS, or behind a proxy that sends
+`X-Forwarded-Proto: https`, a page served over plain http is not the server's own origin. A `secure` that answers
+false behind a TLS-terminating proxy still lets the server's own https pages write. `respond(status, length)` takes
+`-1` for `length` when the body streams, so a live query or a stream stays open instead of being buffered.
 
 The repository has two worked implementations to copy: `JdkCall` for the JDK HTTP server, and `ServletCall` in the
 Spring starter.
@@ -159,7 +158,8 @@ client.watchAs<Book>("book", args("id" to "b1")).collect { render(it) }
 
 ### Android
 
-- `HttpTransport` uses `HttpURLConnection`, which Android has. Add `<uses-permission android:name="android.permission.INTERNET" />`.
+- `HttpTransport` sends with `java.net.http` on the JVM and with `HttpURLConnection` on Android, which lacks
+  `java.net.http`. Add `<uses-permission android:name="android.permission.INTERNET" />`.
 - Collect flows in a lifecycle-aware scope. In Compose:
   `val book by client.watchAs<Book>("book", args("id" to id)).collectAsState(initial = null)`.
 - For a WebSocket on Android, use `OkHttpWebSocketTransport("wss://api.example/rayfold/ws", headers)` from

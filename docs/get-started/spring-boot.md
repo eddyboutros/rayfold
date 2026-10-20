@@ -12,8 +12,8 @@ calling. The finished project is [examples/spring-boot](../../examples/spring-bo
 
 ## 1. Add the starter
 
-Start from a Spring Boot 4 project, for example from start.spring.io, and add the Rayfold starter, with Spring's
-OAuth2 resource server for the tokens in step 4, and `rayfold-test` for the unit tests:
+Start from a Spring Boot 4 project (start.spring.io can make one). Add the Rayfold starter, Spring's OAuth2
+resource server for the tokens in step 4, and `rayfold-test` for the unit tests:
 
 <<< @/../examples/spring-boot/pom.xml{xml}
 
@@ -58,9 +58,9 @@ The books are records, kept in memory by a `Store` bean:
 ## 4. Say who is calling
 
 Your identity provider signs the user in and gives the client an access token (a JWT). Spring Security verifies it:
-the signature against the provider's published keys, then the issuer, the audience and the expiry. The starter takes
-the viewer from the authenticated principal: its name, the token's `sub`, becomes `viewer.id`, and its roles
-`viewer.roles`, the first of them `viewer.role`, which the schema's `@allow` rules check.
+the signature against the provider's published keys, then the issuer, the audience and the expiry. The starter builds
+the viewer from the authenticated principal. Its name (the token's `sub`) becomes `viewer.id`, its roles become
+`viewer.roles`, and the first role becomes `viewer.role`. The schema's `@allow` rules check these.
 
 <<< @/../examples/spring-boot/src/main/java/com/example/bookshop/SecurityConfig.java{java}
 
@@ -78,8 +78,8 @@ checks tokens with a development key instead, and `DevTokens` makes them as a pr
 ```
 
 The endpoint is at http://localhost:4000/rayfold and the explorer at http://localhost:4000/rayfold/explorer. To try the
-commands, paste a development token into the auth field; this prints a member of staff's, and without `-Dexec.args` a
-customer's:
+commands, paste a development token into the auth field. This command prints a staff member's token; without
+`-Dexec.args` it prints a customer's:
 
 ```sh
 ./mvnw -q compile exec:java -Dexec.args=staff

@@ -5,13 +5,13 @@ per level of a nested shape, and read policies pushed into the SQL `WHERE`, so a
 may not see.
 
 ```sh
-npm install @rayfold/postgres pg
+npm install @rayfold/postgres @rayfold/server pg
 ```
 
 ```ts
 import pg from "pg";
 import { createRayfoldServer, listen } from "@rayfold/server";
-import { createPgStore } from "@rayfold/postgres";
+import { createPgStore, type PageRequest, type PolicyContext, type Row } from "@rayfold/postgres";
 
 const connectionString = process.env.DATABASE_URL;
 const db = new pg.Pool({ connectionString });
@@ -36,11 +36,14 @@ const store = createPgStore(db, {
 
 export const resolvers = {
   Query: {
-    books: (args, ctx) => store.page("Book", args.page, {}, ctx),
-    myOrders: (_args, ctx) => store.find("Order", {}, ctx), // the policy becomes WHERE customer_id = $viewer
+    books: (args: { page: PageRequest }, ctx: PolicyContext) => store.page("Book", args.page, {}, ctx),
+    myOrders: (_args: unknown, ctx: PolicyContext) => store.find("Order", {}, ctx), // the policy becomes WHERE customer_id = $viewer
   },
-  Book: { author: (books, _args, ctx) => store.byIds("Author", books.map((b) => b.authorId), ctx) },
-  Author: { books: (authors, args, ctx) => store.pagesByField("Book", "authorId", authors.map((a) => a.id), args.page, ctx) },
+  Book: { author: (books: Row[], _args: unknown, ctx: PolicyContext) => store.byIds("Author", books.map((b) => b.authorId), ctx) },
+  Author: {
+    books: (authors: Row[], args: { page: PageRequest }, ctx: PolicyContext) =>
+      store.pagesByField("Book", "authorId", authors.map((a) => a.id), args.page, ctx),
+  },
 };
 ```
 

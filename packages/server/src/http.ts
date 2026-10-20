@@ -32,13 +32,26 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
     ...(viewer ? { viewer: (request: Request) => viewer(sources.get(request)!) } : {}),
   });
 
+  // A request refused here never reaches the handler, which is what counts requests and refusals, so it is counted here
+  // as the handler would have counted it.
+  const counted = (req: IncomingMessage, reason?: string) => {
+    server.counters?.add("rayfold.requests", 1, { method: req.method ?? "GET" });
+    if (reason) server.counters?.add("rayfold.refused", 1, { reason });
+  };
+
   return async (req, res) => {
     // The socket is the only place that says whether this server is loopback-bound, so the host rule is applied here;
     // the handler applies `allowedHosts` again, which agrees with this one.
     const badHost = hostProblem(req, opts);
-    if (badHost) return refuse(res, 403, "permission_denied", badHost);
+    if (badHost) {
+      counted(req, "host");
+      return refuse(res, 403, "permission_denied", badHost);
+    }
     // a Host that is no valid authority (a space, a port past 65535) used to reach the URL built from it, which threw
-    if (!validAuthority(req.headers.host)) return refuse(res, 400, "invalid_argument", "Host header is not a valid host");
+    if (!validAuthority(req.headers.host)) {
+      counted(req, "host");
+      return refuse(res, 400, "invalid_argument", "Host header is not a valid host");
+    }
 
     // An upload is bounded by its own limit, not the envelope's, so its body travels as a stream rather than being
     // read whole here; everything else is read with the drain-then-drop behaviour only a socket can give.
@@ -49,7 +62,10 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
       try {
         body = await readBody(req, maxBody);
       } catch (e) {
-        if (e instanceof BodyTooLarge) return refuseBody(res, e);
+        if (e instanceof BodyTooLarge) {
+          counted(req);
+          return refuseBody(res, e);
+        }
         throw e;
       }
     }
@@ -74,6 +90,7 @@ export function createHttpHandler(server: RayfoldServer, opts: HttpOptions = {})
       const own = (req.socket as { encrypted?: boolean }).encrypted === true ? "https://localhost" : "http://localhost";
       request = new Request(target.startsWith("/") ? `${own}${target}` : new URL(target, own).href, init as RequestInit);
     } catch {
+      counted(req);
       return refuse(res, 400, "invalid_argument", "Request target is not a valid path");
     }
     sources.set(request, req);

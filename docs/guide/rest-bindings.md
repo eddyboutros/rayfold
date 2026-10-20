@@ -6,11 +6,11 @@ description: Bind operations to HTTP routes with @http, serve them beside the ba
 # REST routes and OpenAPI
 
 A Rayfold operation can also answer on an ordinary HTTP route. That matters when something must call your API without
-a Rayfold client: a webhook, a partner, a curl in a runbook, a tool that only speaks REST. The operation is the same
-one — same resolver, same policies, same cost limits — reached a second way.
+a Rayfold client: a webhook, a partner, a curl in a runbook, a tool that only speaks REST. It is the same
+operation, with the same resolver, policies and cost limits, reached a second way.
 
-This is for the callers who need it, not a second API to maintain. Everything a route does is derived from the
-`@http` annotation on an operation you already wrote.
+There is no second API to maintain. Everything a route does is derived from the `@http` annotation on an operation you
+already wrote.
 
 ## Bind an operation
 
@@ -31,11 +31,11 @@ command deleteReview(id: ID): Review
   @http(method: DELETE, path: "/reviews/{id}")
 ```
 
-- **`method`** — queries bind `GET` or `QUERY`; commands bind `POST`, `PUT`, `PATCH` or `DELETE`.
-- **`path`** — `{name}` segments are arguments, taken from the path and coerced to their declared types.
-- **`body`** — names the argument the request body carries, or `"*"` for "all the arguments". A `GET` binding cannot
+- **`method`**: queries bind `GET` or `QUERY`; commands bind `POST`, `PUT`, `PATCH` or `DELETE`.
+- **`path`**: `{name}` segments are arguments, taken from the path and coerced to their declared types.
+- **`body`**: names the argument the request body carries, or `"*"` for "all the arguments". A `GET` binding cannot
   take a body.
-- **`location`** — on a `POST`, the path of the thing that was created. It makes the response `201` with a `Location`
+- **`location`**: on a `POST`, the path of the thing that was created. It makes the response `201` with a `Location`
   header built from the result.
 
 Path segments fill their arguments. On `GET` the rest come from the query string. Any other method reads the request
@@ -61,14 +61,14 @@ command addPerson(firstName: String @http(name: "first-name"), address: Address)
 ```
 
 The routes then read `first-name` from the query string or the body, and `zip-code` inside `address`, at any depth,
-and an invalid value is reported under the name the client sent. Only the routes use the wire name: the route does
-not take `firstName` instead, while `/rayfold`, MCP and the generated clients keep using `firstName`. Path templates
+and an invalid value is reported under the name the client sent. Only the routes use the wire name. A route does
+not accept `firstName` in its place, and `/rayfold`, MCP and the generated clients keep using `firstName`. Path templates
 still name the argument (`{firstName}`), and responses keep the schema's names. The OpenAPI document publishes the
 wire names, in its parameters, its request bodies and its path templates, where `{firstName}` is published as
 `{first-name}`.
 
-`@http(name:)` takes exactly one non-empty string, and a wire name may not be the name or the wire name of another
-argument of the operation, or another field of the input; either mistake is a schema error (`bad-http-name`,
+`@http(name:)` takes exactly one non-empty string. A wire name may not be the name or the wire name of another
+argument of the operation, or of another field of the input. Either mistake is a schema error (`bad-http-name`,
 `http-name-collision`).
 
 ## Serve them
@@ -90,15 +90,15 @@ createServer(async (req, res) => {
 }).listen(4000);
 ```
 
-`createBindingHandler` is written against Node's `req`/`res`, so REST routes are served on Node only — a fetch
-runtime serves batches but not these ([Runtimes](./runtimes.md)). On the JVM the equivalent is `RayfoldBindings`.
+`createBindingHandler` is written against Node's `req`/`res`, so REST routes are served on Node only. A fetch
+runtime serves batches but not these routes ([Runtimes](./runtimes.md)). On the JVM the equivalent is `RayfoldBindings`.
 
 ## What the routes do for you
 
-These are the behaviours that surprise people, all of them derived from the schema:
+Each of these behaviours is derived from the schema:
 
 **A bound `POST` requires an `Idempotency-Key` header** (16–128 characters), because a `POST` that is retried must
-not buy the book twice. An operation that is genuinely safe to repeat can say `@idempotent(false)` and opt out.
+not buy the book twice. An operation that is safe to repeat can say `@idempotent(false)` and opt out.
 `PUT`, `PATCH` and `DELETE` are idempotent methods already, so they need no key.
 
 **`If-Match` becomes a conditional write.** The header's value is used as `ifVersion`, and a stale one is refused
@@ -118,7 +118,7 @@ so a REST client can branch on it ([Errors](../errors/)).
 
 ## The OpenAPI document
 
-Everything above is already described by the schema, so the OpenAPI document is generated rather than written:
+Everything above is already described by the schema, so the OpenAPI document is generated from it:
 
 ```ts
 import { openApiFor } from "@rayfold/server";
@@ -126,14 +126,13 @@ import { openApiFor } from "@rayfold/server";
 const doc = openApiFor(server.ir, { title: "Bookshop", version: "1.0.0", prefix: "/api" });
 ```
 
-A server also serves it at `GET /rayfold/openapi.json`. It is OpenAPI **3.2**, with request and response schemas
-derived from the types your operations take and return, so it cannot drift from the API the way a hand-written
-document does. Point Swagger UI, Stoplight or a client generator at it.
+A server also serves it at `GET /rayfold/openapi.json`. It is OpenAPI 3.2, with request and response schemas
+derived from the types your operations take and return, so it cannot drift from the API. Point Swagger UI, Stoplight or a client generator at it.
 
 On the JVM, `OpenApi.document(ir)` produces the same thing.
 
 ## Next
 
-- [Coming from REST](./from-rest.md) — moving an existing REST API over, one route at a time.
-- [Caching](../learn/caching.md) — the `ETag` and `Cache-Control` rules these routes follow.
-- [Command line](./cli.md) — `rayfold import openapi` reads a document back the other way.
+- [Coming from REST](./from-rest.md): moving an existing REST API over, one route at a time.
+- [Caching](../learn/caching.md): the `ETag` and `Cache-Control` rules these routes follow.
+- [Command line](./cli.md): `rayfold import openapi` reads a document back the other way.

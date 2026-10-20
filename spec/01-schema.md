@@ -11,8 +11,8 @@ codegen, the MCP bridge) consumes the IR, never the source text.
 * Documentation: a `"""triple-quoted"""` string immediately before a definition, field, argument or enum
   value is its description. Descriptions are part of the IR (they are what agents and playgrounds see).
   As in GraphQL, the text is dedented (common indentation removed, leading and trailing blank lines dropped, the
-  whole trimmed; `\r\n` counts as a line break), and `\"""` is the one escape: it stands for `"""`, which is how a
-  description holds its own fence.
+  whole trimmed; `\r\n` counts as a line break). `\"""` is the one escape: it stands for `"""`, so a description
+  can hold its own fence.
 * Names: `[A-Za-z_][A-Za-z0-9_]*`. Type names SHOULD be `PascalCase`, fields and operations `camelCase`.
   Names starting with `__` or `$` are reserved.
 * Literals: integers, floats, `"strings"` (JSON escapes), `true`/`false`/`null`, durations (`60s`, `5m`,
@@ -114,7 +114,7 @@ stream  inventory(bookIds: [ID]): InventoryUpdate
 | Kind | Semantics |
 |---|---|
 | `query` | Safe and idempotent. Cacheable per [07](07-cache.md). Shapeable. May be requested `live` when the `live` extension is present. |
-| `command` | Changes state. A client MUST send an idempotency `key`. Returns the declared result **plus patches** ([04 §4](04-frames-and-transport.md)). May declare `throws` (typed errors, [05](05-errors.md)) and `emits` (events). |
+| `command` | Changes state. A client MUST send an idempotency `key`. Returns the declared result **plus patches** ([04 §2](04-frames-and-transport.md)). May declare `throws` (typed errors, [05](05-errors.md)) and `emits` (events). |
 | `stream` | Produces zero or more items of the return type until `fin`. Bidirectional when annotated `@input(Type)`: the client sends items of `Type` as `item` frames. |
 
 Events are consumed by declaring a `stream` that returns the event type. The name `subscribe` is reserved for a
@@ -129,8 +129,8 @@ type    := named | named "?" | "[" type "]" | "[" type "]" "?" | named "<" type 
 ```
 
 **Nullability is opt-in.** `String` is non-null; `String?` may be null. A list `[String]` is a non-null list
-of non-null strings; `[String?]?` allows both. This is the reverse of GraphQL and matches how APIs are
-actually used: most fields are required.
+of non-null strings; `[String?]?` allows both. This is the reverse of GraphQL, and matches real APIs, where
+most fields are required.
 
 Defaults are permitted on arguments and input fields. A default implies the argument is optional at the
 call site but non-null in the resolver.
@@ -187,9 +187,9 @@ Roots available in scope: `viewer` (the authenticated principal, shape defined b
 (operation or field arguments), `this` (the current entity or object, for field and entity policies) and
 bare names, which resolve to `this.<name>` on entities/objects and to `args.<name>` on operations.
 Built-in calls: `has(list, value)`, `len(x)`, `now()`.
-Expressions are pure: a path step reads only a member of an object, so `tags.length` or `viewer.constructor` is
-missing; a missing path evaluates to `null`, `==` and `!=` treat a missing path and `null` as equal, **ordering**
-comparisons with `null` are `false`, and `in` tests list membership. They are total but for one case: ordering two
+Expressions are pure. A path step reads only a member of an object, so `tags.length` or `viewer.constructor` is
+missing. A missing path evaluates to `null`. `==` and `!=` treat a missing path and `null` as equal, **ordering**
+comparisons with `null` are `false`, and `in` tests list membership. Expressions are total but for one case: ordering two
 values that cannot be ordered is an evaluation error, which fails closed ([06 §3](06-auth.md)).
 
 ## 6. Generic `Page<T>`
@@ -203,12 +203,12 @@ input  PageArgs { first: Int = 20, after: String?, offset: Int? }
 
 A field or query returning `Page<T>` MUST accept a `page: PageArgs` argument or the individual `first`/`after`
 arguments. A server MUST cap `first` (default cap 200) before the resolver sees it; returning no more than `first`
-items is then the resolver's own obligation, which the runtime does not enforce for it.
+items is then the resolver's obligation, and the runtime does not enforce it.
 
 ## 7. Reserved names
 
-Any name starting with `__` or `$` — of a type, field, argument, operation or enum value — as §1 says, which includes
-`$type`; `subscribe`, `manifest`, `simulate` and `sync` as operation names. `viewer`, `args`
+Any name starting with `__` or `$` (of a type, field, argument, operation or enum value), as §1 says, `$type`
+included; `subscribe`, `manifest`, `simulate` and `sync` as operation names. `viewer`, `args`
 and `this` are the roots of policy expressions ([06](06-auth.md)) rather than reserved names: a field or operation may
 carry any of them.
 
@@ -235,12 +235,12 @@ An IR is valid when:
 
 ## 9. IR
 
-The IR is a JSON document: the schema after parsing, with every default resolved and every reference checked. It is
-what the manifest serves, what RB derives its key dictionary from, and what the schema hash is taken over — so it is
-given here in full rather than by reference to any implementation. An implementation that produces this structure
-from the same schema text produces the same hash, which is the only way a third party can join a fleet.
+The IR is a JSON document: the schema after parsing, with every default resolved and every reference checked. The
+manifest serves it, RB derives its key dictionary from it, and the schema hash is taken over it, so it is given here
+in full and not by reference to any implementation. An implementation that produces this structure from the same
+schema text produces the same hash. That is the only way a third party can join a fleet.
 
-**Two rules apply throughout**, and they are what make the hash stable:
+Two rules apply throughout, and they keep the hash stable:
 
 * An **optional member appears only when it has a value.** A `description` nobody wrote is absent, not `null` or `""`.
 * A **flag appears only when true.** `builtin`, `interface`, `eager` and `partial` are present-and-`true` or absent.
@@ -256,14 +256,14 @@ from the same schema text produces the same hash, which is the only way a third 
 | `extensions` | no | vendor data, namespaced by the vendor |
 
 **`extensions` is excluded from the hashed form.** Everything else is included. A conformant implementation ignores
-vendor data it does not know ([§4](#4-annotations)), so an identity that moved with it would make two servers
-offering the same conversation look different, and a gateway that strips vendor metadata look like a schema change.
+vendor data it does not know ([§4](#4-annotations)). If the hash moved with that data, two servers offering the same
+conversation would look different, and a gateway that strips vendor metadata would look like a schema change.
 
 ### 9.1a The built-in definitions
 
 **Every IR contains these before a single line of schema is read**, each carrying `builtin: true`. They are part of
-what is hashed, so an implementation that omits them agrees with nobody about anything — this is the first thing to
-get right, and the first thing to check when a hash does not match.
+what is hashed, so an implementation that omits them matches no other implementation's hash. They are the first thing
+to get right, and the first thing to check when a hash does not match.
 
 * The twelve scalars of [§2.4](#24-enum-union-scalar), each `{kind: "scalar", builtin: true, annotations: []}`:
   `ID`, `String`, `Int`, `Long`, `Float`, `Boolean`, `Decimal`, `Instant`, `Date`, `Duration`, `Bytes`, `JSON`.
@@ -283,7 +283,7 @@ A reference to a type, at a field, an argument or a return position.
 | `kind` | yes | `"named"` or `"list"` |
 | `nullable` | yes | whether `null` is a value here |
 | `name` | on `named` | the type's name |
-| `args` | no | type arguments, a list of TypeRef — `Page<Book>` is `{kind:"named", name:"Page", args:[Book]}` |
+| `args` | no | type arguments, a list of TypeRef (`Page<Book>` is `{kind:"named", name:"Page", args:[Book]}`) |
 | `of` | on `list` | the element's TypeRef |
 
 ### 9.3 TypeDef
@@ -343,7 +343,7 @@ Shape *text* and its canonical form are [02 §3](02-shapes.md); this is the pars
 | `ordinal` | yes | — | yes |
 
 `ordinal` is a stable integer assigned at first publication and recorded in `rayfold.lock.json`; ordinals are
-reserved for a future compact-struct encoding ([09 §3](09-binary-format.md)) and are what `rayfold check` protects
+reserved for a future compact-struct encoding ([09 §3](09-binary-format.md)), and `rayfold check` protects them
 against changing.
 
 ### 9.7 Annotation and its values
@@ -354,7 +354,7 @@ which are not JSON are carried as single-member tagged objects:
 | Tag | Carries |
 |---|---|
 | `{"$ident": "..."}` | a bare identifier, such as `cursor` in `@page(cursor)` |
-| `{"$duration": 60000}` | a duration, in **milliseconds** — the schema's `60s` and `60000` are one value |
+| `{"$duration": 60000}` | a duration, in **milliseconds** (the schema's `60s` and `60000` are one value) |
 | `{"$expr": ...}` | a policy expression, as the AST of [§5](#5-policy-expressions) |
 | `{"$type": ...}` | a TypeRef, such as the argument of `@input(Type)` |
 
@@ -368,8 +368,8 @@ exists without learning what it tests.
 
 The **schema hash** is the SHA-256 of the canonical IR, exposed in the manifest so clients can detect drift, and
 the same form is what an idempotency record is scoped and bound by ([12 §4.2](12-security.md)). Two implementations
-that write it differently do not fail loudly — they simply stop recognising each other's schemas and each other's
-retries — so it is given exactly:
+that write it differently do not fail loudly. They stop recognising each other's schemas and each other's retries.
+The form is therefore given exactly:
 
 * **Object keys** are sorted ascending by **UTF-16 code unit**. Not by code point: an astral character is a surrogate
   pair beginning `0xD800`-`0xDBFF`, so it sorts *before* `U+E000`-`U+FFFF` rather than after. Not by any locale's
