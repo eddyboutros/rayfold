@@ -12,7 +12,7 @@
   "dependencies": {
     "@rayfold/client": "*",
     "@rayfold/server": "*",
-    "jose": "^6.2.12"
+    "jose": "^6.2.13"
   },
   "devDependencies": {
     "tsx": "^4.23.15"
