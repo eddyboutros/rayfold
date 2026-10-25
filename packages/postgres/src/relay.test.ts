@@ -50,6 +50,8 @@ afterEach(async () => {
     await Promise.all(opened.map((close) => close()));
   } finally {
     opened = [];
+    // PGlite 0.5.10's close() never settles on an instance still starting, which is all a test that never queries it gets
+    await db.waitReady;
     await db.close();
   }
 });
