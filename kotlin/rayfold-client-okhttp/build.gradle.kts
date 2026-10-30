@@ -11,7 +11,7 @@ java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaV
 
 dependencies {
     api(project(":rayfold-client"))
-    api("com.squareup.okhttp3:okhttp:5.5.0")
+    api("com.squareup.okhttp3:okhttp:5.5.1")
     // `check` fails when the transport calls an API that Android 8.0 (API level 26) lacks
     signature("net.sf.androidscents.signature:android-api-level-26:8.0.0_r2@signature")
     // the tests run the transport against the real Kotlin server
