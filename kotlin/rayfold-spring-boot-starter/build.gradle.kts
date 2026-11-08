@@ -12,7 +12,7 @@ kotlin {
 }
 java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
 
-val springBoot = "4.1.1"
+val springBoot = "4.1.2"
 
 dependencies {
     api(project(":rayfold-java"))
