@@ -89,11 +89,12 @@ class HostGuardTest {
     }
 
     @Test
-    fun `an HTTP 1-1 request without a Host header is refused with 403 before anything runs (guard - the same request with one is answered)`() {
+    fun `a request without a Host header is refused with 403 before anything runs (guard - the same request with one is answered)`() {
         val (port, store) = serve()
         // a single query answered as one JSON document, so the raw body is exactly the frame
         val target = "/rayfold/book?a=${Base64.getUrlEncoder().withoutPadding().encodeToString("""{"id":"b1"}""".toByteArray())}&s=%7B+id+%7D"
-        val bare = rawHttp(port, "GET $target HTTP/1.1\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
+        // HTTP/1.0: since JDK-8386515 (21.0.13) the JDK server answers a Host-less HTTP/1.1 request with its own 400
+        val bare = rawHttp(port, "GET $target HTTP/1.0\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
         assertEquals(403, bare.status, bare.head)
         assertEquals("application/problem+json", bare.header("Content-Type"))
         assertEquals(refusal("Missing Host header"), Json.parseToJsonElement(bare.body))

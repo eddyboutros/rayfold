@@ -362,7 +362,8 @@ class McpTest {
         assertEquals(403, rebound.status)
         assertEquals("application/problem+json", rebound.header("Content-Type"))
         assertEquals(refusal("Host evil.example:$port is not allowed on a loopback server"), obj(rebound.body))
-        val bare = rawHttp(port, "POST /mcp HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body")
+        // HTTP/1.0: since JDK-8386515 (21.0.13) the JDK server answers a Host-less HTTP/1.1 request with its own 400
+        val bare = rawHttp(port, "POST /mcp HTTP/1.0\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body")
         assertEquals(403, bare.status, bare.head)
         assertEquals(refusal("Missing Host header"), obj(bare.body))
         assertEquals(200, raw(port, "localhost:$port").status)

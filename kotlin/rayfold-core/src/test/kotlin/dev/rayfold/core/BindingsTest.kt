@@ -845,7 +845,8 @@ class BindingsTest {
         val write = rawHttp(port(base), "POST /orders HTTP/1.1\r\nHost: evil.example:${port(base)}\r\nAuthorization: Bearer u1\r\nIdempotency-Key: $KEY\r\n" +
             "Content-Type: application/json\r\nContent-Length: ${ORDER_BODY.length}\r\nConnection: close\r\n\r\n$ORDER_BODY")
         assertEquals(403, write.status)
-        val bare = rawHttp(port(base), "GET /books/b1 HTTP/1.1\r\nConnection: close\r\n\r\n")
+        // HTTP/1.0: since JDK-8386515 (21.0.13) the JDK server answers a Host-less HTTP/1.1 request with its own 400
+        val bare = rawHttp(port(base), "GET /books/b1 HTTP/1.0\r\nConnection: close\r\n\r\n")
         assertEquals(403, bare.status, bare.head)
         assertEquals(problemOf("permission_denied", 403, "Missing Host header"), Json.parseToJsonElement(bare.body))
         assertEquals(emptyMap(), calls(bs))
